@@ -4,7 +4,7 @@
   "schemaId": "albot.live-a/v1",
   "config": {
     "general": {
-      "name": "Live A · My Team · 3000er Trank-Nachschub",
+      "name": "My Team · 3 Ranger + Merchant · 3000er Tränke",
       "autostart": false,
       "environment": "auto",
       "combatTickMs": 250,
@@ -108,7 +108,7 @@
     "skills": [],
     "items": [
       {
-        "name": "My_Merchant liefert HP-Tränke an My_Ranger1",
+        "name": "Merchant liefert HP-Tränke an My_Ranger1",
         "enabled": true,
         "priority": 0,
         "item": "hpot0",
@@ -123,7 +123,7 @@
         "server": "",
         "task": "",
         "action": "send",
-        "keep": 0,
+        "keep": 100,
         "targetCount": 100,
         "requestBelow": 0,
         "maxCount": 100000,
@@ -133,7 +133,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "My_Merchant liefert HP-Tränke an My_Ranger2",
+        "name": "Merchant liefert HP-Tränke an My_Ranger2",
         "enabled": true,
         "priority": 0,
         "item": "hpot0",
@@ -148,7 +148,7 @@
         "server": "",
         "task": "",
         "action": "send",
-        "keep": 0,
+        "keep": 100,
         "targetCount": 100,
         "requestBelow": 0,
         "maxCount": 100000,
@@ -158,7 +158,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "My_Merchant liefert HP-Tränke an My_Ranger3",
+        "name": "Merchant liefert HP-Tränke an My_Ranger3",
         "enabled": true,
         "priority": 0,
         "item": "hpot0",
@@ -173,7 +173,7 @@
         "server": "",
         "task": "",
         "action": "send",
-        "keep": 0,
+        "keep": 100,
         "targetCount": 100,
         "requestBelow": 0,
         "maxCount": 100000,
@@ -183,7 +183,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "Farmer fordert HP-Tränke bei 50 nach",
+        "name": "Farmer fordert HP-Tränke nach",
         "enabled": true,
         "priority": 0,
         "item": "hpot0",
@@ -208,7 +208,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "My_Merchant liefert MP-Tränke an My_Ranger1",
+        "name": "Merchant liefert MP-Tränke an My_Ranger1",
         "enabled": true,
         "priority": 0,
         "item": "mpot0",
@@ -223,7 +223,7 @@
         "server": "",
         "task": "",
         "action": "send",
-        "keep": 0,
+        "keep": 100,
         "targetCount": 100,
         "requestBelow": 0,
         "maxCount": 100000,
@@ -233,7 +233,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "My_Merchant liefert MP-Tränke an My_Ranger2",
+        "name": "Merchant liefert MP-Tränke an My_Ranger2",
         "enabled": true,
         "priority": 0,
         "item": "mpot0",
@@ -248,7 +248,7 @@
         "server": "",
         "task": "",
         "action": "send",
-        "keep": 0,
+        "keep": 100,
         "targetCount": 100,
         "requestBelow": 0,
         "maxCount": 100000,
@@ -258,7 +258,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "My_Merchant liefert MP-Tränke an My_Ranger3",
+        "name": "Merchant liefert MP-Tränke an My_Ranger3",
         "enabled": true,
         "priority": 0,
         "item": "mpot0",
@@ -273,7 +273,7 @@
         "server": "",
         "task": "",
         "action": "send",
-        "keep": 0,
+        "keep": 100,
         "targetCount": 100,
         "requestBelow": 0,
         "maxCount": 100000,
@@ -283,7 +283,7 @@
         "ttlMs": 120000
       },
       {
-        "name": "Farmer fordert MP-Tränke bei 50 nach",
+        "name": "Farmer fordert MP-Tränke nach",
         "enabled": true,
         "priority": 0,
         "item": "mpot0",

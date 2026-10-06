@@ -1,6 +1,6 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 
-Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.3-live-a implementiert. Der zweite Browser-Teamlauf bestätigt persistenten Checkpoint und aktiven Teamkampf; Demand-aware Lieferung sowie bekannte `attack:not_there`-/`loot:openning`-Races sind im neuen Kandidaten korrigiert. Live-Wiederholung und Headless-Nachweis bleiben offen; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
+Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.4-live-a implementiert. Der dritte Browser-Teamlauf bestätigt persistenten Checkpoint und aktiven Teamkampf; die ausbleibende Lieferung wurde auf eine `hpot1`/`hpot0`-Profilabweichung und die bisherige Ein-Empfänger-Regelauswahl zurückgeführt. `0.1.4-live-a` unterstützt mehrere Lieferempfänger pro Item und eine eigene Nachschubschwelle. Live-Wiederholung und Headless-Nachweis bleiben offen; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
 
 Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Der Teilrelease konsumiert bereits das reduzierte Schema albot.live-a/v1; die übrigen Spielmodule folgen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 

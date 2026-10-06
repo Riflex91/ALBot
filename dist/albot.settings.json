@@ -1,0 +1,1006 @@
+{
+  "format": "albot-settings",
+  "formatVersion": 1,
+  "schemaId": "albot.live-a/v1",
+  "schema": {
+    "type": "object",
+    "title": "ALBot · Live A",
+    "properties": {
+      "general": {
+        "type": "object",
+        "title": "Projekt & Betrieb",
+        "description": "Dieselbe Konfiguration für Browser und Headless. Login und Reconnect bleiben Aufgaben des Clients.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Profilname",
+            "default": "Mein Super-Bot",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "autostart": {
+            "type": "boolean",
+            "title": "Beim Laden starten",
+            "default": false
+          },
+          "environment": {
+            "type": "string",
+            "title": "Ausführungsart",
+            "default": "auto",
+            "maxLength": 160,
+            "enum": [
+              "auto"
+            ],
+            "x-labels": {
+              "auto": "Automatisch erkennen"
+            }
+          },
+          "combatTickMs": {
+            "type": "integer",
+            "title": "Kampfintervall (ms)",
+            "default": 250,
+            "minimum": 100,
+            "maximum": 5000
+          },
+          "economyTickMs": {
+            "type": "integer",
+            "title": "Economy-Intervall (ms)",
+            "default": 2000,
+            "minimum": 500,
+            "maximum": 60000
+          },
+          "planningTickMs": {
+            "type": "integer",
+            "title": "Strategie-Intervall (ms)",
+            "default": 10000,
+            "minimum": 1000,
+            "maximum": 600000
+          },
+          "transport": {
+            "type": "string",
+            "title": "Teamtransport",
+            "default": "auto",
+            "maxLength": 160,
+            "enum": [
+              "auto",
+              "ipc",
+              "cm"
+            ],
+            "x-labels": {
+              "auto": "Lokales IPC, sonst CM",
+              "ipc": "Nur lokales IPC",
+              "cm": "CM"
+            }
+          },
+          "allowRemoteCM": {
+            "type": "boolean",
+            "title": "CM zu konfigurierten externen Teammitgliedern",
+            "default": false
+          },
+          "maxPending": {
+            "type": "integer",
+            "title": "Maximal offene Aufträge",
+            "default": 32,
+            "minimum": 1,
+            "maximum": 256
+          },
+          "messageTtlMs": {
+            "type": "integer",
+            "title": "Nachrichten gültig (ms)",
+            "default": 10000,
+            "minimum": 6000,
+            "maximum": 120000
+          },
+          "ui": {
+            "type": "boolean",
+            "title": "Ingame-Bedienpanel im Browser",
+            "default": true
+          },
+          "pauseOnUnknown": {
+            "type": "boolean",
+            "title": "Unklare Wertaktionen anhalten",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "autostart",
+          "environment",
+          "combatTickMs",
+          "economyTickMs",
+          "planningTickMs",
+          "transport",
+          "allowRemoteCM",
+          "maxPending",
+          "messageTtlMs",
+          "ui",
+          "pauseOnUnknown"
+        ],
+        "additionalProperties": false
+      },
+      "farming": {
+        "type": "object",
+        "title": "Farmer & Überleben",
+        "description": "",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Farmen",
+            "default": true
+          },
+          "targets": {
+            "type": "array",
+            "title": "Erlaubte Monster-IDs",
+            "description": "",
+            "items": {
+              "type": "string",
+              "title": "ID",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "",
+              "minLength": 1
+            },
+            "default": [
+              "goo"
+            ],
+            "maxItems": 500
+          },
+          "autoTravel": {
+            "type": "boolean",
+            "title": "Automatisch zum Farmziel reisen",
+            "default": true
+          },
+          "loot": {
+            "type": "boolean",
+            "title": "Loot sammeln",
+            "default": true
+          },
+          "lootEveryMs": {
+            "type": "integer",
+            "title": "Lootintervall (ms)",
+            "default": 1000,
+            "minimum": 300,
+            "maximum": 60000
+          },
+          "freeSlots": {
+            "type": "integer",
+            "title": "Freie Slots reservieren",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 42
+          },
+          "hpBelow": {
+            "type": "number",
+            "title": "HP auffüllen unter Anteil",
+            "default": 0.75,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mpBelow": {
+            "type": "number",
+            "title": "MP auffüllen unter Anteil",
+            "default": 0.5,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "restBelow": {
+            "type": "number",
+            "title": "Ruhe unter HP-Anteil",
+            "default": 0.4,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "resumeAbove": {
+            "type": "number",
+            "title": "Weiter ab HP-Anteil",
+            "default": 0.85,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "potions": {
+            "type": "boolean",
+            "title": "Tränke verwenden",
+            "default": true
+          },
+          "respawn": {
+            "type": "boolean",
+            "title": "Automatisch wiederbeleben",
+            "default": true
+          },
+          "respawnDelayMs": {
+            "type": "integer",
+            "title": "Respawn-Wartezeit (ms)",
+            "default": 15000,
+            "minimum": 10000,
+            "maximum": 600000
+          },
+          "maxDeaths": {
+            "type": "integer",
+            "title": "Tode bis Pause",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "deathWindowMs": {
+            "type": "integer",
+            "title": "Todesfenster (ms)",
+            "default": 600000,
+            "minimum": 60000,
+            "maximum": 86400000
+          },
+          "kiting": {
+            "type": "boolean",
+            "title": "Kiting",
+            "default": true
+          },
+          "rangeBuffer": {
+            "type": "integer",
+            "title": "Reichweitenpuffer",
+            "default": 15,
+            "minimum": 0,
+            "maximum": 200
+          },
+          "maxAggro": {
+            "type": "integer",
+            "title": "Maximale gleichzeitige Aggroziele",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 30
+          },
+          "avoidOthers": {
+            "type": "boolean",
+            "title": "Fremde Ziele respektieren",
+            "default": true
+          }
+        },
+        "required": [
+          "enabled",
+          "targets",
+          "autoTravel",
+          "loot",
+          "lootEveryMs",
+          "freeSlots",
+          "hpBelow",
+          "mpBelow",
+          "restBelow",
+          "resumeAbove",
+          "potions",
+          "respawn",
+          "respawnDelayMs",
+          "maxDeaths",
+          "deathWindowMs",
+          "kiting",
+          "rangeBuffer",
+          "maxAggro",
+          "avoidOthers"
+        ],
+        "additionalProperties": false
+      },
+      "party": {
+        "type": "object",
+        "title": "Gruppe & Skills",
+        "description": "",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Gruppenbetrieb",
+            "default": true
+          },
+          "group": {
+            "type": "string",
+            "title": "Gruppenkennung",
+            "default": "team1",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "leader": {
+            "type": "string",
+            "title": "Kampf-Leader (leer = Rollenwahl)",
+            "default": "",
+            "maxLength": 160,
+            "x-catalog": "characters"
+          },
+          "merchant": {
+            "type": "string",
+            "title": "Zuständiger Merchant",
+            "default": "",
+            "maxLength": 160,
+            "x-catalog": "characters"
+          },
+          "maxFarmers": {
+            "type": "integer",
+            "title": "Maximale Farmer",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 20
+          },
+          "followDistance": {
+            "type": "integer",
+            "title": "Folgeabstand",
+            "default": 180,
+            "minimum": 20,
+            "maximum": 2000
+          },
+          "focusFire": {
+            "type": "boolean",
+            "title": "Gemeinsames Ziel",
+            "default": true
+          },
+          "waitForTeam": {
+            "type": "boolean",
+            "title": "Auf fehlende Teammitglieder warten",
+            "default": true
+          },
+          "healing": {
+            "type": "boolean",
+            "title": "Gruppenheilung",
+            "default": true
+          },
+          "energize": {
+            "type": "boolean",
+            "title": "Mana teilen",
+            "default": true
+          },
+          "buffs": {
+            "type": "boolean",
+            "title": "Gruppenbuffs",
+            "default": true
+          },
+          "revive": {
+            "type": "boolean",
+            "title": "Gruppenmitglieder wiederbeleben",
+            "default": true
+          },
+          "aoe": {
+            "type": "boolean",
+            "title": "AoE erlauben",
+            "default": false
+          },
+          "aoeMaxTargets": {
+            "type": "integer",
+            "title": "AoE-Zielgrenze",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "enabled",
+          "group",
+          "leader",
+          "merchant",
+          "maxFarmers",
+          "followDistance",
+          "focusFire",
+          "waitForTeam",
+          "healing",
+          "energize",
+          "buffs",
+          "revive",
+          "aoe",
+          "aoeMaxTargets"
+        ],
+        "additionalProperties": false
+      },
+      "merchant": {
+        "type": "object",
+        "title": "Merchant & Logistik",
+        "description": "",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Merchant-Automatik",
+            "default": true
+          },
+          "pickup": {
+            "type": "boolean",
+            "title": "Beute abholen",
+            "default": true
+          },
+          "supply": {
+            "type": "boolean",
+            "title": "Farmer versorgen",
+            "default": true
+          },
+          "maxDelivery": {
+            "type": "integer",
+            "title": "Menge je Lieferung",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 1000000000000
+          },
+          "minFreeSlots": {
+            "type": "integer",
+            "title": "Arbeitsplätze im Inventar",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 42
+          }
+        },
+        "required": [
+          "enabled",
+          "pickup",
+          "supply",
+          "maxDelivery",
+          "minFreeSlots"
+        ],
+        "additionalProperties": false
+      },
+      "characters": {
+        "type": "array",
+        "title": "Charaktere & Rollen",
+        "description": "Namen müssen im Headless-Client zusätzlich konfiguriert sein. Rollenüberschreibungen entstehen durch charakterbezogene Regeln.",
+        "items": {
+          "type": "object",
+          "title": "Charakter",
+          "description": "",
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Exakter Charaktername",
+              "default": "",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Aktiv",
+              "default": true
+            },
+            "class": {
+              "type": "string",
+              "title": "Klasse",
+              "default": "auto",
+              "maxLength": 160,
+              "enum": [
+                "auto",
+                "warrior",
+                "ranger",
+                "mage",
+                "priest",
+                "rogue",
+                "paladin",
+                "merchant"
+              ],
+              "x-labels": {
+                "auto": "Automatisch",
+                "warrior": "Warrior",
+                "ranger": "Ranger",
+                "mage": "Mage",
+                "priest": "Priest",
+                "rogue": "Rogue",
+                "paladin": "Paladin",
+                "merchant": "Merchant"
+              }
+            },
+            "role": {
+              "type": "string",
+              "title": "Rolle",
+              "default": "farmer",
+              "maxLength": 160,
+              "enum": [
+                "farmer",
+                "merchant"
+              ],
+              "x-labels": {
+                "farmer": "Farmer",
+                "merchant": "Merchant"
+              }
+            },
+            "group": {
+              "type": "string",
+              "title": "Gruppe",
+              "default": "team1",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "region": {
+              "type": "string",
+              "title": "Region",
+              "default": "EU",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "server": {
+              "type": "string",
+              "title": "Server",
+              "default": "II",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "farmTargets": {
+              "type": "array",
+              "title": "Eigene Farmziele (leer = global)",
+              "description": "",
+              "items": {
+                "type": "string",
+                "title": "ID",
+                "default": "",
+                "maxLength": 160,
+                "x-catalog": "",
+                "minLength": 1
+              },
+              "default": [],
+              "maxItems": 500
+            }
+          },
+          "required": [
+            "name",
+            "enabled",
+            "class",
+            "role",
+            "group",
+            "region",
+            "server",
+            "farmTargets"
+          ],
+          "additionalProperties": false
+        },
+        "default": [],
+        "maxItems": 500
+      },
+      "skills": {
+        "type": "array",
+        "title": "Individuelle Skill-Regeln",
+        "description": "Diese Regeln präzisieren die Standardrotation. Höhere Priorität wird zuerst bewertet; Cooldowns und Live-Voraussetzungen bleiben verpflichtend.",
+        "items": {
+          "type": "object",
+          "title": "Skill-Regel",
+          "description": "",
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "default": "Neue Skill-Regel",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Aktiv",
+              "default": true
+            },
+            "skill": {
+              "type": "string",
+              "title": "Skill-ID",
+              "default": "supershot",
+              "maxLength": 160,
+              "minLength": 1,
+              "enum": [
+                "hardshell",
+                "charge",
+                "taunt",
+                "warcry",
+                "huntersmark",
+                "poisonarrow",
+                "piercingshot",
+                "supershot",
+                "entangle",
+                "arcane_needle",
+                "curse",
+                "darkblessing",
+                "phaseout",
+                "invis",
+                "pcoat",
+                "mentalburst",
+                "quickstab",
+                "quickpunch",
+                "selfheal",
+                "shield_slam",
+                "purify",
+                "smash",
+                "heal",
+                "partyheal",
+                "energize",
+                "reflection",
+                "rspeed",
+                "revive",
+                "3shot",
+                "5shot",
+                "cleave",
+                "stomp",
+                "fanofknives"
+              ]
+            },
+            "class": {
+              "type": "string",
+              "title": "Klasse",
+              "default": "auto",
+              "maxLength": 160,
+              "enum": [
+                "auto",
+                "warrior",
+                "ranger",
+                "mage",
+                "priest",
+                "rogue",
+                "paladin",
+                "merchant"
+              ],
+              "x-labels": {
+                "auto": "Automatisch",
+                "warrior": "Warrior",
+                "ranger": "Ranger",
+                "mage": "Mage",
+                "priest": "Priest",
+                "rogue": "Rogue",
+                "paladin": "Paladin",
+                "merchant": "Merchant"
+              }
+            },
+            "character": {
+              "type": "string",
+              "title": "Nur Charakter",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "characters"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priorität",
+              "default": 0,
+              "minimum": -10000,
+              "maximum": 10000
+            },
+            "target": {
+              "type": "string",
+              "title": "Ziel",
+              "default": "enemy",
+              "maxLength": 160,
+              "enum": [
+                "enemy",
+                "self",
+                "lowestHp",
+                "lowestMp",
+                "leader"
+              ],
+              "x-labels": {
+                "enemy": "Aktueller Gegner",
+                "self": "Eigener Charakter",
+                "lowestHp": "Gruppenmitglied mit wenig HP",
+                "lowestMp": "Gruppenmitglied mit wenig MP",
+                "leader": "Kampf-Leader"
+              }
+            },
+            "minMp": {
+              "type": "number",
+              "title": "Manareserve nach Skill (Anteil)",
+              "default": 0.2,
+              "minimum": 0,
+              "maximum": 1
+            },
+            "maxTargets": {
+              "type": "integer",
+              "title": "Maximale Ziele",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 20
+            },
+            "everyMs": {
+              "type": "integer",
+              "title": "Frühestens erneut nach (ms)",
+              "default": 1000,
+              "minimum": 100,
+              "maximum": 3600000
+            },
+            "conditions": {
+              "type": "array",
+              "title": "Alle Bedingungen müssen gelten",
+              "description": "",
+              "items": {
+                "type": "object",
+                "title": "Bedingung",
+                "description": "",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "title": "Messwert",
+                    "default": "hpRatio",
+                    "maxLength": 160,
+                    "enum": [
+                      "hpRatio",
+                      "mpRatio",
+                      "freeSlots",
+                      "gold",
+                      "enemyCount",
+                      "itemCount",
+                      "map",
+                      "rip",
+                      "task"
+                    ],
+                    "x-labels": {
+                      "hpRatio": "HP-Anteil",
+                      "mpRatio": "MP-Anteil",
+                      "freeSlots": "Freie Slots",
+                      "gold": "Gold",
+                      "enemyCount": "Gegner in Reichweite",
+                      "itemCount": "Item-Menge",
+                      "map": "Karte",
+                      "rip": "Tot",
+                      "task": "Aktivität"
+                    }
+                  },
+                  "operator": {
+                    "type": "string",
+                    "title": "Vergleich",
+                    "default": "lt",
+                    "maxLength": 160,
+                    "enum": [
+                      "lt",
+                      "lte",
+                      "eq",
+                      "neq",
+                      "gte",
+                      "gt"
+                    ],
+                    "x-labels": {
+                      "lt": "Kleiner",
+                      "lte": "Kleiner/gleich",
+                      "eq": "Gleich",
+                      "neq": "Ungleich",
+                      "gte": "Größer/gleich",
+                      "gt": "Größer"
+                    }
+                  },
+                  "value": {
+                    "type": "string",
+                    "title": "Vergleichswert",
+                    "default": "0.5",
+                    "maxLength": 160,
+                    "minLength": 1
+                  },
+                  "item": {
+                    "type": "string",
+                    "title": "Item-ID für Item-Menge",
+                    "default": "",
+                    "maxLength": 160,
+                    "x-catalog": "items"
+                  }
+                },
+                "required": [
+                  "field",
+                  "operator",
+                  "value",
+                  "item"
+                ],
+                "additionalProperties": false
+              },
+              "default": [],
+              "maxItems": 500
+            }
+          },
+          "required": [
+            "name",
+            "enabled",
+            "skill",
+            "class",
+            "character",
+            "priority",
+            "target",
+            "minMp",
+            "maxTargets",
+            "everyMs",
+            "conditions"
+          ],
+          "additionalProperties": false
+        },
+        "default": [],
+        "maxItems": 500
+      },
+      "items": {
+        "type": "array",
+        "title": "Alle Items · Regeln",
+        "description": "Live A: Schutz, Trank-/Skillverbrauch und bestätigte Lieferung aus vorhandenen Beständen. Kein Kauf, Verkauf oder Bankzugriff.",
+        "items": {
+          "type": "object",
+          "title": "Item-Regel",
+          "description": "",
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Regelname",
+              "default": "Neue Regel",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Aktiv",
+              "default": true
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priorität (höher gewinnt)",
+              "default": 0,
+              "minimum": -10000,
+              "maximum": 10000
+            },
+            "item": {
+              "type": "string",
+              "title": "Item-ID",
+              "default": "hpot1",
+              "maxLength": 160,
+              "x-catalog": "items",
+              "minLength": 1
+            },
+            "role": {
+              "type": "string",
+              "title": "Rolle",
+              "default": "all",
+              "maxLength": 160,
+              "enum": [
+                "all",
+                "farmer",
+                "merchant"
+              ],
+              "x-labels": {
+                "all": "Alle Rollen",
+                "farmer": "Farmer",
+                "merchant": "Merchant"
+              }
+            },
+            "character": {
+              "type": "string",
+              "title": "Nur Charakter (leer = alle)",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "characters"
+            },
+            "minLevel": {
+              "type": "integer",
+              "title": "Ab Item-Level",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 99
+            },
+            "maxLevel": {
+              "type": "integer",
+              "title": "Bis Item-Level",
+              "default": 99,
+              "minimum": 0,
+              "maximum": 99
+            },
+            "statType": {
+              "type": "string",
+              "title": "Stat-Typ (leer = alle)",
+              "default": "",
+              "maxLength": 160
+            },
+            "property": {
+              "type": "string",
+              "title": "Eigenschaft p (leer = alle)",
+              "default": "",
+              "maxLength": 160
+            },
+            "title": {
+              "type": "string",
+              "title": "Item-Titel (leer = alle)",
+              "default": "",
+              "maxLength": 160
+            },
+            "map": {
+              "type": "string",
+              "title": "Nur Karte (leer = alle)",
+              "default": "",
+              "maxLength": 160
+            },
+            "server": {
+              "type": "string",
+              "title": "Nur Realm, z. B. EUII (leer = alle)",
+              "default": "",
+              "maxLength": 160
+            },
+            "task": {
+              "type": "string",
+              "title": "Nur Aktivität (leer = alle)",
+              "default": "",
+              "maxLength": 160
+            },
+            "action": {
+              "type": "string",
+              "title": "Aktion",
+              "default": "keep",
+              "maxLength": 160,
+              "enum": [
+                "keep",
+                "consume",
+                "send"
+              ],
+              "x-labels": {
+                "keep": "Behalten / reservieren",
+                "consume": "Verbrauch erlauben",
+                "send": "Überschuss liefern"
+              }
+            },
+            "keep": {
+              "type": "integer",
+              "title": "Mindestbestand behalten",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "targetCount": {
+              "type": "integer",
+              "title": "Zielbestand",
+              "default": 100,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "maxCount": {
+              "type": "integer",
+              "title": "Maximalbestand",
+              "default": 1000,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "batch": {
+              "type": "integer",
+              "title": "Maximale Menge je Aktion",
+              "default": 100,
+              "minimum": 1,
+              "maximum": 1000000000000
+            },
+            "recipient": {
+              "type": "string",
+              "title": "Lieferempfänger",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "characters"
+            },
+            "teamReserve": {
+              "type": "integer",
+              "title": "Zusätzliche Teamreserve",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "ttlMs": {
+              "type": "integer",
+              "title": "Auftrag gültig (ms)",
+              "default": 120000,
+              "minimum": 1000,
+              "maximum": 86400000
+            }
+          },
+          "required": [
+            "name",
+            "enabled",
+            "priority",
+            "item",
+            "role",
+            "character",
+            "minLevel",
+            "maxLevel",
+            "statType",
+            "property",
+            "title",
+            "map",
+            "server",
+            "task",
+            "action",
+            "keep",
+            "targetCount",
+            "maxCount",
+            "batch",
+            "recipient",
+            "teamReserve",
+            "ttlMs"
+          ],
+          "additionalProperties": false
+        },
+        "default": [],
+        "maxItems": 2000
+      }
+    },
+    "required": [
+      "general",
+      "farming",
+      "party",
+      "merchant",
+      "characters",
+      "skills",
+      "items"
+    ],
+    "additionalProperties": false
+  }
+}

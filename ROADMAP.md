@@ -1,8 +1,8 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 
-Stand: 6. Oktober 2026. **Planung und Werkstatt 2.0 fertig; Spiellaufzeit noch nicht implementiert.**
+Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.0-live-a implementiert; echter Live-Test A noch ausstehend.**
 
-Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Die Runtime-Anbindung folgt mit den Spielmodulen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
+Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Der Teilrelease konsumiert bereits das reduzierte Schema albot.live-a/v1; die übrigen Spielmodule folgen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 
 ## 1. Ziel und feste Entscheidungen
 
@@ -43,27 +43,27 @@ Die Clientkorrektur wurde lokal mit offiziellen Spielquellen geprüft, nicht dur
 
 ### P1 — Gemeinsamer Kern und Konfigurationsmodell
 
-Voraussetzung: späterer Auftrag zur Implementierung. Umfang: ein kompakter vertikaler Einstieg statt eines monatelangen Frameworks.
+Durch den Folgeauftrag autorisiert und als Testkandidat implementiert. Die Häkchen bezeichnen Code, nicht bestandenen Live-Betrieb.
 
-- [ ] Klassisches IIFE-Bundle mit Versions-/Byteangabe und eingebetteter Konfiguration bauen. Größenprüfung ab dem ersten Build.
-- [ ] Browser-/Headless-Erkennung und Runtime-Ports gemäß [RUNTIME-VERTRAG.md](docs/RUNTIME-VERTRAG.md).
-- [ ] Zentraler Scheduler, instanzlokaler Start/Stop, Bereinigung, Pause/STOP und Generationsprüfung für verspätete Antworten.
-- [ ] Eine Aktionsausführung für Spielbefehle; aktuelle Zustandsprüfung, Ressourcenbesitz, begrenzte Warteschlangen.
-- [x] Gemeinsames Regelschema für Charaktere, Farmziele, Skills, Merchant und jedes Item; Import/Export und verständliche Validierung in der Werkstatt. Runtime-Konsum bleibt offen.
-- [ ] Teamtransport mit lokaler Headless-IPC, Browser-CM, vertrauenswürdigem Roster, kurzen Statusmeldungen, Auftrags-ID und Bestätigung.
-- [ ] Persistenz kleiner Konfigurationen und offener Aufträge; keine atomaren Storage-Locks voraussetzen.
+- [x] Klassisches IIFE-Bundle mit Versions-/Byteangabe und eingebetteter Konfiguration bauen. Größenprüfung ab dem ersten Build.
+- [x] Browser-/Headless-Erkennung und Runtime-Ports gemäß [RUNTIME-VERTRAG.md](docs/RUNTIME-VERTRAG.md).
+- [x] Zentraler Scheduler, instanzlokaler Start/Stop, Bereinigung, Pause/STOP und Generationsprüfung für verspätete Antworten.
+- [x] Eine Aktionsausführung für Spielbefehle; aktuelle Zustandsprüfung, Ressourcenbesitz, begrenzte Warteschlangen.
+- [x] Gemeinsames Regelschema für Charaktere, Farmziele, Skills, Merchant und jedes Item; Import/Export und verständliche Validierung in der Werkstatt. Runtime-Konsum für den unterstützten Live-A-Teilumfang vorhanden.
+- [x] Teamtransport mit lokaler Headless-IPC, Browser-CM, vertrauenswürdigem Roster, kurzen Statusmeldungen, Auftrags-ID und Bestätigung.
+- [x] Persistenz kleiner Konfigurationen und offener Aufträge; keine atomaren Storage-Locks voraussetzen.
 
 Fertig, wenn derselbe Build beide Umgebungen korrekt erkennt, sauber startet/stoppt und eine Einstellung in derselben Form verarbeitet. Keine neue Spiellogik doppelt implementieren. Noch kein separater Live-Testtermin; gemeinsam mit P2 prüfen.
 
 ### P2 — Farmer und Gruppe spielbar machen — Live-Test A
 
-- [ ] HP/MP-Regeneration und Verbrauchsmittel, Tod/Respawn, Loot, Inventarreserve.
-- [ ] Zielauswahl, Reichweite, Cooldowns, Kiting, sichere Reise, Wegfehler und Ankunft anhand tatsächlicher Karte/Instanz/Position.
-- [ ] Klassenrotationen für Warrior, Ranger, Mage, Priest, Rogue, Paladin; Skills nach Klasse, Level, Ausrüstung, Kosten und Situation.
-- [ ] Gruppenheilung, Energize, Buffs, gemeinsames Ziel, Aggro-/AoE-Grenzen und Schutz vor fremden Zielen.
-- [ ] Konfigurierbarer Farmer-Leader und optionales Standardprofil drei Farmer plus Merchant; keine fest eingebauten Accountnamen.
-- [ ] Farmer-Itemregeln mindestens Behalten/Verbrauchen/Reservieren/Übergabe anwenden. Merchant erhält zunächst begrenzte Liefer-/Nachschubaufträge.
-- [ ] Kurzes Browser-Bedienpanel: Status, Start/Pause/STOP, aktive Rolle und blockierender Grund. Headless erzeugt kein DOM-Panel.
+- [x] HP/MP-Regeneration und Verbrauchsmittel, Tod/Respawn, Loot, Inventarreserve.
+- [x] Zielauswahl, Reichweite, Cooldowns, Kiting, sichere Reise, Wegfehler und Ankunft anhand tatsächlicher Karte/Instanz/Position.
+- [x] Klassenrotationen für Warrior, Ranger, Mage, Priest, Rogue, Paladin; Skills nach Klasse, Level, Ausrüstung, Kosten und Situation.
+- [x] Gruppenheilung, Energize, Buffs, gemeinsames Ziel, Aggro-/AoE-Grenzen und Schutz vor fremden Zielen.
+- [x] Konfigurierbarer Farmer-Leader und optionales Standardprofil drei Farmer plus Merchant; keine fest eingebauten Accountnamen.
+- [x] Farmer-Itemregeln mindestens Behalten/Verbrauchen/Reservieren/Übergabe anwenden. Merchant erhält zunächst begrenzte Liefer-/Nachschubaufträge.
+- [x] Kurzes Browser-Bedienpanel: Status, Start/Pause/STOP, aktive Rolle und blockierender Grund. Headless erzeugt kein DOM-Panel.
 
 **Live A, ca. 10–15 Minuten:** identisches Artefakt nacheinander im Browser und Headless ausführen, zunächst an einem einfachen Farmziel. Ein kleiner Teamlauf prüft Zielteilung und einen Lieferauftrag. Beobachten: Bewegung, HP/MP, Attack-Cooldown, Loot, IPC/CM, Stop/Neuladen. Keine parallele Anmeldung desselben Charakters. Bei einem konkreten Fehler nur den betroffenen Ablauf nachprüfen.
 
@@ -73,7 +73,7 @@ Fertig, wenn normales Farmen und Teamkommunikation in beiden Umgebungen funktion
 
 - [x] Lokalen Editor mit Katalog aus den verfügbaren Spieldaten bauen; jedes Item einzeln suchbar, Rollen- und Charakterausnahmen, Kopieren/Mehrfachbearbeitung und erweiterbare Schema-Vorgaben.
 - [ ] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen.
-- [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Auswahl ist noch in die Spiellaufzeit einzubinden. Die Vorschau ist kein Shadow-Testlauf.
+- [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Priorität und Filter sind für Live-A-Items bereits in der Spiellaufzeit eingebunden; weitere Aktionsphasen folgen. Die Vorschau ist kein Shadow-Testlauf.
 - [ ] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze.
 - [ ] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget.
 - [ ] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty.
@@ -160,3 +160,7 @@ Die öffentliche Serverreferenz prüft UTF-8-Bytegröße, nicht sichtbare Zeiche
 Der Client bietet bereits lokale Nachrichten und Prozessverwaltung, jedoch keinen transaktionalen Bot-Datenspeicher und keinen Konfigurations-Schreibkanal im Dashboard. Diese Grenzen werden im Botdesign berücksichtigt; neue Clientfunktionen nicht voraussetzen. Nicht alle Browser-Eigenheiten werden automatisch durch jsdom korrekt; deshalb Live A mit demselben Artefakt in beiden Umgebungen.
 
 Diese Planung verspricht Funktionszusammenführung, keinen heute bereits fertigen Bot und keine aus früheren Projekten abgeleitete Garantie für fehlerfreien Dauerbetrieb.
+
+## 7. Übergabe an Live A
+
+Testkandidat und Ablauf: [docs/LIVE-A.md](docs/LIVE-A.md). Build, Syntax, Paket-Hash, Größenlimit und 21 gezielte Tests bestanden. Darunter Kontextisolation, Stop/Reload, fehlende jsdom-Hilfsfunktionen, Item-Identität, Reserven sowie Annahme und beidseitiger Mengenabgleich einer Lieferung. Keine Shadow-Tests, kein echter Login, kein Live- oder Linux-Erfolg behauptet. P3-P6 bleiben offen. Die aktive Client-Konfiguration wurde nicht umgestellt.

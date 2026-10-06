@@ -1,9 +1,11 @@
 {
-  "name": "albot-workshop",
+  "name": "albot",
   "private": true,
   "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs editor/test/*.test.mjs",
     "build:editor": "node editor/build.mjs",
     "test:editor": "node --test editor/test/*.test.mjs"
   },

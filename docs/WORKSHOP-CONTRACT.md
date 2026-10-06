@@ -1,6 +1,6 @@
 # Fertigen Super-Bot an die vorhandene Werkstatt anbinden
 
-Die Werkstatt implementiert jetzt den Konfigurationsvertrag, nicht die Spielfunktionen. Neue Runtime-Arbeit muss diesen Vertrag konsumieren, statt eine abweichende zweite Konfiguration zu erfinden. Kanonische Definition: [editor/lib/schema.mjs](../editor/lib/schema.mjs); generierte Datendatei: [editor/albot.settings.json](../editor/albot.settings.json). Fachprüfungen: [editor/lib/contract.mjs](../editor/lib/contract.mjs).
+Die Werkstatt implementiert den Konfigurationsvertrag. Der erste Runtime-Teilrelease für [Live A](LIVE-A.md) konsumiert eine ausdrücklich reduzierte Ansicht mit eigener Schema-ID `albot.live-a/v1`; nicht unterstützte Bereiche werden abgelehnt. Neue Runtime-Arbeit muss den gemeinsamen Vertrag erweitern, statt eine abweichende zweite Konfiguration zu erfinden. Kanonische Definition: [editor/lib/schema.mjs](../editor/lib/schema.mjs); generierte Datendatei: [editor/albot.settings.json](../editor/albot.settings.json). Fachprüfungen: [editor/lib/contract.mjs](../editor/lib/contract.mjs).
 
 ## 1. Auslieferung
 

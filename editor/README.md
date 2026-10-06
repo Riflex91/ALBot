@@ -6,6 +6,8 @@ Die Werkstatt ist für den **vollständigen geplanten Super-Bot** gebaut. Seine 
 
 ## Arbeitsablauf
 
+Für den ersten spielbaren Teilrelease ist jetzt [Live A](../docs/LIVE-A.md) mit eigenem Bot-Paket und reduziertem Schema verfügbar. Die vollständige v1-Spielroutine bleibt in Entwicklung. Das Testpaket funktioniert mit dieser unveränderten Werkstattdatei.
+
 1. Unter **Charaktere & Rollen** deine Namen, Rollen und Regionen/Server anlegen. Den zuständigen Merchant und Kampf-Leader unter **Gruppe & Skills** auswählen. Namen auch im Headless-Client konfigurieren.
 2. **Farmer & Überleben**, **Gruppe & Skills** und **Merchant & Logistik** einstellen. **Individuelle Skill-Regeln** erlauben Bedingungen, Prioritäten, Ziele, Manareserve und Ausführungsabstände.
 3. Unter **Alle Items · Regeln** nach Namen/ID/Typ suchen, Items auswählen, Rolle/Aktion wählen und Regeln anlegen. Level, besondere Eigenschaften, Mengen, Empfänger, Preise, Budgets, Scrolls, Offerings und Verarbeitung pro Regel festlegen.

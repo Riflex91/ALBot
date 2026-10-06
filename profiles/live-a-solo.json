@@ -1,0 +1,81 @@
+{
+  "format": "albot-profile",
+  "formatVersion": 1,
+  "schemaId": "albot.live-a/v1",
+  "config": {
+    "general": {
+      "name": "Mein Super-Bot",
+      "autostart": false,
+      "environment": "auto",
+      "combatTickMs": 250,
+      "economyTickMs": 2000,
+      "planningTickMs": 10000,
+      "transport": "auto",
+      "allowRemoteCM": false,
+      "maxPending": 32,
+      "messageTtlMs": 10000,
+      "ui": true,
+      "pauseOnUnknown": true
+    },
+    "farming": {
+      "enabled": true,
+      "targets": [
+        "goo"
+      ],
+      "autoTravel": true,
+      "loot": true,
+      "lootEveryMs": 1000,
+      "freeSlots": 3,
+      "hpBelow": 0.75,
+      "mpBelow": 0.5,
+      "restBelow": 0.4,
+      "resumeAbove": 0.85,
+      "potions": true,
+      "respawn": true,
+      "respawnDelayMs": 15000,
+      "maxDeaths": 3,
+      "deathWindowMs": 600000,
+      "kiting": true,
+      "rangeBuffer": 15,
+      "maxAggro": 2,
+      "avoidOthers": true
+    },
+    "party": {
+      "enabled": true,
+      "group": "team1",
+      "leader": "Farmer1",
+      "merchant": "",
+      "maxFarmers": 3,
+      "followDistance": 180,
+      "focusFire": true,
+      "waitForTeam": false,
+      "healing": true,
+      "energize": true,
+      "buffs": true,
+      "revive": true,
+      "aoe": false,
+      "aoeMaxTargets": 3
+    },
+    "merchant": {
+      "enabled": true,
+      "pickup": true,
+      "supply": true,
+      "maxDelivery": 100,
+      "minFreeSlots": 4
+    },
+    "characters": [
+      {
+        "name": "Farmer1",
+        "enabled": true,
+        "class": "ranger",
+        "role": "farmer",
+        "group": "team1",
+        "region": "EU",
+        "server": "II",
+        "farmTargets": []
+      }
+    ],
+    "skills": [],
+    "items": []
+  }
+}

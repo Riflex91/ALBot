@@ -2,7 +2,11 @@
 
 Ein gemeinsamer Adventure-Land-Bot für Browser-CODE und den vorhandenen Node.js-Headless-Client. Ziel: die Spielfunktionen aus ALFinal sowie v3, v4 und v5 zusammenführen, einschließlich Farmer, Merchant, Item-Regeln, Gruppenplanung und Produktion.
 
-**Stand 6. Oktober 2026: Die Bot-Werkstatt 2.0 und ihr vollständiger Konfigurationsvertrag sind implementiert. Die neue Spiel-Laufzeit ist noch nicht implementiert.**
+**Stand 6. Oktober 2026: Werkstatt 2.0 und der erste spielbare Testkandidat `0.1.0-live-a` sind implementiert. Der echte Live-Test A steht noch aus.**
+
+Zum Testen: [Live-A-Anleitung](docs/LIVE-A.md), [Bot-Paket für die Werkstatt](dist/albot.package.json), [Solo-Profil](profiles/live-a-solo.json), [Team-Profil](profiles/live-a-team.json). `dist/albot.js` ist ein vollständiges Bundle mit Platzhaltern und ausgeschaltetem Autostart. Eigene Namen über die Werkstatt einsetzen. Die exakt gleiche exportierte Datei läuft in Browser-CODE und Headless.
+
+Build: `npm run build`; gezielte Prüfungen: `npm test`. Node ab 22.9, keine npm-Abhängigkeiten. Unterstützt sind Farmen, sechs Klassenrotationen, Gruppe und kleine Lieferungen aus vorhandenem Bestand. Bank, Handel, Produktion und Welt-Automatik folgen in den weiteren Etappen. Kein Live- oder Linux-Ergebnis wird vorweggenommen.
 
 Die [Bot-Werkstatt](editor/Bot-Werkstatt.html) als Datei herunterladen und lokal im Browser öffnen. Sie konfiguriert den vollständigen geplanten Bot und kann später fertige Bot-Pakete samt neuen Einstellungsschemata laden. [Anleitung](editor/README.md) · [verbindlicher Integrationsvertrag](docs/WORKSHOP-CONTRACT.md).
 

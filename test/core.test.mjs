@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {Executor} from '../src/core/executor.mjs';
 import {createPorts} from '../src/runtime/ports.mjs';
 import {arrived,validMessage,transferable,fingerprint,chooseRule,matches} from '../src/core/policy.mjs';
-import {defaultsFor,ruleRank} from '../editor/lib/contract.mjs';
+import {defaultsFor,ruleRank,validateProfile} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
+import {DESCRIPTOR} from '../editor/lib/schema.mjs';
 
 test('jsdom is headless, unknown headless versions never become browser UI',()=>{
  assert.equal(createPorts({document:{},parent:{headless:{apiVersion:9}}}).headless,true);
@@ -47,4 +48,15 @@ test('skill conditions distinguish self HP from current target HP',()=>{
  const condition=[{field:'targetHpRatio',operator:'lt',value:'0.5',item:''}];
  assert.equal(matches(condition,{targetHpRatio:.4,count:()=>0}),true);
  assert.equal(matches(condition,{hpRatio:.4,count:()=>0}),false);
+});
+
+
+test('separate send rules for the same item may target different recipients',()=>{
+ const cfg=defaultsFor(DESCRIPTOR.schema),character=defaultsFor(DESCRIPTOR.schema.properties.characters.items),item=defaultsFor(DESCRIPTOR.schema.properties.items.items);
+ cfg.characters=[{...character,name:'A',role:'merchant',class:'merchant'},{...character,name:'B',role:'farmer',class:'ranger'},{...character,name:'C',role:'farmer',class:'ranger'}];
+ cfg.items=[
+  {...item,name:'B supply',item:'hpot0',role:'merchant',action:'send',recipient:'B',batch:3000},
+  {...item,name:'C supply',item:'hpot0',role:'merchant',action:'send',recipient:'C',batch:3000}
+ ];
+ assert.deepEqual(validateProfile(DESCRIPTOR,cfg),[]);
 });

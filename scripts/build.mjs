@@ -18,13 +18,9 @@ const config=defaultsFor(LIVE_DESCRIPTOR.schema);
 const character=defaultsFor(LIVE_DESCRIPTOR.schema.properties.characters.items);
 config.characters=[{...character,name:'Farmer1',class:'ranger'}];config.party.leader='Farmer1';config.party.waitForTeam=false;
 const solo=envelope(LIVE_DESCRIPTOR,config);
-const team=structuredClone(config);team.general.name='Live A · drei Farmer und Merchant';team.characters=[...['Farmer1','Farmer2','Farmer3'].map(name=>({...character,name,class:'ranger'})),{...character,name:'Merchant',role:'merchant',class:'merchant'}];team.party.merchant='Merchant';team.party.waitForTeam=true;team.merchant.maxDelivery=3000;
-const item=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items),farmers=['Farmer1','Farmer2','Farmer3'];
-team.items=[];
-for(const potion of [['hpot0','HP'],['mpot0','MP']]){
-  for(const recipient of farmers)team.items.push({...item,name:'Merchant liefert '+potion[1]+'-Tränke an '+recipient,item:potion[0],role:'merchant',action:'send',recipient,keep:100,targetCount:100,maxCount:100000,batch:3000});
-  team.items.push({...item,name:'Farmer fordert '+potion[1]+'-Tränke nach',item:potion[0],role:'farmer',action:'consume',keep:0,targetCount:3050,requestBelow:50,maxCount:10000,batch:3000});
-}
+const team=structuredClone(config);team.general.name='Live A · drei Farmer und Merchant';team.characters=[...['Farmer1','Farmer2','Farmer3'].map(name=>({...character,name,class:'ranger'})),{...character,name:'Merchant',role:'merchant',class:'merchant'}];team.party.merchant='Merchant';team.party.waitForTeam=true;
+const item=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+team.items=[{...item,name:'Merchant liefert HP-Tränke',item:'hpot1',role:'merchant',action:'send',recipient:'Farmer1',keep:100,targetCount:200,maxCount:500,batch:10},{...item,name:'Farmer verbraucht HP-Tränke',item:'hpot1',role:'farmer',action:'consume',targetCount:100,maxCount:200,batch:10}];
 const bundle=exportBundle(LIVE_DESCRIPTOR,config,runtime);new Script(bundle.code);
 await mkdir('dist',{recursive:true});await mkdir('profiles',{recursive:true});
 await Promise.all([

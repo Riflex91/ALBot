@@ -11,7 +11,7 @@ function pair(){
  const bots={};for(const [name,role] of [['A','merchant'],['B','farmer']]){
   const c={name,map:'main',in:'main',x:0,y:0,items:[{name:'hpot1',q:name==='A'?100:1},...Array(41).fill(null)]};
   const bot={cfg,me:{name,role},session:name,running:true,inventoryBlocked:false,journal:null,p:{c,realm:()=> 'EUII'},free:()=>41,entity:n=>bots[n]?.p.c,rule:i=>chooseRule(cfg.items,i,{character:name,role}),reason:'',beginValue(j){assert.equal(this.journal,null);this.journal=j;},endValue(s){if(s==='confirmed')this.journal=null;else this.inventoryBlocked=true;}};
-  bot.exec=new Executor({now:()=>Date.now(),active:()=>true,limit:4,onError(){}});
+  bot.exec=new Executor({now:()=>clock,active:()=>true,limit:4,onError(){}});
   bot.transport={peers:new Map(),fresh:n=>({running:true,rip:false,realm:'EUII',map:'main',in:'main',x:0,y:0,session:n,items:bots[n]?.logistics?.summary()??[]}),send(to,type,data,id){bots[to].logistics.receive(name,{type,data,id,session:name});return Promise.resolve(true);}};
   bot.p.call=(method,to,slot,quantity)=>{assert.equal(method,'send_item');sends++;const source={...c.items[slot]},have=c.items[slot].q??1,receiver=bots[to].p.c;c.items[slot]=have===quantity?null:{...c.items[slot],q:have-quantity};let dst=receiver.items.findIndex(i=>i&&i.name===source.name&&(i.level??0)===(source.level??0)&&(i.stat_type??'')===(source.stat_type??'')&&(i.p??'')===(source.p??'')&&(i.title??'')===(source.title??''));if(dst<0){dst=receiver.items.findIndex(i=>!i);receiver.items[dst]={...source,q:0};}receiver.items[dst].q=(receiver.items[dst].q??0)+quantity;return Promise.resolve({success:true});};
   bots[name]=bot;bot.logistics=createLogistics(bot);
@@ -46,7 +46,7 @@ test('merchant skips stocked item and supplies the item the peer actually needs'
 
 
 function supplyTeam(){
- const cfg=defaultsFor(LIVE_DESCRIPTOR.schema),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items),sends=[];
+ let clock=1000;const cfg=defaultsFor(LIVE_DESCRIPTOR.schema),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items),sends=[];
  cfg.merchant.maxDelivery=3000;
  cfg.items=[
   ...['B','C','D'].map(recipient=>({...r,name:'HP an '+recipient,item:'hpot0',role:'merchant',action:'send',recipient,keep:100,targetCount:100,maxCount:100000,batch:3000})),
@@ -62,19 +62,19 @@ function supplyTeam(){
   bot.p.call=(method,to,slot,amount)=>{assert.equal(method,'send_item');sends.push({to,item:c.items[slot].name,amount});const source={...c.items[slot]},have=c.items[slot].q??1,receiver=bots[to].p.c;c.items[slot]=have===amount?null:{...c.items[slot],q:have-amount};let dst=receiver.items.findIndex(i=>i&&i.name===source.name);if(dst<0){dst=receiver.items.findIndex(i=>!i);receiver.items[dst]={...source,q:0};}receiver.items[dst].q=(receiver.items[dst].q??0)+amount;return Promise.resolve({success:true});};
   bots[name]=bot;bot.logistics=createLogistics(bot);
  }
- return {...bots,sends};
+ return {...bots,sends,advance(ms){clock+=ms;}};
 }
-async function finishDelivery(sender,receiver){
- sender.logistics.poll();sender.logistics.poll();receiver.logistics.poll();sender.logistics.poll();await Promise.resolve();sender.exec.poll();
+async function finishDelivery(sender,receiver,advance){
+ sender.logistics.poll();sender.logistics.poll();receiver.logistics.poll();sender.logistics.poll();await Promise.resolve();sender.exec.poll();advance(300);
 }
 test('multi-recipient potion supply waits until 50 and then sends 3000 to each farmer',async()=>{
- const {A,B,C,D,sends}=supplyTeam();
+ const {A,B,C,D,sends,advance}=supplyTeam();
  assert.equal(B.logistics.summary().find(x=>x.item==='hpot0').need,0);
  assert.equal(C.logistics.summary().find(x=>x.item==='hpot0').need,3000);
  assert.equal(D.logistics.summary().find(x=>x.item==='hpot0').need,3050);
- await finishDelivery(A,C);assert.deepEqual(sends[0],{to:'C',item:'hpot0',amount:3000});assert.equal(C.p.c.items[0].q,3050);
- await finishDelivery(A,D);assert.deepEqual(sends[1],{to:'D',item:'hpot0',amount:3000});assert.equal(D.p.c.items[0].q,3000);
+ await finishDelivery(A,C,advance);assert.deepEqual(sends[0],{to:'C',item:'hpot0',amount:3000});assert.equal(C.p.c.items[0].q,3050);
+ await finishDelivery(A,D,advance);assert.deepEqual(sends[1],{to:'D',item:'hpot0',amount:3000});assert.equal(D.p.c.items[0].q,3000);
  assert.equal(sends.some(x=>x.to==='B'),false);
  B.p.c.items[0].q=50;
- await finishDelivery(A,B);assert.deepEqual(sends[2],{to:'B',item:'hpot0',amount:3000});assert.equal(B.p.c.items[0].q,3050);
+ await finishDelivery(A,B,advance);assert.deepEqual(sends[2],{to:'B',item:'hpot0',amount:3000});assert.equal(B.p.c.items[0].q,3050);
 });

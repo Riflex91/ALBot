@@ -67,7 +67,7 @@ export function validateSchema(s,value,path='Profil',errors=[]){
 }
 export function phaseOf(action){return ['buy','marketBuy','wishlist','retrieve','farm'].includes(action)?'acquisition':['upgrade','compound','exchange','craft'].includes(action)?'production':action==='keep'?'all':'inventory';}
 export function ruleRank(r){return (r.character?100:0)+(r.role!=='all'?10:0)+['statType','property','title','map','server','task'].filter(k=>r[k]).length+(r.minLevel!==0||r.maxLevel!==99?1:0);}
-function overlap(a,b){return a.item===b.item&&a.minLevel<=b.maxLevel&&b.minLevel<=a.maxLevel&&(a.role==='all'||b.role==='all'||a.role===b.role)&&['character','statType','property','title','map','server','task'].every(k=>!a[k]||!b[k]||a[k]===b[k])&&(phaseOf(a.action)==='all'||phaseOf(b.action)==='all'||phaseOf(a.action)===phaseOf(b.action));}
+function overlap(a,b){if(a.action==='send'&&b.action==='send'&&a.recipient&&b.recipient&&a.recipient!==b.recipient)return false;return a.item===b.item&&a.minLevel<=b.maxLevel&&b.minLevel<=a.maxLevel&&(a.role==='all'||b.role==='all'||a.role===b.role)&&['character','statType','property','title','map','server','task'].every(k=>!a[k]||!b[k]||a[k]===b[k])&&(phaseOf(a.action)==='all'||phaseOf(b.action)==='all'||phaseOf(a.action)===phaseOf(b.action));}
 function outcome(r){const x={...r};for(const k of ['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task'])delete x[k];return JSON.stringify(x);}
 export function validateProfile(descriptor,c){
   const errors=validateSchema(descriptor.schema,c);
@@ -91,6 +91,7 @@ export function validateProfile(descriptor,c){
     if(!/^[a-zA-Z0-9_]+$/.test(r.item))errors.push(p+': ungültige Item-ID.');
     if(r.minLevel>r.maxLevel)errors.push(p+': Levelbereich ist umgekehrt.');
     if(r.keep+r.teamReserve>r.maxCount||r.targetCount>r.maxCount||r.targetCount<r.keep+r.teamReserve)errors.push(p+': Reserve ≤ Zielbestand ≤ Maximalbestand erforderlich.');
+    if((r.requestBelow??0)>0&&r.requestBelow>r.targetCount)errors.push(p+': Nachschubschwelle darf nicht über dem Zielbestand liegen.');
     if(r.enabled&&r.action==='send'&&!r.recipient)errors.push(p+': Lieferempfänger fehlt.');
     if(r.enabled&&r.action==='send'&&r.character&&r.recipient===r.character)errors.push(p+': Lieferung an sich selbst.');
     if(r.enabled&&['list','equip'].includes(r.action)&&!r.slot)errors.push(p+': Slot fehlt.');

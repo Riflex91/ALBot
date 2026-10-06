@@ -19,7 +19,8 @@ export const SUPPORTED_SKILLS=['hardshell','charge','taunt','warcry','huntersmar
 const liveSkill=LIVE_DESCRIPTOR.schema.properties.skills.items.properties.skill;
 liveSkill.enum=SUPPORTED_SKILLS;liveSkill.default='supershot';
 const items=structuredClone(base.items);
-items.items=pick(base.items.items,['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task','action','keep','targetCount','maxCount','batch','recipient','teamReserve','ttlMs']);
+items.items=pick(base.items.items,['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task','action','keep','targetCount','requestBelow','maxCount','batch','recipient','teamReserve','ttlMs']);
+items.items.required=items.items.required.filter(k=>k!=='requestBelow');
 items.items.properties.action.enum=['keep','consume','send'];
 items.items.properties.action['x-labels']={keep:'Behalten / reservieren',consume:'Verbrauch erlauben',send:'Überschuss liefern'};
 items.description='Live A: Schutz, Trank-/Skillverbrauch und bestätigte Lieferung aus vorhandenen Beständen. Kein Kauf, Verkauf oder Bankzugriff.';

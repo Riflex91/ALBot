@@ -16,7 +16,7 @@ export const ITEM_RULE = obj('Item-Regel',{
   item:text('Item-ID','hpot1',{'x-catalog':'items',minLength:1}),role:choice('Rolle',roles),character:text('Nur Charakter (leer = alle)','',{'x-catalog':'characters'}),
   minLevel:int('Ab Item-Level',0,0,99),maxLevel:int('Bis Item-Level',99,0,99),statType:text('Stat-Typ (leer = alle)'),property:text('Eigenschaft p (leer = alle)'),title:text('Item-Titel (leer = alle)'),
   map:text('Nur Karte (leer = alle)'),server:text('Nur Realm, z. B. EUII (leer = alle)'),task:text('Nur Aktivität (leer = alle)'),
-  action:choice('Aktion',actions),keep:int('Mindestbestand behalten',0),targetCount:int('Zielbestand',100),maxCount:int('Maximalbestand',1000),batch:int('Maximale Menge je Aktion',100,1),
+  action:choice('Aktion',actions),keep:int('Mindestbestand behalten',0),targetCount:int('Zielbestand',100),requestBelow:int('Nachschub anfordern bei Bestand ≤ (0 = unter Zielbestand)',0),maxCount:int('Maximalbestand',1000),batch:int('Maximale Menge je Aktion',100,1),
   recipient:text('Lieferempfänger','',{'x-catalog':'characters'}),teamReserve:int('Zusätzliche Teamreserve',0),
   minPrice:int('Mindestverkaufspreis pro Stück',1,1),maxPrice:int('Maximaler Kaufpreis pro Stück',1000,1),priceSource:choice('Preisquelle',{fixed:'Fester Grenzpreis',market:'Aktuelle Marktbeobachtung',npc:'NPC-Preis'}),
   goldBudget:int('Goldbudget je Auftrag',10000),lossBudget:int('Maximaler möglicher Itemverlust in Gold',0),
@@ -24,6 +24,7 @@ export const ITEM_RULE = obj('Item-Regel',{
   recipe:text('Rezept / Exchange-Ziel'),pack:text('Bankfach (leer = automatisch)'),slot:text('Equipment-/Stand-Slot (falls erforderlich)'),
   fallback:choice('Wenn Aktion nicht möglich',{hold:'Behalten und warten',notify:'Behalten und Hinweis',bank:'Bankauftrag erstellen'}),ttlMs:int('Auftrag gültig (ms)',120000,1000,86400000)
 });
+ITEM_RULE.required=ITEM_RULE.required.filter(k=>k!=='requestBelow');
 const condition=obj('Bedingung',{field:choice('Messwert',{hpRatio:'Eigener HP-Anteil',targetHpRatio:'Ziel-HP-Anteil',mpRatio:'MP-Anteil',freeSlots:'Freie Slots',gold:'Gold',enemyCount:'Gegner in Reichweite',itemCount:'Item-Menge',map:'Karte',rip:'Tot',task:'Aktivität'}),operator:choice('Vergleich',{lt:'Kleiner',lte:'Kleiner/gleich',eq:'Gleich',neq:'Ungleich',gte:'Größer/gleich',gt:'Größer'}),value:text('Vergleichswert','0.5',{minLength:1}),item:text('Item-ID für Item-Menge','',{'x-catalog':'items'})});
 const skill=obj('Skill-Regel',{name:text('Name','Neue Skill-Regel',{minLength:1}),enabled:flag('Aktiv',true),skill:text('Skill-ID','',{minLength:1}),class:choice('Klasse',classes),character:text('Nur Charakter','',{'x-catalog':'characters'}),priority:int('Priorität',0,-10000,10000),target:choice('Ziel',{enemy:'Aktueller Gegner',self:'Eigener Charakter',lowestHp:'Gruppenmitglied mit wenig HP',lowestMp:'Gruppenmitglied mit wenig MP',leader:'Kampf-Leader'}),minMp:num('Manareserve nach Skill (Anteil)',0.2,0,1),maxTargets:int('Maximale Ziele',1,1,20),everyMs:int('Frühestens erneut nach (ms)',1000,100,3600000),conditions:list('Alle Bedingungen müssen gelten',condition)});
 export const DESCRIPTOR = {

@@ -43,3 +43,13 @@ Die zweite Auswertung zeigte außerdem, dass Skillbedingungen mit `hpRatio` den 
 - Danach denselben Build headless ausführen. Erst Browser-Wiederholung plus Headless-Nachweis schließen Live A ab.
 
 Keine Shadow-Tests. P3–P6 bleiben bis zum erfolgreichen Nachweis der betroffenen Live-A-Abläufe offen.
+
+## Dritter Browser-Teamtest mit 0.1.3-live-a
+
+Die vier neuen Browserberichte zeigen erneut `checkpointMode: persistent`, keine offenen Inventarjournale und normalen Kampf der Ranger. Beim Merchant bleiben jedoch sämtliche Logistikzähler auf 0. Damit wurde kein Lieferangebot erzeugt; der Fehler liegt vor `send_item`, nicht in dessen Ergebnisabgleich.
+
+Der konkrete Profilfehler ist eindeutig: Die einzige Merchant-Regel liefert `hpot1` nur an Ranger 1, während der Merchant tatsächlich große Bestände `hpot0` und `mpot0` besitzt. Zusätzlich konnte die Runtime bisher für dieselbe Item-ID effektiv nur eine gewinnende Senderegel verwenden. Ranger 2 und Ranger 3 waren damit nicht als gleichrangige Nachschubempfänger derselben Trankart modelliert.
+
+`0.1.4-live-a` korrigiert die strukturelle Grenze: Senderegeln derselben Item-ID dürfen verschiedene Empfänger haben, und die Logistik löst die konkrete Senderegel pro Item und Empfänger auf. Zusätzlich gibt es die optionale Regelgröße `requestBelow`: Bedarf wird erst bei oder unter dieser Schwelle gemeldet; `0` erhält die bisherige Zielbestandslogik.
+
+Für das persönliche Vierer-Team ist die Wiederholung auf `hpot0` und `mpot0` für `My_Ranger1`, `My_Ranger2` und `My_Ranger3` konfiguriert. Nachschubschwelle: 50; Zielbestand: 3050; Lieferbatch und Merchant-Maximum: 3000. Gezielt simuliert wurden 51 → kein Bedarf, 50 → 3000 Bedarf und drei nacheinander bestätigte 3000er-Lieferungen an verschiedene Empfänger. Der echte Live-Nachweis für diese neue Version steht noch aus.

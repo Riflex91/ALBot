@@ -2,7 +2,7 @@
 
 Ein gemeinsamer Adventure-Land-Bot für Browser-CODE und den vorhandenen Node.js-Headless-Client. Ziel: die Spielfunktionen aus ALFinal sowie v3, v4 und v5 zusammenführen, einschließlich Farmer, Merchant, Item-Regeln, Gruppenplanung und Produktion.
 
-**Stand 6. Oktober 2026: Werkstatt 2.0 und der erste spielbare Testkandidat `0.1.0-live-a` sind implementiert. Der echte Live-Test A steht noch aus.**
+**Stand 6. Oktober 2026: Werkstatt 2.0 und der erste spielbare Testkandidat `0.1.1-live-a` sind implementiert. Der echte Live-Test A steht noch aus.**
 
 Zum Testen: [Live-A-Anleitung](docs/LIVE-A.md), [Bot-Paket für die Werkstatt](dist/albot.package.json), [Solo-Profil](profiles/live-a-solo.json), [Team-Profil](profiles/live-a-team.json). `dist/albot.js` ist ein vollständiges Bundle mit Platzhaltern und ausgeschaltetem Autostart. Eigene Namen über die Werkstatt einsetzen. Die exakt gleiche exportierte Datei läuft in Browser-CODE und Headless.
 
@@ -21,3 +21,5 @@ Die [Bot-Werkstatt](editor/Bot-Werkstatt.html) als Datei herunterladen und lokal
 Keine eigene Headless-Laufzeit, Telemetrieplattform oder umfassende Log-Infrastruktur. Keine Shadow-Tests. Der vorhandene Client übernimmt Login, Prozesse, Reconnect und sein optionales Dashboard. Der Bot übernimmt Spielentscheidungen.
 
 Das Headless-Handbuch ist eine Kopie der Client-Dokumentation. Seine Installationsdateien wie `src/cli.js`, `.env.example` und `config.example.json` gehören zum separaten Client und sind in diesem Planungsrepository nicht enthalten. Die ergänzende [Typdefinition](docs/headless-api.d.ts) liegt hier bei.
+
+Testprotokoll: im Browser **Testlog speichern** → test-ausgeführtertest.json. Headless ab Client 1.2.2 automatisch unter test-logs/CHARAKTER/. Details und Reparatur des gemeldeten vollen Browser-Speichers: [LIVE-A.md](docs/LIVE-A.md).

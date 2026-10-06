@@ -10,7 +10,8 @@ export function createPorts(root){
     realm(){return String(parent.server_region??root.server_region??'')+String(parent.server_identifier??root.server_identifier??'');},
     log(message){try{this.call('game_log','ALBot: '+String(message).slice(0,220));}catch{root.console?.warn(message);}},
     read(key){try{return this.call('get',key);}catch{return null;}},
-    write(key,value){try{return this.call('set',key,value)!==false;}catch{return false;}},
+    storageError:'',
+    write(key,value){try{if(root.localStorage){root.localStorage.setItem('cstore_'+key,JSON.stringify(value));this.storageError='';return true;}const ok=this.call('set',key,value)===true;if(!ok)this.storageError='set() meldet Schreibfehler';return ok;}catch(e){this.storageError=String(e?.name)+': '+String(e?.message??e);return false;}},
     hook(name,handler){const old=root[name];const fn=function(...args){if(handler(...args)===true)return;if(typeof old==='function')return old.apply(this,args);};root[name]=fn;return ()=>{if(root[name]===fn)root[name]=old;};}
   };
 }

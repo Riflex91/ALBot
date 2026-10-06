@@ -26,6 +26,10 @@ test('unsupported config and unresolved value checkpoint prevent gameplay',()=>{
 test('CODE without TextEncoder or structuredClone boots without changing host globals',()=>{
  const a=harness();delete a.root.TextEncoder;delete a.root.structuredClone;a.cfg.general.name='Grüße 🧙';a.load();assert.equal(a.root.ALBot.start(),true);assert.equal(a.root.ALBot.status().profile,'Grüße 🧙');assert.equal(a.root.TextEncoder,undefined);a.root.ALBot.dispose();
 });
+test('full browser storage does not mislabel an unsent potion as unknown',async()=>{
+ const a=harness();a.root.localStorage={removeItem(){},setItem(){const e=new Error('full');e.name='QuotaExceededError';throw e;}};a.root.G.items.hpot1={type:'pot',gives:[['hp',400]]};a.c.items[0]={name:'hpot1',q:5};a.c.hp=50;let used=0;
+ a.root.equip=()=>{used++;a.c.items[0].q--;a.c.hp=100;return Promise.resolve({success:true});};a.load();a.root.ALBot.start();assert.equal(used,1);await Promise.resolve();const next=[...a.timers.entries()][0];a.timers.delete(next[0]);next[1]();assert.equal(a.root.ALBot.status().inventoryBlocked,false);assert.equal(a.root.ALBot.status().running,true);const report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.checkpointMode,'memory-consumption-only');assert.match(report.storageError,/QuotaExceeded/);a.root.ALBot.dispose();
+});
 test('whitelisted live target attacks once, foreign target is rejected and pause stops scheduling',()=>{
  const a=harness();a.root.parent.entities={goo:{id:'goo',type:'monster',mtype:'goo',hp:100,x:10,y:10,target:'Stranger'}};a.load();a.root.ALBot.start();assert.equal(a.calls.filter(x=>x[0]==='attack').length,0);a.root.ALBot.pause();assert.equal(a.timers.size,0);
  a.root.parent.entities.goo.target=null;a.root.ALBot.start();assert.equal(a.calls.filter(x=>x[0]==='attack').length,1);a.root.ALBot.stop();assert.equal(a.timers.size,0);assert.equal(a.root.ALBot.status().pending,0);

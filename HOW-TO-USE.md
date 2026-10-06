@@ -1,4 +1,4 @@
-# Adventure Land Headless 1.2.1 — Benutzerhandbuch und Bot-Vertrag für KIs
+# Adventure Land Headless 1.2.2 — Benutzerhandbuch und Bot-Vertrag für KIs
 
 Stand: 6. Oktober 2026. Implementierung: dieses Projekt, API-Version 1.
 Referenz-Spielcache für die Tests: 17478. Dieses Dokument beschreibt die tatsächlich
@@ -855,3 +855,7 @@ Spielereignisse und Dashboard-Minimap bleiben aktiv.
 Geprüft mit offiziellen Quellen aus Spielcache 17478: wiederholte Account-Antworten,
 fehlende Code-Liste, kein automatischer Cloud-Reload und weiterlaufende Simulation bei
 unbekanntem Skin. Diese Prüfung ersetzt keinen Login mit einem echten Account.
+
+### `parent.headless.writeTestReport(content) → string` (Client 1.2.2)
+
+Optional, erkennbar an `capabilities.testReports === true` und der Funktion selbst. Schreibt synchron einen JSON-Text bis 1.048.576 UTF-8-Bytes mit `format: "albot-test-report"`, `formatVersion: 1` nach `test-logs/<eigener Charakter>/test-ausgeführtertest.json`. Gibt den absoluten Pfad zurück. Fester Dateiname, kein frei wählbarer Pfad und kein Zugriff auf andere Charakterdateien. Atomarer Ersatz über temporäre Datei, kein zusätzlicher Timer. Der aufrufende Bot bestimmt Zeitpunkt und Berichtinhalt. Bei Format-/Größen-/Dateisystemfehlern wird eine Exception ausgelöst. API-Version bleibt 1; ältere Clients haben diese Funktion nicht. Der Browserpfad verwendet einen normalen Download. Keine Zugangsdaten oder vollständigen Socketdaten in Berichte aufnehmen.

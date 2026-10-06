@@ -7,7 +7,7 @@ import {VERSION} from '../src/version.mjs';
 import {checkDescriptor,defaultsFor,envelope,exportBundle,checkPackage} from '../editor/lib/contract.mjs';
 process.chdir(fileURLToPath(new URL('../',import.meta.url)));
 const version=VERSION;
-const files=['src/runtime/primitives.js','src/version.mjs','editor/lib/schema.mjs','editor/lib/contract.mjs','src/config/live-a.mjs','src/core/policy.mjs','src/core/executor.mjs','src/runtime/ports.mjs','src/party/transport.mjs','src/core/movement.mjs','src/combat/skills.mjs','src/items/logistics.mjs','src/combat/farmer.mjs','src/ui/panel.mjs','src/main.mjs'];
+const files=['src/runtime/primitives.js','src/version.mjs','editor/lib/schema.mjs','editor/lib/contract.mjs','src/config/live-a.mjs','src/core/policy.mjs','src/core/executor.mjs','src/core/test-report.mjs','src/core/checkpoint.mjs','src/runtime/ports.mjs','src/party/transport.mjs','src/core/movement.mjs','src/combat/skills.mjs','src/items/logistics.mjs','src/combat/farmer.mjs','src/ui/panel.mjs','src/main.mjs'];
 checkDescriptor(LIVE_DESCRIPTOR);
 const chunks=await Promise.all(files.map(async path=>'// '+path+'\n'+(await readFile(path,'utf8')).replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace(/^export /gm,'')));
 const code='/* ALBot '+version+' · first live test pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';

@@ -164,3 +164,7 @@ Diese Planung verspricht Funktionszusammenführung, keinen heute bereits fertige
 ## 7. Übergabe an Live A
 
 Testkandidat und Ablauf: [docs/LIVE-A.md](docs/LIVE-A.md). Build, Syntax, Paket-Hash, Größenlimit und 21 gezielte Tests bestanden. Darunter Kontextisolation, Stop/Reload, fehlende jsdom-Hilfsfunktionen, Item-Identität, Reserven sowie Annahme und beidseitiger Mengenabgleich einer Lieferung. Keine Shadow-Tests, kein echter Login, kein Live- oder Linux-Erfolg behauptet. P3-P6 bleiben offen. Die aktive Client-Konfiguration wurde nicht umgestellt.
+
+### Live-A-Korrektur 0.1.1 (6. Oktober 2026)
+
+Vom Nutzer gelieferte Screenshots belegen Browser-Goo-Kills und danach QuotaExceededError beim optionalen Konfigurationscache und Checkpoint. Test A ist damit begonnen, aber nicht bestanden. Repariert: keine komplette Configkopie mehr im Browserstorage, eigener kleiner Checkpoint mit Platzreserve, bei vollem Storage RAM-Abgleich für frische Verbräuche und weiterhin gesperrte Lieferungen. Keine fremden Speicherschlüssel gelöscht. Begrenzter Testbericht mit Browserdownload und optionaler Dateiausgabe durch Client 1.2.2; Anleitung in LIVE-A.md. 25 Bot-/Werkstatt-Tests und 30 Clienttests bestanden, darunter der konkrete Quota-Fall. Erneuter Browser-Lauf und Headless-Lauf stehen aus.

@@ -16,9 +16,10 @@ interface HeadlessLogger {
   isLevelEnabled(level: LogLevel): boolean;
 }
 interface HeadlessAPI {
+  writeTestReport?: (content: string) => string;
   readonly version: string;
   readonly apiVersion: 1;
-  readonly capabilities: Readonly<{localMessages:true; localCM:true; sharedStorage:true; caracal:true; graphics:false; dashboard:boolean; minimap:boolean}>;
+  readonly capabilities: Readonly<{testReports?:true; localMessages:true; localCM:true; sharedStorage:true; caracal:true; graphics:false; dashboard:boolean; minimap:boolean}>;
   send(to: string | string[], topic: string, data: JSONValue): Promise<LocalResult>;
   broadcast(topic: string, data: JSONValue): Promise<LocalResult>;
   onMessage(handler: (event: LocalMessage) => void | Promise<void>): () => boolean;

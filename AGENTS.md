@@ -18,3 +18,5 @@ Vor einer Änderung README.md, ROADMAP.md, HOW-TO-USE.md, docs/RUNTIME-VERTRAG.m
 - UTF-8-Bytes messen: harter Bundle-Grenzwert 1.048.576 Byte; Entwicklungsziel maximal 900 KiB inklusive Benutzerregeln. Keine künstliche Freigabe durch Erhöhen des Grenzwerts.
 - Neue Dateien und Änderungen in ALBot vornehmen. Die Quellrepositories dienen als Referenz; ihre alten Freigabe-, Shadow- und Host-Workflows nicht in dieses Projekt kopieren. Alte Live-Nachweise sind Erfahrungen, kein Nachweis für den neuen Bot.
 - Nach jeder Etappe ROADMAP-Status, tatsächlich geprüfte Ergebnisse und verbleibende Punkte knapp aktualisieren. Keine neue Bürokratie pro Feature und keine erfundenen Live-Ergebnisse.
+
+- Der Folgeauftrag erlaubt ein begrenztes Testprotokoll. Kein vollständiges Log-/Telemetriesystem: 256 Ereignisse, 24 Fehler, periodische kleine Snapshots; keine Zugangsdaten oder rohen Spiel-/Socketobjekte. Logs nicht im Browser-localStorage ablegen.

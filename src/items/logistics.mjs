@@ -10,12 +10,12 @@ export function createLogistics(bot){
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
-      if(job||incoming||bot.journal||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
+      if(bot.checkpoint?.durable===false||job||incoming||bot.journal||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
       const quantity=Math.min(d.quantity,capacity(d.item),cfg.merchant.maxDelivery);if(quantity<1)return;
       incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:Date.now()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.
-      bot.beginValue({kind:'receive',...incoming});transport.send(from,'accept',{quantity},m.id);
+      try{bot.beginValue({kind:'receive',...incoming});}catch(e){incoming=null;throw e;}transport.send(from,'accept',{quantity},m.id);
     }else if(m.type==='accept'&&job&&job.state==='offered'&&m.id===job.id&&from===job.to&&m.session===job.session){
       if(!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>job.quantity)return;
       job.quantity=d.quantity;job.state='accepted';
@@ -46,7 +46,7 @@ export function createLogistics(bot){
       }
       return;
     }
-    if(!allowOffer||incoming||bot.inventoryBlocked||!bot.running)return;
+    if(bot.checkpoint?.durable===false||!allowOffer||incoming||bot.inventoryBlocked||!bot.running)return;
     if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.supply))return;
     for(let slot=0;slot<p.c.items.length;slot++){
       const item=p.c.items[slot];if(!item||protectedItem(item))continue;

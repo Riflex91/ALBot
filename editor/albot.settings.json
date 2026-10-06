@@ -754,6 +754,7 @@
                     "maxLength": 160,
                     "enum": [
                       "hpRatio",
+                      "targetHpRatio",
                       "mpRatio",
                       "freeSlots",
                       "gold",
@@ -764,7 +765,8 @@
                       "task"
                     ],
                     "x-labels": {
-                      "hpRatio": "HP-Anteil",
+                      "hpRatio": "Eigener HP-Anteil",
+                      "targetHpRatio": "Ziel-HP-Anteil",
                       "mpRatio": "MP-Anteil",
                       "freeSlots": "Freie Slots",
                       "gold": "Gold",
@@ -1224,6 +1226,13 @@
               "type": "integer",
               "title": "Zielbestand",
               "default": 100,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "requestBelow": {
+              "type": "integer",
+              "title": "Nachschub anfordern bei Bestand ≤ (0 = unter Zielbestand)",
+              "default": 0,
               "minimum": 0,
               "maximum": 1000000000000
             },
@@ -1858,6 +1867,7 @@
                     "maxLength": 160,
                     "enum": [
                       "hpRatio",
+                      "targetHpRatio",
                       "mpRatio",
                       "freeSlots",
                       "gold",
@@ -1868,7 +1878,8 @@
                       "task"
                     ],
                     "x-labels": {
-                      "hpRatio": "HP-Anteil",
+                      "hpRatio": "Eigener HP-Anteil",
+                      "targetHpRatio": "Ziel-HP-Anteil",
                       "mpRatio": "MP-Anteil",
                       "freeSlots": "Freie Slots",
                       "gold": "Gold",

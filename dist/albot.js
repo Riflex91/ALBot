@@ -1,6 +1,6 @@
-// ALBot 0.1.3-live-a | Einstellungen + Runtime
-globalThis.ALBotConfig=(function unpack(t,v){if(!t)return v;if(Object.prototype.hasOwnProperty.call(t,'item'))return v.map(x=>unpack(t.item,x));return Object.fromEntries(t.keys.flatMap((k,i)=>v[0].includes(i)?[]:[[k,unpack(t.children[i],v[1][i])]]));})({"keys":["general","farming","party","merchant","characters","skills","items"],"children":[{"keys":["name","autostart","environment","combatTickMs","economyTickMs","planningTickMs","transport","allowRemoteCM","maxPending","messageTtlMs","ui","pauseOnUnknown"],"children":[null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","targets","autoTravel","loot","lootEveryMs","freeSlots","hpBelow","mpBelow","restBelow","resumeAbove","potions","respawn","respawnDelayMs","maxDeaths","deathWindowMs","kiting","rangeBuffer","maxAggro","avoidOthers"],"children":[null,{"item":null},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","group","leader","merchant","maxFarmers","followDistance","focusFire","waitForTeam","healing","energize","buffs","revive","aoe","aoeMaxTargets"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","pickup","supply","maxDelivery","minFreeSlots"],"children":[null,null,null,null,null]},{"item":{"keys":["name","enabled","class","role","group","region","server","farmTargets"],"children":[null,null,null,null,null,null,null,{"item":null}]}},{"item":{"keys":["name","enabled","skill","class","character","priority","target","minMp","maxTargets","everyMs","conditions"],"children":[null,null,null,null,null,null,null,null,null,null,{"item":{"keys":["field","operator","value","item"],"children":[null,null,null,null]}}]}},{"item":{"keys":["name","enabled","priority","item","role","character","minLevel","maxLevel","statType","property","title","map","server","task","action","keep","targetCount","maxCount","batch","recipient","teamReserve","ttlMs"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]}}]},[[],[[[],["Mein Super-Bot",false,"auto",250,2000,10000,"auto",false,32,10000,true,true]],[[],[true,["goo"],true,true,1000,3,0.75,0.5,0.4,0.85,true,true,15000,3,600000,true,15,2,true]],[[],[true,"team1","Farmer1","",3,180,true,false,true,true,true,true,false,3]],[[],[true,true,true,100,4]],[[[],["Farmer1",true,"ranger","farmer","team1","EU","II",[]]]],[],[]]]);
-/* ALBot 0.1.3-live-a · Live A follow-up pending */
+// ALBot 0.1.4-live-a | Einstellungen + Runtime
+globalThis.ALBotConfig=(function unpack(t,v){if(!t)return v;if(Object.prototype.hasOwnProperty.call(t,'item'))return v.map(x=>unpack(t.item,x));return Object.fromEntries(t.keys.flatMap((k,i)=>v[0].includes(i)?[]:[[k,unpack(t.children[i],v[1][i])]]));})({"keys":["general","farming","party","merchant","characters","skills","items"],"children":[{"keys":["name","autostart","environment","combatTickMs","economyTickMs","planningTickMs","transport","allowRemoteCM","maxPending","messageTtlMs","ui","pauseOnUnknown"],"children":[null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","targets","autoTravel","loot","lootEveryMs","freeSlots","hpBelow","mpBelow","restBelow","resumeAbove","potions","respawn","respawnDelayMs","maxDeaths","deathWindowMs","kiting","rangeBuffer","maxAggro","avoidOthers"],"children":[null,{"item":null},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","group","leader","merchant","maxFarmers","followDistance","focusFire","waitForTeam","healing","energize","buffs","revive","aoe","aoeMaxTargets"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","pickup","supply","maxDelivery","minFreeSlots"],"children":[null,null,null,null,null]},{"item":{"keys":["name","enabled","class","role","group","region","server","farmTargets"],"children":[null,null,null,null,null,null,null,{"item":null}]}},{"item":{"keys":["name","enabled","skill","class","character","priority","target","minMp","maxTargets","everyMs","conditions"],"children":[null,null,null,null,null,null,null,null,null,null,{"item":{"keys":["field","operator","value","item"],"children":[null,null,null,null]}}]}},{"item":{"keys":["name","enabled","priority","item","role","character","minLevel","maxLevel","statType","property","title","map","server","task","action","keep","targetCount","requestBelow","maxCount","batch","recipient","teamReserve","ttlMs"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]}}]},[[],[[[],["Mein Super-Bot",false,"auto",250,2000,10000,"auto",false,32,10000,true,true]],[[],[true,["goo"],true,true,1000,3,0.75,0.5,0.4,0.85,true,true,15000,3,600000,true,15,2,true]],[[],[true,"team1","Farmer1","",3,180,true,false,true,true,true,true,false,3]],[[],[true,true,true,100,4]],[[[],["Farmer1",true,"ranger","farmer","team1","EU","II",[]]]],[],[]]]);
+/* ALBot 0.1.4-live-a · Live A follow-up pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -11,7 +11,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.1.3-live-a';
+const VERSION='0.1.4-live-a';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -32,7 +32,7 @@ const ITEM_RULE = obj('Item-Regel',{
   item:text('Item-ID','hpot1',{'x-catalog':'items',minLength:1}),role:choice('Rolle',roles),character:text('Nur Charakter (leer = alle)','',{'x-catalog':'characters'}),
   minLevel:int('Ab Item-Level',0,0,99),maxLevel:int('Bis Item-Level',99,0,99),statType:text('Stat-Typ (leer = alle)'),property:text('Eigenschaft p (leer = alle)'),title:text('Item-Titel (leer = alle)'),
   map:text('Nur Karte (leer = alle)'),server:text('Nur Realm, z. B. EUII (leer = alle)'),task:text('Nur Aktivität (leer = alle)'),
-  action:choice('Aktion',actions),keep:int('Mindestbestand behalten',0),targetCount:int('Zielbestand',100),maxCount:int('Maximalbestand',1000),batch:int('Maximale Menge je Aktion',100,1),
+  action:choice('Aktion',actions),keep:int('Mindestbestand behalten',0),targetCount:int('Zielbestand',100),requestBelow:int('Nachschub anfordern bei Bestand ≤ (0 = unter Zielbestand)',0),maxCount:int('Maximalbestand',1000),batch:int('Maximale Menge je Aktion',100,1),
   recipient:text('Lieferempfänger','',{'x-catalog':'characters'}),teamReserve:int('Zusätzliche Teamreserve',0),
   minPrice:int('Mindestverkaufspreis pro Stück',1,1),maxPrice:int('Maximaler Kaufpreis pro Stück',1000,1),priceSource:choice('Preisquelle',{fixed:'Fester Grenzpreis',market:'Aktuelle Marktbeobachtung',npc:'NPC-Preis'}),
   goldBudget:int('Goldbudget je Auftrag',10000),lossBudget:int('Maximaler möglicher Itemverlust in Gold',0),
@@ -40,6 +40,7 @@ const ITEM_RULE = obj('Item-Regel',{
   recipe:text('Rezept / Exchange-Ziel'),pack:text('Bankfach (leer = automatisch)'),slot:text('Equipment-/Stand-Slot (falls erforderlich)'),
   fallback:choice('Wenn Aktion nicht möglich',{hold:'Behalten und warten',notify:'Behalten und Hinweis',bank:'Bankauftrag erstellen'}),ttlMs:int('Auftrag gültig (ms)',120000,1000,86400000)
 });
+ITEM_RULE.required=ITEM_RULE.required.filter(k=>k!=='requestBelow');
 const condition=obj('Bedingung',{field:choice('Messwert',{hpRatio:'Eigener HP-Anteil',targetHpRatio:'Ziel-HP-Anteil',mpRatio:'MP-Anteil',freeSlots:'Freie Slots',gold:'Gold',enemyCount:'Gegner in Reichweite',itemCount:'Item-Menge',map:'Karte',rip:'Tot',task:'Aktivität'}),operator:choice('Vergleich',{lt:'Kleiner',lte:'Kleiner/gleich',eq:'Gleich',neq:'Ungleich',gte:'Größer/gleich',gt:'Größer'}),value:text('Vergleichswert','0.5',{minLength:1}),item:text('Item-ID für Item-Menge','',{'x-catalog':'items'})});
 const skill=obj('Skill-Regel',{name:text('Name','Neue Skill-Regel',{minLength:1}),enabled:flag('Aktiv',true),skill:text('Skill-ID','',{minLength:1}),class:choice('Klasse',classes),character:text('Nur Charakter','',{'x-catalog':'characters'}),priority:int('Priorität',0,-10000,10000),target:choice('Ziel',{enemy:'Aktueller Gegner',self:'Eigener Charakter',lowestHp:'Gruppenmitglied mit wenig HP',lowestMp:'Gruppenmitglied mit wenig MP',leader:'Kampf-Leader'}),minMp:num('Manareserve nach Skill (Anteil)',0.2,0,1),maxTargets:int('Maximale Ziele',1,1,20),everyMs:int('Frühestens erneut nach (ms)',1000,100,3600000),conditions:list('Alle Bedingungen müssen gelten',condition)});
 const DESCRIPTOR = {
@@ -173,7 +174,7 @@ function validateSchema(s,value,path='Profil',errors=[]){
 }
 function phaseOf(action){return ['buy','marketBuy','wishlist','retrieve','farm'].includes(action)?'acquisition':['upgrade','compound','exchange','craft'].includes(action)?'production':action==='keep'?'all':'inventory';}
 function ruleRank(r){return (r.character?100:0)+(r.role!=='all'?10:0)+['statType','property','title','map','server','task'].filter(k=>r[k]).length+(r.minLevel!==0||r.maxLevel!==99?1:0);}
-function overlap(a,b){return a.item===b.item&&a.minLevel<=b.maxLevel&&b.minLevel<=a.maxLevel&&(a.role==='all'||b.role==='all'||a.role===b.role)&&['character','statType','property','title','map','server','task'].every(k=>!a[k]||!b[k]||a[k]===b[k])&&(phaseOf(a.action)==='all'||phaseOf(b.action)==='all'||phaseOf(a.action)===phaseOf(b.action));}
+function overlap(a,b){if(a.action==='send'&&b.action==='send'&&a.recipient&&b.recipient&&a.recipient!==b.recipient)return false;return a.item===b.item&&a.minLevel<=b.maxLevel&&b.minLevel<=a.maxLevel&&(a.role==='all'||b.role==='all'||a.role===b.role)&&['character','statType','property','title','map','server','task'].every(k=>!a[k]||!b[k]||a[k]===b[k])&&(phaseOf(a.action)==='all'||phaseOf(b.action)==='all'||phaseOf(a.action)===phaseOf(b.action));}
 function outcome(r){const x={...r};for(const k of ['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task'])delete x[k];return JSON.stringify(x);}
 function validateProfile(descriptor,c){
   const errors=validateSchema(descriptor.schema,c);
@@ -197,6 +198,7 @@ function validateProfile(descriptor,c){
     if(!/^[a-zA-Z0-9_]+$/.test(r.item))errors.push(p+': ungültige Item-ID.');
     if(r.minLevel>r.maxLevel)errors.push(p+': Levelbereich ist umgekehrt.');
     if(r.keep+r.teamReserve>r.maxCount||r.targetCount>r.maxCount||r.targetCount<r.keep+r.teamReserve)errors.push(p+': Reserve ≤ Zielbestand ≤ Maximalbestand erforderlich.');
+    if((r.requestBelow??0)>0&&r.requestBelow>r.targetCount)errors.push(p+': Nachschubschwelle darf nicht über dem Zielbestand liegen.');
     if(r.enabled&&r.action==='send'&&!r.recipient)errors.push(p+': Lieferempfänger fehlt.');
     if(r.enabled&&r.action==='send'&&r.character&&r.recipient===r.character)errors.push(p+': Lieferung an sich selbst.');
     if(r.enabled&&['list','equip'].includes(r.action)&&!r.slot)errors.push(p+': Slot fehlt.');
@@ -283,7 +285,8 @@ const SUPPORTED_SKILLS=['hardshell','charge','taunt','warcry','huntersmark','poi
 const liveSkill=LIVE_DESCRIPTOR.schema.properties.skills.items.properties.skill;
 liveSkill.enum=SUPPORTED_SKILLS;liveSkill.default='supershot';
 const items=structuredClone(base.items);
-items.items=pick(base.items.items,['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task','action','keep','targetCount','maxCount','batch','recipient','teamReserve','ttlMs']);
+items.items=pick(base.items.items,['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task','action','keep','targetCount','requestBelow','maxCount','batch','recipient','teamReserve','ttlMs']);
+items.items.required=items.items.required.filter(k=>k!=='requestBelow');
 items.items.properties.action.enum=['keep','consume','send'];
 items.items.properties.action['x-labels']={keep:'Behalten / reservieren',consume:'Verbrauch erlauben',send:'Überschuss liefern'};
 items.description='Live A: Schutz, Trank-/Skillverbrauch und bestätigte Lieferung aus vorhandenen Beständen. Kein Kauf, Verkauf oder Bankzugriff.';
@@ -551,11 +554,15 @@ function createLogistics(bot){
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
+  const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
+  const sendRecipients=item=>[...new Set(cfg.items.filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
+  const sendRule=(item,to)=>chooseRule(cfg.items.filter(r=>r.enabled&&r.action==='send'&&r.recipient===to),item,context());
+  const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount;return n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;};
   const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''});
   const count=i=>(p.c.items??[]).reduce((n,x)=>n+(x&&x.name===i.name&&(x.level??0)===i.level&&(x.stat_type??'')===i.stat_type&&(x.p??'')===i.p&&(x.title??'')===i.title?(x.q??1):0),0);
   const near=name=>{const e=bot.entity(name),h=transport.fresh(name);return e&&h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,e)&&samePlace(p.c,h)&&distance(p.c,e)<300&&distance(p.c,h)<300?e:null;};
   const safeItem=i=>i&&typeof i.name==='string'&&/^[a-zA-Z0-9_]+$/.test(i.name)&&Number.isInteger(i.level)&&i.level>=0&&i.level<100&&['stat_type','p','title'].every(k=>typeof i[k]==='string'&&i[k].length<161);
-  function capacity(i){const rule=ruleFor(i);if(!rule||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;return Math.max(0,Math.min(rule.targetCount,rule.maxCount)-count(i));}
+  function capacity(i){const rule=ruleFor(i);if(!rule||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;return demandFor(rule,count(i));}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
@@ -585,7 +592,7 @@ function createLogistics(bot){
       if(now>job.until){counters.timeouts++;if(job.state==='sent'||job.state==='accepted')bot.endValue('unknown');nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+10000);job=null;return;}
       if(job.state==='accepted'&&!bot.inventoryBlocked){
         const j=job;
-        const guard=()=>bot.running&&near(j.to)&&!incoming&&fingerprint(p.c.items[j.slot])===j.fingerprint&&transferable(p.c.items,j.slot,ruleFor(p.c.items[j.slot]))>=j.quantity;
+        const guard=()=>{const current=p.c.items[j.slot],rule=current&&sendRule(current,j.to);return bot.running&&near(j.to)&&!incoming&&fingerprint(current)===j.fingerprint&&transferable(p.c.items,j.slot,rule)>=j.quantity;};
         if(!guard()){bot.reason='Lieferung verändert; keine Übergabe';return;}
         exec.run('send',['inventory'],guard,()=>{
           bot.beginValue({kind:'send',...j});j.state='sent';counters.sendsStarted++;
@@ -598,27 +605,29 @@ function createLogistics(bot){
     }
     if(bot.checkpoint?.durable===false||!allowOffer||incoming||bot.inventoryBlocked||!bot.running)return;
     if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.supply))return;
-    for(let slot=0;slot<p.c.items.length;slot++){
+    outer:for(let slot=0;slot<p.c.items.length;slot++){
       const item=p.c.items[slot];if(!item||protectedItem(item))continue;
-      const r=ruleFor(item);if(r?.action!=='send'||!r.recipient||r.recipient===me.name)continue;
-      const key=offerKey(r.recipient,item.name);if(nextOffer.has(key))continue;
-      const peer=transport.fresh(r.recipient);if(!near(r.recipient)||!peer)continue;
-      const demand=(peer.items??[]).find(x=>x?.item===item.name&&Number.isFinite(x.need)&&x.need>0);if(!demand)continue;
-      const quantity=Math.min(transferable(p.c.items,slot,r),cfg.merchant.maxDelivery,Math.floor(demand.need));if(quantity<1)continue;
-      job={id:bot.session+':'+(++serial),state:'offered',to:r.recipient,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,before:count(signature(item)),offerKey:key,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
-      nextOffer.set(key,now+5000);counters.offersSent++;transport.send(job.to,'offer',{item:job.item,quantity},job.id);break;
+      for(const to of sendRecipients(item)){
+        const r=sendRule(item,to);if(!r)continue;
+        const key=offerKey(to,item.name);if(nextOffer.has(key))continue;
+        const peer=transport.fresh(to);if(!near(to)||!peer)continue;
+        const demand=(peer.items??[]).find(x=>x?.item===item.name&&Number.isFinite(x.need)&&x.need>0);if(!demand)continue;
+        const quantity=Math.min(transferable(p.c.items,slot,r),cfg.merchant.maxDelivery,Math.floor(demand.need));if(quantity<1)continue;
+        job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,before:count(signature(item)),offerKey:key,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
+        nextOffer.set(key,now+5000);counters.offersSent++;transport.send(job.to,'offer',{item:job.item,quantity},job.id);break outer;
+      }
     }
   }
   function travel(){
     if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked)return;
     for(const [name] of transport.peers){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
-      const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some(i=>i?.name===x.item&&ruleFor(i)?.action==='send'&&ruleFor(i).recipient===name&&variantCount(p.c.items,i)>ruleFor(i).keep+ruleFor(i).teamReserve));
+      const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some(i=>{const r=i?.name===x.item&&sendRule(i,name);return r&&variantCount(p.c.items,i)>r.keep+r.teamReserve;}));
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>x.to===me.name&&x.surplus>0);
       if((demand||pickup)&&(!samePlace(p.c,h)||distance(p.c,h)>200)){bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;}
     }
   }
   return {receive,poll,travel,get reserved(){return !!(job||incoming);},stats(){return {...counters};},
-    summary(){const rules=cfg.items.filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));const unique=[...new Set(rules.map(r=>r.item))];const names=unique.slice(summaryOffset,summaryOffset+25);summaryOffset=(summaryOffset+25)%Math.max(1,unique.length);return names.map(name=>{const item=p.c.items.find(i=>i?.name===name)??{name,level:0};const r=ruleFor(item);const n=count(signature(item));return {item:name,need:r?Math.max(0,r.targetCount-n):0,surplus:r?.action==='send'?Math.max(0,n-r.keep-r.teamReserve):0,to:r?.action==='send'?r.recipient:''};});},
+    summary(){const rules=cfg.items.filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));const unique=[...new Set(rules.map(r=>r.item))];const names=unique.slice(summaryOffset,summaryOffset+25);summaryOffset=(summaryOffset+25)%Math.max(1,unique.length);return names.map(name=>{const item=p.c.items.find(i=>i?.name===name)??{name,level:0};const r=ruleFor(item);const n=count(signature(item));return {item:name,need:demandFor(r,n),surplus:r?.action==='send'?Math.max(0,n-r.keep-r.teamReserve):0,to:r?.action==='send'?r.recipient:''};});},
     close(){if(incoming||job?.state==='sent'||job?.state==='accepted')bot.endValue('unknown');job=null;incoming=null;}
   };
 }

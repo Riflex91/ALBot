@@ -711,6 +711,7 @@
                     ],
                     "x-labels": {
                       "hpRatio": "Eigener HP-Anteil",
+                      "targetHpRatio": "Ziel-HP-Anteil",
                       "mpRatio": "MP-Anteil",
                       "freeSlots": "Freie Slots",
                       "gold": "Gold",
@@ -718,8 +719,7 @@
                       "itemCount": "Item-Menge",
                       "map": "Karte",
                       "rip": "Tot",
-                      "task": "Aktivität",
-                      "targetHpRatio": "Ziel-HP-Anteil"
+                      "task": "Aktivität"
                     }
                   },
                   "operator": {
@@ -925,6 +925,13 @@
               "type": "integer",
               "title": "Zielbestand",
               "default": 100,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "requestBelow": {
+              "type": "integer",
+              "title": "Nachschub anfordern bei Bestand ≤ (0 = unter Zielbestand)",
+              "default": 0,
               "minimum": 0,
               "maximum": 1000000000000
             },

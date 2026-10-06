@@ -1,8 +1,9 @@
 # Arbeitsvertrag für ALBot
 
-Vor einer Änderung README.md, ROADMAP.md, HOW-TO-USE.md und docs/RUNTIME-VERTRAG.md lesen. Für eine Portierung außerdem den passenden Abschnitt in docs/BOT-ANALYSE.md und die dort verlinkten Originalfunktionen lesen.
+Vor einer Änderung README.md, ROADMAP.md, HOW-TO-USE.md, docs/RUNTIME-VERTRAG.md und docs/WORKSHOP-CONTRACT.md lesen. Für eine Portierung außerdem den passenden Abschnitt in docs/BOT-ANALYSE.md und die dort verlinkten Originalfunktionen lesen.
 
 - Dieses Repository beginnt mit Planung. Der Auftrag vom 6. Oktober 2026 autorisiert Analyse und Roadmap, noch keine Super-Bot-Implementierung. Mit einem späteren Implementierungsauftrag die Roadmap abarbeiten.
+- Der Folgeauftrag autorisiert und implementiert bereits die Werkstatt für den vollständigen Bot. `editor/lib/schema.mjs` ist der gemeinsame Konfigurationsvertrag. Die spätere Runtime muss `globalThis.ALBotConfig` lesen und ein Paket nach docs/WORKSHOP-CONTRACT.md liefern. Keine neue abweichende Werkstatt bauen. Spielmodule sind durch den Werkstattauftrag noch nicht implementiert.
 - Ziel ist EIN klassisches JavaScript-Bundle, identisch im Browser-CODE und in `CODE/main.js` des vorhandenen Clients. Kein Node-Zugriff im Bot. `document` existiert auch headless: nicht zur Laufzeiterkennung verwenden.
 - Client 1.2.1 / API 1 ist der dokumentierte Ausgangspunkt. `parent.headless` und Fähigkeiten prüfen, einzelne Funktionen nicht nur aufgrund eines Versionsstrings voraussetzen. Browser-UI und `performance_trick` nur im Browser.
 - Alle Spielfunktionen aus der Übernahmematrix erhalten. Keine Telemetrieplattform, kein komplettes Log-System, kein eigener Headless-Betrieb. Eine kompakte Statusanzeige und verständliche Fehlermeldungen sind erlaubt.

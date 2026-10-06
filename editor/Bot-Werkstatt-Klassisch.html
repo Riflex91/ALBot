@@ -1,0 +1,6368 @@
+<!doctype html>
+<html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adventure Land · Bot-Werkstatt</title>
+<style>
+:root{color-scheme:dark;--bg:#101719;--panel:#172225;--line:#304447;--text:#edf4ef;--muted:#a6bdb7;--accent:#98e4b3}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}header{padding:28px 4vw;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:24px;flex-wrap:wrap}h1{font-size:26px;margin:0}h2{margin-top:0;font-size:21px}h3{font-size:16px;margin:26px 0 10px}.tag{color:var(--accent);font:12px monospace;letter-spacing:.1em}p{color:var(--muted)}header p{margin:3px 0}button,select,input,textarea{font:inherit}button{background:#263a3a;border:1px solid #45625e;border-radius:7px;padding:9px 13px;color:var(--text);cursor:pointer}button.primary{background:var(--accent);color:#12231a;border-color:var(--accent);font-weight:650}button:hover{filter:brightness(1.13)}button:disabled{opacity:.4;cursor:not-allowed}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #eac571;outline-offset:2px}main{padding:26px 4vw;display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:28px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}.tabs button[aria-selected=true]{background:var(--accent);color:#12231a}.panel,aside{background:var(--panel);border:1px solid var(--line);padding:24px;border-radius:12px}aside{align-self:start;position:sticky;top:20px}label{display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:13px}label.check{flex-direction:row;align-items:center;align-self:center;font-size:15px;color:var(--text)}input,textarea,select{width:100%;border:1px solid #435954;border-radius:6px;background:#0f191b;color:var(--text);padding:9px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}textarea{font:12px/1.5 ui-monospace,monospace;resize:vertical;min-height:90px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px;margin:18px 0}.notice{padding:12px;border-left:3px solid #eac571;background:#302b1d;color:#f0dca2;font-size:13px}.muted{font-size:13px;color:var(--muted)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.metric{font-size:32px;letter-spacing:-.03em;margin:18px 0 0}.bar{height:7px;background:#314541;border-radius:8px;overflow:hidden;margin:10px 0}.bar div{height:100%;background:var(--accent);min-width:2px}.actions{display:grid;gap:10px;margin-top:20px}#errors{white-space:pre-wrap;color:#ffbcae;font-size:13px}.entry{border:1px solid var(--line);padding:14px;border-radius:8px;margin-bottom:12px}.entry .grid{margin:8px 0;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.entry button{font-size:12px}.rule-head{display:flex;justify-content:space-between;align-items:center;gap:10px}details{margin:16px 0}summary{cursor:pointer}.code{width:100%;min-height:340px;tab-size:2}footer{padding:15px 4vw 30px;color:var(--muted);font-size:12px}[hidden]{display:none!important}@media(max-width:950px){main{grid-template-columns:1fr}aside{position:static}.grid{grid-template-columns:1fr}header{padding:22px}}
+</style>
+<header><div><div class="tag">ADVENTURE LAND / LOKALER GENERATOR</div><h1>Bot-Werkstatt</h1><p>Verhalten einstellen. Eine JavaScript-Datei mitnehmen.</p></div><div class="row" style="margin-left:auto"><button id="load">Profil importieren</button><button id="save">Profil speichern</button><input type="file" id="file" accept=".json,application/json" hidden></div></header>
+<main><section><nav class="tabs" aria-label="Bereiche"><button data-tab="base" aria-selected="true">Grundlagen</button><button data-tab="combat" aria-selected="false">Kampf & Gruppe</button><button data-tab="merchant" aria-selected="false">Merchant</button><button data-tab="items" aria-selected="false">Alle Items</button><button data-tab="rules" aria-selected="false">Eigene Regeln</button><button data-tab="code" aria-selected="false">JavaScript</button></nav><div id="content" class="panel"></div></section>
+<aside><div class="tag">DEIN EXPORT</div><h2 id="bot-title">Mein Bot</h2><p class="muted">Dieselbe Datei im Browser-CODE und im Node.js-Headless-Client verwenden.</p><div class="metric" id="bytes">—</div><div class="muted">UTF-8-Bytes von 1.048.576 pro CODE-Slot</div><div class="bar"><div id="sizebar"></div></div><div id="sizehint" class="muted"></div><p id="summary"></p><div id="errors" role="alert"></div><div class="actions"><button id="download" class="primary">bot.js herunterladen</button><button id="copy">JavaScript kopieren</button></div><p class="muted" id="feedback" role="status"></p><hr style="border:0;border-top:1px solid var(--line);margin-top:25px"><p class="muted">Die Werkstatt steuert keinen Charakter. Erst wenn du die exportierte Datei im Spiel oder Client startest, werden Aktionen ausgeführt.</p><p class="muted">Entwurf bleibt lokal in diesem Browser. Profile exportieren, um sie zuverlässig aufzubewahren.</p></aside></main>
+<footer>Keine Installation für die Oberfläche · Kein Server · Keine Zugangsdaten · Windows & Linux<br>Größenprüfung nach dem öffentlichen Adventure-Land-Servercode, Stand 05.10.2026. Liveverhalten mit deinen Charakteren noch zu prüfen.</footer>
+<script>
+// This function is embedded into the generated classic browser script.
+function engine(config, modules, rules) {
+  if (globalThis.ALBot) globalThis.ALBot.stop();
+  var timer, stopped = false, paused = false, pending = {}, next = {}, errors = {};
+  var ctx = { config: config, state: {}, target: null, blockCombat: false, status: 'Bereit' };
+  function logError(name, e) {
+    if (Date.now() < (errors[name] || 0)) return;
+    errors[name] = Date.now() + 15000;
+    game_log('Bot [' + name + ']: ' + String(e && (e.reason || e.message) || e));
+  }
+  ctx.action = function (name, gap, fn) {
+    if (stopped || paused || pending[name] || Date.now() < (next[name] || 0)) return false;
+    next[name] = Date.now() + gap;
+    pending[name] = true;
+    try {
+      Promise.resolve(fn()).catch(function (e) { logError(name, e); })
+        .finally(function () { pending[name] = false; });
+    } catch (e) { pending[name] = false; logError(name, e); }
+    return true;
+  };
+  ctx.cancelMove = function () {
+    if (smart.moving || character.moving) {
+      try { Promise.resolve(stop('move')).catch(function () {}); } catch (_) {}
+    }
+  };
+  ctx.distance = function (e) {
+    return Math.hypot(e.real_x - character.real_x, e.real_y - character.real_y);
+  };
+  ctx.attacksMe = function (e) { return e.target === character.name || e.target === character.id; };
+  ctx.validMonster = function (e) {
+    return e && e.type === 'monster' && !e.dead && !e.rip && e.hp > 0 &&
+      (!e.map || e.map === character.map) && (!e.in || !character.in || e.in === character.in);
+  };
+  ctx.statusKey = function (name) { return 'albot:' + config.group.namespace + ':' + name; };
+  function publish() {
+    set_message(ctx.status);
+    if (config.status.enabled) set(ctx.statusKey(character.name), {
+      at: Date.now(), state: ctx.status, dead: !!character.rip, target: ctx.target && ctx.target.id,
+      map: character.map, in: character.in, x: character.real_x, y: character.real_y,
+      hp: character.hp, max_hp: character.max_hp, mp: character.mp,
+      region: parent.server_region, server: parent.server_identifier
+    });
+  }
+  function shutdown() {
+    stopped = true; clearTimeout(timer); ctx.cancelMove();
+    ctx.status = 'Gestoppt'; ctx.target = null;
+    try { publish(); } catch (_) {}
+  }
+  globalThis.ALBot = {
+    config: config, state: ctx.state, stop: shutdown,
+    pause: function () { paused = true; ctx.cancelMove(); ctx.status = 'Pause'; ctx.target = null; publish(); },
+    resume: function () { paused = false; },
+    clearDeaths: function () { ctx.state.deaths = []; set(ctx.statusKey(character.name) + ':deaths', []); }
+  };
+  globalThis.on_destroy = shutdown;
+  function tick() {
+    if (stopped) return;
+    try {
+      if (!paused) {
+        ctx.blockCombat = false; ctx.target = null;
+        for (var i = 0; i < modules.length; i++) {
+          try { modules[i](ctx); } catch (e) { logError('Modul ' + i, e); }
+          if (paused || stopped) break;
+        }
+        if (!character.rip && !paused && !stopped) {
+          for (var r = 0; r < rules.length; r++) {
+            var rule = rules[r];
+            try {
+              if (!rule.when(ctx)) continue;
+              ctx.action('rule:' + r, rule.everyMs, function (entry) {
+                return function () { return entry.run(ctx); };
+              }(rule));
+            } catch (e) { logError(rule.name, e); }
+          }
+        }
+        ctx.action('status', config.status.everyMs, publish);
+      }
+    } finally { if (!stopped) timer = setTimeout(tick, config.tickMs); }
+  }
+  game_log('ALBot: ' + config.name + ' | Pause: ALBot.pause()');
+  timer = setTimeout(tick, config.tickMs);
+}
+
+function survival(ctx) {
+  var c = ctx.config.survival, s = ctx.state, now = Date.now();
+  if (character.rip) {
+    ctx.blockCombat = true; ctx.status = 'Tot';
+    if (!s.deadSince) {
+      s.deadSince = now; ctx.cancelMove();
+      if (!s.deaths) { try { s.deaths = get(ctx.statusKey(character.name) + ':deaths') || []; } catch (_) { s.deaths = []; } }
+      if (!Array.isArray(s.deaths)) s.deaths = [];
+      s.deaths = s.deaths.filter(function (t) { return typeof t === 'number' && now - t < c.deathWindowMs; });
+      s.deaths.push(now); set(ctx.statusKey(character.name) + ':deaths', s.deaths);
+    }
+    if (s.deaths.length >= c.maxDeaths) {
+      game_log('ALBot pausiert: Todeslimit. Monster und Ausruestung pruefen.');
+      ALBot.pause(); return;
+    }
+    if (c.autoRespawn && now - s.deadSince >= c.respawnDelayMs)
+      ctx.action('respawn', c.respawnDelayMs, function () { return respawn(); });
+    return;
+  }
+  if (s.deadSince) { s.deadSince = 0; s.resting = true; }
+  if (c.potions) ctx.action('potions', 750, function () { return use_hp_or_mp(); });
+  if (c.priestSelfHeal && character.ctype === 'priest' && character.hp / character.max_hp < c.healBelow &&
+      character.mp >= (parent.G.skills.heal.mp || 0) && can_heal(character)) {
+    ctx.blockCombat = true; ctx.status = 'Heilen';
+    ctx.action('attack', 200, function () { return heal(character); });
+  }
+  var ratio = character.hp / character.max_hp;
+  if (ratio < c.restBelow) s.resting = true;
+  if (ratio >= c.resumeAbove) s.resting = false;
+}
+
+function lootModule(ctx) {
+  if (!character.rip && character.esize > 0)
+    ctx.action('loot', ctx.config.loot.everyMs, function () { return loot(); });
+}
+
+function group(ctx) {
+  var c = ctx.config.group;
+  if (ctx.config.merchant.enabled && character.ctype === 'merchant') return;
+  if (character.rip || !c.leader || c.leader === character.name) return;
+  var leader = get(ctx.statusKey(c.leader));
+  if (!leader || Date.now() - leader.at > c.staleMs || leader.dead ||
+      leader.region !== parent.server_region || leader.server !== parent.server_identifier) {
+    if (c.waitForLeader) { ctx.blockCombat = true; ctx.status = 'Warte auf Leader'; ctx.cancelMove(); }
+    return;
+  }
+  var target = parent.entities[leader.target];
+  if (ctx.validMonster(target)) ctx.target = target;
+  if (ctx.blockCombat || ctx.state.resting) return;
+  var far = leader.map !== character.map || Math.hypot(leader.x-character.real_x, leader.y-character.real_y) > c.followDistance;
+  if (c.follow && far && !ctx.target) {
+    ctx.blockCombat = true; ctx.status = 'Folgen';
+    if (!smart.moving) ctx.action('path', 3000, function () { return smart_move({map:leader.map,x:leader.x,y:leader.y}); });
+  }
+}
+
+function combat(ctx) {
+  var c = ctx.config.combat;
+  if (character.rip || ctx.blockCombat) return;
+  if (character.ctype === 'merchant' && !c.allowMerchant) { ctx.status = 'Merchant: Kampf aus'; return; }
+  var best = ctx.target, score = best ? -50000 : Infinity;
+  for (var id in parent.entities) {
+    var e = parent.entities[id];
+    if (!ctx.validMonster(e)) continue;
+    var threat = ctx.attacksMe(e);
+    if (!threat && (e.mtype !== c.monster || e.target)) continue;
+    var n = ctx.distance(e) - (threat ? 100000 : 0);
+    if (n < score) { best = e; score = n; }
+  }
+  ctx.target = best;
+  if ((ctx.state.resting || character.esize <= 0) && !(best && ctx.attacksMe(best))) {
+    ctx.status = character.esize <= 0 ? 'Inventar voll' : 'Erholen'; ctx.cancelMove(); return;
+  }
+  if (!best) {
+    ctx.status = 'Suchen';
+    if (c.autoTravel && !smart.moving && !character.moving)
+      ctx.action('path', 10000, function () { return smart_move(c.monster); });
+    return;
+  }
+  ctx.status = ctx.attacksMe(best) ? 'Verteidigen' : 'Farmen';
+  if (character.target !== best.id) change_target(best);
+  if (is_in_range(best)) {
+    ctx.cancelMove();
+    if (can_attack(best)) ctx.action('attack', 200, function () { return attack(best); });
+  } else if (!smart.moving) {
+    var d = ctx.distance(best), desired = Math.max(5, character.range * 0.75);
+    var f = Math.max(0.1, (d - desired) / Math.max(d, 1));
+    var x = character.real_x + (best.real_x-character.real_x)*f;
+    var y = character.real_y + (best.real_y-character.real_y)*f;
+    if (can_move_to(x,y)) ctx.action('move',750,function () { return move(x,y); });
+    else ctx.action('path',5000,function () { return smart_move({map:character.map,x:best.real_x,y:best.real_y}); });
+  }
+}
+
+function merchant(ctx) {
+  var c = ctx.config.merchant;
+  if (character.ctype !== 'merchant' || character.rip) return;
+  ctx.blockCombat = true; ctx.status = 'Merchant';
+  function safe(item) { return item && !item.l && !item.p && !item.title && !item.stat_type; }
+  function indices(name, level) {
+    var out = [];
+    character.items.forEach(function (it,i) { if(safe(it) && it.name===name && (it.level||0)===level) out.push(i); });
+    return out;
+  }
+  function count(name, level) {
+    return indices(name,level).reduce(function(n,i){return n+(character.items[i].q||1);},0);
+  }
+  if (c.position.enabled && (character.map !== c.position.map || Math.hypot(character.real_x-c.position.x,character.real_y-c.position.y)>20)) {
+    ctx.status='Merchant: Anreise';
+    if(character.stand) { ctx.action('merchant',2000,function(){return close_stand();}); return; }
+    if(!smart.moving) ctx.action('path',10000,function(){return smart_move(c.position);});
+    return;
+  }
+  if(smart.moving || character.moving) return;
+  var jobs=[];
+  if(c.stand && !character.stand) {
+    var stand=character.items.findIndex(function(it){return it && parent.G.items[it.name] && parent.G.items[it.name].stand;});
+    if(stand>=0) jobs.push(function(){return open_stand(stand);});
+  }
+  c.buy.forEach(function(r){
+    var data=parent.G.items[r.item];
+    var missing=r.keep-count(r.item,0);
+    var affordable=data && data.g>0 ? Math.floor((character.gold-c.goldReserve)/data.g) : 0;
+    var q=Math.min(missing,affordable,r.batch);
+    if(q>0 && character.esize>0) jobs.push(function(){return buy_with_gold(r.item,q);});
+  });
+  c.sell.forEach(function(r){
+    var list=indices(r.item,r.level), extra=count(r.item,r.level)-r.keep;
+    if(list.length && extra>0) {
+      var i=list[0],q=Math.min(extra,character.items[i].q||1,r.batch);
+      jobs.push(function(){return sell(i,q);});
+    }
+  });
+  if(character.stand) c.listings.forEach(function(r){
+    var list=indices(r.item,r.level);
+    if(list.length && !character.slots[r.slot]) {
+      var i=list[0],q=Math.min(r.quantity,character.items[i].q||1);
+      jobs.push(function(){return trade(i,r.slot,r.price,q);});
+    }
+  });
+  if(!(character.q||{}).upgrade && !(character.q||{}).compound) {
+    c.upgrade.forEach(function(r){
+      for(var level=0;level<r.toLevel;level++) {
+        var list=indices(r.item,level);
+        if(!list.length || !parent.G.items[r.item]?.upgrade) continue;
+        var i=list[0],grade=item_grade(character.items[i]);
+        var scroll=character.items.findIndex(function(it){return safe(it)&&it.name==='scroll'+grade;});
+        if(scroll>=0) { jobs.push(function(){return upgrade(i,scroll);}); break; }
+      }
+    });
+    c.compound.forEach(function(r){
+      for(var level=0;level<r.toLevel;level++) {
+        var list=indices(r.item,level);
+        if(list.length<3 || !parent.G.items[r.item]?.compound) continue;
+        var grade=item_grade(character.items[list[0]]);
+        var scroll=character.items.findIndex(function(it){return safe(it)&&it.name==='cscroll'+grade;});
+        if(scroll>=0) { jobs.push(function(){return compound(list[0],list[1],list[2],scroll);}); break; }
+      }
+    });
+  }
+  if(jobs.length) ctx.action('inventory',c.everyMs,function(){
+    ctx.state.merchantJob=((ctx.state.merchantJob||0)+1)%jobs.length;
+    return jobs[ctx.state.merchantJob]();
+  });
+}
+
+// Included only when at least one per-item rule is configured.
+function itemManager(ctx) {
+  if(character.rip || character.moving || smart.moving) return;
+  var merchantRole=character.ctype==='merchant', role=merchantRole?'merchant':'farmer';
+  var cfg=ctx.config.merchant;
+  if(merchantRole && cfg.enabled && cfg.position.enabled &&
+      (character.map!==cfg.position.map || Math.hypot(character.real_x-cfg.position.x,character.real_y-cfg.position.y)>20)) return;
+  var names=Object.keys(ctx.config.items), start=ctx.state.itemCursor||0;
+  function safe(it,r){return it && !it.l && (r.allowSpecial || (!it.p && !it.title && !it.stat_type)) && (!r.statType || it.stat_type===r.statType) && (!r.property || it.p===r.property) && (!r.title || it.title===r.title);}
+  function all(name,min,max,r){
+    var out=[];
+    character.items.forEach(function(it,i){if(safe(it,r)&&it.name===name&&(it.level||0)>=min&&(it.level||0)<=max)out.push(i);});
+    return out;
+  }
+  function count(list){return list.reduce(function(n,i){return n+(character.items[i].q||1);},0);}
+  function plan(name,r,claimed){
+    var data=parent.G.items[name];
+    if(!data) return;
+    var list=all(name,r.minLevel,r.maxLevel,r).filter(function(i){return !claimed[i];});
+    if(r.action==='keep') { list.forEach(function(i){claimed[i]=true;}); return; }
+    var total=count(list),excess=Math.max(0,total-r.keep),i=list[0];
+    if(r.action==='buy') {
+      var affordable=data.g>0?Math.floor((character.gold-cfg.goldReserve)/data.g):0;
+      var q=Math.min(r.targetCount-total,affordable,r.batch);
+      if(q>0&&character.esize>0)return function(){return buy_with_gold(name,q);};
+      return;
+    }
+    if(i===undefined || excess<=0) return;
+    var q=Math.min(excess,character.items[i].q||1,r.batch);
+    if(r.action==='sell') return function(){return sell(i,q);};
+    if(r.action==='send') {
+      var receiver=get_player(r.recipient);
+      if(receiver && !receiver.rip && ctx.distance(receiver)<=350)
+        return function(){return send_item(r.recipient,i,q);};
+    }
+    if(r.action==='bank' && character.bank) {
+      var fitting=list.find(function(n){return (character.items[n].q||1)<=excess;});
+      if(fitting!==undefined)return function(){return bank_store(fitting,r.pack||undefined);};
+      if(character.esize>0)return function(){return split(i,Math.min(excess,r.batch));};
+    }
+    if(r.action==='list' && character.stand && !character.slots[r.slot])
+      return function(){return trade(i,r.slot,r.price,Math.min(q,r.quantity));};
+    if(r.action==='equip') {
+      list.sort(function(a,b){return (character.items[b].level||0)-(character.items[a].level||0);});i=list[0];
+      var equipped=character.slots[r.equipSlot];
+      if(equipped && (equipped.l || (equipped.name===name && (equipped.level||0)>=(character.items[i].level||0))))return;
+      return function(){return equip(i,r.equipSlot);};
+    }
+    if((r.action==='upgrade' || r.action==='compound') && !(character.q||{}).upgrade && !(character.q||{}).compound) {
+      for(var level=r.minLevel;level<=Math.min(r.maxLevel,r.toLevel-1);level++) {
+        var same=list.filter(function(n){return (character.items[n].level||0)===level;});
+        if(count(same)<=r.keep)continue;
+        if(r.action==='upgrade' && data.upgrade && same.length) {
+          i=same[0];var scroll=character.items.findIndex(function(it){return it&&!it.l&&it.name==='scroll'+item_grade(character.items[i]);});
+          if(scroll>=0)return function(){return upgrade(i,scroll);};
+        }
+        if(r.action==='compound' && data.compound && same.length>=3 && same.length-r.keep>=3) {
+          var trio=same.slice(0,3),cs=character.items.findIndex(function(it){return it&&!it.l&&it.name==='cscroll'+item_grade(character.items[trio[0]]);});
+          if(cs>=0)return function(){return compound(trio[0],trio[1],trio[2],cs);};
+        }
+      }
+    }
+  }
+  for(var n=0;n<names.length;n++) {
+    var index=(start+n)%names.length,name=names[index],rules=ctx.config.items[name][role],claimed={};
+    for(var j=0;j<rules.length;j++) {
+      var rule=rules[j];if(!rule.enabled)continue;
+      var job=plan(name,rule,claimed);
+      if(job) {
+        if(ctx.action('inventory',cfg.everyMs,job))ctx.state.itemCursor=(index+1)%names.length;
+        return;
+      }
+    }
+  }
+}
+
+const itemRuleDefaults={enabled:true,action:'keep',minLevel:0,maxLevel:12,keep:0,batch:100,allowSpecial:false,statType:'',property:'',title:'',
+  recipient:'',targetCount:100,slot:'trade1',price:0,quantity:1,toLevel:1,pack:'',equipSlot:'mainhand'};
+
+function normalizeItems(input) {
+  if(!input || typeof input!=='object'||Array.isArray(input))throw Error('items muss ein Objekt sein.');
+  const result={};
+  for(const [name,roles] of Object.entries(input)) {
+    if(!/^[a-zA-Z0-9_]+$/.test(name)||['__proto__','constructor','prototype'].includes(name))throw Error('Ungueltige Item-ID: '+name);
+    if(!roles||typeof roles!=='object')throw Error('Item-Rollen fehlen: '+name);
+    result[name]={};
+    for(const role of ['farmer','merchant']) {
+      if(!Array.isArray(roles[role]??[]))throw Error(name+': Rollenregeln muessen Listen sein.');
+      result[name][role]=(roles[role]??[]).map((entry,index)=>{
+        const r={...itemRuleDefaults,...entry},prefix=name+'/'+role+'/'+(index+1)+': ';
+        for(const k of Object.keys(r))if(!Object.hasOwn(itemRuleDefaults,k))throw Error(prefix+'unbekanntes Feld '+k);
+        if(typeof r.enabled!=='boolean')throw Error(prefix+'enabled muss Boolean sein.');
+        if(typeof r.allowSpecial!=='boolean'||['statType','property','title'].some(k=>typeof r[k]!=='string'))throw Error(prefix+'Itemfilter ungueltig.');
+        if(!['keep','buy','sell','send','bank','list','equip','upgrade','compound'].includes(r.action))throw Error(prefix+'unbekannte Aktion.');
+        for(const k of ['minLevel','maxLevel','toLevel'])if(!Number.isInteger(r[k])||r[k]<0||r[k]>12)throw Error(prefix+k+' muss 0-12 sein.');
+        if(r.minLevel>r.maxLevel)throw Error(prefix+'Min-Level groesser als Max-Level.');
+        for(const k of ['keep','batch','targetCount','price','quantity'])if(!Number.isSafeInteger(r[k])||r[k]<0||r[k]>1000000000000)throw Error(prefix+k+' ungueltig.');
+        if(r.batch<1||r.quantity<1||(r.action==='list'&&r.price<1))throw Error(prefix+'Mengen und Verkaufspreis muessen positiv sein.');
+        if(r.action==='send'&&(typeof r.recipient!=='string'||!r.recipient.trim()))throw Error(prefix+'Empfaenger fehlt.');
+        if(r.action==='list'&&!/^trade([1-9]|1[0-6])$/.test(r.slot))throw Error(prefix+'Stand-Slot: trade1-trade16.');
+        if((r.action==='upgrade'||r.action==='compound')&&r.toLevel<=r.minLevel)throw Error(prefix+'Ziellevel muss hoeher als Min-Level sein.');
+        if(r.action==='bank'&&r.pack!==''&&!/^items\d+$/.test(r.pack))throw Error(prefix+'Bankfach: leer oder items0, items1, ...');
+        if(r.action==='equip'&&!['mainhand','offhand','helmet','chest','pants','shoes','gloves','cape','belt','amulet','orb','ring1','ring2','earring1','earring2'].includes(r.equipSlot))throw Error(prefix+'Ausrüstungsslot ungueltig.');
+        return r;
+      });
+    }
+  }
+  return result;
+}
+
+const LIMIT = 1024 * 1024;
+const defaults = {
+  name: 'Mein Bot', tickMs: 250,
+  survival: { enabled: true, potions: true, priestSelfHeal: true, healBelow: 0.8, restBelow: 0.55, resumeAbove: 0.85, autoRespawn: true, respawnDelayMs: 15000, maxDeaths: 3, deathWindowMs: 600000 },
+  loot: { enabled: true, everyMs: 1000 },
+  combat: { enabled: true, monster: 'goo', autoTravel: true, allowMerchant: false },
+  group: { enabled: false, namespace: 'team1', leader: '', follow: true, followDistance: 180, staleMs: 10000, waitForLeader: true },
+  status: { enabled: true, everyMs: 3000 },
+  merchant: { enabled:false, stand:false, goldReserve:100000, everyMs:2000,
+    position:{enabled:false,map:'main',x:0,y:0}, buy:[],sell:[],listings:[],upgrade:[],compound:[] }, items:{}, rules: []
+};
+function normalize(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Profil muss ein Objekt sein.');
+  for (const k of Object.keys(input)) if (!Object.hasOwn(defaults,k)) throw Error('Unbekanntes Feld: '+k);
+  const c = {...defaults,...input};
+  c.items=normalizeItems(c.items);
+  for (const k of ['survival','loot','combat','group','status']) {
+    if (input[k] != null && (typeof input[k] !== 'object' || Array.isArray(input[k]))) throw Error(k+': Objekt erwartet.');
+    c[k] = {...defaults[k],...input[k]};
+    for (const key of Object.keys(c[k])) {
+      if (!Object.hasOwn(defaults[k],key)) throw Error('Unbekanntes Feld: '+k+'.'+key);
+      if (typeof c[k][key] !== typeof defaults[k][key]) throw Error('Falscher Typ: '+k+'.'+key);
+    }
+  }
+  c.merchant={...defaults.merchant,...input.merchant};
+  c.merchant.position={...defaults.merchant.position,...c.merchant.position};
+  function integer(value,min,max,name) { if (!Number.isInteger(value)||value<min||value>max) throw Error(name+': '+min+' bis '+max+' erwartet.'); }
+  integer(c.tickMs,100,5000,'tickMs'); integer(c.loot.everyMs,300,60000,'loot.everyMs');
+  integer(c.status.everyMs,1000,60000,'status.everyMs'); integer(c.survival.respawnDelayMs,10000,600000,'respawnDelayMs');
+  integer(c.survival.maxDeaths,1,100,'maxDeaths'); integer(c.survival.deathWindowMs,60000,86400000,'deathWindowMs');
+  integer(c.group.staleMs,3000,120000,'group.staleMs'); integer(c.group.followDistance,20,2000,'followDistance');
+  if (typeof c.name !== 'string' || !c.name.trim() || c.name.length > 80) throw Error('Name: 1-80 Zeichen.');
+  if (!/^[a-zA-Z0-9_]+$/.test(c.combat.monster)) throw Error('Ungueltige Monster-ID.');
+  if (!c.group.namespace.trim()) throw Error('Gruppenkennung fehlt.');
+  for (const key of ['healBelow','restBelow','resumeAbove']) if (!(c.survival[key]>0&&c.survival[key]<=1)) throw Error(key+': Anteil >0 und <=1 erwartet.');
+  if(c.survival.restBelow>=c.survival.resumeAbove) throw Error('Erholungsschwelle muss ueber Ruhegrenze liegen.');
+  for(const k of Object.keys(c.merchant)) if(!Object.hasOwn(defaults.merchant,k)) throw Error('Unbekannt: merchant.'+k);
+  for(const k of ['enabled','stand']) if(typeof c.merchant[k]!=='boolean') throw Error('merchant.'+k+': Boolean erwartet.');
+  integer(c.merchant.goldReserve,0,1000000000000,'Goldreserve'); integer(c.merchant.everyMs,1000,60000,'Merchant-Intervall');
+  const pos=c.merchant.position;
+  if(typeof pos.enabled!=='boolean'||typeof pos.map!=='string'||!Number.isFinite(pos.x)||!Number.isFinite(pos.y)) throw Error('Merchant-Position ungueltig.');
+  for(const type of ['buy','sell','listings','upgrade','compound']) {
+    if(!Array.isArray(c.merchant[type])) throw Error('merchant.'+type+': Liste erwartet.');
+    c.merchant[type]=c.merchant[type].map(r=>{
+      if(!r || typeof r.item!=='string' || !/^[a-zA-Z0-9_]+$/.test(r.item)) throw Error('Ungueltige Item-ID: '+type);
+      r={...r};
+      if(type==='buy'||type==='sell') { integer(r.keep,0,9999,'keep'); r.batch=r.batch??100; integer(r.batch,1,9999,'batch'); }
+      if(type==='sell'||type==='listings') { r.level=r.level??0; integer(r.level,0,12,'level'); }
+      if(type==='listings') { if(!/^trade([1-9]|1[0-6])$/.test(r.slot)) throw Error('Stand-Slot: trade1 bis trade16.'); integer(r.price,1,1000000000000,'Preis'); integer(r.quantity,1,9999,'Menge'); }
+      if(type==='upgrade'||type==='compound') integer(r.toLevel,1,12,'Ziellevel');
+      return r;
+    });
+  }
+  if(new Set(c.merchant.listings.map(r=>r.slot)).size!==c.merchant.listings.length) throw Error('Stand-Slots duerfen nicht doppelt vorkommen.');
+  if (!Array.isArray(c.rules)) throw Error('rules muss ein Array sein.');
+  c.rules = c.rules.map((r,i) => {
+    if (!r || typeof r.when !== 'string' || typeof r.run !== 'string') throw Error('Regel '+i+': when und run als JavaScript-Text angeben.');
+    const rule = { name: r.name ?? 'Regel '+(i+1), everyMs: r.everyMs ?? 1000, when: r.when, run: r.run };
+    integer(rule.everyMs,100,3600000,'rules.everyMs');
+    if(typeof rule.name !== 'string') throw Error('Regelname muss Text sein.');
+    new Function('ctx','return ('+rule.when+'\n);');
+    new Function('ctx',rule.run);
+    return rule;
+  });
+  return c;
+}
+function build(input) {
+  const config = normalize(input), rules = config.rules;
+  const modules = [];
+  if (config.survival.enabled) modules.push(survival);
+  if (config.loot.enabled) modules.push(lootModule);
+  if (Object.keys(config.items).length) modules.push(itemManager);
+  if (config.merchant.enabled) modules.push(merchant);
+  if (config.group.enabled) modules.push(group);
+  if (config.combat.enabled) modules.push(combat);
+  const ruleCode = rules.map(r => '{name:'+JSON.stringify(r.name)+',everyMs:'+r.everyMs+',when:function(ctx){return ('+r.when+'\n);},run:function(ctx){\n'+r.run+'\n}}');
+  config.rules = [];
+  const code = '// Adventure Land: Browser-CODE + Node Headless\n// Erzeugt mit Adventure Land Bot Builder.\n('+engine.toString()+')('+JSON.stringify(config)+', [\n'+modules.map(f=>f.toString()).join(',\n')+'\n], [\n'+ruleCode.join(',\n')+'\n]);\n';
+  new Function(code);
+  const bytes = new TextEncoder().encode(code).length;
+  if (bytes > LIMIT) throw Error('CODE zu gross: '+bytes+' Bytes; maximal '+LIMIT+'.');
+  return { code, bytes, characters: code.length, limit: LIMIT };
+}
+
+const ITEM_CATALOG={
+  "version": 17478,
+  "items": [
+    {
+      "id": "5bucks",
+      "name": "Old Paper Money",
+      "type": "misc",
+      "gold": 5,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ale",
+      "name": "Ale",
+      "type": "elixir",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "alloyquiver",
+      "name": "Alloy Quiver",
+      "type": "quiver",
+      "gold": 112000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "amuletofm",
+      "name": "Amulet of Mystery",
+      "type": "amulet",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "anchorbelt",
+      "name": "Anchor Belt",
+      "type": "belt",
+      "gold": 220000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "angelwings",
+      "name": "Angel Wings",
+      "type": "cape",
+      "gold": 120000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "anniversarygift",
+      "name": "Anniversary Gift",
+      "type": "gem",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "apiercingscroll",
+      "name": "Armor Piercing Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "apologybox",
+      "name": "Apology Box",
+      "type": "box",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "armorbox",
+      "name": "Armor Box",
+      "type": "box",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "armorring",
+      "name": "Ring of Armor",
+      "type": "ring",
+      "gold": 180000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "armorscroll",
+      "name": "Armor Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ascale",
+      "name": "Armadillo Scale",
+      "type": "material",
+      "gold": 500,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ashleaf",
+      "name": "Ash Leaf",
+      "type": "material",
+      "gold": 35,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "axe3",
+      "name": "T3 Axe",
+      "type": "weapon",
+      "gold": 124000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bandages",
+      "name": "Bandages",
+      "type": "material",
+      "gold": 26,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "basher",
+      "name": "Basher",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "basketofeggs",
+      "name": "Basket of Easter Eggs",
+      "type": "quest",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bataxe",
+      "name": "Ghastly Battle Axe",
+      "type": "weapon",
+      "gold": 124000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bcandle",
+      "name": "Burning Candle",
+      "type": "material",
+      "gold": 420000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bcape",
+      "name": "Well-Crafted Cape",
+      "type": "cape",
+      "gold": 2400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "beastmantle",
+      "name": "Beast Mantle",
+      "type": "cape",
+      "gold": 1400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "beewings",
+      "name": "Bee Wings",
+      "type": "material",
+      "gold": 25,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bfang",
+      "name": "Bat Fang",
+      "type": "material",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bfangamulet",
+      "name": "Ghastly Bat Fang",
+      "type": "amulet",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "bfur",
+      "name": "Bee Fur",
+      "type": "material",
+      "gold": 5,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bkey",
+      "name": "The Bank Key",
+      "type": "bank_key",
+      "gold": 5000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "blade",
+      "name": "Blade",
+      "type": "weapon",
+      "gold": 8400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "blightcap",
+      "name": "Blightcap Stud",
+      "type": "earring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "blue",
+      "name": "Blue Horizon",
+      "type": "elixir",
+      "gold": 150000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bogcrown",
+      "name": "Bog Crown",
+      "type": "helmet",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bogwalkers",
+      "name": "Bogwalkers",
+      "type": "shoes",
+      "gold": 260000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bottleofxp",
+      "name": "Bottle of XP",
+      "type": "xp",
+      "gold": 12000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bow",
+      "name": "Bow",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bow4",
+      "name": "T4 Bow",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bowofthedead",
+      "name": "Bow of the Dead",
+      "type": "weapon",
+      "gold": 228000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "brinefang",
+      "name": "Brinefang",
+      "type": "weapon",
+      "gold": 180000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bronzeingot",
+      "name": "Bronze Ingot",
+      "type": "material",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bronzenugget",
+      "name": "Bronze Nugget",
+      "type": "material",
+      "gold": 3200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "broom",
+      "name": "Broom",
+      "type": "weapon",
+      "gold": 128,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "brownegg",
+      "name": "Brown Egg",
+      "type": "material",
+      "gold": 1000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "brownenvelope",
+      "name": "Brown Envelope",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "btusk",
+      "name": "Boar Tusk",
+      "type": "material",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bugbountybox",
+      "name": "Bug Bounty Box",
+      "type": "box",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bunnyears",
+      "name": "Legacy Bunny Ears",
+      "type": "helmet",
+      "gold": 32000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "bunnyelixir",
+      "name": "Bunny Energy Drink",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "bwing",
+      "name": "Bat Wing",
+      "type": "material",
+      "gold": 120,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cake",
+      "name": "Piece of Cake",
+      "type": "elixir",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candleward",
+      "name": "Candleward",
+      "type": "shield",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "candy0",
+      "name": "Rare Candy",
+      "type": "gem",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candy0v2",
+      "name": "Rare Candy [h2]",
+      "type": "gem",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candy0v3",
+      "name": "Rare Candy",
+      "type": "gem",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candy1",
+      "name": "Candy",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candy1v2",
+      "name": "Candy [h2]",
+      "type": "gem",
+      "gold": 2400,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candy1v3",
+      "name": "Candy",
+      "type": "gem",
+      "gold": 2400,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candycane",
+      "name": "Candy Cane",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "candycanesword",
+      "name": "Candy Cane Sword",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "candypop",
+      "name": "Candy Pop",
+      "type": "elixir",
+      "gold": 120,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "canopener",
+      "name": "The Can Opener",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "cape",
+      "name": "Cape",
+      "type": "cape",
+      "gold": 20000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "caravanbrigandine",
+      "name": "Caravan Brigandine",
+      "type": "chest",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "carrot",
+      "name": "Carrot",
+      "type": "material",
+      "gold": 4,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "carrotsword",
+      "name": "Carrot Sword",
+      "type": "weapon",
+      "gold": 92000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_amber",
+      "name": "Cave Amber",
+      "type": "material",
+      "gold": 200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cave_ambercoat",
+      "name": "Amberweave Coat",
+      "type": "chest",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_backstabber",
+      "name": "Last Word",
+      "type": "weapon",
+      "gold": 980000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_blackstaff",
+      "name": "Nightjudge",
+      "type": "weapon",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_counterweight",
+      "name": "Counterweight",
+      "type": "shield",
+      "gold": 60000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_deepaxe",
+      "name": "Deepvein Axe",
+      "type": "weapon",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_loaded_die",
+      "name": "Loaded Die",
+      "type": "orb",
+      "gold": 72000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "cave_locktooth",
+      "name": "Locktooth",
+      "type": "weapon",
+      "gold": 48000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_mothsteps",
+      "name": "Mothstep Boots",
+      "type": "shoes",
+      "gold": 90000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_reedscythe",
+      "name": "Reed Scythe",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cave_tunnelaxe",
+      "name": "Tunnel Axe",
+      "type": "weapon",
+      "gold": 48000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cclaw",
+      "name": "Crab Claw",
+      "type": "weapon",
+      "gold": 9600,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cdarktristone",
+      "name": "Dark Tri-Stone",
+      "type": "ring",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "cdragon",
+      "name": "Dragon Armor",
+      "type": "chest",
+      "gold": 8900000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cearring",
+      "name": "Earring of The Crypt",
+      "type": "earring",
+      "gold": 380000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "charmer",
+      "name": "Charmer",
+      "type": "orb",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "chrysalis0",
+      "name": "Dragold's Chrysalis",
+      "type": "chrysalis",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cinderboots",
+      "name": "Cinder Boots",
+      "type": "shoes",
+      "gold": 260000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cinderwand",
+      "name": "Cinder Wand",
+      "type": "weapon",
+      "gold": 220000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "claw",
+      "name": "Claw",
+      "type": "weapon",
+      "gold": 7200,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cloverstud",
+      "name": "Clover Stud",
+      "type": "earring",
+      "gold": 76000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "coal",
+      "name": "Coal",
+      "type": "misc",
+      "gold": 10,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "coat",
+      "name": "Coat",
+      "type": "chest",
+      "gold": 6000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "coat1",
+      "name": "Rugged Coat",
+      "type": "chest",
+      "gold": 48000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cocoon",
+      "name": "Cocoon",
+      "type": "material",
+      "gold": 200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "computer",
+      "name": "Ancient Computer",
+      "type": "computer",
+      "gold": 64000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "concordmace",
+      "name": "Concord Mace",
+      "type": "weapon",
+      "gold": 360000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "confetti",
+      "name": "Pack of Confetti",
+      "type": "throw",
+      "gold": 20,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cosmo0",
+      "name": "New Armor",
+      "type": "cosmetics",
+      "gold": 9248000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cosmo1",
+      "name": "New Make-up",
+      "type": "cosmetics",
+      "gold": 14688000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cosmo2",
+      "name": "New Hairdo",
+      "type": "cosmetics",
+      "gold": 4128000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cosmo3",
+      "name": "New Hat",
+      "type": "cosmetics",
+      "gold": 12768000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cosmo4",
+      "name": "New Accessory",
+      "type": "cosmetics",
+      "gold": 44768000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cosmo5",
+      "name": "New Misc.",
+      "type": "cosmetics",
+      "gold": 41568000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "covemantle",
+      "name": "Cove Mantle",
+      "type": "cape",
+      "gold": 120000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "crabclaw",
+      "name": "Crab Claw",
+      "type": "material",
+      "gold": 120,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cring",
+      "name": "Ring of The Crypt",
+      "type": "ring",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "critscroll",
+      "name": "Critical Hit Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "crossbow",
+      "name": "Crossbow",
+      "type": "weapon",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cryptkey",
+      "name": "The Crypt Key",
+      "type": "dungeon_key",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cscale",
+      "name": "Croc Scale",
+      "type": "material",
+      "gold": 200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cscroll0",
+      "name": "Compound Scroll",
+      "type": "cscroll",
+      "gold": 6400,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cscroll1",
+      "name": "High Compound Scroll",
+      "type": "cscroll",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cscroll2",
+      "name": "Rare Compound Scroll",
+      "type": "cscroll",
+      "gold": 9200000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cscroll3",
+      "name": "Legendary Compound Scroll",
+      "type": "cscroll",
+      "gold": 1840000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cshell",
+      "name": "Crab Shell",
+      "type": "material",
+      "gold": 32000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ctristone",
+      "name": "Tri-Stone",
+      "type": "ring",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "cupid",
+      "name": "Cupid's Bow",
+      "type": "weapon",
+      "gold": 90000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "cxjar",
+      "name": "CX Jar",
+      "type": "jar",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "cyber",
+      "name": "Cybernetic Implants",
+      "type": "helmet",
+      "gold": 320000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "dagger",
+      "name": "Dagger",
+      "type": "weapon",
+      "gold": 167000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "daggerofthedead",
+      "name": "Dagger of the Dead",
+      "type": "weapon",
+      "gold": 224000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "darktristone",
+      "name": "Legacy Dark Tri-Stone",
+      "type": "ring",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "dartgun",
+      "name": "Golden Dart Gun",
+      "type": "weapon",
+      "gold": 20000000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "dawnwardaegis",
+      "name": "Dawnward Aegis",
+      "type": "shield",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "dexamulet",
+      "name": "Amulet of Dexterity",
+      "type": "amulet",
+      "gold": 30000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "dexbelt",
+      "name": "Belt of Dexterity",
+      "type": "belt",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "dexearring",
+      "name": "Earring of Dexterity",
+      "type": "earring",
+      "gold": 38000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "dexearringx",
+      "name": "Enchanted Earring",
+      "type": "earring",
+      "gold": 38000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "dexring",
+      "name": "Ring of Dexterity",
+      "type": "ring",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "dexscroll",
+      "name": "Dexterity Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "djinncrown",
+      "name": "Djinn Crown",
+      "type": "helmet",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "dkey",
+      "name": "Diamond Key",
+      "type": "bank_key",
+      "gold": 72000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "dragondagger",
+      "name": "Dragon Dagger",
+      "type": "weapon",
+      "gold": 2400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "drapes",
+      "name": "Drapes",
+      "type": "material",
+      "gold": 480,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "dreturnscroll",
+      "name": "Damage Return Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "dstones",
+      "name": "Digestive Stones",
+      "type": "material",
+      "gold": 90,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "duskweavehood",
+      "name": "Duskweave Hood",
+      "type": "helmet",
+      "gold": 320000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ecape",
+      "name": "Fluffy Blanket",
+      "type": "cape",
+      "gold": 20000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ectoplasm",
+      "name": "Ectoplasm",
+      "type": "material",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "eears",
+      "name": "Bunny Ears",
+      "type": "helmet",
+      "gold": 32000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "egg0",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg1",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg2",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg3",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg4",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg5",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg6",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg7",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "egg8",
+      "name": "Easter Egg",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "eggnog",
+      "name": "Eggnog",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "electronics",
+      "name": "Electronics",
+      "type": "material",
+      "gold": 7,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirdex0",
+      "name": "Elixir of Dexterity",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirdex1",
+      "name": "Elixir of Greater Dexterity",
+      "type": "elixir",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirdex2",
+      "name": "Elixir of Extreme Dexterity",
+      "type": "elixir",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirfires",
+      "name": "Elixir of Fire Resistance",
+      "type": "elixir",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirfzres",
+      "name": "Elixir of Freeze Resistance",
+      "type": "elixir",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirint0",
+      "name": "Elixir of Intelligence",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirint1",
+      "name": "Elixir of Greater Intelligence",
+      "type": "elixir",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirint2",
+      "name": "Elixir of Extreme Intelligence",
+      "type": "elixir",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirluck",
+      "name": "Liquid Luck",
+      "type": "elixir",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirpnres",
+      "name": "Elixir of Poison Resistance",
+      "type": "elixir",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirstr0",
+      "name": "Elixir of Strength",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirstr1",
+      "name": "Elixir of Greater Strength",
+      "type": "elixir",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirstr2",
+      "name": "Elixir of Extreme Strength",
+      "type": "elixir",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirvit0",
+      "name": "Elixir of Vitality",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirvit1",
+      "name": "Elixir of Greater Vitality",
+      "type": "elixir",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "elixirvit2",
+      "name": "Elixir of Extreme Vitality",
+      "type": "elixir",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "embercore",
+      "name": "Ember Core",
+      "type": "material",
+      "gold": 88000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "emberhood",
+      "name": "Ember Hood",
+      "type": "helmet",
+      "gold": 180000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "emberseal",
+      "name": "Ember Seal",
+      "type": "ring",
+      "gold": 220000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "emptyheart",
+      "name": "Empty Heart",
+      "type": "material",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "emptyjar",
+      "name": "Empty Jar",
+      "type": "jar",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "epyjamas",
+      "name": "Pyjamas",
+      "type": "chest",
+      "gold": 48000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "eslippers",
+      "name": "Fluffy Slippers",
+      "type": "shoes",
+      "gold": 24200,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "espresso",
+      "name": "Espresso",
+      "type": "elixir",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "essenceofether",
+      "name": "Ethereal Essence",
+      "type": "material",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "essenceoffire",
+      "name": "Essence of Fire",
+      "type": "material",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "essenceoffrost",
+      "name": "Essence of Frost",
+      "type": "material",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "essenceofgreed",
+      "name": "Essence of Greed",
+      "type": "material",
+      "gold": 13441344,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "essenceoflife",
+      "name": "Essence of Life",
+      "type": "material",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "essenceofnature",
+      "name": "Essence of Nature",
+      "type": "material",
+      "gold": 5000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "evasionscroll",
+      "name": "Evasion Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "exoarm",
+      "name": "Exoskeletal Arm",
+      "type": "misc_offhand",
+      "gold": 48000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "fallen",
+      "name": "Pants of the Fallen Master",
+      "type": "pants",
+      "gold": 6400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "fcape",
+      "name": "Fiery Cape",
+      "type": "cape",
+      "gold": 16000000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "fclaw",
+      "name": "Frozen Claw",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "feather0",
+      "name": "Magical Feather",
+      "type": "material",
+      "gold": 800,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "feather1",
+      "name": "Harpy Feather",
+      "type": "material",
+      "gold": 800,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "fieldgen0",
+      "name": "Dampening Field Generator",
+      "type": "spawner",
+      "gold": 2000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "fierygloves",
+      "name": "Fiery Gloves",
+      "type": "gloves",
+      "gold": 144000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "figurine",
+      "name": "Terracota Army Figurine",
+      "type": "spawner",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "fireblade",
+      "name": "Fiery Blade",
+      "type": "weapon",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "firebow",
+      "name": "Fire Bow",
+      "type": "weapon",
+      "gold": 178000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "firecrackers",
+      "name": "Firecracker",
+      "type": "throw",
+      "gold": 20,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "firestaff",
+      "name": "Fiery Staff",
+      "type": "weapon",
+      "gold": 189000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "firestars",
+      "name": "Fiery Throwing Stars",
+      "type": "weapon",
+      "gold": 290000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "flute",
+      "name": "Flute",
+      "type": "flute",
+      "gold": 200000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "forscroll",
+      "name": "Fortitude Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "frankypants",
+      "name": "Franky Pants",
+      "type": "pants",
+      "gold": 780000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "frequencyscroll",
+      "name": "Attack Speed Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "friendtoken",
+      "name": "Friend Token",
+      "type": "token",
+      "gold": 36000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "frogt",
+      "name": "Frog Tongue",
+      "type": "material",
+      "gold": 3,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "frostbow",
+      "name": "Frost Bow",
+      "type": "weapon",
+      "gold": 78000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "frostcore",
+      "name": "Frost Core",
+      "type": "material",
+      "gold": 88000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "frostfang",
+      "name": "Frostfang Earring",
+      "type": "earring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "froststaff",
+      "name": "Frost Staff",
+      "type": "weapon",
+      "gold": 289000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "frozenkey",
+      "name": "The Frozen Cave Key",
+      "type": "dungeon_key",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "frozenstone",
+      "name": "Frozen Stone",
+      "type": "activator",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "fsword",
+      "name": "Frozen Sword",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ftrinket",
+      "name": "Trinket of Faith",
+      "type": "orb",
+      "gold": 96000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "funtoken",
+      "name": "Fun Token",
+      "type": "token",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "fury",
+      "name": "Band of Fury",
+      "type": "helmet",
+      "gold": 6400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gbow",
+      "name": "Bow of the Feared Ranger",
+      "type": "weapon",
+      "gold": 3200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gcape",
+      "name": "Grinch's Cape",
+      "type": "cape",
+      "gold": 8008,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gem0",
+      "name": "Raw Emerald",
+      "type": "gem",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gem1",
+      "name": "Tiny Ruby",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gem2",
+      "name": "Raw Diamond",
+      "type": "gem",
+      "gold": 360000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gem3",
+      "name": "Raw Colourful Diamond",
+      "type": "gem",
+      "gold": 4800000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gemfragment",
+      "name": "Gem Fragment",
+      "type": "quest",
+      "gold": 32000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ghatb",
+      "name": "Hat of Generosity",
+      "type": "helmet",
+      "gold": 128000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ghatp",
+      "name": "Hat of Generosity",
+      "type": "helmet",
+      "gold": 128000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gift0",
+      "name": "Rare Gift",
+      "type": "gem",
+      "gold": 2400,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gift1",
+      "name": "Gift",
+      "type": "gem",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "glacierseal",
+      "name": "Glacier Seal",
+      "type": "ring",
+      "gold": 220000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "glitch",
+      "name": "A Glitch",
+      "type": "misc",
+      "gold": 10000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gloampendant",
+      "name": "Gloam Pendant",
+      "type": "amulet",
+      "gold": 420000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "glolipop",
+      "name": "Lolipop Mace",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gloves",
+      "name": "Gloves",
+      "type": "gloves",
+      "gold": 3400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gloves1",
+      "name": "Rugged Gloves",
+      "type": "gloves",
+      "gold": 34000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "gnomecap",
+      "name": "Gnomish Capacitor",
+      "type": "amulet",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "goldbooster",
+      "name": "Gold Booster",
+      "type": "booster",
+      "gold": 79840000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "goldenegg",
+      "name": "Golden Egg",
+      "type": "quest",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "goldenpowerglove",
+      "name": "Golden Power Glove",
+      "type": "gloves",
+      "gold": 16000000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "goldingot",
+      "name": "Gold Ingot",
+      "type": "material",
+      "gold": 2000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "goldnugget",
+      "name": "Gold Nugget",
+      "type": "material",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "goldring",
+      "name": "Ring of Gold",
+      "type": "ring",
+      "gold": 28000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "goldscroll",
+      "name": "Gold Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gphelmet",
+      "name": "Green Pumpkin Head",
+      "type": "helmet",
+      "gold": 32000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "graveglass",
+      "name": "Graveglass Lens",
+      "type": "orb",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "greenbomb",
+      "name": "Green Bomb",
+      "type": "elixir",
+      "gold": 10000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "greenenvelope",
+      "name": "Green Envelope",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "groundingstrap",
+      "name": "Grounding Strap",
+      "type": "belt",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "gslime",
+      "name": "Slime Core",
+      "type": "material",
+      "gold": 20,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "gstaff",
+      "name": "Blaster",
+      "type": "weapon",
+      "gold": 1240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "guestbook",
+      "name": "The Guestbook",
+      "type": "source",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "gum",
+      "name": "Gum",
+      "type": "elixir",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "hammer",
+      "name": "Hammer",
+      "type": "weapon",
+      "gold": 960000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "handofmidas",
+      "name": "Hand of Midas",
+      "type": "gloves",
+      "gold": 800000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "harbringer",
+      "name": "Harbringer",
+      "type": "weapon",
+      "gold": 289000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "harmor",
+      "name": "Heavy Armor",
+      "type": "chest",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "harpybow",
+      "name": "Harpy Bow",
+      "type": "weapon",
+      "gold": 780000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "harpyecho",
+      "name": "Harpy's Echo",
+      "type": "orb",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "hboots",
+      "name": "Heavy Boots",
+      "type": "shoes",
+      "gold": 1240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "hbow",
+      "name": "Hunting Bow",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "hdagger",
+      "name": "Dagger of Hallowing",
+      "type": "weapon",
+      "gold": 2400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "heartwood",
+      "name": "Heartwood",
+      "type": "weapon",
+      "gold": 18700000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "heartwoodlocket",
+      "name": "Heartwood Locket",
+      "type": "amulet",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "helmet",
+      "name": "Helmet",
+      "type": "helmet",
+      "gold": 3200,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "helmet1",
+      "name": "Rugged Helmet",
+      "type": "helmet",
+      "gold": 32000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "hgloves",
+      "name": "Heavy Gloves",
+      "type": "gloves",
+      "gold": 340000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "hhelmet",
+      "name": "Heavy Helmet",
+      "type": "helmet",
+      "gold": 320000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "homecomingcape",
+      "name": "Homecoming Cape",
+      "type": "cape",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "homecomingcoat",
+      "name": "Homecoming Coat",
+      "type": "chest",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "homecominghelm",
+      "name": "Homecoming Helm",
+      "type": "helmet",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "horsecape",
+      "name": "Horse Leather Cape",
+      "type": "cape",
+      "gold": 1600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "horsecapeg",
+      "name": "Horse Leather Cape",
+      "type": "cape",
+      "gold": 1600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "hotchocolate",
+      "name": "Hot Chocolate",
+      "type": "elixir",
+      "gold": 6000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "hpamulet",
+      "name": "Amulet of HP",
+      "type": "amulet",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "hpants",
+      "name": "Heavy Underarmor",
+      "type": "pants",
+      "gold": 780000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "hpbelt",
+      "name": "Belt of HP",
+      "type": "belt",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "hpot0",
+      "name": "HP Potion",
+      "type": "pot",
+      "gold": 20,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "hpot1",
+      "name": "HP Potion",
+      "type": "pot",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "hpotx",
+      "name": "Super HP Potion",
+      "type": "pot",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "iceskates",
+      "name": "Ice Skates",
+      "type": "shoes",
+      "gold": 920000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ijx",
+      "name": "Irradium",
+      "type": "material",
+      "gold": 360000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ink",
+      "name": "Ink",
+      "type": "material",
+      "gold": 5000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "intamulet",
+      "name": "Amulet of Intelligence",
+      "type": "amulet",
+      "gold": 30000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "intbelt",
+      "name": "Belt of Intelligence",
+      "type": "belt",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "intearring",
+      "name": "Earring of Intelligence",
+      "type": "earring",
+      "gold": 38000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "intring",
+      "name": "Ring of Intelligence",
+      "type": "ring",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "intscroll",
+      "name": "Intelligence Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ironheelboots",
+      "name": "Ironheel Boots",
+      "type": "shoes",
+      "gold": 1240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "jacko",
+      "name": "Jack-o Lantern",
+      "type": "orb",
+      "gold": 96000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "jewellerybox",
+      "name": "Jewellery Box",
+      "type": "box",
+      "gold": 80000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "keepsakependant",
+      "name": "Keepsake Pendant",
+      "type": "amulet",
+      "gold": 180000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "kitty1",
+      "name": "Egg",
+      "type": "chrysalis",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "knifebelt",
+      "name": "Knife Belt",
+      "type": "belt",
+      "gold": 900000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "koboldbelt",
+      "name": "Kobold's Backbone",
+      "type": "belt",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "lantern",
+      "name": "The Lantern",
+      "type": "misc_offhand",
+      "gold": 480000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "lanternshield",
+      "name": "Lantern Shield",
+      "type": "shield",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "lbelt",
+      "name": "Belt",
+      "type": "belt",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "leather",
+      "name": "Leather",
+      "type": "quest",
+      "gold": 3000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ledger",
+      "name": "Ledger",
+      "type": "misc",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ledgerlight",
+      "name": "Ledgerlight",
+      "type": "weapon",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "licence",
+      "name": "Licence to Kill",
+      "type": "licence",
+      "gold": 25000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "lifestealscroll",
+      "name": "Lifesteal Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "lmace",
+      "name": "Lunar Mace",
+      "type": "weapon",
+      "gold": 890000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "lostearring",
+      "name": "Gold Earring",
+      "type": "earring",
+      "gold": 360000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "lotusf",
+      "name": "Lotus Flower",
+      "type": "material",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "lspores",
+      "name": "Large Spores",
+      "type": "material",
+      "gold": 160,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "luckbooster",
+      "name": "Luck Booster",
+      "type": "booster",
+      "gold": 79840000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "luckscroll",
+      "name": "Luck Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "luckyt",
+      "name": "Lucky T-Shirt",
+      "type": "chest",
+      "gold": 120000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mace",
+      "name": "Mace",
+      "type": "weapon",
+      "gold": 3700,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "maceofthedead",
+      "name": "Mace of the Dead",
+      "type": "weapon",
+      "gold": 224000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mageshood",
+      "name": "Mage's Hood",
+      "type": "helmet",
+      "gold": 640000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "manastealscroll",
+      "name": "Manasteal Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "marketparcel",
+      "name": "Market Parcel",
+      "type": "gem",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "marketwatch",
+      "name": "Marketwatch Visor",
+      "type": "helmet",
+      "gold": 1,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mbelt",
+      "name": "Well-Crafted Belt",
+      "type": "belt",
+      "gold": 640000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mbones",
+      "name": "Bones",
+      "type": "material",
+      "gold": 16,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "mcape",
+      "name": "Dracul's Attire",
+      "type": "chest",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mcarmor",
+      "name": "Armor of the Hunter Merchant",
+      "type": "chest",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mcboots",
+      "name": "Boots of the Hunter Merchant",
+      "type": "shoes",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mcgloves",
+      "name": "Gloves of the Hunter Merchant",
+      "type": "gloves",
+      "gold": 68000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mchat",
+      "name": "Hat of the Hunter Merchant",
+      "type": "helmet",
+      "gold": 64000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mcpants",
+      "name": "Pants of the Hunter Merchant",
+      "type": "pants",
+      "gold": 128000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mearring",
+      "name": "Mistletoe Earring",
+      "type": "earring",
+      "gold": 12000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "merry",
+      "name": "Bow of The Merry Ranger",
+      "type": "weapon",
+      "gold": 124000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mimicgrin",
+      "name": "Mimic's Grin",
+      "type": "orb",
+      "gold": 12800000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mirrorsteelgauntlet",
+      "name": "Mirrorsteel Gauntlet",
+      "type": "gloves",
+      "gold": 340000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mistletoe",
+      "name": "Mistletoe",
+      "type": "gem",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "mittens",
+      "name": "Mittens",
+      "type": "gloves",
+      "gold": 34000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mmarmor",
+      "name": "Armor of the Hunter Mage",
+      "type": "chest",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mmgloves",
+      "name": "Gloves of the Hunter Mage",
+      "type": "gloves",
+      "gold": 68000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mmhat",
+      "name": "Hat of the Hunter Mage",
+      "type": "helmet",
+      "gold": 64000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mmpants",
+      "name": "Pants of the Hunter Mage",
+      "type": "pants",
+      "gold": 128000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mmshoes",
+      "name": "Shoes of the Hunter Mage",
+      "type": "shoes",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "molehook",
+      "name": "Molehook",
+      "type": "tool",
+      "gold": 140000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "molesteeth",
+      "name": "Mole's Teeth",
+      "type": "earring",
+      "gold": 500000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "monsterbox",
+      "name": "Monster Box",
+      "type": "container",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "monstertoken",
+      "name": "Monster Token",
+      "type": "token",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "moonshardearring",
+      "name": "Moonshard Earring",
+      "type": "earring",
+      "gold": 160000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mossheart",
+      "name": "Mossheart",
+      "type": "source",
+      "gold": 760000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mparmor",
+      "name": "Armor of the Hunter Priest",
+      "type": "chest",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mpcostscroll",
+      "name": "MP Cost Reduction Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "mpgloves",
+      "name": "Gloves of the Hunter Priest",
+      "type": "gloves",
+      "gold": 68000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mphat",
+      "name": "Hat of the Hunter Priest",
+      "type": "helmet",
+      "gold": 64000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mpot0",
+      "name": "MP Potion",
+      "type": "pot",
+      "gold": 20,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "mpot1",
+      "name": "MP Potion",
+      "type": "pot",
+      "gold": 100,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "mpotx",
+      "name": "Super MP Potion",
+      "type": "pot",
+      "gold": 20000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "mppants",
+      "name": "Pants of the Hunter Priest",
+      "type": "pants",
+      "gold": 128000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mpshoes",
+      "name": "Shoes of the Hunter Priest",
+      "type": "shoes",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mpxamulet",
+      "name": "Amulet of MP",
+      "type": "amulet",
+      "gold": 56000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mpxbelt",
+      "name": "Belt of MP Reduction",
+      "type": "belt",
+      "gold": 1200000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mpxgloves",
+      "name": "Mana Gloves",
+      "type": "gloves",
+      "gold": 34000000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrarmor",
+      "name": "Armor of the Hunter Rogue",
+      "type": "chest",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrboots",
+      "name": "Boots of the Hunter Rogue",
+      "type": "shoes",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrgloves",
+      "name": "Gloves of the Hunter Rogue",
+      "type": "gloves",
+      "gold": 68000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrhood",
+      "name": "Hood of the Hunter Rogue",
+      "type": "helmet",
+      "gold": 64000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrnarmor",
+      "name": "Armor of the Hunter Ranger",
+      "type": "chest",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrnboots",
+      "name": "Boots of the Hunter Ranger",
+      "type": "shoes",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrngloves",
+      "name": "Gloves of the Hunter Ranger",
+      "type": "gloves",
+      "gold": 68000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrnhat",
+      "name": "Hat of the Hunter Ranger",
+      "type": "helmet",
+      "gold": 64000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrnpants",
+      "name": "Pants of the Hunter Ranger",
+      "type": "pants",
+      "gold": 128000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mrpants",
+      "name": "Pants of the Hunter Rogue",
+      "type": "pants",
+      "gold": 128000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mshield",
+      "name": "Shield M",
+      "type": "shield",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mummyhex",
+      "name": "Mummy's Hex",
+      "type": "earring",
+      "gold": 3200000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "mushroomstaff",
+      "name": "Mushroom Staff",
+      "type": "weapon",
+      "gold": 16400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mwarmor",
+      "name": "Armor of the Hunter Warrior",
+      "type": "chest",
+      "gold": 96000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mwboots",
+      "name": "Boots of the Hunter Warrior",
+      "type": "shoes",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mwgloves",
+      "name": "Gloves of the Hunter Warrior",
+      "type": "gloves",
+      "gold": 68000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mwhelmet",
+      "name": "Helmet of the Hunter Warrior",
+      "type": "helmet",
+      "gold": 64000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mwpants",
+      "name": "Underarmor of the Hunter Warrior",
+      "type": "pants",
+      "gold": 128000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "mysterybox",
+      "name": "Mystery Box",
+      "type": "misc",
+      "gold": 12000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "networkcard",
+      "name": "Network Card",
+      "type": "material",
+      "gold": 24000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "nheart",
+      "name": "Heartwood Core",
+      "type": "material",
+      "gold": 12000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "nighttill",
+      "name": "Night Till",
+      "type": "weapon",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "northstar",
+      "name": "The North Star",
+      "type": "amulet",
+      "gold": 64000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "oathplate",
+      "name": "Oathplate",
+      "type": "chest",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "offering",
+      "name": "Primordial Essence",
+      "type": "offering",
+      "gold": 27420000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "offeringp",
+      "name": "Primling",
+      "type": "offering",
+      "gold": 480000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "offeringx",
+      "name": "Primordial X",
+      "type": "offering",
+      "gold": 242064000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ololipop",
+      "name": "Lolipop Mace",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "oozingterror",
+      "name": "Oozing Terror",
+      "type": "weapon",
+      "gold": 289000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "orba",
+      "name": "Orb of Adventures",
+      "type": "orb",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbg",
+      "name": "Orb of Beginnings",
+      "type": "orb",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofdex",
+      "name": "Orb of Dexterity",
+      "type": "orb",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orboffire",
+      "name": "Orb of Fire",
+      "type": "orb",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orboffrost",
+      "name": "Orb of Frost",
+      "type": "orb",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofint",
+      "name": "Orb of Intelligence",
+      "type": "orb",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofplague",
+      "name": "Orb of Plague",
+      "type": "orb",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofresolve",
+      "name": "Orb of Resolve",
+      "type": "orb",
+      "gold": 60000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofsc",
+      "name": "Orb of Second Chances",
+      "type": "orb",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofstr",
+      "name": "Orb of Strength",
+      "type": "orb",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orboftemporal",
+      "name": "Orb of Temporal Forces",
+      "type": "orb",
+      "gold": 1200000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "orbofvit",
+      "name": "Orb of Vitality",
+      "type": "orb",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "ornament",
+      "name": "Xmas Ornament",
+      "type": "quest",
+      "gold": 3000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ornamentstaff",
+      "name": "Ornament Staff",
+      "type": "weapon",
+      "gold": 120000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "outputscroll",
+      "name": "Output Increase Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "oxhelmet",
+      "name": "OX Helmet",
+      "type": "helmet",
+      "gold": 8900000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "paleclaw",
+      "name": "Paleclaw Totem",
+      "type": "amulet",
+      "gold": 12800000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "pants",
+      "name": "Pants",
+      "type": "pants",
+      "gold": 7800,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pants1",
+      "name": "Rugged Pants",
+      "type": "pants",
+      "gold": 78000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "paradequiver",
+      "name": "Parade Quiver",
+      "type": "quiver",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "partyhat",
+      "name": "Party Hat",
+      "type": "helmet",
+      "gold": 12000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pclaw",
+      "name": "Poison Claw",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "phelmet",
+      "name": "Pumpkin Head",
+      "type": "helmet",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pickaxe",
+      "name": "Pickaxe",
+      "type": "tool",
+      "gold": 2000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pico",
+      "name": "Pixel Colada",
+      "type": "elixir",
+      "gold": 150000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "pinkie",
+      "name": "Pink Wand",
+      "type": "weapon",
+      "gold": 124000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "placeholder",
+      "name": "Placeholder",
+      "type": "placeholder",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "placeholder_m",
+      "name": "Placeholder",
+      "type": "placeholder",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "platinumingot",
+      "name": "Platinum Ingot",
+      "type": "material",
+      "gold": 40000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "platinumnugget",
+      "name": "Platinum Nugget",
+      "type": "material",
+      "gold": 5200000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "pleather",
+      "name": "Porcupine Leather",
+      "type": "material",
+      "gold": 400,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "pmace",
+      "name": "Priest's Mace",
+      "type": "weapon",
+      "gold": 89000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pmaceofthedead",
+      "name": "Hand of the Dead",
+      "type": "weapon",
+      "gold": 824000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "poison",
+      "name": "Poison Sack",
+      "type": "skill_item",
+      "gold": 1000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "poker",
+      "name": "Poker",
+      "type": "gloves",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pollenbow",
+      "name": "Pollen Bow",
+      "type": "weapon",
+      "gold": 110000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pouchbow",
+      "name": "Poucher",
+      "type": "weapon",
+      "gold": 24000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "powerglove",
+      "name": "Power Glove",
+      "type": "gloves",
+      "gold": 1600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "pstem",
+      "name": "Pumpkin Stem",
+      "type": "material",
+      "gold": 5,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "pumpkinspice",
+      "name": "Pumpkin Spice Latte",
+      "type": "elixir",
+      "gold": 200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "puppy1",
+      "name": "Egg",
+      "type": "chrysalis",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "puppyer",
+      "name": "Licence to Adopt a Puppy",
+      "type": "petlicence",
+      "gold": 10000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "pvptoken",
+      "name": "PVP Token",
+      "type": "token",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "pyjamas",
+      "name": "Legacy Pyjamas",
+      "type": "chest",
+      "gold": 480000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "qubics",
+      "name": "Qubics",
+      "type": "qubics",
+      "gold": 5120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "quiver",
+      "name": "Quiver",
+      "type": "quiver",
+      "gold": 24000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "rabbitsfoot",
+      "name": "Rabbit's Foot",
+      "type": "orb",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "rapier",
+      "name": "Rapier",
+      "type": "weapon",
+      "gold": 84000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ratkingbuckler",
+      "name": "Ratking Buckler",
+      "type": "shield",
+      "gold": 28000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "rattail",
+      "name": "Rat Tail",
+      "type": "material",
+      "gold": 2,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "ratworkcoat",
+      "name": "Ratwork Coat",
+      "type": "chest",
+      "gold": 42000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "redenvelope",
+      "name": "Red Envelope",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "redenvelopev2",
+      "name": "Red Envelope",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "redenvelopev3",
+      "name": "Red Envelope",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "redenvelopev4",
+      "name": "Red Envelope",
+      "type": "gem",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "rednose",
+      "name": "Rudolph's Red Nose",
+      "type": "helmet",
+      "gold": 32000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "reedpants",
+      "name": "Reed Pants",
+      "type": "pants",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "reefglass",
+      "name": "Reef Glass",
+      "type": "material",
+      "gold": 180,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "reefvest",
+      "name": "Reef Vest",
+      "type": "chest",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "reflectionscroll",
+      "name": "Reflection Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "resistancering",
+      "name": "Ring of Resistance",
+      "type": "ring",
+      "gold": 180000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "resistancescroll",
+      "name": "Resistance Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "resolutesallet",
+      "name": "Resolute Sallet",
+      "type": "helmet",
+      "gold": 620000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "reunionbow",
+      "name": "Reunion Bow",
+      "type": "weapon",
+      "gold": 320000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "rfangs",
+      "name": "Rat Fangs",
+      "type": "material",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "rfur",
+      "name": "Rat Fur",
+      "type": "material",
+      "gold": 40,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "rimeboots",
+      "name": "Rime Boots",
+      "type": "shoes",
+      "gold": 260000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "rimeglass",
+      "name": "Rimeglass",
+      "type": "material",
+      "gold": 160,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "rimeknuckles",
+      "name": "Rime Knuckles",
+      "type": "weapon",
+      "gold": 170000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ringhs",
+      "name": "Ring of Holidays",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "ringofluck",
+      "name": "Ring of Luck",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "ringsj",
+      "name": "Ring of Small Joys",
+      "type": "ring",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "rod",
+      "name": "Fishing Rod",
+      "type": "tool",
+      "gold": 2000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "rpiercingscroll",
+      "name": "Resistance Piercing Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "saffronloop",
+      "name": "Saffron Loop",
+      "type": "earring",
+      "gold": 180000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "sanguine",
+      "name": "Sanguine Amulet",
+      "type": "amulet",
+      "gold": 32000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "santasbelt",
+      "name": "Santa's Belt",
+      "type": "belt",
+      "gold": 640000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "sapstone",
+      "name": "Sapstone",
+      "type": "orb",
+      "gold": 1800000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "sbelt",
+      "name": "Belt of Hallowed Trials",
+      "type": "belt",
+      "gold": 640000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "scorpionseal",
+      "name": "Scorpion Seal",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "scribeorb",
+      "name": "Scribe Orb",
+      "type": "source",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "scroll0",
+      "name": "Upgrade Scroll",
+      "type": "uscroll",
+      "gold": 1000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "scroll1",
+      "name": "High Upgrade Scroll",
+      "type": "uscroll",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "scroll2",
+      "name": "Rare Upgrade Scroll",
+      "type": "uscroll",
+      "gold": 1600000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "scroll3",
+      "name": "Legendary Upgrade Scroll",
+      "type": "uscroll",
+      "gold": 480000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "scroll4",
+      "name": "Ultimate Upgrade Scroll",
+      "type": "uscroll",
+      "gold": 640000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "scythe",
+      "name": "Skeletor's Scythe",
+      "type": "weapon",
+      "gold": 8600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "seashell",
+      "name": "Seashell",
+      "type": "quest",
+      "gold": 800,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "shadowstone",
+      "name": "Shadow Stone",
+      "type": "skill_item",
+      "gold": 800,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "shield",
+      "name": "Shield",
+      "type": "shield",
+      "gold": 24000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "shoes",
+      "name": "Shoes",
+      "type": "shoes",
+      "gold": 12100,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "shoes1",
+      "name": "Rugged Shoes",
+      "type": "shoes",
+      "gold": 120000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "silkgrips",
+      "name": "Silkgrips",
+      "type": "gloves",
+      "gold": 76000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "sixcake",
+      "name": "Sixfold Cake",
+      "type": "gem",
+      "gold": 1000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "skullamulet",
+      "name": "Skull Amulet",
+      "type": "amulet",
+      "gold": 30000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "slice_blueberry",
+      "name": "Blueberry Slice",
+      "type": "material",
+      "gold": 10,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "slice_citrus",
+      "name": "Citrus Slice",
+      "type": "material",
+      "gold": 10,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "slice_honey",
+      "name": "Honey Slice",
+      "type": "material",
+      "gold": 10,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "slice_mint",
+      "name": "Mint Slice",
+      "type": "material",
+      "gold": 10,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "slice_nightberry",
+      "name": "Nightberry Slice",
+      "type": "material",
+      "gold": 10,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "slice_strawberry",
+      "name": "Strawberry Slice",
+      "type": "material",
+      "gold": 10,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "slimestaff",
+      "name": "Slime Staff",
+      "type": "weapon",
+      "gold": 16400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "smoke",
+      "name": "Pouch of Poof",
+      "type": "throw",
+      "gold": 20,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "smush",
+      "name": "Small Mushroom",
+      "type": "material",
+      "gold": 87,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "snakefang",
+      "name": "Snake Fang",
+      "type": "material",
+      "gold": 1200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "snakeoil",
+      "name": "Snake Oil",
+      "type": "pot",
+      "gold": 200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "snowball",
+      "name": "Snowball",
+      "type": "throw",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "snowboots",
+      "name": "Snow Boots",
+      "type": "shoes",
+      "gold": 720000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "snowflakes",
+      "name": "Snowflakes",
+      "type": "weapon",
+      "gold": 92000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "snring",
+      "name": "Stompy's Nose Ring",
+      "type": "amulet",
+      "gold": 2400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "softstepgloves",
+      "name": "Softstep Gloves",
+      "type": "gloves",
+      "gold": 420000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "solitaire",
+      "name": "Solitaire Ring",
+      "type": "ring",
+      "gold": 1200000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "sparkstaff",
+      "name": "Spark Staff",
+      "type": "weapon",
+      "gold": 224000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "spear",
+      "name": "Spear",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "spearofthedead",
+      "name": "Spear of the Dead",
+      "type": "weapon",
+      "gold": 724000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "speedscroll",
+      "name": "Speed Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "spiderkey",
+      "name": "The Spider Key",
+      "type": "dungeon_key",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "spidersilk",
+      "name": "Spider Silk",
+      "type": "material",
+      "gold": 300,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "spikedhelmet",
+      "name": "Spiked Helmet",
+      "type": "helmet",
+      "gold": 3200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "spookyamulet",
+      "name": "Amulet of Spooks",
+      "type": "amulet",
+      "gold": 320000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "spores",
+      "name": "Spores",
+      "type": "material",
+      "gold": 120,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "sshield",
+      "name": "Spiked Shield",
+      "type": "shield",
+      "gold": 24000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "sstinger",
+      "name": "Scorpion Stinger",
+      "type": "material",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "staff",
+      "name": "Staff",
+      "type": "weapon",
+      "gold": 12400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "staff2",
+      "name": "T2 Staff",
+      "type": "weapon",
+      "gold": 12400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "staff3",
+      "name": "T3 Staff",
+      "type": "weapon",
+      "gold": 12400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "staff4",
+      "name": "T4 Staff",
+      "type": "weapon",
+      "gold": 12400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "staffofthedead",
+      "name": "Staff of the Dead",
+      "type": "weapon",
+      "gold": 224000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stand0",
+      "name": "Merchant Stand",
+      "type": "stand",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stand1",
+      "name": "Merchant Stand [Sell+Buy]",
+      "type": "stand",
+      "gold": 400000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "starcloak",
+      "name": "Starcloak",
+      "type": "cape",
+      "gold": 1800000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "starkillers",
+      "name": "Star Killer's Pants",
+      "type": "pants",
+      "gold": 7800000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stealthcape",
+      "name": "Stealth Cape",
+      "type": "cape",
+      "gold": 2000000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stick",
+      "name": "Stick",
+      "type": "misc",
+      "gold": 299999,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stillwaterlens",
+      "name": "Stillwater Lens",
+      "type": "orb",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "stinger",
+      "name": "Stinger",
+      "type": "weapon",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stonegaze",
+      "name": "Stonegaze Ring",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "stonekey",
+      "name": "The Stone Key",
+      "type": "dungeon_key",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "stoneofgold",
+      "name": "Stone of Riches",
+      "type": "stone",
+      "gold": 100000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stoneofluck",
+      "name": "Stone of Luck",
+      "type": "stone",
+      "gold": 100000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stoneofxp",
+      "name": "Stone of Wisdom",
+      "type": "stone",
+      "gold": 100000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "storagebox",
+      "name": "Storage Box",
+      "type": "misc",
+      "gold": 9000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "stormfeather",
+      "name": "Storm Feather",
+      "type": "material",
+      "gold": 1800,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "stormquiver",
+      "name": "Storm Quiver",
+      "type": "quiver",
+      "gold": 820000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "stramulet",
+      "name": "Amulet of Strength",
+      "type": "amulet",
+      "gold": 30000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "strbelt",
+      "name": "Belt of Strength",
+      "type": "belt",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "strearring",
+      "name": "Earring of Strength",
+      "type": "earring",
+      "gold": 38000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "strring",
+      "name": "Ring of Strength",
+      "type": "ring",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "strscroll",
+      "name": "Strength Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "suckerpunch",
+      "name": "Sucker Punch",
+      "type": "ring",
+      "gold": 3200000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "supercomputer",
+      "name": "Super Computer",
+      "type": "computer",
+      "gold": 64000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "supermittens",
+      "name": "Super Mittens",
+      "type": "gloves",
+      "gold": 340000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "surety",
+      "name": "Surety",
+      "type": "weapon",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "svenom",
+      "name": "Scorpion Venom",
+      "type": "material",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "sweaterhs",
+      "name": "Super Sweater",
+      "type": "chest",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "swifty",
+      "name": "Swifty",
+      "type": "weapon",
+      "gold": 48000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "swirlipop",
+      "name": "Swirlipop",
+      "type": "elixir",
+      "gold": 10000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "sword",
+      "name": "Short Sword",
+      "type": "weapon",
+      "gold": 48000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "swordofthedead",
+      "name": "Sword of the Dead",
+      "type": "weapon",
+      "gold": 224000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "t2bow",
+      "name": "Well-Crafted Bow",
+      "type": "weapon",
+      "gold": 78000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "t2dexamulet",
+      "name": "Amulet of the Stubborn Ranger",
+      "type": "amulet",
+      "gold": 160000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "t2intamulet",
+      "name": "Amulet of the Fierce Mage",
+      "type": "amulet",
+      "gold": 160000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "t2quiver",
+      "name": "Agile Quiver",
+      "type": "quiver",
+      "gold": 960000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "t2stramulet",
+      "name": "Amulet of the Eager Warrior",
+      "type": "amulet",
+      "gold": 160000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "t3bow",
+      "name": "Artisan's Bow",
+      "type": "weapon",
+      "gold": 780000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "talkingskull",
+      "name": "Yorick the Talking Skull",
+      "type": "orb",
+      "gold": 96000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "test",
+      "name": "Test",
+      "type": "test",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "test_orb",
+      "name": "Orb of Testing",
+      "type": "orb",
+      "gold": 1,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "test2",
+      "name": "Test",
+      "type": "orb",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "thistlequiver",
+      "name": "Thistle Quiver",
+      "type": "quiver",
+      "gold": 160000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "threadneedle",
+      "name": "Threadneedle",
+      "type": "weapon",
+      "gold": 62000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "throwingstars",
+      "name": "Throwing Stars",
+      "type": "weapon",
+      "gold": 72000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "thundergrips",
+      "name": "Thundergrips",
+      "type": "gloves",
+      "gold": 760000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tigercape",
+      "name": "Cape of the Tiger",
+      "type": "cape",
+      "gold": 2400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tigerhelmet",
+      "name": "Helmet of the Tiger",
+      "type": "helmet",
+      "gold": 640000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tigershield",
+      "name": "Shield of the Tiger",
+      "type": "shield",
+      "gold": 240000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tigerstone",
+      "name": "Tiger Stone",
+      "type": "orb",
+      "gold": 600000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "tollkeeperspike",
+      "name": "Tollkeeper's Pike",
+      "type": "weapon",
+      "gold": 960000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tombkey",
+      "name": "The Tomb Key",
+      "type": "dungeon_key",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "tracker",
+      "name": "Tracktrix",
+      "type": "tracker",
+      "gold": 12,
+      "upgrade": false,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "trigger",
+      "name": "The Trigger",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "trinkets",
+      "name": "Trinkets",
+      "type": "material",
+      "gold": 200000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "tristone",
+      "name": "Legacy Tri-Stone",
+      "type": "ring",
+      "gold": 50000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "troll",
+      "name": "T-Shirt Roll",
+      "type": "misc",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "tshell",
+      "name": "Turtle Shell",
+      "type": "material",
+      "gold": 1200,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "tshirt0",
+      "name": "T-Shirt (Int)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt1",
+      "name": "T-Shirt (Dex)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt2",
+      "name": "T-Shirt (Str)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt3",
+      "name": "T-Shirt (XP)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt4",
+      "name": "T-Shirt (Speed)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt6",
+      "name": "T-Shirt (Res. Piercing)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt7",
+      "name": "T-Shirt (Armor Piercing)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt8",
+      "name": "T-Shirt (Attack MP Cost)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt88",
+      "name": "T-Shirt (Lucky)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "tshirt9",
+      "name": "T-Shirt (Manasteal)",
+      "type": "chest",
+      "gold": 120,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "turtleshard",
+      "name": "Turtle Shard",
+      "type": "shield",
+      "gold": 62000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "ukey",
+      "name": "The Bank Key",
+      "type": "bank_key",
+      "gold": 50000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "valourdirk",
+      "name": "Valour Dirk",
+      "type": "weapon",
+      "gold": 620000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vattire",
+      "name": "Spike's Attire",
+      "type": "chest",
+      "gold": 4800000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vblood",
+      "name": "Vampire's Blood",
+      "type": "elixir",
+      "gold": 240000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "vboots",
+      "name": "Vampiric Boots",
+      "type": "shoes",
+      "gold": 340000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vcape",
+      "name": "Vampiric Cape",
+      "type": "cape",
+      "gold": 340000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vdagger",
+      "name": "Vampiric Dagger",
+      "type": "weapon",
+      "gold": 9600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "venomband",
+      "name": "Venom Band",
+      "type": "ring",
+      "gold": 220000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "verdantcore",
+      "name": "Verdant Core",
+      "type": "material",
+      "gold": 88000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "vgloves",
+      "name": "Vampiric Gloves",
+      "type": "gloves",
+      "gold": 340000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vhammer",
+      "name": "Vampiric Hammer",
+      "type": "weapon",
+      "gold": 9600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vitearring",
+      "name": "Earring of Vitality",
+      "type": "earring",
+      "gold": 38000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "vitring",
+      "name": "Ring of Vitality",
+      "type": "ring",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "vitscroll",
+      "name": "Vitality Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "voidthread",
+      "name": "Void Thread",
+      "type": "material",
+      "gold": 24000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "vorb",
+      "name": "Vampiric Canine Teeth",
+      "type": "orb",
+      "gold": 12000000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "vowkeepergloves",
+      "name": "Vowkeeper Gloves",
+      "type": "gloves",
+      "gold": 18000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vring",
+      "name": "Vampiring",
+      "type": "ring",
+      "gold": 4200000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "vstaff",
+      "name": "Vampiric Staff",
+      "type": "weapon",
+      "gold": 9600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "vsword",
+      "name": "Vampiric Sword",
+      "type": "weapon",
+      "gold": 9600000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wand",
+      "name": "Wand",
+      "type": "weapon",
+      "gold": 48600,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "warmscarf",
+      "name": "Warm Scarf",
+      "type": "amulet",
+      "gold": 20000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "warpvest",
+      "name": "Warp Vest",
+      "type": "chest",
+      "gold": 36400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "watchersearring",
+      "name": "Watcher's Earring",
+      "type": "earring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "watercore",
+      "name": "Water Core",
+      "type": "material",
+      "gold": 800000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "wattire",
+      "name": "Wanderer's Attire",
+      "type": "chest",
+      "gold": 12000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "waxe",
+      "name": "Wooden Axe",
+      "type": "weapon",
+      "gold": 4900,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "waybill",
+      "name": "Waybill",
+      "type": "weapon",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wbasher",
+      "name": "Wooden Basher",
+      "type": "weapon",
+      "gold": 4900,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wblade",
+      "name": "Ethereal Blade of Destiny",
+      "type": "weapon",
+      "gold": 48900000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wbook0",
+      "name": "Book of Knowledge",
+      "type": "source",
+      "gold": 12000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "wbook1",
+      "name": "Book of Secrets",
+      "type": "source",
+      "gold": 960000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "wbookhs",
+      "name": "Book of Cheer",
+      "type": "source",
+      "gold": 960000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "wbreeches",
+      "name": "Wanderer's Breeches",
+      "type": "pants",
+      "gold": 15600,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wcap",
+      "name": "Wanderer's Cap",
+      "type": "helmet",
+      "gold": 6400,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "weaponbox",
+      "name": "Weapon Box",
+      "type": "box",
+      "gold": 320000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "weaver",
+      "name": "Bow of the Weaver",
+      "type": "weapon",
+      "gold": 36000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wgloves",
+      "name": "Wanderer's Gloves",
+      "type": "gloves",
+      "gold": 6800,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "whiskey",
+      "name": "Whiskey On The Rocks",
+      "type": "elixir",
+      "gold": 120000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "whiteegg",
+      "name": "White Egg",
+      "type": "material",
+      "gold": 5,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "windbelt",
+      "name": "Wind Belt",
+      "type": "belt",
+      "gold": 260000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "wine",
+      "name": "Red Wine",
+      "type": "elixir",
+      "gold": 40000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "wingedboots",
+      "name": "Winged Boots",
+      "type": "shoes",
+      "gold": 150000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "woodensword",
+      "name": "Wooden Sword",
+      "type": "weapon",
+      "gold": 224000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "worldrootcrook",
+      "name": "Worldroot Crook",
+      "type": "weapon",
+      "gold": 300000000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wshield",
+      "name": "Wooden Shield",
+      "type": "shield",
+      "gold": 4800,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "wshoes",
+      "name": "Wanderer's Shoes",
+      "type": "shoes",
+      "gold": 24200,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "x0",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x1",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x2",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x3",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x4",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x5",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x6",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x7",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "x8",
+      "name": "Quantum Piece",
+      "type": "quest",
+      "gold": 4000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "xarmor",
+      "name": "Darkforge Armor",
+      "type": "chest",
+      "gold": 4800000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xboots",
+      "name": "Darkforge Boots",
+      "type": "shoes",
+      "gold": 12400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xbox",
+      "name": "Xmas Box",
+      "type": "quest",
+      "gold": 1000000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "xgloves",
+      "name": "Darkforge Gloves",
+      "type": "gloves",
+      "gold": 3400000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xhelmet",
+      "name": "Darkforge Helmet",
+      "type": "helmet",
+      "gold": 3200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xmace",
+      "name": "Merry Mace",
+      "type": "weapon",
+      "gold": 37000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xmashat",
+      "name": "Xmas Hat",
+      "type": "helmet",
+      "gold": 13200,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xmaspants",
+      "name": "Xmas Pants",
+      "type": "pants",
+      "gold": 17800,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xmasshoes",
+      "name": "Xmas Shoes",
+      "type": "shoes",
+      "gold": 36000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xmassweater",
+      "name": "Xmas Sweater",
+      "type": "chest",
+      "gold": 16000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xpants",
+      "name": "Darkforge Underarmor",
+      "type": "pants",
+      "gold": 7800000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xpbooster",
+      "name": "XP Booster",
+      "type": "booster",
+      "gold": 79840000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    },
+    {
+      "id": "xpscroll",
+      "name": "XP Scroll",
+      "type": "pscroll",
+      "gold": 8000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "xptome",
+      "name": "Tome of Protection",
+      "type": "tome",
+      "gold": 3200000,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "xshield",
+      "name": "Shield X",
+      "type": "shield",
+      "gold": 1200000,
+      "upgrade": true,
+      "compound": false,
+      "stack": false
+    },
+    {
+      "id": "xshot",
+      "name": "X-Shot",
+      "type": "elixir",
+      "gold": 1,
+      "upgrade": false,
+      "compound": false,
+      "stack": true
+    },
+    {
+      "id": "zapper",
+      "name": "The Zapper",
+      "type": "ring",
+      "gold": 6400000,
+      "upgrade": false,
+      "compound": true,
+      "stack": false
+    }
+  ]
+};
+let profile=structuredClone(defaults),currentTab='base',result=null,selectedItem=null,itemSearch='',itemPage=0;
+try{const saved=localStorage.getItem('albot-workshop-v1');if(saved)profile=normalize(JSON.parse(saved));}catch{}
+const $=id=>document.getElementById(id);
+function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
+function value(path){return path.split('.').reduce((o,k)=>o[k],profile);}
+function assign(path,v){const parts=path.split('.'),last=parts.pop();parts.reduce((o,k)=>o[k],profile)[last]=v;}
+function field(parent,path,title,type='text',hint=''){
+ const label=el('label',undefined,type==='checkbox'?'check':''),input=el('input');input.type=type;
+ input.id='field-'+path; if(type==='checkbox')input.checked=value(path);else input.value=value(path);
+ if(type==='number')input.step='any';
+ const caption=el('span',title);if(type==='checkbox'){label.append(input,caption);}else label.append(caption,input);
+ if(hint)input.title=hint;
+ input.addEventListener('input',()=>{assign(path,type==='checkbox'?input.checked:type==='number'?Number(input.value):input.value);refresh();});
+ parent.append(label);return input;
+}
+function groupFields(parent,fields){const grid=el('div',undefined,'grid');fields.forEach(f=>field(grid,...f));parent.append(grid);}
+function heading(parent,title,description){parent.append(el('h2',title));if(description)parent.append(el('p',description));}
+function feedback(message){$('feedback').textContent=message;}
+function refresh(){
+ try{
+  result=build(profile);$('errors').textContent='';$('bytes').textContent=result.bytes.toLocaleString('de-DE');
+  $('sizehint').textContent=(100*result.bytes/result.limit).toFixed(2)+' % belegt · '+result.characters.toLocaleString('de-DE')+' Zeichen';
+  $('sizebar').style.width=(100*result.bytes/result.limit)+'%';
+  $('download').disabled=$('copy').disabled=false;
+  if($('source'))$('source').value=result.code;
+ }catch(e){result=null;$('errors').textContent=e.message;$('download').disabled=$('copy').disabled=true;$('bytes').textContent='Ungültig';$('sizehint').textContent='Einstellungen korrigieren.';if($('source'))$('source').value='Kein Export: '+e.message;}
+ $('bot-title').textContent=profile.name;
+ $('summary').textContent=[profile.survival.enabled?'Versorgung':'',profile.combat.enabled?'Kampf: '+profile.combat.monster:'',profile.merchant.enabled?'Merchant':'',profile.group.enabled?'Gruppenkoordination':'',Object.keys(profile.items).length+' konfigurierte Items',profile.rules.length+' eigene Regeln'].filter(Boolean).join(' · ');
+ try{localStorage.setItem('albot-workshop-v1',JSON.stringify(profile));}catch{}
+}
+function preset(kind){
+ profile=structuredClone(defaults);
+ if(kind==='merchant'){profile.name='Mein Merchant';profile.combat.enabled=false;profile.merchant.enabled=true;profile.merchant.stand=true;}
+ if(kind==='follower'){profile.name='Mein Follower';profile.combat.autoTravel=false;profile.group.enabled=true;profile.group.leader='DEIN_LEADER';}
+ render();refresh();
+}
+const listFields={
+ buy:[['item','Item-ID','text'],['keep','Zielbestand','number'],['batch','Max. je Kauf','number']],
+ sell:[['item','Item-ID','text'],['level','Exaktes Level','number'],['keep','Behalten','number'],['batch','Max. je Verkauf','number']],
+ listings:[['item','Item-ID','text'],['level','Exaktes Level','number'],['slot','Stand-Slot','text'],['price','Gold pro Stück','number'],['quantity','Menge','number']],
+ upgrade:[['item','Item-ID','text'],['toLevel','Bis Level','number']],compound:[['item','Item-ID','text'],['toLevel','Bis Level','number']]
+};
+function table(parent,type,title,description){
+ const wrap=el('section');wrap.append(el('h3',title),el('p',description,'muted'));
+ profile.merchant[type].forEach((entry,index)=>{
+  const box=el('div',undefined,'entry'),grid=el('div',undefined,'grid');
+  listFields[type].forEach(([key,label,inputType])=>field(grid,'merchant.'+type+'.'+index+'.'+key,label,inputType));
+  const remove=el('button','Entfernen');remove.onclick=()=>{profile.merchant[type].splice(index,1);render();refresh();};box.append(grid,remove);wrap.append(box);
+ });
+ const add=el('button','+ Eintrag');add.onclick=()=>{
+  const entry={item:''};if(type==='buy'||type==='sell')Object.assign(entry,{keep:100,batch:100});
+  if(type==='sell'||type==='listings')entry.level=0;
+  if(type==='listings')Object.assign(entry,{slot:'trade1',price:1,quantity:1});
+  if(type==='upgrade'||type==='compound')entry.toLevel=1;
+  profile.merchant[type].push(entry);render();refresh();
+ };wrap.append(add);parent.append(wrap);
+}
+function render(){
+ const root=$('content');root.replaceChildren();
+ if(currentTab==='base'){
+  heading(root,'Dein Bot','Fertige Module kombinieren oder eigene Regeln ergänzen. Nur aktivierte Module kommen in den Export.');
+  const presets=el('div',undefined,'row');[['Solo-Farmer','solo'],['Merchant','merchant'],['Gruppen-Follower','follower']].forEach(([label,type])=>{const b=el('button',label);b.onclick=()=>{if(confirm('Aktuellen Entwurf durch die Vorlage ersetzen?'))preset(type);};presets.append(b);});root.append(presets);
+  groupFields(root,[['name','Name'],['tickMs','Bot-Intervall (ms)','number'],['survival.enabled','Versorgung aktiv','checkbox'],['survival.potions','HP-/MP-Tränke verwenden','checkbox'],['survival.priestSelfHeal','Priester: sich selbst heilen','checkbox'],['survival.healBelow','Priester heilt unter HP-Anteil','number'],['survival.restBelow','Erholung unter HP-Anteil','number'],['survival.resumeAbove','Weiterkämpfen ab HP-Anteil','number'],['survival.autoRespawn','Automatisch wiederbeleben','checkbox'],['survival.respawnDelayMs','Wartezeit vor Respawn (ms)','number'],['survival.maxDeaths','Bei wie vielen Toden pausieren?','number'],['survival.deathWindowMs','Zeitfenster für Todeslimit (ms)','number'],['loot.enabled','Beute sammeln','checkbox'],['loot.everyMs','Loot-Intervall (ms)','number'],['status.enabled','Status über set/get teilen','checkbox'],['status.everyMs','Status-Intervall (ms)','number']]);
+  root.append(el('p','Anteile: 0,55 bedeutet 55 %. Versorgung kauft keine Tränke. Fehlende Verbrauchsgegenstände vorher bereitstellen.','muted'));
+ }else if(currentTab==='combat'){
+  heading(root,'Kampf & Gruppe','Gruppenmitglieder teilen ihren Status lokal über set/get. Auf dem Leader ebenfalls Status aktivieren und dieselbe Gruppenkennung verwenden.');
+  groupFields(root,[['combat.enabled','Kampf aktiv','checkbox'],['combat.monster','Monster-ID'],['combat.autoTravel','Automatisch zum Spawn laufen','checkbox'],['combat.allowMerchant','Auch Merchant kämpfen lassen','checkbox'],['group.enabled','Gruppenmodus aktiv','checkbox'],['group.namespace','Gruppenkennung'],['group.leader','Name des Leaders'],['group.follow','Leader folgen','checkbox'],['group.followDistance','Folgedistanz','number'],['group.staleMs','Status maximal alt (ms)','number'],['group.waitForLeader','Ohne Leader warten','checkbox']]);
+  root.append(el('p','Standardkampf verwendet normale Angriffe, meidet fremde Kampfziele und priorisiert Monster, die dich angreifen. Klassenspezifische Fähigkeiten ergänzt du unter Eigene Regeln.','muted'));
+ }else if(currentTab==='merchant'){
+  heading(root,'Merchant-Verhalten','Nur Charaktere der Klasse Merchant führen diese Aktionen aus. Der Merchant-Modus unterdrückt das Kampfmodul.');
+  groupFields(root,[['merchant.enabled','Merchant-Modul aktiv','checkbox'],['merchant.stand','Verkaufsstand öffnen','checkbox'],['merchant.goldReserve','Goldreserve für NPC-Käufe','number'],['merchant.everyMs','Aktionsintervall (ms)','number'],['merchant.position.enabled','Zu fester Position laufen','checkbox'],['merchant.position.map','Karte'],['merchant.position.x','X','number'],['merchant.position.y','Y','number']]);
+  root.append(el('p','Stand-Item im Inventar erforderlich. NPC-Käufe/Verkäufe und Verbesserungen brauchen den passenden Ort. Das Modul führt höchstens eine Handelsaktion gleichzeitig aus.','muted'));
+  root.append(el('p','Das Verhalten für einzelne Items stellst du unter „Alle Items“ ein: getrennte Regeln für Farmer und Merchant, inklusive Level, Mindestbestand, Empfänger und Preisen.'));
+  const openItems=el('button','Item-Regeln öffnen');openItems.onclick=()=>switchTab('items');root.append(openItems);
+  root.append(el('div','Upgrades und Compounds können Items zerstören. Nur ausdrücklich eingetragene Items werden verbessert; gesperrte und speziell markierte Items werden ausgelassen. Schriftrollen werden nicht automatisch gekauft.','notice'));
+  if(['buy','sell','listings','upgrade','compound'].some(k=>profile.merchant[k].length)){
+    root.append(el('h3','Importierte ältere Merchant-Listen'));
+    for(const type of ['buy','sell','listings','upgrade','compound'])if(profile.merchant[type].length)table(root,type,type,'Aus dem importierten Profil; nicht zusätzlich für dieselben Items konfigurieren.');
+  }
+ }else if(currentTab==='items'){
+  renderItems(root);
+ }else if(currentTab==='rules'){
+  heading(root,'Eigene Regeln','Für Verhalten außerhalb der fertigen Module. Bedingung = JavaScript-Ausdruck; Aktion = JavaScript. Regeln laufen nach den Modulen, in Listenreihenfolge.');
+  root.append(el('div','Eigene Regeln haben Zugriff auf die gesamte Spiel-API und können die Modulgrenzen umgehen. Nur vertrauenswürdigen Code verwenden. Für vollständige eigene Kampfsteuerung das Kampfmodul ausschalten.','notice'));
+  profile.rules.forEach((r,i)=>{
+   const box=el('div',undefined,'entry'),top=el('div',undefined,'grid');field(top,'rules.'+i+'.name','Name');field(top,'rules.'+i+'.everyMs','Mindestabstand (ms)','number');box.append(top);
+   for(const [key,label] of [['when','Wenn (JavaScript-Bedingung)'],['run','Dann (JavaScript-Aktion)']]){const l=el('label',label),a=el('textarea');a.value=r[key];a.oninput=()=>{r[key]=a.value;refresh();};l.append(a);box.append(l);}
+   const del=el('button','Regel entfernen');del.onclick=()=>{profile.rules.splice(i,1);render();refresh();};box.append(del);root.append(box);
+  });
+  const row=el('div',undefined,'row'),select=el('select');select.setAttribute('aria-label','Regelvorlage');
+  [['custom','Eigene Regel'],['speed','Rogue: Geschwindigkeit'],['message','Statusmeldung bei vollem Inventar']].forEach(([v,t])=>{const o=el('option',t);o.value=v;select.append(o);});
+  const add=el('button','+ Regel hinzufügen');add.onclick=()=>{
+   const choices={custom:{name:'Meine Regel',everyMs:1000,when:'false',run:'// Eigene Aktion hier.\n// Beispiel: return use_skill("regen_hp");'},speed:{name:'Rogue-Geschwindigkeit',everyMs:5000,when:"character.ctype === 'rogue' && !character.s.rspeed && character.mp >= parent.G.skills.rspeed.mp && !is_on_cooldown('rspeed')",run:"return use_skill('rspeed', character);"},message:{name:'Inventar voll',everyMs:30000,when:'character.esize === 0',run:'game_log("Inventar voll: Bitte leeren.");'}};
+   profile.rules.push(choices[select.value]);render();refresh();};row.append(select,add);root.append(row);
+  root.append(el('p','Verfügbar: character, parent, alle normalen CODE-Funktionen sowie ctx.target, ctx.state und ctx.action(name, intervallMs, funktion). Bei asynchronen Aktionen die Promise mit return zurückgeben.','muted'));
+ }else{
+  heading(root,'Generiertes JavaScript','Kopieren und im Browser-CODE starten oder als Datei herunterladen. Diese Ansicht ist schreibgeschützt.');
+  const area=el('textarea');area.id='source';area.className='code';area.readOnly=true;area.setAttribute('aria-label','Generiertes JavaScript');root.append(area);
+ }
+ refresh();
+}
+function switchTab(tab){currentTab=tab;document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===tab)));render();}
+document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>switchTab(button.dataset.tab));
+function renderItems(root){
+ heading(root,'Jedes Item. Zwei Rollen.',ITEM_CATALOG.items.length+' Items aus Spielversion '+ITEM_CATALOG.version+'. Nicht konfigurierte Items bleiben unverändert. Der Katalog wird nicht in deinen Bot exportiert.');
+ const layout=el('div');
+ const searchLabel=el('label','Nach Item-ID oder Name suchen'),search=el('input');search.type='search';search.value=itemSearch;search.placeholder='z. B. sword, hpot0, ring';searchLabel.append(search);layout.append(searchLabel);
+ const matches=el('div'),editor=el('div');layout.append(matches,editor);root.append(layout);
+ function drawMatches(){
+   matches.replaceChildren();
+   const q=itemSearch.toLowerCase();const list=ITEM_CATALOG.items.filter(i=>(i.id+' '+i.name+' '+i.type).toLowerCase().includes(q));
+   matches.append(el('p',list.length+' Treffer · Seite '+(itemPage+1)+' / '+Math.max(1,Math.ceil(list.length/30)),'muted'));
+   const buttons=el('div',undefined,'row');
+   for(const item of list.slice(itemPage*30,itemPage*30+30)){
+     const b=el('button',(Object.hasOwn(profile.items,item.id)?'● ':'')+item.id);b.title=item.name;b.style.fontSize='12px';b.onclick=()=>{selectedItem=item.id;drawEditor();};buttons.append(b);
+   }
+   matches.append(buttons);
+   const pages=el('div',undefined,'row');pages.style.marginTop='12px';
+   const prev=el('button','← Zurück'),next=el('button','Weiter →');prev.disabled=itemPage===0;next.disabled=(itemPage+1)*30>=list.length;
+   prev.onclick=()=>{itemPage--;drawMatches();};next.onclick=()=>{itemPage++;drawMatches();};pages.append(prev,next);matches.append(pages);
+ }
+ function drawEditor(){
+   editor.replaceChildren();if(!selectedItem)return;
+   const item=ITEM_CATALOG.items.find(i=>i.id===selectedItem)||{id:selectedItem,name:selectedItem};
+   editor.append(el('h3',item.name+' · '+item.id),el('p','Typ: '+(item.type||'unbekannt')+' · Upgrade: '+(item.upgrade?'ja':'nein')+' · Compound: '+(item.compound?'ja':'nein'),'muted'));
+   editor.append(el('p','Regeln werden je Item von oben nach unten geprüft. „Behalten“ schützt alle passenden Inventarplätze vor späteren Regeln. Andere Aktionen laufen, sobald ihre Voraussetzungen erfüllt sind. Gesperrte Items werden nie verarbeitet.','muted'));
+   for(const role of ['farmer','merchant']){
+     const section=el('section');section.append(el('h3',role==='farmer'?'Farmer handhaben dieses Item so':'Merchant handhabt dieses Item so'));
+     const entries=profile.items[selectedItem]?.[role]||[];
+     if(!entries.length)section.append(el('p','Keine Regeln: dieses Item bleibt unangetastet.','muted'));
+     entries.forEach((r,index)=>{
+       const path='items.'+selectedItem+'.'+role+'.'+index,box=el('div',undefined,'entry'),grid=el('div',undefined,'grid');
+       field(grid,path+'.enabled','Regel aktiv','checkbox');
+       const label=el('label','Aktion'),select=el('select');
+       const actions={keep:'Behalten / schützen',buy:'Beim NPC kaufen',sell:'An NPC verkaufen',send:'An Charakter senden',bank:'In Bank einlagern',list:'Im Stand anbieten',equip:'Ausrüsten',upgrade:'Upgraden',compound:'Compounden'};
+       for(const [key,title] of Object.entries(actions)){const o=el('option',title);o.value=key;o.selected=r.action===key;if((key==='upgrade'&&!item.upgrade)||(key==='compound'&&!item.compound))o.disabled=true;select.append(o);}
+       select.onchange=()=>{r.action=select.value;drawEditor();refresh();};label.append(select);grid.append(label);
+       field(grid,path+'.minLevel','Ab Level','number');field(grid,path+'.maxLevel','Bis Level (inkl.)','number');
+       if(r.action!=='keep'){field(grid,path+'.keep','Mindestbestand behalten','number');field(grid,path+'.batch','Max. Menge je Aktion','number');}
+       if(r.action==='buy')field(grid,path+'.targetCount','Zielbestand','number');
+       if(r.action==='send')field(grid,path+'.recipient','Empfänger (exakter Name)');
+       if(r.action==='bank')field(grid,path+'.pack','Bankfach (leer = automatisch)');
+       if(r.action==='list'){field(grid,path+'.slot','Stand-Slot (trade1–16)');field(grid,path+'.price','Goldpreis pro Stück','number');field(grid,path+'.quantity','Angebotsmenge','number');}
+       if(['upgrade','compound'].includes(r.action))field(grid,path+'.toLevel','Verbessern bis Level','number');
+       if(r.action==='equip')field(grid,path+'.equipSlot','Slot, z. B. mainhand oder ring1');
+       box.append(grid);
+       const filters=el('details'),summary=el('summary','Spezielle Eigenschaften filtern');filters.append(summary);
+       groupFields(filters,[[path+'.allowSpecial','Items mit Stats/Titel/Eigenschaft einschließen','checkbox'],[path+'.statType','Stat-Typ, z. B. int (leer = alle)'],[path+'.property','Eigenschaft p (leer = alle)'],[path+'.title','Titel (leer = alle)']]);box.append(filters);
+       const help={keep:'Schützt passende Inventarplätze vor späteren Regeln für dasselbe Item.',buy:'Nur Goldkäufe. Goldreserve unter Merchant beachten. NPC muss erreichbar sein.',sell:'Nur passender Levelbereich. Bei gestapelten Items bleibt der Mindestbestand erhalten.',send:'Empfänger muss sichtbar und in Reichweite sein. Es wird keine Reise ausgelöst.',bank:'Nur wenn der Charakter bereits an einer Bank ist. Bei Bedarf werden Stapel geteilt.',list:'Stand muss offen und Slot frei sein. Bestehende Angebote bleiben unverändert.',equip:'Bevorzugt das höchste passende Level. Gesperrte ausgerüstete Items werden nicht ersetzt.',upgrade:'Verbraucht passende vorhandene Schriftrollen. Fehlschläge können das Item zerstören.',compound:'Benötigt drei passende Items desselben Levels und eine Schriftrolle. Fehlschläge können alle drei Items zerstören.'};
+       box.append(el('p',help[r.action],'muted'));
+       const buttons=el('div',undefined,'row');
+       const up=el('button','↑'),down=el('button','↓'),del=el('button','Entfernen');up.title='Regel nach oben';down.title='Regel nach unten';up.disabled=index===0;down.disabled=index===entries.length-1;
+       up.onclick=()=>{[entries[index-1],entries[index]]=[entries[index],entries[index-1]];drawEditor();refresh();};down.onclick=()=>{[entries[index+1],entries[index]]=[entries[index],entries[index+1]];drawEditor();refresh();};del.onclick=()=>{entries.splice(index,1);if(!profile.items[selectedItem].farmer.length&&!profile.items[selectedItem].merchant.length)delete profile.items[selectedItem];drawEditor();drawMatches();refresh();};buttons.append(up,down,del);box.append(buttons);section.append(box);
+     });
+     const add=el('button','+ '+(role==='farmer'?'Farmer':'Merchant')+'-Regel');add.onclick=()=>{profile.items[selectedItem]??={farmer:[],merchant:[]};profile.items[selectedItem][role].push(structuredClone(itemRuleDefaults));drawEditor();drawMatches();refresh();};section.append(add);editor.append(section);
+   }
+ }
+ search.oninput=()=>{itemSearch=search.value;itemPage=0;drawMatches();};drawMatches();drawEditor();
+}
+function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=el('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+$('download').onclick=()=>{if(result)download('bot.js',result.code,'text/javascript;charset=utf-8');};
+$('save').onclick=()=>download('bot-profile.json',JSON.stringify(profile,null,2),'application/json');
+$('copy').onclick=async()=>{if(!result)return;try{await navigator.clipboard.writeText(result.code);feedback('JavaScript kopiert.');}catch{currentTab='code';render();$('source').select();feedback('Bitte Strg+C drücken, um den markierten Code zu kopieren.');}};
+$('load').onclick=()=>$('file').click();
+$('file').onchange=async()=>{try{const file=$('file').files[0];if(!file)return;if(file.size>2*1024*1024)throw Error('Profil zu groß.');const next=normalize(JSON.parse(await file.text()));build(next);profile=next;render();feedback('Profil geladen.');}catch(e){feedback('Import fehlgeschlagen: '+e.message);}finally{$('file').value='';}};
+render();
+</script></html>

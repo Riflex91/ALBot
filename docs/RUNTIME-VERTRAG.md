@@ -1,6 +1,6 @@
 # Browser und Headless: verbindlicher Bot-Vertrag
 
-Planungsstand 6. Oktober 2026. Referenz: [Client-Handbuch](../HOW-TO-USE.md), Client 1.2.1, `apiVersion: 1`. Hier beschriebene Bot-Abstraktionen sind geplant, noch nicht implementiert.
+Planungsstand 6. Oktober 2026. Referenz: [Client-Handbuch](../HOW-TO-USE.md), Client 1.2.1, `apiVersion: 1`. Die Spiellaufzeit ist noch nicht implementiert. Die Werkstatt und der [Konfigurations-/Paketvertrag](WORKSHOP-CONTRACT.md) sind bereits implementiert; diese Vorgabe bei der Botentwicklung verwenden.
 
 ## Erkennung und Auslieferung
 

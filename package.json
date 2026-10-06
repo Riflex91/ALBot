@@ -1,0 +1,11 @@
+{
+  "name": "albot-workshop",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "build:editor": "node editor/build.mjs",
+    "test:editor": "node --test editor/test/*.test.mjs"
+  },
+  "engines": {"node": ">=22.9"}
+}

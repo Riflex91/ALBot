@@ -1,0 +1,15 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {DESCRIPTOR} from './lib/schema.mjs';
+import {checkDescriptor,defaultsFor,envelope} from './lib/contract.mjs';
+const dir=fileURLToPath(new URL('./',import.meta.url));
+checkDescriptor(DESCRIPTOR);
+const [shell,contract,app,catalog]=await Promise.all(['shell.html','lib/contract.mjs','app.js','item-catalog.json'].map(p=>readFile(dir+p,'utf8')));
+const safe=s=>s.replace(/<\/script/gi,'<\\/script');
+const actions=DESCRIPTOR.schema.properties.items.items.properties.action['x-labels'];
+const data='const INITIAL_DESCRIPTOR='+JSON.stringify(DESCRIPTOR).replace(/</g,'\\u003c')+';\nconst DESCRIPTOR=INITIAL_DESCRIPTOR;\nconst INITIAL_CATALOG='+catalog.replace(/</g,'\\u003c')+';\nconst ACTIONS='+JSON.stringify(actions)+';';
+const html=shell.replace('/*__CONTRACT__*/',()=>safe(contract.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,''))).replace('/*__DATA__*/',()=>data).replace('/*__APP__*/',()=>safe(app));
+await writeFile(dir+'Bot-Werkstatt.html',html);
+await writeFile(dir+'albot.settings.json',JSON.stringify(DESCRIPTOR,null,2)+'\n');
+await writeFile(dir+'example-profile.json',JSON.stringify(envelope(DESCRIPTOR,defaultsFor(DESCRIPTOR.schema)),null,2)+'\n');
+console.log('Standalone-Werkstatt, Schema und Beispielprofil erstellt.');

@@ -2,7 +2,9 @@
 
 Ein gemeinsamer Adventure-Land-Bot für Browser-CODE und den vorhandenen Node.js-Headless-Client. Ziel: die Spielfunktionen aus ALFinal sowie v3, v4 und v5 zusammenführen, einschließlich Farmer, Merchant, Item-Regeln, Gruppenplanung und Produktion.
 
-**Stand 6. Oktober 2026: Analyse und Entwicklungsplanung. Der neue Bot ist noch nicht implementiert.**
+**Stand 6. Oktober 2026: Die Bot-Werkstatt 2.0 und ihr vollständiger Konfigurationsvertrag sind implementiert. Die neue Spiel-Laufzeit ist noch nicht implementiert.**
+
+Die [Bot-Werkstatt](editor/Bot-Werkstatt.html) als Datei herunterladen und lokal im Browser öffnen. Sie konfiguriert den vollständigen geplanten Bot und kann später fertige Bot-Pakete samt neuen Einstellungsschemata laden. [Anleitung](editor/README.md) · [verbindlicher Integrationsvertrag](docs/WORKSHOP-CONTRACT.md).
 
 ## Einstieg
 

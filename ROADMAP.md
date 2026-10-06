@@ -1,6 +1,8 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 
-Stand: 6. Oktober 2026. **Planung fertig, Implementierung noch nicht begonnen.**
+Stand: 6. Oktober 2026. **Planung und Werkstatt 2.0 fertig; Spiellaufzeit noch nicht implementiert.**
+
+Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Die Runtime-Anbindung folgt mit den Spielmodulen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 
 ## 1. Ziel und feste Entscheidungen
 
@@ -47,7 +49,7 @@ Voraussetzung: späterer Auftrag zur Implementierung. Umfang: ein kompakter vert
 - [ ] Browser-/Headless-Erkennung und Runtime-Ports gemäß [RUNTIME-VERTRAG.md](docs/RUNTIME-VERTRAG.md).
 - [ ] Zentraler Scheduler, instanzlokaler Start/Stop, Bereinigung, Pause/STOP und Generationsprüfung für verspätete Antworten.
 - [ ] Eine Aktionsausführung für Spielbefehle; aktuelle Zustandsprüfung, Ressourcenbesitz, begrenzte Warteschlangen.
-- [ ] Gemeinsames Regelschema für Charaktere, Farmziele, Skills, Merchant und jedes Item; Import/Export und verständliche Validierung.
+- [x] Gemeinsames Regelschema für Charaktere, Farmziele, Skills, Merchant und jedes Item; Import/Export und verständliche Validierung in der Werkstatt. Runtime-Konsum bleibt offen.
 - [ ] Teamtransport mit lokaler Headless-IPC, Browser-CM, vertrauenswürdigem Roster, kurzen Statusmeldungen, Auftrags-ID und Bestätigung.
 - [ ] Persistenz kleiner Konfigurationen und offener Aufträge; keine atomaren Storage-Locks voraussetzen.
 
@@ -69,9 +71,9 @@ Fertig, wenn normales Farmen und Teamkommunikation in beiden Umgebungen funktion
 
 ### P3 — Merchant, alle Item-Regeln und lokale Oberfläche
 
-- [ ] Lokalen Editor mit Katalog aus den verfügbaren Spieldaten bauen; jedes Item einzeln suchbar, globale Vorgaben, Rollen- und Charakterausnahmen, Kopieren/Mehrfachbearbeitung.
+- [x] Lokalen Editor mit Katalog aus den verfügbaren Spieldaten bauen; jedes Item einzeln suchbar, Rollen- und Charakterausnahmen, Kopieren/Mehrfachbearbeitung und erweiterbare Schema-Vorgaben.
 - [ ] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen.
-- [ ] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“. Regelvorschau ist eine normale Editorfunktion, kein Shadow-Testlauf.
+- [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Auswahl ist noch in die Spiellaufzeit einzubinden. Die Vorschau ist kein Shadow-Testlauf.
 - [ ] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze.
 - [ ] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget.
 - [ ] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty.

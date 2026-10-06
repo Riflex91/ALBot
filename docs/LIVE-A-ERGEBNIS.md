@@ -1,0 +1,26 @@
+# Teamlauf vom 6. Oktober 2026
+
+**Nicht bestanden.** Vier Browserberichte von Bot 0.1.1-live-a, etwa 20:49–20:51 Uhr Europe/Berlin. Kein Headless-Nachweis. Die Dateien enthalten jeweils die letzten 256 Ereignisse; ältere Einträge wurden begrenzt verworfen. Aussagen über Aktionen beziehen sich deshalb auf den erhaltenen Ausschnitt.
+
+| Charakterrolle | Laufzeit ungefähr | CM-Speicherfehler im erhaltenen Ausschnitt | Erhaltene Aktionsanfänge |
+|---|---:|---:|---|
+| Ranger 1 / Leader | 99 Sekunden | 141 | 47 × loot |
+| Ranger 2 | 131 Sekunden | 138 | 48 × loot |
+| Ranger 3 | 134 Sekunden | 136 | 49 × loot |
+| Merchant | 135 Sekunden | 134 | 50 × loot |
+
+Bei allen vier Instanzen scheitert der Checkpoint mit `QuotaExceededError`. Der offizielle Browser-Aufruf `send_cm` verwendet für lokale Charaktere `send_local_cm` und damit localStorage; auch diese Schreibvorgänge scheitern. Ohne frische Statusmeldungen hält die Farmer-Logik bei aktiviertem `waitForTeam` an. Dies passt zu unveränderten Positionen, HP/MP und leeren Zielen in sämtlichen erhaltenen Samples. Der konkrete Wartegrund war im alten Sampleformat nicht enthalten; ab 0.1.2 wird er mitgeschrieben.
+
+Alle Berichte enden geordnet mit `Entladen`, ohne offene Aktionen oder unbekannte Inventarmutation. Das belegt Start, Scheduler, Berichtsexport und geordnetes Ende, aber keinen funktionierenden Teamkampf. Ein zurückgekehrter Loot-Aufruf belegt weder einen Kill noch erhaltene Beute. Lieferung, Fokusziel und funktionierende CM-Zustellung sind nicht nachgewiesen.
+
+Unabhängiger Konfigurationsfehler: Beide Trankregeln verlangen `hpot1`. Im exportierten Merchant-Inventar liegen insgesamt 27.101 `hpot0`, aber keine `hpot1`. Die Lieferung ist damit auch bei freiem Storage nicht möglich. Keine automatische Ersetzung von Item-IDs: Nutzerregeln bleiben maßgeblich.
+
+## Korrektur und gezielte Wiederholung
+
+- Bot 0.1.2 fordert `performance_trick()` beim Laden im Browser automatisch an, auch bei ausgeschaltetem Bot-Autostart und UI. Ein bereits spielender Loop wird nicht doppelt gestartet. Headless überspringt den Aufruf. Pause beendet den Spiel-Audio-Loop nicht. Testberichte enthalten `performanceTrick.state`: `requested` bedeutet Aufruf erfolgt, nicht bewiesene Audiofreigabe. `already-playing` bedeutet, dass die Spiel-Audioinstanz bereits Wiedergabe meldete. Browser-Autoplay kann einmalige Benutzerinteraktion erfordern.
+- Für den nächsten Browserlauf freien Website-Speicher verwenden, beispielsweise ein separates frisches Browserprofil und alle vier Spielseiten darin. Alte Spielseiten vorher ausloggen. Dies erhält den bisherigen Speicher zur späteren gezielten Untersuchung. Keine pauschale Löschung vorhandener CODE-/Botdaten. Falls selbst das frische Profil wieder vollläuft, zuerst den verursachenden Speicherverbrauch untersuchen.
+- Vor dem Lieferteil müssen alle vier Berichte `checkpointMode: persistent` zeigen und die Teamkommunikation funktionieren. `performance_trick` repariert keinen vollen Speicher. Der Bot umgeht fehlende Liefer-Checkpoints weiterhin nicht.
+- Entweder passende `hpot1` bereitstellen oder **beide** Regeln in der Werkstatt bewusst auf `hpot0` ändern. Für eine kleine Lieferung Zielbestand beim Empfänger auf aktuellen Bestand plus 5 und Batch/MaxDelivery auf 5 setzen. Der bestehende persönliche Profilinhalt wurde nicht verändert.
+- Neues Bundle auf allen vier Charakteren laden, Browser-Audio nötigenfalls einmal durch Interaktion freigeben und kurz Teamkampf/Fokusziel sowie genau eine kleine Lieferung beobachten. Vorher-/Nachher-Bestände auf beiden Seiten prüfen und Logs exportieren. Headless-Nachweis separat mit demselben Bundle; kein gleichzeitiger Login desselben Charakters.
+
+Keine Shadow-Tests. P3–P6 bleiben bis zum erfolgreichen Nachweis der betroffenen Live-A-Abläufe offen.

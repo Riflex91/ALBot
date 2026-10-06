@@ -34,3 +34,24 @@ test('whitelisted live target attacks once, foreign target is rejected and pause
  const a=harness();a.root.parent.entities={goo:{id:'goo',type:'monster',mtype:'goo',hp:100,x:10,y:10,target:'Stranger'}};a.load();a.root.ALBot.start();assert.equal(a.calls.filter(x=>x[0]==='attack').length,0);a.root.ALBot.pause();assert.equal(a.timers.size,0);
  a.root.parent.entities.goo.target=null;a.root.ALBot.start();assert.equal(a.calls.filter(x=>x[0]==='attack').length,1);a.root.ALBot.stop();assert.equal(a.timers.size,0);assert.equal(a.root.ALBot.status().pending,0);
 });
+
+test('browser always requests performance trick, reuses playing audio and headless never calls it',()=>{
+ const a=harness();delete a.root.parent.headless;delete a.root.parent.caracAL;let calls=0;
+ a.root.performance_trick=()=>{calls++;};a.load();assert.equal(calls,1);
+ assert.equal(a.root.ALBot.status().running,false);
+ assert.equal(JSON.parse(a.root.ALBot.testReport()).performanceTrick.state,'requested');
+ a.root.parent.sounds={empty:{playing:()=>true}};a.load();assert.equal(calls,1);
+ assert.equal(JSON.parse(a.root.ALBot.testReport()).performanceTrick.state,'already-playing');
+ a.root.parent.sounds.empty.playing=()=>false;a.load();assert.equal(calls,2);a.root.ALBot.dispose();
+ const b=harness();b.root.performance_trick=()=>{throw Error('must not call');};b.load();
+ assert.equal(JSON.parse(b.root.ALBot.testReport()).performanceTrick.state,'headless-skipped');b.root.ALBot.dispose();
+});
+
+test('unavailable or failing browser performance trick is diagnosed without preventing start',()=>{
+ for(const throws of [false,true]){
+  const a=harness();delete a.root.parent.headless;delete a.root.parent.caracAL;
+  if(throws)a.root.performance_trick=()=>{throw Error('audio blocked');};a.load();
+  const report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.performanceTrick.state,'failed');
+  assert.equal(report.incidents[0].where,'performance_trick');assert.equal(a.root.ALBot.start(),true);a.root.ALBot.dispose();
+ }
+});

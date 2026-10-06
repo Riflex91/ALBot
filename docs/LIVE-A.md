@@ -1,4 +1,4 @@
-# Erster Live-Test: ALBot 0.1.0-live-a
+# Live-Test A: ALBot 0.1.2-live-a
 
 **Bereitgestellter Testkandidat, noch kein bestandener Live-Test.** Ziel sind P1 und P2 der Roadmap: derselbe Bot im Browser und im bestehenden Headless-Client, einfaches Farmen, Gruppe und eine kleine Lieferung. Kein neuer Login wurde bei der Entwicklung ausgeführt. Keine Shadow-Betriebsart.
 
@@ -73,3 +73,7 @@ Während Live A wird ein begrenztes Testprotokoll im Arbeitsspeicher geführt: V
 **Headless:** Mit Client 1.2.2 entsteht automatisch `test-logs/<Charakter>/test-ausgeführtertest.json` relativ zum Clientordner. Aktualisierung spätestens alle zehn Sekunden während des laufenden Bots, zusätzlich beim geordneten Anhalten/Fehler. Pro Charakter wird genau diese Datei atomar ersetzt, höchstens 1 MiB. Vor einem neuen Test die benötigte alte Datei sichern. Client nach dem Update vollständig neu starten; ein alter laufender Prozess hat die neue API noch nicht geladen. Mit älteren Clients liefert `ALBot.testReport()` weiterhin den Text, aber keine automatische Datei.
 
 **Reparatur des gemeldeten QuotaExceededError:** Die optionale komplette Konfigurationskopie wird nicht mehr gespeichert. Nur deren eigener veralteter Schlüssel wird entfernt; fremde Schlüssel bleiben unberührt. Ein kleiner Checkpoint reserviert festen Platz. Reicht der Speicher trotzdem nicht, werden Trank-/Skillverbräuche im RAM anhand frischer Mengen abgeglichen und nie aus einem alten Auftrag erneut abgespielt. Lieferungen benötigen weiterhin einen schreibbaren Checkpoint und bleiben sonst gesperrt. Bereits vorhandene ungeklärte Vorgänge werden nicht gelöscht oder automatisch bestätigt. Der Bericht nennt `checkpointMode` und den Speicherfehler. Das Testlog verwendet kein localStorage.
+
+## Browser-Teamlauf ausgewertet
+
+Der erste Teamlauf ist noch nicht bestanden: [Ergebnis und gezielte Wiederholung](LIVE-A-ERGEBNIS.md). Ab 0.1.2 wird performance_trick() beim Laden im Browser automatisch angefordert; Headless überspringt den Aufruf. Der Bericht enthält den Aufrufstatus sowie den Botgrund bei jedem Sample. Freier localStorage ist weiterhin für Browser-CM und Liefer-Checkpoints erforderlich.

@@ -20,3 +20,4 @@ Vor einer Änderung README.md, ROADMAP.md, HOW-TO-USE.md, docs/RUNTIME-VERTRAG.m
 - Nach jeder Etappe ROADMAP-Status, tatsächlich geprüfte Ergebnisse und verbleibende Punkte knapp aktualisieren. Keine neue Bürokratie pro Feature und keine erfundenen Live-Ergebnisse.
 
 - Der Folgeauftrag erlaubt ein begrenztes Testprotokoll. Kein vollständiges Log-/Telemetriesystem: 256 Ereignisse, 24 Fehler, periodische kleine Snapshots; keine Zugangsdaten oder rohen Spiel-/Socketobjekte. Logs nicht im Browser-localStorage ablegen.
+- Browserbetrieb fordert immer `performance_trick()` an, unabhängig von UI/Autostart; bereits spielenden Loop wiederverwenden. Headless niemals aufrufen. Der erste Teamlauf ist wegen voller Browser-Speicherung nicht bestanden: docs/LIVE-A-ERGEBNIS.md beachten.

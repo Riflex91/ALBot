@@ -1,6 +1,6 @@
-// ALBot 0.1.1-live-a | Einstellungen + Runtime
+// ALBot 0.1.2-live-a | Einstellungen + Runtime
 globalThis.ALBotConfig=(function unpack(t,v){if(!t)return v;if(Object.prototype.hasOwnProperty.call(t,'item'))return v.map(x=>unpack(t.item,x));return Object.fromEntries(t.keys.flatMap((k,i)=>v[0].includes(i)?[]:[[k,unpack(t.children[i],v[1][i])]]));})({"keys":["general","farming","party","merchant","characters","skills","items"],"children":[{"keys":["name","autostart","environment","combatTickMs","economyTickMs","planningTickMs","transport","allowRemoteCM","maxPending","messageTtlMs","ui","pauseOnUnknown"],"children":[null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","targets","autoTravel","loot","lootEveryMs","freeSlots","hpBelow","mpBelow","restBelow","resumeAbove","potions","respawn","respawnDelayMs","maxDeaths","deathWindowMs","kiting","rangeBuffer","maxAggro","avoidOthers"],"children":[null,{"item":null},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","group","leader","merchant","maxFarmers","followDistance","focusFire","waitForTeam","healing","energize","buffs","revive","aoe","aoeMaxTargets"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","pickup","supply","maxDelivery","minFreeSlots"],"children":[null,null,null,null,null]},{"item":{"keys":["name","enabled","class","role","group","region","server","farmTargets"],"children":[null,null,null,null,null,null,null,{"item":null}]}},{"item":{"keys":["name","enabled","skill","class","character","priority","target","minMp","maxTargets","everyMs","conditions"],"children":[null,null,null,null,null,null,null,null,null,null,{"item":{"keys":["field","operator","value","item"],"children":[null,null,null,null]}}]}},{"item":{"keys":["name","enabled","priority","item","role","character","minLevel","maxLevel","statType","property","title","map","server","task","action","keep","targetCount","maxCount","batch","recipient","teamReserve","ttlMs"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]}}]},[[],[[[],["Mein Super-Bot",false,"auto",250,2000,10000,"auto",false,32,10000,true,true]],[[],[true,["goo"],true,true,1000,3,0.75,0.5,0.4,0.85,true,true,15000,3,600000,true,15,2,true]],[[],[true,"team1","Farmer1","",3,180,true,false,true,true,true,true,false,3]],[[],[true,true,true,100,4]],[[[],["Farmer1",true,"ranger","farmer","team1","EU","II",[]]]],[],[]]]);
-/* ALBot 0.1.1-live-a · first live test pending */
+/* ALBot 0.1.2-live-a · first live test pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -11,7 +11,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.1.1-live-a';
+const VERSION='0.1.2-live-a';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -358,7 +358,7 @@ function createTestReport(p,version){
   }
   return {event,text,document,setProvider:f=>provider=f,
     error(where,e){event('error',{where,name:e?.name,message:e?.message??e?.reason??e,stack:e?.stack});},
-    sample(){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{map:c?.map,x:c?.real_x??c?.x,y:c?.real_y??c?.y,hp:c?.hp,mp:c?.mp,target:c?.target,rip:!!c?.rip});}if(p.headless&&now-lastSave>=10000){lastSave=now;save();}},
+    sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,map:c?.map,x:c?.real_x??c?.x,y:c?.real_y??c?.y,hp:c?.hp,mp:c?.mp,target:c?.target,rip:!!c?.rip});}if(p.headless&&now-lastSave>=10000){lastSave=now;save();}},
     flush(automatic=false){if(p.headless)return save();if(automatic){if(automaticDownload)return;automaticDownload=true;}return save();}
   };
 }
@@ -691,6 +691,15 @@ function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
   const report=createTestReport(p,VERSION);report.event('boot');
+  const performanceTrick={state:p.headless?'headless-skipped':'pending'};
+  if(!p.headless){
+    try{
+      if(!p.has('performance_trick'))throw Error('Spiel-API performance_trick fehlt');
+      if(p.parent.sounds?.empty?.playing?.())performanceTrick.state='already-playing';
+      else{p.call('performance_trick');performanceTrick.state='requested';}
+      report.event('browser.performance',performanceTrick);
+    }catch(e){performanceTrick.state='failed';report.error('performance_trick',e);p.log('performance_trick: '+e.message);}
+  }
   const failed=(state,reason)=>{report.error(state,reason);root.ALBot={version:VERSION,status:()=>({state,reason}),testReport:()=>report.text(),exportTestReport:()=>report.flush()};report.flush(true);};
   function validate(value){
     const errors=validateSchema(LIVE_DESCRIPTOR.schema,value);if(errors.length)return errors;
@@ -746,7 +755,7 @@ function install(root){
     bot.farmer.tick();
     if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
     publish();
-    report.sample();
+    report.sample({reason:bot.reason,running:bot.running});
   }catch(e){report.error('tick',e);bot.pause('Fehler: '+(e.message??e));bot.report(bot.reason);}finally{if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}
   const api={version:VERSION,schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
@@ -765,7 +774,7 @@ function install(root){
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));
-  report.setProvider(()=>({status:api.status(),checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
+  report.setProvider(()=>({status:api.status(),performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
   if(!checkpoint.durable)bot.report('Speicher voll: Verbrauch wird im RAM abgeglichen; Lieferungen bleiben gesperrt. Testlog ohne localStorage.');
   p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · Live A noch ausstehend');publish();if(cfg.general.autostart)api.start();return api;
 }

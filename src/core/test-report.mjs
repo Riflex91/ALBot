@@ -19,7 +19,7 @@ export function createTestReport(p,version){
   }
   return {event,text,document,setProvider:f=>provider=f,
     error(where,e){event('error',{where,name:e?.name,message:e?.message??e?.reason??e,stack:e?.stack});},
-    sample(){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{map:c?.map,x:c?.real_x??c?.x,y:c?.real_y??c?.y,hp:c?.hp,mp:c?.mp,target:c?.target,rip:!!c?.rip});}if(p.headless&&now-lastSave>=10000){lastSave=now;save();}},
+    sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,map:c?.map,x:c?.real_x??c?.x,y:c?.real_y??c?.y,hp:c?.hp,mp:c?.mp,target:c?.target,rip:!!c?.rip});}if(p.headless&&now-lastSave>=10000){lastSave=now;save();}},
     flush(automatic=false){if(p.headless)return save();if(automatic){if(automaticDownload)return;automaticDownload=true;}return save();}
   };
 }

@@ -17,6 +17,15 @@ export function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
   const report=createTestReport(p,VERSION);report.event('boot');
+  const performanceTrick={state:p.headless?'headless-skipped':'pending'};
+  if(!p.headless){
+    try{
+      if(!p.has('performance_trick'))throw Error('Spiel-API performance_trick fehlt');
+      if(p.parent.sounds?.empty?.playing?.())performanceTrick.state='already-playing';
+      else{p.call('performance_trick');performanceTrick.state='requested';}
+      report.event('browser.performance',performanceTrick);
+    }catch(e){performanceTrick.state='failed';report.error('performance_trick',e);p.log('performance_trick: '+e.message);}
+  }
   const failed=(state,reason)=>{report.error(state,reason);root.ALBot={version:VERSION,status:()=>({state,reason}),testReport:()=>report.text(),exportTestReport:()=>report.flush()};report.flush(true);};
   function validate(value){
     const errors=validateSchema(LIVE_DESCRIPTOR.schema,value);if(errors.length)return errors;
@@ -72,7 +81,7 @@ export function install(root){
     bot.farmer.tick();
     if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
     publish();
-    report.sample();
+    report.sample({reason:bot.reason,running:bot.running});
   }catch(e){report.error('tick',e);bot.pause('Fehler: '+(e.message??e));bot.report(bot.reason);}finally{if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}
   const api={version:VERSION,schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
@@ -91,7 +100,7 @@ export function install(root){
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));
-  report.setProvider(()=>({status:api.status(),checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
+  report.setProvider(()=>({status:api.status(),performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
   if(!checkpoint.durable)bot.report('Speicher voll: Verbrauch wird im RAM abgeglichen; Lieferungen bleiben gesperrt. Testlog ohne localStorage.');
   p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · Live A noch ausstehend');publish();if(cfg.general.autostart)api.start();return api;
 }

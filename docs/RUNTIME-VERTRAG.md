@@ -25,7 +25,7 @@ Unbekannte Headless-API: verständlicher Hinweis und nur ausdrücklich verfügba
 | UI / visuelles Prüfen | Kein Ingame-DOM-Panel; Client-Dashboard bleibt zuständig für Laufzeitwerte | Optionales Ingame-Panel und Spielgrafik |
 | Regelbearbeitung ohne Spiel | Lokaler Konfigurationseditor erzeugt Bundle/JSON | Derselbe Editor; Import/Export identisch |
 | Meldungen | Kurzes `game_log`/`console`, Client übernimmt Ausgabe | Kurzes `game_log` |
-| Audio-/Sichtbarkeitstricks | Nicht aufrufen | `performance_trick` nur optional, wenn tatsächlich vorhanden |
+| Audio-/Sichtbarkeitstricks | Nicht aufrufen | `performance_trick` beim Laden immer automatisch anfordern; laufenden Loop wiederverwenden, fehlende API/Fehler melden. Browser-Autoplayfreigabe kann Benutzerinteraktion benötigen. |
 | Skriptbibliotheken | Explizite Client-`libraries` oder dokumentiertes `caracAL.load_scripts` | Cloud-`load_code` |
 
 Der Standardbuild ist vollständig und braucht diese Bibliothekspfade nicht. Weder Client noch Bot müssen für jede Spielfunktion eigene APIs erfinden.

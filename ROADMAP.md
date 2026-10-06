@@ -1,6 +1,6 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 
-Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.0-live-a implementiert; echter Live-Test A noch ausstehend.**
+Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.2-live-a implementiert. Erster Browser-Teamlauf wegen voller Speicherung nicht bestanden; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md). Headless-Nachweis noch offen.**
 
 Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Der Teilrelease konsumiert bereits das reduzierte Schema albot.live-a/v1; die übrigen Spielmodule folgen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 

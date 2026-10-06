@@ -17,3 +17,11 @@ test('report is bounded, retains incidents and writes through the optional host 
  const log=createTestReport(p,'test');log.error('quota',new Error('QuotaExceededError token=secret US_abcdef'));for(let n=0;n<1000;n++)log.event('action.start',{n});
  const d=log.document();assert.equal(d.events.length,256);assert.equal(d.incidents.length,1);assert.equal(d.dropped,745);assert.ok(!log.text().includes('secret'));assert.ok(!log.text().includes('US_abcdef'));assert.equal(log.flush(),'test-ausgeführtertest.json');assert.equal(JSON.parse(file).counts['action.start'],1000);
 });
+
+test('report keeps aggregate action and transient diagnostics beyond the event ring',()=>{
+ const p={headless:false,c:{name:'A'},G:{version:17478},realm:()=> 'EUII',log(){}};
+ const log=createTestReport(p,'test');
+ log.event('action.start',{key:'attack'});log.event('action.transient',{key:'attack',reason:'not_there'});log.event('action.end',{key:'attack',result:'returned'});
+ for(let n=0;n<400;n++)log.event('sample',{n});
+ const d=log.document();assert.equal(d.events.length,256);assert.equal(d.actionStats.attack.started,1);assert.equal(d.actionStats.attack.ended,1);assert.equal(d.actionStats.attack.results.returned,1);assert.equal(d.actionStats.attack.transient,1);assert.equal(d.actionStats.attack.transientReasons.not_there,1);
+});

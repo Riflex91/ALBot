@@ -55,3 +55,10 @@ test('unavailable or failing browser performance trick is diagnosed without prev
   assert.equal(report.incidents[0].where,'performance_trick');assert.equal(a.root.ALBot.start(),true);a.root.ALBot.dispose();
  }
 });
+
+test('expected attack and loot races are transient diagnostics, not hard incidents',async()=>{
+ const a=harness();a.cfg.farming.loot=true;a.root.parent.entities={goo:{id:'goo',type:'monster',mtype:'goo',hp:100,x:10,y:10,target:null}};
+ a.root.attack=()=>Promise.reject(new Error('not_there'));a.root.loot=()=>Promise.reject(new Error('openning'));
+ a.load();a.root.ALBot.start();await Promise.resolve();await Promise.resolve();
+ const report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.actionStats.attack.transient,1);assert.equal(report.actionStats.attack.transientReasons.not_there,1);assert.equal(report.actionStats.loot.transient,1);assert.equal(report.actionStats.loot.transientReasons.openning,1);assert.equal(report.incidents.some(x=>x.where==='attack'||x.where==='loot'),false);assert.equal(a.root.ALBot.status().target,null);a.root.ALBot.dispose();
+});

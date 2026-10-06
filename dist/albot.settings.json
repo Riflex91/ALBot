@@ -699,6 +699,7 @@
                     "maxLength": 160,
                     "enum": [
                       "hpRatio",
+                      "targetHpRatio",
                       "mpRatio",
                       "freeSlots",
                       "gold",
@@ -709,7 +710,7 @@
                       "task"
                     ],
                     "x-labels": {
-                      "hpRatio": "HP-Anteil",
+                      "hpRatio": "Eigener HP-Anteil",
                       "mpRatio": "MP-Anteil",
                       "freeSlots": "Freie Slots",
                       "gold": "Gold",
@@ -717,7 +718,8 @@
                       "itemCount": "Item-Menge",
                       "map": "Karte",
                       "rip": "Tot",
-                      "task": "Aktivität"
+                      "task": "Aktivität",
+                      "targetHpRatio": "Ziel-HP-Anteil"
                     }
                   },
                   "operator": {

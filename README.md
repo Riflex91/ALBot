@@ -2,7 +2,7 @@
 
 Ein gemeinsamer Adventure-Land-Bot für Browser-CODE und den vorhandenen Node.js-Headless-Client. Ziel: die Spielfunktionen aus ALFinal sowie v3, v4 und v5 zusammenführen, einschließlich Farmer, Merchant, Item-Regeln, Gruppenplanung und Produktion.
 
-**Stand 6. Oktober 2026: Werkstatt 2.0 und Testkandidat `0.1.2-live-a` sind implementiert. Der erste Browser-Teamtest ist nicht bestanden; [Auswertung und nächste Schritte](docs/LIVE-A-ERGEBNIS.md).**
+**Stand 6. Oktober 2026: Werkstatt 2.0 und Testkandidat `0.1.3-live-a` sind implementiert. Der zweite Browser-Teamtest bestätigt persistenten Checkpoint und laufenden Teamkampf; die dabei gefundenen Demand-/Combat-Races sind im neuen Kandidaten korrigiert und müssen live erneut geprüft werden. Headless-Nachweis bleibt offen; [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
 
 Zum Testen: [Live-A-Anleitung](docs/LIVE-A.md), [Bot-Paket für die Werkstatt](dist/albot.package.json), [Solo-Profil](profiles/live-a-solo.json), [Team-Profil](profiles/live-a-team.json). `dist/albot.js` ist ein vollständiges Bundle mit Platzhaltern und ausgeschaltetem Autostart. Eigene Namen über die Werkstatt einsetzen. Die exakt gleiche exportierte Datei läuft in Browser-CODE und Headless.
 

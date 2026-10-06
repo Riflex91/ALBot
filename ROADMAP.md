@@ -1,6 +1,6 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 
-Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.2-live-a implementiert. Erster Browser-Teamlauf wegen voller Speicherung nicht bestanden; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md). Headless-Nachweis noch offen.**
+Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.3-live-a implementiert. Der zweite Browser-Teamlauf bestätigt persistenten Checkpoint und aktiven Teamkampf; Demand-aware Lieferung sowie bekannte `attack:not_there`-/`loot:openning`-Races sind im neuen Kandidaten korrigiert. Live-Wiederholung und Headless-Nachweis bleiben offen; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
 
 Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Der Teilrelease konsumiert bereits das reduzierte Schema albot.live-a/v1; die übrigen Spielmodule folgen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 
@@ -168,3 +168,7 @@ Testkandidat und Ablauf: [docs/LIVE-A.md](docs/LIVE-A.md). Build, Syntax, Paket-
 ### Live-A-Korrektur 0.1.1 (6. Oktober 2026)
 
 Vom Nutzer gelieferte Screenshots belegen Browser-Goo-Kills und danach QuotaExceededError beim optionalen Konfigurationscache und Checkpoint. Test A ist damit begonnen, aber nicht bestanden. Repariert: keine komplette Configkopie mehr im Browserstorage, eigener kleiner Checkpoint mit Platzreserve, bei vollem Storage RAM-Abgleich für frische Verbräuche und weiterhin gesperrte Lieferungen. Keine fremden Speicherschlüssel gelöscht. Begrenzter Testbericht mit Browserdownload und optionaler Dateiausgabe durch Client 1.2.2; Anleitung in LIVE-A.md. 25 Bot-/Werkstatt-Tests und 30 Clienttests bestanden, darunter der konkrete Quota-Fall. Erneuter Browser-Lauf und Headless-Lauf stehen aus.
+
+### Live-A-Korrektur 0.1.3 (6. Oktober 2026)
+
+Der zweite Browser-Teamtest mit `0.1.2-live-a` hat den früheren Storage-/CM-Blocker beseitigt: alle vier Berichte verwenden einen persistenten Checkpoint und alle drei Ranger kämpfen gegen `goo`. Gefunden wurden stattdessen zwei konkrete Laufzeitgrenzen. Erstens konnte ein nicht benötigtes erstes Supply-Item weitere benötigte Items für denselben Empfänger bis zum Timeout verdrängen. `0.1.3-live-a` bindet Angebote deshalb an den frischen gemeldeten Empfängerbedarf, begrenzt die Menge auf `need` und führt Item-spezifische Angebots-Cooldowns. Zweitens werden die bekannten Adventure-Land-Races `attack:not_there` und `loot:openning` als transiente Zustände behandelt und aggregiert berichtet, während unbekannte Fehler weiterhin Incidents bleiben. Skillbedingungen unterscheiden nun explizit den eigenen `hpRatio` vom `targetHpRatio` des aktuellen Gegners. Testberichte enthalten dauerhafte `actionStats` und Logistikzähler. Gezielt geprüft wurden Syntax des zusammengesetzten Runtime-Bundles, Demand-Supply und die beiden transienten Fehlerpfade; echter Wiederholungslauf und Headless bleiben ausstehend.

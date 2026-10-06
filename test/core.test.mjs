@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Executor} from '../src/core/executor.mjs';
 import {createPorts} from '../src/runtime/ports.mjs';
-import {arrived,validMessage,transferable,fingerprint,chooseRule} from '../src/core/policy.mjs';
+import {arrived,validMessage,transferable,fingerprint,chooseRule,matches} from '../src/core/policy.mjs';
 import {defaultsFor,ruleRank} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
 
@@ -39,4 +39,12 @@ test('item identity, aggregate reserves and editor priority agree',()=>{
  const items=[{name:'hpot1',q:70},{name:'hpot1',q:40}];assert.equal(transferable(items,0,rule),20);
  assert.equal(transferable([{...items[0],l:'l'}],0,rule),0);assert.notEqual(fingerprint(items[0]),fingerprint({...items[0],level:1}));
  const specific={...rule,character:'A',priority:-5};assert.ok(ruleRank(specific)>ruleRank(rule));assert.equal(chooseRule([rule,specific],items[0],{character:'A',role:'farmer'}),specific);
+});
+
+test('skill conditions distinguish self HP from current target HP',()=>{
+ const fields=LIVE_DESCRIPTOR.schema.properties.skills.items.properties.conditions.items.properties.field.enum;
+ assert.ok(fields.includes('targetHpRatio'));
+ const condition=[{field:'targetHpRatio',operator:'lt',value:'0.5',item:''}];
+ assert.equal(matches(condition,{targetHpRatio:.4,count:()=>0}),true);
+ assert.equal(matches(condition,{hpRatio:.4,count:()=>0}),false);
 });

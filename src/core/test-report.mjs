@@ -1,13 +1,14 @@
 export function createTestReport(p,version){
-  const events=[],incidents=[],counts={};let dropped=0,lastSample=0,lastSave=0,automaticDownload=false,provider=()=>({}),lastWriteError='';
+  const events=[],incidents=[],counts={},actionStats={};let dropped=0,lastSample=0,lastSave=0,automaticDownload=false,provider=()=>({}),lastWriteError='';
   const clean=value=>String(value??'').replace(/\b(?:US|CH)_[A-Za-z0-9]+\b/g,'[redacted]').replace(/((?:token|password|authorization|user_auth)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]').slice(0,1800);
   const started=new Date().toISOString();
   function event(type,data={}){
     counts[type]=(counts[type]??0)+1;
+    if(type==='action.start'||type==='action.end'||type==='action.transient'){const key=clean(data.key||'unknown').slice(0,120),a=actionStats[key]??(actionStats[key]={started:0,ended:0,results:{},transient:0,transientReasons:{}});if(type==='action.start')a.started++;else if(type==='action.end'){a.ended++;const result=clean(data.result||'unknown').slice(0,80);a.results[result]=(a.results[result]??0)+1;}else{a.transient++;const reason=clean(data.reason||'unknown').slice(0,120);a.transientReasons[reason]=(a.transientReasons[reason]??0)+1;}}
     const safe={};for(const [k,v] of Object.entries(data)){if(/password|token|auth|cookie/i.test(k))continue;safe[k]=typeof v==='number'||typeof v==='boolean'||v===null?v:clean(v);}
     const entry={time:new Date().toISOString(),type,...safe};events.push(entry);if(type==='error'){incidents.push(entry);if(incidents.length>24)incidents.shift();}if(events.length>256){events.shift();dropped++;}
   }
-  function document(){const c=p.c;return {format:'albot-test-report',formatVersion:1,test:'Live A',version,started,exported:new Date().toISOString(),environment:p.headless?'headless':'browser',character:c?.name??null,gameVersion:p.G?.version??null,realm:p.realm(),storageError:clean(p.storageError),lastWriteError,counts:{...counts},dropped,...provider(),incidents:[...incidents],events:[...events]};}
+  function document(){const c=p.c;return {format:'albot-test-report',formatVersion:1,test:'Live A',version,started,exported:new Date().toISOString(),environment:p.headless?'headless':'browser',character:c?.name??null,gameVersion:p.G?.version??null,realm:p.realm(),storageError:clean(p.storageError),lastWriteError,counts:{...counts},actionStats:JSON.parse(JSON.stringify(actionStats)),dropped,...provider(),incidents:[...incidents],events:[...events]};}
   function text(){const data=document();let result=JSON.stringify(data,null,2);while(new TextEncoder().encode(result).length>900*1024&&data.events.length){data.events.splice(0,Math.min(32,data.events.length));data.exportTrimmed=true;result=JSON.stringify(data,null,2);}return result;}
   function save(){
     const content=text();

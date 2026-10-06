@@ -1,0 +1,59 @@
+# Browser und Headless: verbindlicher Bot-Vertrag
+
+Planungsstand 6. Oktober 2026. Referenz: [Client-Handbuch](../HOW-TO-USE.md), Client 1.2.1, `apiVersion: 1`. Hier beschriebene Bot-Abstraktionen sind geplant, noch nicht implementiert.
+
+## Erkennung und Auslieferung
+
+Ein klassisches, selbststartendes JS-Bundle mit eingebetteter Benutzerkonfiguration. Build-Werkzeuge dürfen Node/TypeScript verwenden; das ausgelieferte Skript benötigt weder `require`, `import`, `process` noch `Buffer`. Keine Top-Level-Module oder Top-Level-await. Dasselbe Artefakt wird in den Browser-CODE-Slot und als lokale CODE-Datei geladen.
+
+Den sicheren Zugriff auf `parent.headless` kapseln und API-Version/Fähigkeiten prüfen. Unser Client bietet `parent.headless.apiVersion === 1`. Ein `parent.caracAL` ohne dieses Objekt kennzeichnet nur einen anderen CaracAL-kompatiblen Host, nicht automatisch unseren vollständigen IPC-Vertrag. `window`, `document`, `navigator` und `parent` existieren auch in jsdom. Ihre Existenz beweist keinen Browserbetrieb.
+
+Unbekannte Headless-API: verständlicher Hinweis und nur ausdrücklich verfügbare Operationen. Keinen Browser-UI-Modus versehentlich im jsdom aktivieren. Browser und Headless dürfen nicht gleichzeitig denselben Charakter übernehmen.
+
+## Port-Zuordnung
+
+| Bot-Aufgabe | Unser Headless-Client | Browser |
+|---|---|---|
+| Kampf, Loot, Skills, NPC-Handel | Offizielle CODE-Funktionen | Dieselben CODE-Funktionen |
+| Teamnachricht an lokale Geschwister | `parent.headless.send(name, topic, data)` | `send_cm(name, envelope)` |
+| Empfang | `parent.headless.onMessage(handler)`; Rückgabe ist Abmeldefunktion | `on_cm` sauber einhängen und bestehenden Handler erhalten |
+| Nachricht an Charakter außerhalb dieses Supervisors | Expliziter `send_cm`-Pfad, wenn konfiguriert | `send_cm` |
+| Bekannte laufende Charaktere | `get_active_characters()`; ergänzend `parent.caracAL.siblings` | `get_active_characters()` plus Team-Heartbeats |
+| Charakter starten/stoppen | Gemeinsame `start_character`/`stop_character` oder gezielt `caracAL.deploy`/`shutdown` gemäß Handbuch | Offizielle Lifecycle-Funktionen; Browsergrenzen beachten |
+| Realmwechsel | `change_server` über Supervisor | Verfügbare offizielle Funktion; Rückkehr nach Neustart einplanen |
+| Persistente Bot-Regeln/kleine Checkpoints | `set`/`get` über replizierten Storage | `set`/`get`; Browser-Speichergrenzen beachten |
+| UI / visuelles Prüfen | Kein Ingame-DOM-Panel; Client-Dashboard bleibt zuständig für Laufzeitwerte | Optionales Ingame-Panel und Spielgrafik |
+| Regelbearbeitung ohne Spiel | Lokaler Konfigurationseditor erzeugt Bundle/JSON | Derselbe Editor; Import/Export identisch |
+| Meldungen | Kurzes `game_log`/`console`, Client übernimmt Ausgabe | Kurzes `game_log` |
+| Audio-/Sichtbarkeitstricks | Nicht aufrufen | `performance_trick` nur optional, wenn tatsächlich vorhanden |
+| Skriptbibliotheken | Explizite Client-`libraries` oder dokumentiertes `caracAL.load_scripts` | Cloud-`load_code` |
+
+Der Standardbuild ist vollständig und braucht diese Bibliothekspfade nicht. Weder Client noch Bot müssen für jede Spielfunktion eigene APIs erfinden.
+
+## Nachrichten und Zuständigkeiten
+
+Ein gemeinsames Nachrichtenformat: Version, Typ, Absender, Empfänger, Auftrags-ID, Sequenz, Team-/Sitzungsgeneration, Gültigkeitsdauer und begrenzte Nutzdaten. Typen z.B. Status, Materialbedarf, Lieferauftrag, Annahme, Erledigung, Storno, STOP. Absenderidentität immer aus dem Transport übernehmen, nicht aus frei behaupteten Nutzdaten. Maximal 65.536 UTF-8-Bytes beim Headless-Transport; bewusst viel kleinere Statuspakete verwenden.
+
+`headless.send()` meldet, dass der Supervisor Nachrichten angenommen hat. Für Lieferungen braucht es zuerst Auftragsannahme und danach ein beobachtetes Spielergebnis. Doppelte Nachrichten dürfen nicht doppelt handeln. Bei Verbindungsabbruch erst Zustand abgleichen; kein automatisches erneutes `send_item`, `buy`, `upgrade` oder `compound`.
+
+Ein konfigurierter Merchant koordiniert Economy und Bank. Ein separat bestimmter Kampf-Leader koordiniert Ziele. Eine Fallback-Wahl verwendet Generationen und feste Prioritäten; bei unklarer Bankzuständigkeit keine Bankmutation. Browser/Headless-Mischteams sind ein ausdrücklich konfigurierter CM-Fallback-Fall: lokales IPC verbindet keine unterschiedlichen Prozesse auf anderen PCs, Browserfenster oder weitere Supervisoren.
+
+`get_active_characters()` und `siblings` sind kein Beweis für einen gesunden Bot oder gemeinsame Karte/Instanz. Bot-Heartbeat, aktuelle Charakterdaten und Instanz müssen zur konkreten Aktion passen.
+
+## Speicher und Wiederanlauf
+
+Namensraum `albot:<schema>:<character>:<key>`, getrennte eigene Schreibschlüssel. Zentraler Merchant schreibt gemeinsame Auftragsentscheidungen; Farmer veröffentlichen ihre eigenen Zustände. Keine dauerhaft wachsenden Historien.
+
+Der Client schreibt replizierten Storage verzögert auf Disk. `set()` bietet keine dauerhafte Transaktion und keine atomare Sperre. Speichern eines Intents vor einer Aktion garantiert daher keine Exactly-once-Ausführung nach einem Prozessabsturz. Nach Wiederanlauf Inventar, Gold, Equipment, Bank und aktuelle Aufträge neu lesen. Bei unklarem wertveränderndem Vorgang die betroffene Aktion anhalten und melden; normale unabhängige Spielfunktionen können weiterarbeiten.
+
+Ein kleiner offener Auftrags-/Transaktionszustand ist Spielzustand, kein neues Log-System. Keine großen Roh-Snapshots, Telemetriearchive, FTPS-Uploads oder SSD-/Windows-Bridge-Voraussetzung.
+
+## UI, Ressourcen und Stoppen
+
+UI nur im Browser initialisieren. Lokaler Editor bleibt vom read-only Client-Dashboard getrennt; das Dashboard besitzt aktuell keinen Bot-Regel-Schreibkanal. Vorerst Konfiguration exportieren und den Bot mit dieser Konfiguration neu laden. Einen Live-Schreibkanal nicht als bereits vorhanden behaupten.
+
+Ein Scheduler mit schneller Kampfspur und langsamen Economy-/Planungsspuren. Keine vollständige `G`-Serialisierung pro Tick, kein Minimap-Zeichnen im Bot, keine eigene Socket-Verbindung und kein Reconnect-Loop. Große Kataloge aus dem geladenen `G` lesen, kleine Indizes bei Bedarf neu aufbauen.
+
+`on_destroy` zur Bereinigung verwenden. Browser-Hot-Reload ebenfalls explizit behandeln: alte lokale Botinstanz stoppen, Timer entfernen, Listener abmelden, verspätete Promises anhand der Generation ignorieren. Ein anderer Charakter im gleichen Browser darf davon nicht betroffen sein.
+
+STOP verhindert neue Spielaufträge; für bereits gesendete Aktionen nur noch Ergebnisse abgleichen. Pause, Wiederaufnahme und Charakter-Ausloggen sind unterschiedliche Befehle. Ein Bot-STOP muss keinen Clientprozess beenden.

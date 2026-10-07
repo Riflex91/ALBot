@@ -100,5 +100,14 @@ test('Live B merchant keeps recovery but skips farmer loot so economy inventory 
  const a=harness('M'),cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema),character=defaultsFor(ECONOMY_DESCRIPTOR.schema.properties.characters.items);
  cfg.characters=[{...character,name:'M',role:'merchant',class:'merchant'}];cfg.party.merchant='M';cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=true;cfg.general.autostart=true;
  a.root.ALBotConfig=cfg;a.c.ctype='merchant';a.c.gold=1000000;a.c.items[0]={name:'gslime',q:2};let loots=0;a.root.loot=()=>{loots++;return Promise.resolve();};
- a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(loots,0);assert.equal(a.root.ALBot.status().reason,'Merchant bereit');a.root.ALBot.dispose();
+ a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(loots,0);assert.match(a.root.ALBot.status().reason,/Merchant wartet/);a.root.ALBot.dispose();
+});
+
+test('Live C blocked Bee approach routes to the monster instead of an obstructed intermediate point',()=>{
+ const a=harness(),cfg=defaultsFor(INTEGRATION_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.targets=['goo','bee'];
+ cfg.rules=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.rules.items),action:'farm',target:'bee',conditions:[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.rules.items.properties.conditions.items),field:'hpRatio',operator:'gte',value:'0.95'}]}];a.root.ALBotConfig=cfg;
+ a.c.x=201;a.c.y=771;a.root.G.monsters.bee={};a.root.parent.entities.b={id:'b',type:'monster',mtype:'bee',hp:100,map:'main',in:'main',x:520,y:753};a.root.can_attack=()=>false;a.root.can_move_to=()=>false;let destination,stops=0;
+ a.root.move=()=>{throw Error('Blocked local move submitted');};a.root.smart_move=d=>{destination=d;return new Promise(()=>{});};a.root.stop=()=>{stops++;return Promise.resolve();};a.load();
+ assert.equal(destination.x,520);assert.equal(destination.y,753);assert.match(a.root.ALBot.status().reason,/Unterwegs zu bee/);let report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.movement.mode,'smart_move');assert.equal(report.movement.destination.x,520);
+ a.c.x=500;a.c.y=753;a.c.moving=true;const next=[...a.timers.entries()][0];a.timers.delete(next[0]);next[1]();report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.movement,null);assert.ok(stops>0);a.root.ALBot.dispose();
 });

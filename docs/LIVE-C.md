@@ -1,8 +1,10 @@
-# Live C · 0.3.0-live-c
+# Live C · 0.3.1-live-c
 
 Live B wurde vom Nutzer in Browser und Windows-Headless vollständig bestätigt. Dieser Kandidat integriert die nächsten Roadmap-Funktionen. **Live C ist noch nicht bestanden.** Keine Shadow-Tests, kein automatischer Spielstart durch die Entwicklung.
 
-Entwicklungsprüfung unter Windows: **62 gezielte Bot-/Werkstatt-Prüfungen bestanden**, klassischer Build/Syntax und beide Paket-Hashes geprüft. Der tatsächliche C-Build mit 1.276 Regeln für alle 638 Katalogitems misst **380.336 UTF-8-Bytes**, weit unter 1.048.576 Byte. Persönliche Testdateien etwa 172 KB. Werkstattimport/-export, Katalog, Mehrfachbearbeitung und Regelvorschau zusätzlich im DOM geprüft; importierter Runtimecode wurde dabei nicht ausgeführt. Aktive Clientkonfiguration und CODE/main.js per unverändertem Hash geprüft; neue Clientvorlagen offline validiert. Kein Linux-/Live-C-Erfolg daraus abgeleitet.
+Entwicklungsprüfung unter Windows: **65 gezielte Bot-/Werkstatt-Prüfungen bestanden**, klassischer Build/Syntax und beide Paket-Hashes geprüft. Der tatsächliche C-Build mit 1.276 Regeln für alle 638 Katalogitems misst **381.564 UTF-8-Bytes**, weit unter 1.048.576 Byte. Persönliche Testdateien etwa 173 KB. Werkstattimport/-export, Katalog, Mehrfachbearbeitung und Regelvorschau zusätzlich im DOM geprüft; importierter Runtimecode wurde dabei nicht ausgeführt. Aktive Clientkonfiguration und CODE/main.js per unverändertem Hash geprüft; neue Clientvorlagen offline validiert. Kein Linux-/Live-C-Erfolg daraus abgeleitet.
+
+Browser-Rückmeldung: Bee-Regeln wurden ausgelöst, die Wege scheiterten. 0.3.1 repariert Hinderniswege und Merchant-Status; erneuter Live-Lauf steht aus. [Auswertung](LIVE-C-ERGEBNIS.md). Merchant darf in Phase 01/02 ohne Nachschubbedarf warten; Fishing ist ausschließlich in Phase 03 aktiv.
 
 ## Dateien und Einstellungen
 
@@ -30,7 +32,7 @@ Der Export aktiviert keine neuen Tool-Kaufregeln. Vor Phase 03 muss der Merchant
 
 Je Umgebung etwa 20–30 Minuten; dieselben exportierten `.js`-Dateien in Browser und Headless verwenden. Einen Charakter nie gleichzeitig in beiden Umgebungen anmelden. Windows ist verfügbar; Linux erst als geprüft nennen, wenn dort tatsächlich ein Lauf erfolgte.
 
-1. **Normalbetrieb, etwa 10 Minuten:** Phase 01 auf Merchant und allen Farmern laden. Farmen, HP/MP und mindestens eine tatsächlich benötigte Tranklieferung beobachten. Kein künstlich leergeräumtes Inventar erforderlich. Eine ohne Bedarf ausgebliebene Lieferung ist kein Fehler, aber auch kein Liefernachweis. `ALBot.status()` soll `0.3.0-live-c`, die richtige Umgebung und `running: true` zeigen.
+1. **Normalbetrieb, etwa 10 Minuten:** Phase 01 auf Merchant und allen Farmern laden. Farmen, HP/MP und mindestens eine tatsächlich benötigte Tranklieferung beobachten. Kein künstlich leergeräumtes Inventar erforderlich. Eine ohne Bedarf ausgebliebene Lieferung ist kein Fehler, aber auch kein Liefernachweis. `ALBot.status()` soll `0.3.1-live-c`, die richtige Umgebung und `running: true` zeigen.
 2. **Kontrollierter Regelwechsel, etwa 5 Minuten:** Erst offene Aktionen abschließen, dann Phase 02 auf alle vier Charaktere laden. Bei ausreichenden HP/Slots werden `behavior.rule` und `strategy.request` im Bericht erfasst; `strategy.manual.id` ist `bee`. Team soll gemeinsam zum erlaubten Bee-Ziel wechseln. Bei verletzten/überfüllten Farmern bleibt die Bedingung bewusst unerfüllt. Anschließend wieder Phase 01 laden und die Rückkehr zu Goo prüfen.
 3. **Pause/Resume/Reload:** Bei `pending: 0`, `journal: null`, `inventoryBlocked: false` pausieren und wieder starten. Danach dasselbe Skript einmal neu laden, auch den Merchant. Keine doppelten Lieferungen und kein zweiter Scheduler. **Nicht mitten in einer offenen Wertaktion neu laden:** ein angehaltener ungeklärter Auftrag wäre die vorgesehene Schutzreaktion.
 4. **Ein Merchant-Nebenauftrag, wenn die Voraussetzungen vorliegen:** Phase 03 laden. Merchant reist an einen aus `G.maps` abgeleiteten Angelplatz, legt Offhand ab, nutzt die Rod und startet Fishing. Er wartet auf `character.q.fishing`, stellt danach ursprüngliche Mainhand/Offhand wieder her und bleibt für Nachschub erreichbar. Ein laufender Fishing-Cooldown zählt nicht als neuer erfolgreicher Cast. Fehlt eine Rod oder die Spielbereitschaft, Phase 03 auslassen und dies ausdrücklich im Ergebnis nennen.

@@ -15,6 +15,7 @@ export function createMerchant(bot){
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
   if(bot.movement.order?.owner==='logistics'){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
+  if(me.role==='merchant'&&!bot.movement.order)bot.reason='Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
   const jobs=[],add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,run,r});
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');

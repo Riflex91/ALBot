@@ -1,4 +1,7 @@
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
+export function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
+ return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
+}
 export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0;
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
@@ -29,7 +32,7 @@ export function createFarmer(bot){
   function tick(){
     if(recover())return;
     const c=p.c,now=Date.now();
-    if(me.role==='merchant'){bot.reason=bot.inventoryBlocked?'Inventar ungeklärt':'Merchant bereit';return;}
+    if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
     if(bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
     if(cfg.farming.loot&&!bot.inventoryBlocked&&!bot.logistics.reserved&&bot.free()>cfg.farming.freeSlots&&now-lastLoot>=cfg.farming.lootEveryMs){lastLoot=now;exec.run('loot',['inventory'],()=>bot.free()>cfg.farming.freeSlots,()=>tolerate('loot','openning',()=>p.call('loot')),{delay:cfg.farming.lootEveryMs});}
@@ -54,7 +57,7 @@ export function createFarmer(bot){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);
     if(cfg.farming.kiting&&target.target===c.name&&c.range>(target.range??20)+25&&d<Math.min(range,(target.range??20)+35))retreat(target);
-    else if(d>range&&!bot.movement.order){const a=xy(c),b=xy(target),step=Math.min(60,d-range+3);bot.movement.go({map:c.map,in:c.in??c.map,x:a.x+(b.x-a.x)*step/d,y:a.y+(b.y-a.y)*step/d,radius:6},'combat');}
+    else if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order)bot.movement.go(combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }

@@ -1,4 +1,4 @@
-/* ALBot 0.3.0-live-c · Live C pending */
+/* ALBot 0.3.1-live-c · Live C pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -9,7 +9,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.3.0-live-c';
+const VERSION='0.3.1-live-c';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -494,15 +494,17 @@ function createMovement(bot){
     const dest={...d,radius:d.radius??20};
     // Smart movement can enter public maps; never attempt somebody else's instance.
     if(!samePlace(p.c,d)&&p.G.maps[d.map]?.instance){bot.reason='Zielinstanz nicht erreichbar';return false;}
-    const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map};
+    const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
-    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(local?'move':'smart_move',...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{timeout:120000,delay:500});
+    token.mode=local?'move':'smart_move';
+    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'){stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason:error?.reason??error?.message??state});}}});
+    if(accepted)bot.event?.('movement.request',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }
-  function poll(){if(!order)return;const now=Date.now();if(arrived(p.c,order.dest)){order=null;return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
+  function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.event?.('movement.arrived',{owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
     if(now-order.progress>12000||now-order.started>120000){stop();blockedUntil=now+10000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 10 Sekunden';}
   }
-  return {go,poll,stop,get order(){return order;},
+  return {go,poll,stop,get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner){if(order&&order.owner!==owner)return false;if(!p.call('can_move_to',x,y))return false;return go({map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);},
     farmLocation(type){const candidates=[];for(const [map,data] of Object.entries(p.G.maps)){if(data.ignore||data.instance||data.pvp)continue;for(const pack of data.monsters??[]){if(pack.type!==type)continue;const ranges=pack.boundaries??(pack.boundary?[[map,...pack.boundary]]:[]);for(const [m,x1,y1,x2,y2] of ranges)candidates.push({map:m,in:m,x:(x1+x2)/2,y:(y1+y2)/2,radius:45});}}return candidates.sort((a,b)=>(a.map===p.c.map?-100000:0)+distance(p.c,a)-((b.map===p.c.map?-100000:0)+distance(p.c,b)))[0];}
   };
@@ -697,6 +699,9 @@ function createLogistics(bot){
 }
 
 // src/combat/farmer.mjs
+function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
+ return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
+}
 function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0;
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
@@ -727,7 +732,7 @@ function createFarmer(bot){
   function tick(){
     if(recover())return;
     const c=p.c,now=Date.now();
-    if(me.role==='merchant'){bot.reason=bot.inventoryBlocked?'Inventar ungeklärt':'Merchant bereit';return;}
+    if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
     if(bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
     if(cfg.farming.loot&&!bot.inventoryBlocked&&!bot.logistics.reserved&&bot.free()>cfg.farming.freeSlots&&now-lastLoot>=cfg.farming.lootEveryMs){lastLoot=now;exec.run('loot',['inventory'],()=>bot.free()>cfg.farming.freeSlots,()=>tolerate('loot','openning',()=>p.call('loot')),{delay:cfg.farming.lootEveryMs});}
@@ -752,7 +757,7 @@ function createFarmer(bot){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);
     if(cfg.farming.kiting&&target.target===c.name&&c.range>(target.range??20)+25&&d<Math.min(range,(target.range??20)+35))retreat(target);
-    else if(d>range&&!bot.movement.order){const a=xy(c),b=xy(target),step=Math.min(60,d-range+3);bot.movement.go({map:c.map,in:c.in??c.map,x:a.x+(b.x-a.x)*step/d,y:a.y+(b.y-a.y)*step/d,radius:6},'combat');}
+    else if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order)bot.movement.go(combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }
@@ -1138,6 +1143,7 @@ function createMerchant(bot){
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
   if(bot.movement.order?.owner==='logistics'){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
+  if(me.role==='merchant'&&!bot.movement.order)bot.reason='Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
   const jobs=[],add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,run,r});
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
@@ -1566,7 +1572,7 @@ function install(root){
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));
-  report.setProvider(()=>({test:cfg.world?'Live C':cfg.production?'Live B':'Live A',status:api.status(),performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',logistics:bot.logistics.stats(),production:bot.production?.status(),gear:bot.gear?.suggestions(),economy:bot.economy?.ledger,strategy:bot.strategy?.status(),account:bot.account?.status(),travel:bot.teamTravel?.status(),services:bot.services?.status(),merchantTask:bot.merchant?.status(),settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,world:cfg.world,rules:cfg.rules,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
+  report.setProvider(()=>({test:cfg.world?'Live C':cfg.production?'Live B':'Live A',status:api.status(),performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',movement:bot.movement.status(),logistics:bot.logistics.stats(),production:bot.production?.status(),gear:bot.gear?.suggestions(),economy:bot.economy?.ledger,strategy:bot.strategy?.status(),account:bot.account?.status(),travel:bot.teamTravel?.status(),services:bot.services?.status(),merchantTask:bot.merchant?.status(),settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,world:cfg.world,rules:cfg.rules,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
   if(!checkpoint.durable)bot.report('Speicher voll: Verbrauch wird im RAM abgeglichen; Lieferungen bleiben gesperrt. Testlog ohne localStorage.');
   p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · '+(cfg.world?'Live C':cfg.production?'Live B':'Live A')+' Testkandidat');publish();if(cfg.general.autostart)api.start();return api;
 }

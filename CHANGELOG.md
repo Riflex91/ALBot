@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.3.1-live-c · 7. Oktober 2026 · Bee-Bewegung repariert
+
+- Acht Browserberichte geprüft: Normalbetrieb ohne Incidents; Bee-Regeln ausgelöst, aber neun fehlgeschlagene Bewegungen. Fishing war in beiden verwendeten Profilen ausgeschaltet.
+- Hinter Hindernissen zum tatsächlichen Monsterpunkt routen statt einen blockierten 60-Pixel-Zwischenpunkt an smart_move zu übergeben. Innerhalb der Angriffsreichweite den laufenden Weg beenden.
+- Fehlgeschlagenen Weg sofort freigeben und nach drei Sekunden neu planen; verspätete Ergebnisse abgebrochener Wege dürfen keinen neuen Auftrag abbrechen.
+- Merchant-Wartegrund anzeigen; der schnelle Farmer-Tick überschreibt Merchant-Auftragsmeldungen nicht mehr. Ohne freigegebenen Auftrag und bei ausreichenden Farmer-Tränken bleibt Warten vorgesehen.
+- Testbericht ergänzt begrenzte movement.request/arrived/failed-Ereignisse und das aktuelle Bewegungsziel. Autostart bleibt true.
+- 65 gezielte Prüfungen bestanden. Wiederholung des Bee-Wechsels im echten Spiel steht aus; [Auswertung](docs/LIVE-C-ERGEBNIS.md).
+
 ## 0.3.0-live-c · 7. Oktober 2026 · Live C ausstehend
 
 - Bestätigten 0.2.2-Stand übernommen: Merchant-Loot-Fix, gleicher Offer-Retry und kein unnötiger Basiseinkauf nach erfülltem Upgradeziel.

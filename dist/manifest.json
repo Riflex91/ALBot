@@ -3,6 +3,6 @@
   "schemaId": "albot.live-b/v1",
   "bytes": 132321,
   "sha256": "c258fdd4f79a48f1e445ab3fcc1afbaac828f0cc281e98f7689cbfc9e789699a",
-  "liveTest": "pending",
+  "liveTest": "passed-browser-windows-headless",
   "runtimeBytes": 128631
 }

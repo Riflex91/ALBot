@@ -1,6 +1,6 @@
-// ALBot 0.3.1-live-c | Einstellungen + Runtime
+// ALBot 0.3.2-live-c | Einstellungen + Runtime
 globalThis.ALBotConfig=(function unpack(t,v){if(!t)return v;if(Object.prototype.hasOwnProperty.call(t,'item'))return v.map(x=>unpack(t.item,x));return Object.fromEntries(t.keys.flatMap((k,i)=>v[0].includes(i)?[]:[[k,unpack(t.children[i],v[1][i])]]));})({"keys":["general","characters","farming","party","skills","merchant","items","production","world","rules"],"children":[{"keys":["name","autostart","environment","combatTickMs","economyTickMs","planningTickMs","transport","allowRemoteCM","maxPending","messageTtlMs","ui","pauseOnUnknown"],"children":[null,null,null,null,null,null,null,null,null,null,null,null]},{"item":{"keys":["name","enabled","class","role","group","region","server","rotation","catchUp","goldReserve","gearRole","farmTargets"],"children":[null,null,null,null,null,null,null,null,null,null,null,{"item":null}]}},{"keys":["enabled","targets","mode","autoTravel","loot","lootEveryMs","freeSlots","hpBelow","mpBelow","restBelow","resumeAbove","potions","respawn","respawnDelayMs","maxDeaths","deathWindowMs","kiting","rangeBuffer","maxAggro","avoidOthers","pvp"],"children":[null,{"item":null},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"keys":["enabled","group","leader","merchant","selection","maxFarmers","followDistance","focusFire","waitForTeam","healing","energize","buffs","revive","aoe","aoeMaxTargets","rotationCooldownMs","aura","auraHoldMs"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"item":{"keys":["name","enabled","skill","class","character","priority","target","minMp","maxTargets","everyMs","conditions"],"children":[null,null,null,null,null,null,null,null,null,null,{"item":{"keys":["field","operator","value","item"],"children":[null,null,null,null]}}]}},{"keys":["enabled","goldReserve","maxSpendPerHour","pickup","supply","maxDelivery","minFreeSlots","position","stand","mluck","mluckOthers","massBuffs","bank","consolidate","expandBank","bankBudget","bankGold","goldTarget","taskHoldMs","starvationMs","ponty","pontyMaxSpend","bargainRatio","giveaways","merrit","fishing","mining","toolBudget"],"children":[null,null,null,null,null,null,null,{"keys":["enabled","map","x","y"],"children":[null,null,null,null]},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},{"item":{"keys":["name","enabled","priority","item","role","character","minLevel","maxLevel","statType","property","title","map","server","task","action","keep","targetCount","requestBelow","maxCount","batch","recipient","teamReserve","maxActions","minPrice","maxPrice","priceSource","goldBudget","lossBudget","targetLevel","scroll","offering","minChance","pack","slot","fallback","ttlMs"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]}},{"keys":["enabled","upgrade","compound","exchange","craft","gear","offlineProfiles","minImprovement","lossBudget","minChance","maxChainDepth","maxFarmHours","acquireBy","goals"],"children":[null,null,null,null,null,null,null,null,null,null,null,null,{"item":null},{"item":{"keys":["name","enabled","item","level","quantity","recipient","budget","priority"],"children":[null,null,null,null,null,null,null,null]}}]},{"keys":["bosses","events","quests","anniversary","allowedBosses","allowedEvents","excludedMaps","risk","serverHop","allowedRealms","hopCooldownMs","magiport","learning","learningWeight","cacheTtlMs"],"children":[null,null,null,null,{"item":null},{"item":null},{"item":null},null,null,{"item":null},null,null,null,null,null]},{"item":{"keys":["name","enabled","priority","role","character","everyMs","cooldownMs","match","conditions","action","target","amount"],"children":[null,null,null,null,null,null,null,null,{"item":{"keys":["field","operator","value","item"],"children":[null,null,null,null]}},null,null,null]}}]},[[],[[[],["Mein Super-Bot",true,"auto",250,2000,10000,"auto",false,32,10000,true,true]],[[[],["Farmer1",true,"ranger","farmer","team1","EU","II",true,false,10000,"auto",[]]]],[[],[true,["goo"],"balanced",true,true,1000,3,0.75,0.5,0.4,0.85,true,true,15000,3,600000,true,15,2,true,false]],[[],[true,"team1","Farmer1","","fixed",3,180,true,false,true,true,true,true,false,3,60000,"auto",30000]],[],[[],[true,100000,1000000,true,true,100,4,[[],[false,"main",0,0]],false,true,false,true,true,false,false,0,false,200000,30000,120000,false,100000,0.65,false,false,false,false,10000]],[],[[],[false,false,false,false,false,false,true,0.05,0,1,8,12,["bank","npc","farm","craft","exchange"],[]]],[[],[false,false,false,false,[],[],[],"conservative",false,[],300000,false,true,0.15,60000]],[]]]);
-/* ALBot 0.3.1-live-c · Live C pending */
+/* ALBot 0.3.2-live-c · Live C pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -11,7 +11,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.3.1-live-c';
+const VERSION='0.3.2-live-c';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -504,7 +504,8 @@ function createMovement(bot){
     if(!accepted)order=null;return false;
   }
   function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.event?.('movement.arrived',{owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
-    if(now-order.progress>12000||now-order.started>120000){stop();blockedUntil=now+10000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 10 Sekunden';}
+    const searching=order.mode==='smart_move'&&p.root.smart?.moving&&p.root.smart?.searching&&!p.root.smart?.found;
+    if(!searching&&now-order.progress>12000){const failed=order;stop();blockedUntil=now+3000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:'no_progress'});}
   }
   return {go,poll,stop,get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner){if(order&&order.owner!==owner)return false;if(!p.call('can_move_to',x,y))return false;return go({map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);},
@@ -742,12 +743,12 @@ function createFarmer(bot){
     if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
     if(bot.free()<cfg.farming.freeSlots){bot.reason='Inventarreserve erreicht';bot.target=null;bot.skills.rotation(null);return;}
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
-    const leader=bot.transport.fresh(bot.leader);
-    if(cfg.party.enabled&&bot.leader!==me.name){
+    const leader=bot.transport.fresh(bot.leader),directedFarm=bot.strategy?.status?.().manual?.task==='farm';
+    if(cfg.party.enabled&&!directedFarm&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){bot.reason='Warte auf Kampf-Leader';bot.target=null;bot.skills.rotation(null);return;}
       if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){bot.target=null;bot.reason='Folge '+bot.leader;bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
     }
-    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe';bot.target=null;bot.skills.rotation(null);return;}
+    if(cfg.party.enabled&&!directedFarm&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe';bot.target=null;bot.skills.rotation(null);return;}
     const mobs=bot.monsters().filter(bot.allowed);
     const focus=cfg.party.enabled&&cfg.party.focusFire&&leader?.target?mobs.find(e=>e.id===leader.target):null;
     const previous=bot.target&&mobs.find(e=>e.id===bot.target.id);

@@ -10,7 +10,7 @@ export function createGear(bot){
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
  function snapshot(){const slots={};for(const [slot,i] of Object.entries(p.c.slots??{}))if(i&&!slot.startsWith('trade'))slots[slot]={name:i.name,level:i.level??0};return {class:p.c.ctype,level:p.c.level,slots};}
  function refresh(){
-  if(!cfg.production.gear)return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
+  if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
    if(!data||typeof data.class!=='string'||!Number.isFinite(data.level)||!data.slots||typeof data.slots!=='object')continue;
    const slots={};for(const [slot,i] of Object.entries(data.slots).slice(0,16))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level};
    profiles[name]={class:data.class,level:data.level,slots,at:Date.now()};
@@ -39,5 +39,5 @@ export function createGear(bot){
    try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':'dps'):member.gearRole,old=profile.slots[rule.slot];const score=gearScore(p.call('item_properties',item),role),previous=old?gearScore(p.call('item_properties',old),role):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
   }
  }return result.slice(0,20);}
- return {equip,snapshot,refresh,suggestions};
+ return {equip,snapshot,refresh,suggestions,profile:name=>profiles[name]??null};
 }

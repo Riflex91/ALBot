@@ -11,7 +11,7 @@ export function createTransport(bot){
       if(m.type==='status'){
         const d=m.data;if(!d||typeof d.map!=='string'||!Number.isFinite(d.x)||!Number.isFinite(d.y)||typeof d.realm!=='string'||!Array.isArray(d.items)||d.items.length>25)return;
         peers.set(from,{...d,received:Date.now(),session:m.session});
-      }else if(bot.running)bot.logistics?.receive(from,m);
+      }else if(bot.running){if(m.type.startsWith('hop')||m.type.startsWith('port'))bot.teamTravel?.receive(from,m);else bot.logistics?.receive(from,m);}
     }catch(e){bot.report('Nachricht verworfen: '+e.message);}
   }
   if(p.ipc)offs.push(p.h.onMessage(e=>{if(e.topic==='albot/1')receive(e.from,e.data);}));
@@ -31,7 +31,7 @@ export function createTransport(bot){
   }
   function parentSiblings(){try{return p.parent.caracAL?.siblings??[];}catch{return [];}}
   return {peers,send,roster,fresh(name){const d=peers.get(name);return d&&Date.now()-d.received<cfg.general.messageTtlMs?d:null;},
-    heartbeat(){const c=p.c;if(!c)return;const items=bot.logistics?.summary()??[];const d={...xy(c),map:c.map,in:c.in??c.map,realm:p.realm(),rip:!!c.rip,hp:c.hp,max_hp:c.max_hp,mp:c.mp,max_mp:c.max_mp,target:bot.target?.id??null,free:bot.free(),running:bot.running,items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot()};for(const n of roster)send(n,'status',d);},
+    heartbeat(){const c=p.c;if(!c)return;const items=bot.logistics?.summary()??[];const d={...xy(c),map:c.map,in:c.in??c.map,realm:p.realm(),rip:!!c.rip,hp:c.hp,max_hp:c.max_hp,mp:c.mp,max_mp:c.max_mp,class:c.ctype,level:c.level,target:bot.target?.id??null,free:bot.free(),running:bot.running,journal:!!bot.journal,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),activity:bot.strategy?.heartbeat(),team:bot.account?.heartbeat()};if(JSON.stringify(d).length>4000){delete d.gear;d.materials=[];}for(const n of roster)send(n,'status',d);},
     close(){offs.splice(0).forEach(f=>f());peers.clear();seen.clear();retired.clear();}
   };
 }

@@ -5,7 +5,27 @@ import vm from 'node:vm';
 import {defaultsFor} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
 import {ECONOMY_DESCRIPTOR} from '../src/config/live-b.mjs';
+import {INTEGRATION_DESCRIPTOR} from '../src/config/live-c.mjs';
 const code=readFileSync(new URL('../dist/albot.runtime.js',import.meta.url),'utf8');
+
+test('Live C same classic bundle boots browser and headless; declared rule and task survive no stale timers',()=>{
+ for(const browser of [false,true]){
+  const a=harness(),cfg=defaultsFor(INTEGRATION_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.autoTravel=false;cfg.farming.loot=false;cfg.farming.targets=['goo','bee'];
+  cfg.rules=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.rules.items),name:'Hinweis',action:'notify',target:'C-Regel aktiv',conditions:[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.rules.items.properties.conditions.items),field:'map',operator:'eq',value:'main'}]}];a.root.ALBotConfig=cfg;
+  if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
+  a.load();assert.equal(a.root.ALBot.status().running,true,JSON.stringify(a.root.ALBot.status()));assert.equal(a.root.ALBot.schemaId,'albot.live-c/v1');assert.ok(a.calls.some(x=>x[0]==='log'&&x[1].includes('C-Regel aktiv')));
+  assert.equal(a.root.ALBot.requestTask('farm:unknown'),false);assert.equal(a.root.ALBot.requestTask('farm:bee',10000),true);assert.equal(JSON.parse(a.root.ALBot.testReport()).strategy.manual.id,'bee');
+  a.root.ALBot.pause();assert.equal(a.root.ALBot.requestTask('farm:bee'),false);assert.equal(JSON.parse(a.root.ALBot.testReport()).strategy.manual,null);assert.equal(a.timers.size,0);assert.equal(a.root.ALBot.start(),true);a.load();assert.equal(a.timers.size,1);a.root.ALBot.dispose();assert.equal(a.timers.size,0);assert.equal(a.listeners.size,0);
+ }
+});
+
+test('Live C conditional pause cannot fall through into a combat action',()=>{
+ const a=harness(),cfg=defaultsFor(INTEGRATION_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name:'A'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.targets=['goo'];cfg.rules=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.rules.items),action:'pause',target:'Regel-Pause',conditions:[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.rules.items.properties.conditions.items),field:'map',operator:'eq',value:'main'}]}];a.root.ALBotConfig=cfg;a.root.parent.entities={g:{id:'g',type:'monster',mtype:'goo',hp:100,x:1,y:1}};a.load();assert.equal(a.root.ALBot.status().running,false);assert.equal(a.calls.filter(x=>x[0]==='attack').length,0);assert.equal(a.timers.size,0);a.root.ALBot.dispose();
+});
+
+test('Live C event journey starts before wait-for-team would block map transition',()=>{
+ const a=harness(),cfg=defaultsFor(INTEGRATION_DESCRIPTOR.schema);cfg.characters=['A','B'].map(name=>({...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name}));cfg.general.ui=false;cfg.farming.targets=['goo'];cfg.farming.loot=false;cfg.party.leader='A';cfg.world.events=true;cfg.world.allowedEvents=['boss'];a.root.G.maps.arena={};a.root.G.monsters.boss={attack:1};a.root.G.events={boss:{map:'arena'}};a.root.S={boss:{live:true,map:'arena',x:0,y:0}};let joined=0;a.root.join=id=>{assert.equal(id,'boss');joined++;return Promise.resolve();};a.root.ALBotConfig=cfg;a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(joined,1);a.root.ALBot.dispose();
+});
 
 test('Live B defaults autostart in both environments and reports economy without experimental options',()=>{
  for(const browser of [false,true]){

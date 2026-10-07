@@ -30,10 +30,13 @@ export function createFarmer(bot){
     if(recover())return;
     const c=p.c,now=Date.now();
     if(me.role==='merchant'){bot.reason=bot.inventoryBlocked?'Inventar ungeklärt':'Merchant bereit';return;}
+    if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
+    if(bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
     if(cfg.farming.loot&&!bot.inventoryBlocked&&!bot.logistics.reserved&&bot.free()>cfg.farming.freeSlots&&now-lastLoot>=cfg.farming.lootEveryMs){lastLoot=now;exec.run('loot',['inventory'],()=>bot.free()>cfg.farming.freeSlots,()=>tolerate('loot','openning',()=>p.call('loot')),{delay:cfg.farming.lootEveryMs});}
     if(!cfg.farming.enabled){bot.reason='Farmen ausgeschaltet';bot.skills.rotation(null);return;}
-    if(p.parent.is_pvp||p.G.maps[c.map]?.pvp){bot.pause('Live A farmt nicht auf PvP-Karten');return;}
+    if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
     if(bot.free()<cfg.farming.freeSlots){bot.reason='Inventarreserve erreicht';bot.target=null;bot.skills.rotation(null);return;}
+    if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){bot.reason='Warte auf Kampf-Leader';bot.target=null;bot.skills.rotation(null);return;}
@@ -55,5 +58,5 @@ export function createFarmer(bot){
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }
-  return {tick};
+  return {tick,retreat};
 }

@@ -3,6 +3,16 @@ import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
 export function createProduction(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[];
+ const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient]);
+ let deliveries=p.read(deliveryKey)??{};if(!deliveries||typeof deliveries!=='object'||Array.isArray(deliveries))deliveries={};
+ function recordDelivery(j){
+  if(j.kind!=='send'||!j.id||!j.to||typeof j.item!=='object')return true;const next=structuredClone(deliveries);let changed=false;
+  for(const g of cfg.production.goals.filter(g=>g.enabled&&g.recipient===j.to&&g.item===j.item.name&&g.level===j.item.level)){
+   const key=goalKey(g),old=next[key]??{quantity:0,last:[]};if(!Number.isFinite(old.quantity)||!Array.isArray(old.last))return false;if(old.last.includes(j.id))continue;
+   next[key]={quantity:Math.min(g.quantity,old.quantity+j.quantity),last:[...old.last,j.id].slice(-32)};changed=true;
+  }
+  if(changed){const keys=new Set(cfg.production.goals.map(goalKey)),value=Object.fromEntries(Object.entries(next).filter(([k])=>keys.has(k)));if(!p.write(deliveryKey,value))return false;deliveries=value;}return true;
+ }
  const qty=(name,level)=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===level&&(e.rules(i)?.action!=='keep')&&!i.l&&!i.b?(i.q??1):0),0);
  function mutate(slot,r){
   const i={...p.c.items[slot]},kind=r.action;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production[kind]||!e.safe(i)||!p.G.items[i.name]?.[kind]||(i.level??0)>=r.targetLevel)return false;
@@ -48,8 +58,9 @@ export function createProduction(bot){
  function planGoals(){
   plan=[];goal=null;materials=[];if(!cfg.production.enabled)return;
   for(const g of cfg.production.goals.filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority)){
-   if(qty(g.item,g.level)>=g.quantity)continue;
-   try{plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:g.quantity,stock:qty,bank:(name,level)=>bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth});goal=g;}catch(err){e.note(err.message);}break;
+   const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
+   if(!needed||qty(g.item,g.level)>=needed)continue;
+   try{plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level)=>bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth});goal=g;}catch(err){e.note(err.message);}break;
   }
  }
  function tick(){
@@ -67,8 +78,8 @@ export function createProduction(bot){
    e.note(materials.length?'Materialauftrag: '+step.item+' bei '+materials[0].monster:'Kein erlaubter Farmweg im Zeitbudget: '+step.item);
   }return false;
  }
- return {mutate,craft,exchange,planGoals,tick,get activeGoal(){return goal;},materials:()=>materials,
+ return {mutate,craft,exchange,planGoals,tick,recordDelivery,get activeGoal(){return goal;},materials:()=>materials,
  reserved:i=>!!goal&&((i.name===goal.item&&(i.level??0)===goal.level&&!goal.recipient)||plan.some(s=>s.item===i.name&&(i.level??0)===s.level&&s.kind!=='farm')),
  farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets;for(const request of merchant.materials){if(!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.rules({name:request.item,level:0},'acquisition');if(r?.action==='farm'&&qty(request.item,0)<Math.min(r.targetCount,request.quantity))return [request.monster];}return null;},
- status:()=>({goal:goal?.name??null,steps:plan.slice(0,20)}),close(){preview=null;plan=[];goal=null;materials=[];}};
+ status:()=>({goal:goal?.name??null,steps:plan.slice(0,20),deliveries:cfg.production.goals.filter(g=>g.enabled&&g.recipient).slice(0,20).map(g=>({goal:g.name,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];}};
 }

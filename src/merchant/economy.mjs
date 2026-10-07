@@ -2,12 +2,12 @@ import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,same
 import {phaseOf} from '../../editor/lib/contract.mjs';
 export function createEconomy(bot){
  const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0;const ruleActions=new Map();
- const actionKey=r=>JSON.stringify([r.name,r.item,r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
+ const actionKey=r=>JSON.stringify([r.name,r.item,r._originalAction??r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
  const remaining=r=>!r?.maxActions||(ruleActions.get(actionKey(r))??0)<r.maxActions;
  const ledgerKey='albot:economy:'+me.name+':budget';
  let ledger=p.read(ledgerKey)??{hour:Date.now(),spent:0,loss:0,goals:{}};
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
- const rules=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
+ const rules=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
  const count=item=>variantCount(p.c.items,item);
  const downstreamSatisfied=(item,r)=>{
   if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;

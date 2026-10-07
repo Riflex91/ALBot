@@ -1,5 +1,7 @@
 # Bot-Werkstatt 2.0
 
+Aktuelles Runtimepaket: `../dist/albot.package.json` mit `albot.live-c/v1`. Zuerst **Bot-Paket / Schema laden**, dann ein migriertes C-Profil öffnen. Danach ist **Fertige bot.js exportieren** bei gültigen Einstellungen und zulässiger Größe aktiv. Die vorhandene Oberfläche stellt die neuen Bereiche ohne Softwareupdate dar. Übergang und nächster Live-Test: [LIVE-C.md](../docs/LIVE-C.md).
+
 `Bot-Werkstatt.html` per Doppelklick im Browser öffnen. Kein npm, Server oder Internet für die Bedienung erforderlich. Die Datei enthält Oberfläche, Schema und den mitgelieferten Item-Katalog. Windows und Linux verwenden dieselbe HTML-Datei.
 
 Die Werkstatt ist für den **vollständigen geplanten Super-Bot** gebaut. Seine Spiel-Laufzeit ist noch nicht fertig. Du kannst bereits alle Profile erstellen und speichern. Ein eigenständiger `bot.js`-Export wird erst angeboten, nachdem du ein passendes fertiges Bot-Paket geladen hast. Ein JSON-Profil allein führt keine Spielfunktionen aus.

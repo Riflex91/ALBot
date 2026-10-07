@@ -1,6 +1,6 @@
 import {identity,fingerprint,distance} from '../core/policy.mjs';
 export function createMarket(bot){
- const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0;
+ const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
  function price(item,r,sell=false){
   let result=sell?r.minPrice:r.maxPrice;
@@ -34,12 +34,17 @@ export function createMarket(bot){
    if(exec.run('giveaway',['social'],()=>bot.running,()=>p.call('join_giveaway',player.name,slot,offer.rid),{delay:60000}))return true;
   }
   if(!cfg.merchant.ponty)return false;
-  const d=e.destination('secondhands');if(!e.at(d))return false;
-  if(Date.now()-lastScan>60000){lastScan=Date.now();return exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});}
-  for(const i of secondhand){const r=e.rules(i,'acquisition');if(r?.action!=='marketBuy'||!i.rid||!e.safe(i))continue;
-   const price=i.price,q=i.q??1,before=e.count(i);if(!Number.isFinite(price)||price<=0||price>Math.min(r.maxPrice*q,cfg.merchant.pontyMaxSpend)||price>e.value(i)*q*cfg.merchant.bargainRatio||before+q>r.targetCount)continue;
-   return e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.at(d)&&e.count(i)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(i)>=before+q,details:{item:i.name,quantity:q,before}});
+  const d=e.destination('secondhands');if(!d)return false;
+  if(Date.now()-lastScan>60000){if(!e.travel(d,'Ponty'))return true;const token=++scanGeneration;
+   const accepted=exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{if(bot.running&&token===scanGeneration)secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});if(accepted)lastScan=Date.now();return accepted;}
+  for(const i of secondhand){const item={...i};delete item.rid;const r=e.rules(item,'acquisition');if(r?.action!=='marketBuy'||!e.remaining(r)||!i.rid||!e.safe(i))continue;
+   const factor=p.G.multipliers?.[p.G.items[i.name]?.cash?'secondhands_cash_mult':'secondhands_mult']??(p.G.items[i.name]?.cash?3:2);
+   const price=Math.ceil(e.value(i)*factor*(i.q??1)),q=i.q??1,before=e.count(item),reference=thisReference(item,r);
+   if(!Number.isFinite(price)||price<=0||!reference||price>Math.min(r.maxPrice*q,cfg.merchant.pontyMaxSpend)||price>reference*q*cfg.merchant.bargainRatio||before+q>Math.min(r.targetCount,r.maxCount)||q>r.batch||bot.free()<=cfg.merchant.minFreeSlots)continue;
+   if(!e.travel(d,'Ponty-Kauf'))return true;
+   const accepted=e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.at(d)&&e.count(item)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(item)>=before+q,details:{item:i.name,quantity:q,before}});if(accepted)secondhand=secondhand.filter(x=>x.rid!==i.rid);return accepted;
   }return false;
  }
- return {listing,buy,wishlist,background};
+ function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}
+ return {listing,buy,wishlist,background,close(){scanGeneration++;secondhand=[];}};
 }

@@ -34,7 +34,8 @@ const stages=[
   rule({name:'Testhelm empfangen',role:'farmer',character:farmer.name,item:'helmet',action:'keep',minLevel:1,maxLevel:1,targetCount:1,maxCount:1,batch:1})
  ],c=>{c.production.enabled=true;c.production.upgrade=true;c.merchant.pickup=false;})
 ];
-const pkg=JSON.parse(await readFile(new URL('../dist/albot.package.json',import.meta.url),'utf8'));
+let pkg=JSON.parse(await readFile(new URL('../dist/albot.package.json',import.meta.url),'utf8'));
+if(pkg.runtime.schemaId!==descriptor.schemaId)pkg=JSON.parse(await readFile(new URL('../dist/albot-live-b.package.json',import.meta.url),'utf8'));
 await mkdir(resolve(destination)); // Intentionally refuse overwriting a previous test delivery.
 const manifest=[];
 for(const [name,config] of stages){

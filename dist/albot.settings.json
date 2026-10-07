@@ -1,10 +1,11 @@
 {
   "format": "albot-settings",
   "formatVersion": 1,
-  "schemaId": "albot.live-b/v1",
+  "schemaId": "albot.live-c/v1",
   "schema": {
     "type": "object",
-    "title": "ALBot · Live B",
+    "title": "ALBot · Live C",
+    "description": "",
     "properties": {
       "general": {
         "type": "object",
@@ -118,6 +119,160 @@
         ],
         "additionalProperties": false
       },
+      "characters": {
+        "type": "array",
+        "title": "Charaktere & Rollen",
+        "description": "Namen müssen im Headless-Client zusätzlich konfiguriert sein. Rollenüberschreibungen entstehen durch charakterbezogene Regeln.",
+        "items": {
+          "type": "object",
+          "title": "Charakter",
+          "description": "",
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Exakter Charaktername",
+              "default": "",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Aktiv",
+              "default": true
+            },
+            "class": {
+              "type": "string",
+              "title": "Klasse",
+              "default": "auto",
+              "maxLength": 160,
+              "enum": [
+                "auto",
+                "warrior",
+                "ranger",
+                "mage",
+                "priest",
+                "rogue",
+                "paladin",
+                "merchant"
+              ],
+              "x-labels": {
+                "auto": "Automatisch",
+                "warrior": "Warrior",
+                "ranger": "Ranger",
+                "mage": "Mage",
+                "priest": "Priest",
+                "rogue": "Rogue",
+                "paladin": "Paladin",
+                "merchant": "Merchant"
+              }
+            },
+            "role": {
+              "type": "string",
+              "title": "Rolle",
+              "default": "farmer",
+              "maxLength": 160,
+              "enum": [
+                "farmer",
+                "merchant"
+              ],
+              "x-labels": {
+                "farmer": "Farmer",
+                "merchant": "Merchant"
+              }
+            },
+            "group": {
+              "type": "string",
+              "title": "Gruppe",
+              "default": "team1",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "region": {
+              "type": "string",
+              "title": "Region",
+              "default": "EU",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "server": {
+              "type": "string",
+              "title": "Server",
+              "default": "II",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "rotation": {
+              "type": "boolean",
+              "title": "Darf für Aufgaben rotieren",
+              "default": true
+            },
+            "catchUp": {
+              "type": "boolean",
+              "title": "Levelaufholen bevorzugen",
+              "default": false
+            },
+            "goldReserve": {
+              "type": "integer",
+              "title": "Eigene Goldreserve",
+              "default": 10000,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "gearRole": {
+              "type": "string",
+              "title": "Ausrüstungsziel",
+              "default": "auto",
+              "maxLength": 160,
+              "enum": [
+                "auto",
+                "dps",
+                "tank",
+                "healer",
+                "economy"
+              ],
+              "x-labels": {
+                "auto": "Automatisch",
+                "dps": "Schaden",
+                "tank": "Tank",
+                "healer": "Heilung",
+                "economy": "Economy"
+              }
+            },
+            "farmTargets": {
+              "type": "array",
+              "title": "Eigene Farmziele (leer = global)",
+              "description": "",
+              "items": {
+                "type": "string",
+                "title": "ID",
+                "default": "",
+                "maxLength": 160,
+                "x-catalog": "",
+                "minLength": 1
+              },
+              "default": [],
+              "maxItems": 500
+            }
+          },
+          "required": [
+            "name",
+            "enabled",
+            "class",
+            "role",
+            "group",
+            "region",
+            "server",
+            "rotation",
+            "catchUp",
+            "goldReserve",
+            "gearRole",
+            "farmTargets"
+          ],
+          "additionalProperties": false
+        },
+        "default": [],
+        "maxItems": 500
+      },
       "farming": {
         "type": "object",
         "title": "Farmer & Überleben",
@@ -144,6 +299,24 @@
               "goo"
             ],
             "maxItems": 500
+          },
+          "mode": {
+            "type": "string",
+            "title": "Zielbewertung",
+            "default": "balanced",
+            "maxLength": 160,
+            "enum": [
+              "balanced",
+              "xp",
+              "gold",
+              "materials"
+            ],
+            "x-labels": {
+              "balanced": "Ausgewogen",
+              "xp": "Erfahrung",
+              "gold": "Gold",
+              "materials": "Materialbedarf"
+            }
           },
           "autoTravel": {
             "type": "boolean",
@@ -251,11 +424,17 @@
             "type": "boolean",
             "title": "Fremde Ziele respektieren",
             "default": true
+          },
+          "pvp": {
+            "type": "boolean",
+            "title": "PvP ausdrücklich erlauben",
+            "default": false
           }
         },
         "required": [
           "enabled",
           "targets",
+          "mode",
           "autoTravel",
           "loot",
           "lootEveryMs",
@@ -272,7 +451,8 @@
           "kiting",
           "rangeBuffer",
           "maxAggro",
-          "avoidOthers"
+          "avoidOthers",
+          "pvp"
         ],
         "additionalProperties": false
       },
@@ -306,6 +486,20 @@
             "default": "",
             "maxLength": 160,
             "x-catalog": "characters"
+          },
+          "selection": {
+            "type": "string",
+            "title": "Teamwahl",
+            "default": "fixed",
+            "maxLength": 160,
+            "enum": [
+              "fixed",
+              "adaptive"
+            ],
+            "x-labels": {
+              "fixed": "Feste aktivierte Charaktere",
+              "adaptive": "Nach Aufgabe und Fähigkeiten"
+            }
           },
           "maxFarmers": {
             "type": "integer",
@@ -362,6 +556,42 @@
             "default": 3,
             "minimum": 1,
             "maximum": 20
+          },
+          "rotationCooldownMs": {
+            "type": "integer",
+            "title": "Charakterwechsel frühestens nach (ms)",
+            "default": 60000,
+            "minimum": 10000,
+            "maximum": 3600000
+          },
+          "aura": {
+            "type": "string",
+            "title": "Paladin-Aura",
+            "default": "auto",
+            "maxLength": 160,
+            "enum": [
+              "auto",
+              "off",
+              "bulwark",
+              "sanctuary",
+              "zeal",
+              "warding"
+            ],
+            "x-labels": {
+              "auto": "Situationsabhängig",
+              "off": "Keine Automatik",
+              "bulwark": "Bulwark",
+              "sanctuary": "Sanctuary",
+              "zeal": "Zeal",
+              "warding": "Warding"
+            }
+          },
+          "auraHoldMs": {
+            "type": "integer",
+            "title": "Aura mindestens halten (ms)",
+            "default": 30000,
+            "minimum": 5000,
+            "maximum": 600000
           }
         },
         "required": [
@@ -369,6 +599,7 @@
           "group",
           "leader",
           "merchant",
+          "selection",
           "maxFarmers",
           "followDistance",
           "focusFire",
@@ -378,321 +609,12 @@
           "buffs",
           "revive",
           "aoe",
-          "aoeMaxTargets"
+          "aoeMaxTargets",
+          "rotationCooldownMs",
+          "aura",
+          "auraHoldMs"
         ],
         "additionalProperties": false
-      },
-      "merchant": {
-        "type": "object",
-        "title": "Merchant & Logistik",
-        "description": "",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "title": "Merchant-Automatik",
-            "default": true
-          },
-          "goldReserve": {
-            "type": "integer",
-            "title": "Merchant-Goldreserve",
-            "default": 100000,
-            "minimum": 0,
-            "maximum": 1000000000000
-          },
-          "maxSpendPerHour": {
-            "type": "integer",
-            "title": "Maximale Goldausgaben pro Stunde",
-            "default": 1000000,
-            "minimum": 0,
-            "maximum": 1000000000000
-          },
-          "pickup": {
-            "type": "boolean",
-            "title": "Beute abholen",
-            "default": true
-          },
-          "supply": {
-            "type": "boolean",
-            "title": "Farmer versorgen",
-            "default": true
-          },
-          "maxDelivery": {
-            "type": "integer",
-            "title": "Menge je Lieferung",
-            "default": 100,
-            "minimum": 1,
-            "maximum": 1000000000000
-          },
-          "minFreeSlots": {
-            "type": "integer",
-            "title": "Arbeitsplätze im Inventar",
-            "default": 4,
-            "minimum": 1,
-            "maximum": 42
-          },
-          "position": {
-            "type": "object",
-            "title": "Standplatz",
-            "description": "",
-            "properties": {
-              "enabled": {
-                "type": "boolean",
-                "title": "Fester Standplatz",
-                "default": false
-              },
-              "map": {
-                "type": "string",
-                "title": "Karte",
-                "default": "main",
-                "maxLength": 160
-              },
-              "x": {
-                "type": "number",
-                "title": "X",
-                "default": 0,
-                "minimum": -1000000,
-                "maximum": 1000000
-              },
-              "y": {
-                "type": "number",
-                "title": "Y",
-                "default": 0,
-                "minimum": -1000000,
-                "maximum": 1000000
-              }
-            },
-            "required": [
-              "enabled",
-              "map",
-              "x",
-              "y"
-            ],
-            "additionalProperties": false
-          },
-          "stand": {
-            "type": "boolean",
-            "title": "Stand automatisch öffnen",
-            "default": false
-          },
-          "mluck": {
-            "type": "boolean",
-            "title": "Mluck-Service",
-            "default": true
-          },
-          "mluckOthers": {
-            "type": "boolean",
-            "title": "Mluck auch für andere Spieler",
-            "default": false
-          },
-          "massBuffs": {
-            "type": "boolean",
-            "title": "Produktions-/Exchange-Buffs",
-            "default": true
-          },
-          "bank": {
-            "type": "boolean",
-            "title": "Bankaufträge",
-            "default": true
-          },
-          "consolidate": {
-            "type": "boolean",
-            "title": "Bankbestände zusammenlegen",
-            "default": false
-          },
-          "expandBank": {
-            "type": "boolean",
-            "title": "Bankkapazität kaufen",
-            "default": false
-          },
-          "bankBudget": {
-            "type": "integer",
-            "title": "Budget für Bankerweiterung",
-            "default": 0,
-            "minimum": 0,
-            "maximum": 1000000000000
-          },
-          "bankGold": {
-            "type": "boolean",
-            "title": "Goldbestand bei Bankbesuchen ausgleichen",
-            "default": false
-          },
-          "goldTarget": {
-            "type": "integer",
-            "title": "Gold-Zielbestand im Inventar",
-            "default": 200000,
-            "minimum": 0,
-            "maximum": 1000000000000
-          },
-          "giveaways": {
-            "type": "boolean",
-            "title": "An Giveaways teilnehmen",
-            "default": false
-          }
-        },
-        "required": [
-          "enabled",
-          "goldReserve",
-          "maxSpendPerHour",
-          "pickup",
-          "supply",
-          "maxDelivery",
-          "minFreeSlots",
-          "position",
-          "stand",
-          "mluck",
-          "mluckOthers",
-          "massBuffs",
-          "bank",
-          "consolidate",
-          "expandBank",
-          "bankBudget",
-          "bankGold",
-          "goldTarget",
-          "giveaways"
-        ],
-        "additionalProperties": false
-      },
-      "characters": {
-        "type": "array",
-        "title": "Charaktere & Rollen",
-        "description": "Namen müssen im Headless-Client zusätzlich konfiguriert sein. Rollenüberschreibungen entstehen durch charakterbezogene Regeln.",
-        "items": {
-          "type": "object",
-          "title": "Charakter",
-          "description": "",
-          "properties": {
-            "name": {
-              "type": "string",
-              "title": "Exakter Charaktername",
-              "default": "",
-              "maxLength": 160,
-              "minLength": 1
-            },
-            "enabled": {
-              "type": "boolean",
-              "title": "Aktiv",
-              "default": true
-            },
-            "class": {
-              "type": "string",
-              "title": "Klasse",
-              "default": "auto",
-              "maxLength": 160,
-              "enum": [
-                "auto",
-                "warrior",
-                "ranger",
-                "mage",
-                "priest",
-                "rogue",
-                "paladin",
-                "merchant"
-              ],
-              "x-labels": {
-                "auto": "Automatisch",
-                "warrior": "Warrior",
-                "ranger": "Ranger",
-                "mage": "Mage",
-                "priest": "Priest",
-                "rogue": "Rogue",
-                "paladin": "Paladin",
-                "merchant": "Merchant"
-              }
-            },
-            "role": {
-              "type": "string",
-              "title": "Rolle",
-              "default": "farmer",
-              "maxLength": 160,
-              "enum": [
-                "farmer",
-                "merchant"
-              ],
-              "x-labels": {
-                "farmer": "Farmer",
-                "merchant": "Merchant"
-              }
-            },
-            "group": {
-              "type": "string",
-              "title": "Gruppe",
-              "default": "team1",
-              "maxLength": 160,
-              "minLength": 1
-            },
-            "region": {
-              "type": "string",
-              "title": "Region",
-              "default": "EU",
-              "maxLength": 160,
-              "minLength": 1
-            },
-            "server": {
-              "type": "string",
-              "title": "Server",
-              "default": "II",
-              "maxLength": 160,
-              "minLength": 1
-            },
-            "farmTargets": {
-              "type": "array",
-              "title": "Eigene Farmziele (leer = global)",
-              "description": "",
-              "items": {
-                "type": "string",
-                "title": "ID",
-                "default": "",
-                "maxLength": 160,
-                "x-catalog": "",
-                "minLength": 1
-              },
-              "default": [],
-              "maxItems": 500
-            },
-            "goldReserve": {
-              "type": "integer",
-              "title": "Eigene Goldreserve",
-              "default": 10000,
-              "minimum": 0,
-              "maximum": 1000000000000
-            },
-            "gearRole": {
-              "type": "string",
-              "title": "Ausrüstungsziel",
-              "default": "auto",
-              "maxLength": 160,
-              "enum": [
-                "auto",
-                "dps",
-                "tank",
-                "healer",
-                "economy"
-              ],
-              "x-labels": {
-                "auto": "Automatisch",
-                "dps": "Schaden",
-                "tank": "Tank",
-                "healer": "Heilung",
-                "economy": "Economy"
-              }
-            }
-          },
-          "required": [
-            "name",
-            "enabled",
-            "class",
-            "role",
-            "group",
-            "region",
-            "server",
-            "farmTargets",
-            "goldReserve",
-            "gearRole"
-          ],
-          "additionalProperties": false
-        },
-        "default": [],
-        "maxItems": 500
       },
       "skills": {
         "type": "array",
@@ -943,6 +865,240 @@
         },
         "default": [],
         "maxItems": 500
+      },
+      "merchant": {
+        "type": "object",
+        "title": "Merchant & Logistik",
+        "description": "",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Merchant-Automatik",
+            "default": true
+          },
+          "goldReserve": {
+            "type": "integer",
+            "title": "Merchant-Goldreserve",
+            "default": 100000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "maxSpendPerHour": {
+            "type": "integer",
+            "title": "Maximale Goldausgaben pro Stunde",
+            "default": 1000000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "pickup": {
+            "type": "boolean",
+            "title": "Beute abholen",
+            "default": true
+          },
+          "supply": {
+            "type": "boolean",
+            "title": "Farmer versorgen",
+            "default": true
+          },
+          "maxDelivery": {
+            "type": "integer",
+            "title": "Menge je Lieferung",
+            "default": 100,
+            "minimum": 1,
+            "maximum": 1000000000000
+          },
+          "minFreeSlots": {
+            "type": "integer",
+            "title": "Arbeitsplätze im Inventar",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 42
+          },
+          "position": {
+            "type": "object",
+            "title": "Standplatz",
+            "description": "",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "title": "Fester Standplatz",
+                "default": false
+              },
+              "map": {
+                "type": "string",
+                "title": "Karte",
+                "default": "main",
+                "maxLength": 160
+              },
+              "x": {
+                "type": "number",
+                "title": "X",
+                "default": 0,
+                "minimum": -1000000,
+                "maximum": 1000000
+              },
+              "y": {
+                "type": "number",
+                "title": "Y",
+                "default": 0,
+                "minimum": -1000000,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "enabled",
+              "map",
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "stand": {
+            "type": "boolean",
+            "title": "Stand automatisch öffnen",
+            "default": false
+          },
+          "mluck": {
+            "type": "boolean",
+            "title": "Mluck-Service",
+            "default": true
+          },
+          "mluckOthers": {
+            "type": "boolean",
+            "title": "Mluck auch für andere Spieler",
+            "default": false
+          },
+          "massBuffs": {
+            "type": "boolean",
+            "title": "Produktions-/Exchange-Buffs",
+            "default": true
+          },
+          "bank": {
+            "type": "boolean",
+            "title": "Bankaufträge",
+            "default": true
+          },
+          "consolidate": {
+            "type": "boolean",
+            "title": "Bankbestände zusammenlegen",
+            "default": false
+          },
+          "expandBank": {
+            "type": "boolean",
+            "title": "Bankkapazität kaufen",
+            "default": false
+          },
+          "bankBudget": {
+            "type": "integer",
+            "title": "Budget für Bankerweiterung",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "bankGold": {
+            "type": "boolean",
+            "title": "Goldbestand bei Bankbesuchen ausgleichen",
+            "default": false
+          },
+          "goldTarget": {
+            "type": "integer",
+            "title": "Gold-Zielbestand im Inventar",
+            "default": 200000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "taskHoldMs": {
+            "type": "integer",
+            "title": "Aufträge mindestens halten (ms)",
+            "default": 30000,
+            "minimum": 1000,
+            "maximum": 600000
+          },
+          "starvationMs": {
+            "type": "integer",
+            "title": "Maximale Wartezeit dringender Aufträge (ms)",
+            "default": 120000,
+            "minimum": 1000,
+            "maximum": 3600000
+          },
+          "ponty": {
+            "type": "boolean",
+            "title": "Ponty-Angebote prüfen",
+            "default": false
+          },
+          "pontyMaxSpend": {
+            "type": "integer",
+            "title": "Ponty-Budget je Kauf",
+            "default": 100000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "bargainRatio": {
+            "type": "number",
+            "title": "Maximaler Anteil am geschätzten Marktwert",
+            "default": 0.65,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "giveaways": {
+            "type": "boolean",
+            "title": "An Giveaways teilnehmen",
+            "default": false
+          },
+          "merrit": {
+            "type": "boolean",
+            "title": "Merrit-Belohnungen",
+            "default": false
+          },
+          "fishing": {
+            "type": "boolean",
+            "title": "Fishing",
+            "default": false
+          },
+          "mining": {
+            "type": "boolean",
+            "title": "Mining",
+            "default": false
+          },
+          "toolBudget": {
+            "type": "integer",
+            "title": "Werkzeugbudget",
+            "default": 10000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          }
+        },
+        "required": [
+          "enabled",
+          "goldReserve",
+          "maxSpendPerHour",
+          "pickup",
+          "supply",
+          "maxDelivery",
+          "minFreeSlots",
+          "position",
+          "stand",
+          "mluck",
+          "mluckOthers",
+          "massBuffs",
+          "bank",
+          "consolidate",
+          "expandBank",
+          "bankBudget",
+          "bankGold",
+          "goldTarget",
+          "taskHoldMs",
+          "starvationMs",
+          "ponty",
+          "pontyMaxSpend",
+          "bargainRatio",
+          "giveaways",
+          "merrit",
+          "fishing",
+          "mining",
+          "toolBudget"
+        ],
+        "additionalProperties": false
       },
       "items": {
         "type": "array",
@@ -1235,6 +1391,22 @@
               "default": "",
               "maxLength": 160
             },
+            "fallback": {
+              "type": "string",
+              "title": "Wenn Aktion nicht möglich",
+              "default": "hold",
+              "maxLength": 160,
+              "enum": [
+                "hold",
+                "notify",
+                "bank"
+              ],
+              "x-labels": {
+                "hold": "Behalten und warten",
+                "notify": "Behalten und Hinweis",
+                "bank": "Bankauftrag erstellen"
+              }
+            },
             "ttlMs": {
               "type": "integer",
               "title": "Auftrag gültig (ms)",
@@ -1277,6 +1449,7 @@
             "minChance",
             "pack",
             "slot",
+            "fallback",
             "ttlMs"
           ],
           "additionalProperties": false
@@ -1478,17 +1651,401 @@
           "goals"
         ],
         "additionalProperties": false
+      },
+      "world": {
+        "type": "object",
+        "title": "Welt, Bosse & Entwicklung",
+        "description": "",
+        "properties": {
+          "bosses": {
+            "type": "boolean",
+            "title": "Bosse",
+            "default": false
+          },
+          "events": {
+            "type": "boolean",
+            "title": "Events",
+            "default": false
+          },
+          "quests": {
+            "type": "boolean",
+            "title": "Quests",
+            "default": false
+          },
+          "anniversary": {
+            "type": "boolean",
+            "title": "Saisonbelohnungen",
+            "default": false
+          },
+          "allowedBosses": {
+            "type": "array",
+            "title": "Erlaubte Boss-IDs",
+            "description": "",
+            "items": {
+              "type": "string",
+              "title": "ID",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "",
+              "minLength": 1
+            },
+            "default": [],
+            "maxItems": 500
+          },
+          "allowedEvents": {
+            "type": "array",
+            "title": "Erlaubte Event-IDs",
+            "description": "",
+            "items": {
+              "type": "string",
+              "title": "ID",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "",
+              "minLength": 1
+            },
+            "default": [],
+            "maxItems": 500
+          },
+          "excludedMaps": {
+            "type": "array",
+            "title": "Gesperrte Karten",
+            "description": "",
+            "items": {
+              "type": "string",
+              "title": "ID",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "",
+              "minLength": 1
+            },
+            "default": [],
+            "maxItems": 500
+          },
+          "risk": {
+            "type": "string",
+            "title": "Risikoprofil",
+            "default": "conservative",
+            "maxLength": 160,
+            "enum": [
+              "conservative",
+              "balanced",
+              "aggressive"
+            ],
+            "x-labels": {
+              "conservative": "Vorsichtig",
+              "balanced": "Ausgewogen",
+              "aggressive": "Aggressiv"
+            }
+          },
+          "serverHop": {
+            "type": "boolean",
+            "title": "Serverwechsel",
+            "default": false
+          },
+          "allowedRealms": {
+            "type": "array",
+            "title": "Erlaubte Realms, z. B. EUII",
+            "description": "",
+            "items": {
+              "type": "string",
+              "title": "ID",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "",
+              "minLength": 1
+            },
+            "default": [],
+            "maxItems": 500
+          },
+          "hopCooldownMs": {
+            "type": "integer",
+            "title": "Serverwechsel-Cooldown (ms)",
+            "default": 300000,
+            "minimum": 60000,
+            "maximum": 86400000
+          },
+          "magiport": {
+            "type": "boolean",
+            "title": "Abgesprochener Magiport",
+            "default": false
+          },
+          "learning": {
+            "type": "boolean",
+            "title": "Begrenzte adaptive Bewertung",
+            "default": true
+          },
+          "learningWeight": {
+            "type": "number",
+            "title": "Maximales Gewicht gelernter Werte",
+            "default": 0.15,
+            "minimum": 0,
+            "maximum": 0.5
+          },
+          "cacheTtlMs": {
+            "type": "integer",
+            "title": "Planungswerte neu bewerten nach (ms)",
+            "default": 60000,
+            "minimum": 1000,
+            "maximum": 3600000
+          }
+        },
+        "required": [
+          "bosses",
+          "events",
+          "quests",
+          "anniversary",
+          "allowedBosses",
+          "allowedEvents",
+          "excludedMaps",
+          "risk",
+          "serverHop",
+          "allowedRealms",
+          "hopCooldownMs",
+          "magiport",
+          "learning",
+          "learningWeight",
+          "cacheTtlMs"
+        ],
+        "additionalProperties": false
+      },
+      "rules": {
+        "type": "array",
+        "title": "Wenn–dann-Regeln",
+        "description": "Deklarative Regeln ohne frei ausgeführten JavaScript-Code. Regeln dürfen Schutz und Ergebnisabgleich nicht umgehen.",
+        "items": {
+          "type": "object",
+          "title": "Verhaltensregel",
+          "description": "",
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "default": "Neue Verhaltensregel",
+              "maxLength": 160,
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Aktiv",
+              "default": true
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priorität",
+              "default": 0,
+              "minimum": -10000,
+              "maximum": 10000
+            },
+            "role": {
+              "type": "string",
+              "title": "Rolle",
+              "default": "all",
+              "maxLength": 160,
+              "enum": [
+                "all",
+                "farmer",
+                "merchant"
+              ],
+              "x-labels": {
+                "all": "Alle Rollen",
+                "farmer": "Farmer",
+                "merchant": "Merchant"
+              }
+            },
+            "character": {
+              "type": "string",
+              "title": "Nur Charakter",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "characters"
+            },
+            "everyMs": {
+              "type": "integer",
+              "title": "Prüfintervall (ms)",
+              "default": 1000,
+              "minimum": 100,
+              "maximum": 3600000
+            },
+            "cooldownMs": {
+              "type": "integer",
+              "title": "Ausführungssperre danach (ms)",
+              "default": 5000,
+              "minimum": 0,
+              "maximum": 3600000
+            },
+            "match": {
+              "type": "string",
+              "title": "Verknüpfung",
+              "default": "all",
+              "maxLength": 160,
+              "enum": [
+                "all",
+                "any"
+              ],
+              "x-labels": {
+                "all": "Alle Bedingungen",
+                "any": "Mindestens eine Bedingung"
+              }
+            },
+            "conditions": {
+              "type": "array",
+              "title": "Bedingungen",
+              "description": "",
+              "items": {
+                "type": "object",
+                "title": "Bedingung",
+                "description": "",
+                "properties": {
+                  "field": {
+                    "type": "string",
+                    "title": "Messwert",
+                    "default": "hpRatio",
+                    "maxLength": 160,
+                    "enum": [
+                      "hpRatio",
+                      "targetHpRatio",
+                      "mpRatio",
+                      "freeSlots",
+                      "gold",
+                      "enemyCount",
+                      "itemCount",
+                      "map",
+                      "rip",
+                      "task"
+                    ],
+                    "x-labels": {
+                      "hpRatio": "Eigener HP-Anteil",
+                      "targetHpRatio": "Ziel-HP-Anteil",
+                      "mpRatio": "MP-Anteil",
+                      "freeSlots": "Freie Slots",
+                      "gold": "Gold",
+                      "enemyCount": "Gegner in Reichweite",
+                      "itemCount": "Item-Menge",
+                      "map": "Karte",
+                      "rip": "Tot",
+                      "task": "Aktivität"
+                    }
+                  },
+                  "operator": {
+                    "type": "string",
+                    "title": "Vergleich",
+                    "default": "lt",
+                    "maxLength": 160,
+                    "enum": [
+                      "lt",
+                      "lte",
+                      "eq",
+                      "neq",
+                      "gte",
+                      "gt"
+                    ],
+                    "x-labels": {
+                      "lt": "Kleiner",
+                      "lte": "Kleiner/gleich",
+                      "eq": "Gleich",
+                      "neq": "Ungleich",
+                      "gte": "Größer/gleich",
+                      "gt": "Größer"
+                    }
+                  },
+                  "value": {
+                    "type": "string",
+                    "title": "Vergleichswert",
+                    "default": "0.5",
+                    "maxLength": 160,
+                    "minLength": 1
+                  },
+                  "item": {
+                    "type": "string",
+                    "title": "Item-ID für Item-Menge",
+                    "default": "",
+                    "maxLength": 160,
+                    "x-catalog": "items"
+                  }
+                },
+                "required": [
+                  "field",
+                  "operator",
+                  "value",
+                  "item"
+                ],
+                "additionalProperties": false
+              },
+              "default": [],
+              "maxItems": 500
+            },
+            "action": {
+              "type": "string",
+              "title": "Aktion",
+              "default": "pause",
+              "maxLength": 160,
+              "enum": [
+                "pause",
+                "retreat",
+                "farm",
+                "supply",
+                "bank",
+                "skill",
+                "task",
+                "notify"
+              ],
+              "x-labels": {
+                "pause": "Bot pausieren",
+                "retreat": "Rückzug",
+                "farm": "Farmziel ändern",
+                "supply": "Versorgung anfordern",
+                "bank": "Bankauftrag",
+                "skill": "Skill anfordern",
+                "task": "Aktivität wechseln",
+                "notify": "Kurzer Hinweis"
+              }
+            },
+            "target": {
+              "type": "string",
+              "title": "Ziel / Skill-ID / Aktivität / Hinweis",
+              "default": "",
+              "maxLength": 160
+            },
+            "amount": {
+              "type": "integer",
+              "title": "Menge (falls benötigt)",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 1000000000000
+            }
+          },
+          "required": [
+            "name",
+            "enabled",
+            "priority",
+            "role",
+            "character",
+            "everyMs",
+            "cooldownMs",
+            "match",
+            "conditions",
+            "action",
+            "target",
+            "amount"
+          ],
+          "additionalProperties": false
+        },
+        "default": [],
+        "maxItems": 500
       }
     },
     "required": [
       "general",
+      "characters",
       "farming",
       "party",
-      "merchant",
-      "characters",
       "skills",
+      "merchant",
       "items",
-      "production"
+      "production",
+      "world",
+      "rules"
     ],
     "additionalProperties": false
   }

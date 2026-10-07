@@ -66,3 +66,25 @@ Die öffentliche ALBot-API bleibt `start()`, `pause()`, `stop()`, `status()`, `t
 `albot.live-b/v1` ergänzt die tatsächlich verfügbaren Merchant-/Item-/Produktionseinstellungen. Regeln werden in acquisition, inventory und production aufgelöst; keep gilt phasenübergreifend. `maxActions` zählt pro Regel gestartete Economy-Aktionen in dieser CODE-Instanz (keine Lieferung, kein Verbrauch, keine vorgelagerte Bank-Stackteilung). Pause/Resume erhält die Zähler. Gold-/Verlustbudgets werden vor Dispatch namensgebunden gespeichert; konservativ keine Rückerstattung bei Fehlschlag/Unklarheit. Eine Produktion benötigt explizite Regeln für jeden Schritt. Planer maximal 256 Abhängigkeiten und konfigurierbare Rekursionstiefe.
 
 Testbericht enthält zusätzlich `economy`, `production`, `gear` und Live-B-Profilwerte. Gearprofile sind begrenzt und namensgebunden. Browser nutzt weiter performance_trick; keine DOM-/Node-Abhängigkeit in Fachmodulen. Neue API-Aufrufe werden im Executor ausgeführt, Inventaränderungen anhand aktueller Mengen/Identitäten bestätigt. `buy_with_gold` verhindert versehentlichen Shell-Kauf. Details, Grenzen und Testpfad: [LIVE-B.md](LIVE-B.md).
+
+## Live-C-Erweiterung (0.3.0-live-c)
+
+Das aktuelle Paket liefert `albot.live-c/v1`. A/B-Konfigurationen bleiben ausführbar; die C-Werkstattmigration ergänzt neue Optionen ausdrücklich. Alle Spielfunktionen verwenden weiter denselben Executor und Scheduler. Die vollständige Funktionszuordnung einschließlich Restlücken steht in [INTEGRATIONSSTAND.md](INTEGRATIONSSTAND.md).
+
+Zusätzliche öffentliche Funktionen auf `ALBot`:
+
+| Funktion | Vertrag |
+|---|---|
+| `requestTask(task, ttlMs = 120000)` | Boolesche Annahme; 1 Sekunde bis 1 Stunde. `farm` oder `farm:monster`, `boss:id`, `event:id`, Merchant `fishing`/`mining`/`merrit`/`bank`. Nur erlaubte Ziele/aktivierte Module und laufender Bot ohne Wertjournal/Logistikreservierung. Keine Garantie auf erfolgreiche Reise/Spielaktion. |
+| `requestSupply(item, quantity)` | Boolesche Annahme einer Level-0-Nachschubanfrage für 120 Sekunden. Benötigt eigene passende Item-Regel, positive Ganzzahl höchstens maxCount; tatsächlicher Empfang folgt weiter Schutz/Varianten/Reserve/Handshake. Erhöht keinen Merchantbestand automatisch. |
+| `requestServerHop(realm)` | Boolesche Annahme des Leaders. world.serverHop, Allowliste, Cooldown, frisches Team und ruhender sicherer Eigenzustand erforderlich. Ein Protokoll sammelt sichere Peer-ACKs, sperrt neue Aktionen und übergibt den erlaubten Realm an offizielle change_server. Keine automatische zyklische Serverwahl. |
+
+Bestehende Funktionen: `start()`, `pause()`, `stop()`, `status()`, `testReport()`, `exportTestReport()`, `acknowledgeInventory()`, `dispose()`; Eigenschaften `version`, `schemaId`. `status().task` ergänzt den aktiven Kontext. Testberichte ergänzen `strategy`, `account`, `travel`, `services`, `merchantTask` sowie Welt-/Regelkonfiguration.
+
+Pause/Stop löscht manuelle Aufgaben und Transportzustimmungen. Ein bereits beobachteter Gathering-Vorgang wird nicht erfunden rückgängig gemacht; der namensgebundene Tool-Checkpoint bleibt erhalten und führt nach Resume/Reload zuerst zur ursprünglichen Mainhand/Offhand zurück. Beschädigte Tooldaten sperren Inventararbeit; nicht automatisch löschen. Tatsächliche Ausrüstung prüfen, pausieren und den eigenen `albot:tools:NAME`-Zustand nur nach manuellem Abgleich korrigieren. Kein fremder Storage wird bereinigt.
+
+Accountrotation ist explizit `selection=adaptive`; `rotation=false` hält aktive Charaktere im Team, ein expliziter Leader bleibt. Unbekannte Offlineklasse/-level werden nicht blind eingesetzt. Ein Merchant (sonst Leader) koordiniert genau einen Wechsel. Vor dem Stop wird eine eigene Wiederherstellungsabsicht gespeichert. Nach Unterbrechung wird zuerst der Ersatz gestoppt und der ursprüngliche Charakter gestartet. Der Host muss sämtliche Namen und denselben Botcode bereits kennen; standby bedeutet kein Farmen, kein zusätzlicher Login durch den Bot. Speicher bleibt der begrenzt persistente Clientvertrag, keine Exactly-once-Transaktion.
+
+Magiport benötigt aktuelle, konfigurierte Peers am Leader und eine kurzlebige Zustimmung mit identischer Auftrags-ID. Keine beliebigen Teleportanfragen annehmen. Zielregel, MPreserve und ruhendes Inventar gelten zusätzlich. Realmwechsel und Rotation bleiben im persönlichen C-Testprofil ausgeschaltet.
+
+Produktionsziele mit Empfänger zählen bestätigte Liefermenge und letzte Transfer-IDs persistent. Bestätigung wird vor dem Leeren des Wertjournals gespeichert. Gleiche Zielidentität (Name/Item/Level/Menge/Empfänger) startet nach Reload nicht neu; ein bewusst neues Ziel erhält eine neue Identität. Allgemeine Budgets werden dabei nicht automatisch zurückgesetzt.

@@ -1,4 +1,4 @@
-/* ALBot 0.2.2-live-b · Live B pending */
+/* ALBot 0.3.0-live-c · Live C pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -9,7 +9,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.2.2-live-b';
+const VERSION='0.3.0-live-c';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -310,6 +310,18 @@ for(const k of ['goldReserve','gearRole']){
 }
 ECONOMY_DESCRIPTOR.schema.required=Object.keys(ECONOMY_DESCRIPTOR.schema.properties);
 
+// src/config/live-c.mjs
+const INTEGRATION_DESCRIPTOR=structuredClone(DESCRIPTOR);
+INTEGRATION_DESCRIPTOR.schemaId='albot.live-c/v1';
+INTEGRATION_DESCRIPTOR.schema.title='ALBot · Live C';
+function omitC(schema,keys){for(const key of keys)delete schema.properties[key];schema.required=schema.required.filter(k=>!keys.includes(k));}
+omitC(INTEGRATION_DESCRIPTOR.schema.properties.general,['autoUpdate','updateChannel']);
+omitC(INTEGRATION_DESCRIPTOR.schema.properties.items.items,['recipe']);
+INTEGRATION_DESCRIPTOR.schema.properties.general.properties.messageTtlMs.minimum=6000;
+INTEGRATION_DESCRIPTOR.schema.properties.merchant.properties.bankGold.title='Goldbestand bei Bankbesuchen ausgleichen';
+INTEGRATION_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=SUPPORTED_SKILLS;
+INTEGRATION_DESCRIPTOR.schema.properties.skills.items.properties.skill.default='supershot';
+
 // src/core/policy.mjs
 const xy=e=>({x:e?.real_x??e?.x,y:e?.real_y??e?.y});
 const distance=(a,b)=>Math.hypot(xy(a).x-xy(b).x,xy(a).y-xy(b).y);
@@ -325,7 +337,7 @@ function transferable(items,slot,rule){const i=items[slot];if(protectedItem(i)||
 function arrived(c,d){return samePlace(c,d)&&distance(c,d)<=d.radius&&!c.moving;}
 function matches(conditions,s){return conditions.every(c=>{const actual=c.field==='itemCount'?s.count(c.item):s[c.field];if(actual===undefined||actual===null||(typeof actual==='number'&&!Number.isFinite(actual)))return false;const wanted=typeof actual==='boolean'?c.value==='true':typeof actual==='number'?Number(c.value):c.value;return {lt:()=>actual<wanted,lte:()=>actual<=wanted,eq:()=>actual===wanted,neq:()=>actual!==wanted,gte:()=>actual>=wanted,gt:()=>actual>wanted}[c.operator]?.()===true;});}
 function validMessage(m,from,self,roster,now){
-  return !!m&&m.protocol==='albot/1'&&m.from===from&&roster.includes(from)&&m.to===self&&typeof m.session==='string'&&m.session.length<100&&Number.isSafeInteger(m.seq)&&m.seq>0&&Number.isFinite(m.time)&&Number.isFinite(m.ttl)&&m.ttl>0&&m.ttl<=120000&&m.time<=now+2000&&now-m.time<m.ttl&&['status','offer','accept','sent','receipt','done'].includes(m.type)&&typeof m.id==='string'&&m.id.length<150&&JSON.stringify(m).length<5000;
+  return !!m&&m.protocol==='albot/1'&&m.from===from&&roster.includes(from)&&m.to===self&&typeof m.session==='string'&&m.session.length<100&&Number.isSafeInteger(m.seq)&&m.seq>0&&Number.isFinite(m.time)&&Number.isFinite(m.ttl)&&m.ttl>0&&m.ttl<=120000&&m.time<=now+2000&&now-m.time<m.ttl&&['status','offer','accept','sent','receipt','done','hopPlan','hopAck','hopCommit','hopCancel','portRequest','portAck'].includes(m.type)&&typeof m.id==='string'&&m.id.length<150&&JSON.stringify(m).length<5000;
 }
 
 // src/core/executor.mjs
@@ -398,6 +410,20 @@ function createCheckpoint(p,key,report){
   };
 }
 
+// src/core/fair-tasks.mjs
+// Waiting age can override a normal hold, never a resource lock or live guard.
+function createFairTasks({holdMs=30000,starvationMs=120000,now=()=>Date.now()}={}){
+ const waiting=new Map();let current=null,started=0;
+ function rank(jobs){const time=now(),ids=new Set(jobs.map(j=>j.id));for(const id of waiting.keys())if(!ids.has(id))waiting.delete(id);
+  for(const j of jobs)if(!waiting.has(j.id))waiting.set(j.id,time);
+  const overdue=jobs.filter(j=>time-waiting.get(j.id)>=starvationMs).sort((a,b)=>waiting.get(a.id)-waiting.get(b.id)||(b.priority??0)-(a.priority??0)||a.id.localeCompare(b.id));
+  const held=jobs.find(j=>j.id===current);
+  const first=overdue[0]??(held&&time-started<holdMs?held:null);
+  return [...(first?[first]:[]),...jobs.filter(j=>j!==first).sort((a,b)=>(b.priority??0)-(a.priority??0)||waiting.get(a.id)-waiting.get(b.id)||a.id.localeCompare(b.id))];
+ }
+ return {rank,selected(id){if(current!==id){current=id;started=now();}waiting.set(id,now());},clear(){current=null;waiting.clear();},status:()=>({task:current,since:started,waiting:waiting.size})};
+}
+
 // src/runtime/ports.mjs
 function createPorts(root){
   let parent;try{parent=root.parent??root;}catch{parent=root;}
@@ -430,7 +456,7 @@ function createTransport(bot){
       if(m.type==='status'){
         const d=m.data;if(!d||typeof d.map!=='string'||!Number.isFinite(d.x)||!Number.isFinite(d.y)||typeof d.realm!=='string'||!Array.isArray(d.items)||d.items.length>25)return;
         peers.set(from,{...d,received:Date.now(),session:m.session});
-      }else if(bot.running)bot.logistics?.receive(from,m);
+      }else if(bot.running){if(m.type.startsWith('hop')||m.type.startsWith('port'))bot.teamTravel?.receive(from,m);else bot.logistics?.receive(from,m);}
     }catch(e){bot.report('Nachricht verworfen: '+e.message);}
   }
   if(p.ipc)offs.push(p.h.onMessage(e=>{if(e.topic==='albot/1')receive(e.from,e.data);}));
@@ -450,7 +476,7 @@ function createTransport(bot){
   }
   function parentSiblings(){try{return p.parent.caracAL?.siblings??[];}catch{return [];}}
   return {peers,send,roster,fresh(name){const d=peers.get(name);return d&&Date.now()-d.received<cfg.general.messageTtlMs?d:null;},
-    heartbeat(){const c=p.c;if(!c)return;const items=bot.logistics?.summary()??[];const d={...xy(c),map:c.map,in:c.in??c.map,realm:p.realm(),rip:!!c.rip,hp:c.hp,max_hp:c.max_hp,mp:c.mp,max_mp:c.max_mp,target:bot.target?.id??null,free:bot.free(),running:bot.running,items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot()};for(const n of roster)send(n,'status',d);},
+    heartbeat(){const c=p.c;if(!c)return;const items=bot.logistics?.summary()??[];const d={...xy(c),map:c.map,in:c.in??c.map,realm:p.realm(),rip:!!c.rip,hp:c.hp,max_hp:c.max_hp,mp:c.mp,max_mp:c.max_mp,class:c.ctype,level:c.level,target:bot.target?.id??null,free:bot.free(),running:bot.running,journal:!!bot.journal,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),activity:bot.strategy?.heartbeat(),team:bot.account?.heartbeat()};if(JSON.stringify(d).length>4000){delete d.gear;d.materials=[];}for(const n of roster)send(n,'status',d);},
     close(){offs.splice(0).forEach(f=>f());peers.clear();seen.clear();retired.clear();}
   };
 }
@@ -461,6 +487,7 @@ function createMovement(bot){
   const stop=()=>{if(order||p.root.smart?.moving||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
+    if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order)return false;
     if(p.c.stand){exec.run('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return false;}
@@ -487,7 +514,7 @@ function createSkills(bot){
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
-    if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp))return false;
+    if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp)return false;
     if(asArray(s.class).length&&!asArray(s.class).includes(c.ctype)||c.level<(s.level??0))return false;
     if(p.call('is_on_cooldown',id))return false;
     const cost=s.mp??(['attack','heal'].includes(id)?c.mp_cost??0:0);
@@ -572,10 +599,10 @@ function createLogistics(bot){
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
-  const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
+  const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
   const sendRecipients=item=>[...new Set(cfg.items.filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
   const sendRule=(item,to)=>{const r=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context());return r?.action==='send'&&!bot.production?.reserved(item)?r:null;};
-  const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount;return n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;};
+  const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount,normal=n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;return Math.min(Math.max(normal,bot.behavior?.need(rule.item,n)??0),Math.max(0,rule.maxCount-n));};
   const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''});
   const matchingDemand=(d,i)=>d.item===i.name&&(!d.variant||JSON.stringify(d.variant)===JSON.stringify(signature(i)));
   const count=i=>(p.c.items??[]).reduce((n,x)=>n+(x&&x.name===i.name&&(x.level??0)===i.level&&(x.stat_type??'')===i.stat_type&&(x.p??'')===i.p&&(x.title??'')===i.title?(x.q??1):0),0);
@@ -597,13 +624,13 @@ function createLogistics(bot){
       job.quantity=d.quantity;job.state='accepted';counters.acceptsReceived++;
     }else if(m.type==='sent'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session){incoming.sent=true;}
     else if(m.type==='receipt'&&job&&m.id===job.id&&from===job.to&&m.session===job.session&&d.quantity===job.quantity){job.receipt=true;counters.receiptsReceived++;}
-    else if(m.type==='done'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session&&incoming.observed){counters.doneReceived++;completed.set(m.id,Date.now());incoming=null;bot.endValue('confirmed');}
+    else if(m.type==='done'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session&&incoming.observed){counters.doneReceived++;completed.set(m.id,clock());incoming=null;bot.endValue('confirmed');}
   }
   function poll(allowOffer=true){
     const now=clock();for(const [id,t] of completed)if(now-t>120000)completed.delete(id);
     for(const [id,t] of nextOffer)if(t<now)nextOffer.delete(id);
     if(incoming){
-      if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(now-(incoming.lastReceipt??0)>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
+      if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(incoming.lastReceipt===undefined||now-incoming.lastReceipt>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
       if(now>incoming.until){counters.timeouts++;bot.endValue('unknown');incoming=null;}
     }
     if(job){
@@ -647,19 +674,23 @@ function createLogistics(bot){
     }
   }
   function travel(){
-    if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked)return;
+    if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||exec.busy('inventory'))return;
     for(const [name] of transport.peers){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
       const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some(i=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&variantCount(p.c.items,i)>r.keep+r.teamReserve;}));
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>x.to===me.name&&x.surplus>0);
-      if((demand||pickup)&&(!samePlace(p.c,h)||distance(p.c,h)>200)){bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;}
+      if((demand||pickup)&&(!samePlace(p.c,h)||distance(p.c,h)>200)){
+        if(bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
+        if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;
+      }
     }
   }
   return {receive,poll,travel,get reserved(){return !!(job||incoming);},stats(){return {...counters};},
     summary(){
       const rules=cfg.items.filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}
-      const all=[...variants.values()],page=all.slice(summaryOffset,summaryOffset+12);summaryOffset=(summaryOffset+12)%Math.max(1,all.length);
-      return page.map(item=>{const r=ruleFor(item),n=count(item);return {item:item.name,variant:item,need:demandFor(r,n),surplus:r?.action==='send'?Math.max(0,n-r.keep-r.teamReserve):0,to:r?.action==='send'?r.recipient:''};});
+      const all=[...variants.values()],result=[];let bytes=0;
+      for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:demandFor(r,countNow),surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
+      summaryOffset=(summaryOffset+result.length)%Math.max(1,all.length);return result;
     },
     close(){if(incoming||job?.state==='sent'||job?.state==='accepted')bot.endValue('unknown');job=null;incoming=null;}
   };
@@ -697,10 +728,13 @@ function createFarmer(bot){
     if(recover())return;
     const c=p.c,now=Date.now();
     if(me.role==='merchant'){bot.reason=bot.inventoryBlocked?'Inventar ungeklärt':'Merchant bereit';return;}
+    if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
+    if(bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
     if(cfg.farming.loot&&!bot.inventoryBlocked&&!bot.logistics.reserved&&bot.free()>cfg.farming.freeSlots&&now-lastLoot>=cfg.farming.lootEveryMs){lastLoot=now;exec.run('loot',['inventory'],()=>bot.free()>cfg.farming.freeSlots,()=>tolerate('loot','openning',()=>p.call('loot')),{delay:cfg.farming.lootEveryMs});}
     if(!cfg.farming.enabled){bot.reason='Farmen ausgeschaltet';bot.skills.rotation(null);return;}
-    if(p.parent.is_pvp||p.G.maps[c.map]?.pvp){bot.pause('Live A farmt nicht auf PvP-Karten');return;}
+    if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
     if(bot.free()<cfg.farming.freeSlots){bot.reason='Inventarreserve erreicht';bot.target=null;bot.skills.rotation(null);return;}
+    if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){bot.reason='Warte auf Kampf-Leader';bot.target=null;bot.skills.rotation(null);return;}
@@ -722,7 +756,7 @@ function createFarmer(bot){
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }
-  return {tick};
+  return {tick,retreat};
 }
 
 // src/ui/panel.mjs
@@ -739,12 +773,12 @@ function createPanel(bot,api){
 // src/merchant/economy.mjs
 function createEconomy(bot){
  const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0;const ruleActions=new Map();
- const actionKey=r=>JSON.stringify([r.name,r.item,r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
+ const actionKey=r=>JSON.stringify([r.name,r.item,r._originalAction??r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
  const remaining=r=>!r?.maxActions||(ruleActions.get(actionKey(r))??0)<r.maxActions;
  const ledgerKey='albot:economy:'+me.name+':budget';
  let ledger=p.read(ledgerKey)??{hour:Date.now(),spent:0,loss:0,goals:{}};
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
- const rules=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
+ const rules=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
  const count=item=>variantCount(p.c.items,item);
  const downstreamSatisfied=(item,r)=>{
   if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;
@@ -856,7 +890,7 @@ function createBank(bot){
 
 // src/merchant/market.mjs
 function createMarket(bot){
- const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0;
+ const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
  function price(item,r,sell=false){
   let result=sell?r.minPrice:r.maxPrice;
@@ -890,14 +924,19 @@ function createMarket(bot){
    if(exec.run('giveaway',['social'],()=>bot.running,()=>p.call('join_giveaway',player.name,slot,offer.rid),{delay:60000}))return true;
   }
   if(!cfg.merchant.ponty)return false;
-  const d=e.destination('secondhands');if(!e.at(d))return false;
-  if(Date.now()-lastScan>60000){lastScan=Date.now();return exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});}
-  for(const i of secondhand){const r=e.rules(i,'acquisition');if(r?.action!=='marketBuy'||!i.rid||!e.safe(i))continue;
-   const price=i.price,q=i.q??1,before=e.count(i);if(!Number.isFinite(price)||price<=0||price>Math.min(r.maxPrice*q,cfg.merchant.pontyMaxSpend)||price>e.value(i)*q*cfg.merchant.bargainRatio||before+q>r.targetCount)continue;
-   return e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.at(d)&&e.count(i)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(i)>=before+q,details:{item:i.name,quantity:q,before}});
+  const d=e.destination('secondhands');if(!d)return false;
+  if(Date.now()-lastScan>60000){if(!e.travel(d,'Ponty'))return true;const token=++scanGeneration;
+   const accepted=exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{if(bot.running&&token===scanGeneration)secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});if(accepted)lastScan=Date.now();return accepted;}
+  for(const i of secondhand){const item={...i};delete item.rid;const r=e.rules(item,'acquisition');if(r?.action!=='marketBuy'||!e.remaining(r)||!i.rid||!e.safe(i))continue;
+   const factor=p.G.multipliers?.[p.G.items[i.name]?.cash?'secondhands_cash_mult':'secondhands_mult']??(p.G.items[i.name]?.cash?3:2);
+   const price=Math.ceil(e.value(i)*factor*(i.q??1)),q=i.q??1,before=e.count(item),reference=thisReference(item,r);
+   if(!Number.isFinite(price)||price<=0||!reference||price>Math.min(r.maxPrice*q,cfg.merchant.pontyMaxSpend)||price>reference*q*cfg.merchant.bargainRatio||before+q>Math.min(r.targetCount,r.maxCount)||q>r.batch||bot.free()<=cfg.merchant.minFreeSlots)continue;
+   if(!e.travel(d,'Ponty-Kauf'))return true;
+   const accepted=e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.at(d)&&e.count(item)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(item)>=before+q,details:{item:i.name,quantity:q,before}});if(accepted)secondhand=secondhand.filter(x=>x.rid!==i.rid);return accepted;
   }return false;
  }
- return {listing,buy,wishlist,background};
+ function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}
+ return {listing,buy,wishlist,background,close(){scanGeneration++;secondhand=[];}};
 }
 
 // src/production/materials.mjs
@@ -958,6 +997,16 @@ function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,max
 // src/production/production.mjs
 function createProduction(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[];
+ const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient]);
+ let deliveries=p.read(deliveryKey)??{};if(!deliveries||typeof deliveries!=='object'||Array.isArray(deliveries))deliveries={};
+ function recordDelivery(j){
+  if(j.kind!=='send'||!j.id||!j.to||typeof j.item!=='object')return true;const next=structuredClone(deliveries);let changed=false;
+  for(const g of cfg.production.goals.filter(g=>g.enabled&&g.recipient===j.to&&g.item===j.item.name&&g.level===j.item.level)){
+   const key=goalKey(g),old=next[key]??{quantity:0,last:[]};if(!Number.isFinite(old.quantity)||!Array.isArray(old.last))return false;if(old.last.includes(j.id))continue;
+   next[key]={quantity:Math.min(g.quantity,old.quantity+j.quantity),last:[...old.last,j.id].slice(-32)};changed=true;
+  }
+  if(changed){const keys=new Set(cfg.production.goals.map(goalKey)),value=Object.fromEntries(Object.entries(next).filter(([k])=>keys.has(k)));if(!p.write(deliveryKey,value))return false;deliveries=value;}return true;
+ }
  const qty=(name,level)=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===level&&(e.rules(i)?.action!=='keep')&&!i.l&&!i.b?(i.q??1):0),0);
  function mutate(slot,r){
   const i={...p.c.items[slot]},kind=r.action;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production[kind]||!e.safe(i)||!p.G.items[i.name]?.[kind]||(i.level??0)>=r.targetLevel)return false;
@@ -1003,8 +1052,9 @@ function createProduction(bot){
  function planGoals(){
   plan=[];goal=null;materials=[];if(!cfg.production.enabled)return;
   for(const g of cfg.production.goals.filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority)){
-   if(qty(g.item,g.level)>=g.quantity)continue;
-   try{plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:g.quantity,stock:qty,bank:(name,level)=>bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth});goal=g;}catch(err){e.note(err.message);}break;
+   const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
+   if(!needed||qty(g.item,g.level)>=needed)continue;
+   try{plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level)=>bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth});goal=g;}catch(err){e.note(err.message);}break;
   }
  }
  function tick(){
@@ -1022,10 +1072,10 @@ function createProduction(bot){
    e.note(materials.length?'Materialauftrag: '+step.item+' bei '+materials[0].monster:'Kein erlaubter Farmweg im Zeitbudget: '+step.item);
   }return false;
  }
- return {mutate,craft,exchange,planGoals,tick,get activeGoal(){return goal;},materials:()=>materials,
+ return {mutate,craft,exchange,planGoals,tick,recordDelivery,get activeGoal(){return goal;},materials:()=>materials,
  reserved:i=>!!goal&&((i.name===goal.item&&(i.level??0)===goal.level&&!goal.recipient)||plan.some(s=>s.item===i.name&&(i.level??0)===s.level&&s.kind!=='farm')),
  farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets;for(const request of merchant.materials){if(!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.rules({name:request.item,level:0},'acquisition');if(r?.action==='farm'&&qty(request.item,0)<Math.min(r.targetCount,request.quantity))return [request.monster];}return null;},
- status:()=>({goal:goal?.name??null,steps:plan.slice(0,20)}),close(){preview=null;plan=[];goal=null;materials=[];}};
+ status:()=>({goal:goal?.name??null,steps:plan.slice(0,20),deliveries:cfg.production.goals.filter(g=>g.enabled&&g.recipient).slice(0,20).map(g=>({goal:g.name,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];}};
 }
 
 // src/production/gear.mjs
@@ -1040,7 +1090,7 @@ function createGear(bot){
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
  function snapshot(){const slots={};for(const [slot,i] of Object.entries(p.c.slots??{}))if(i&&!slot.startsWith('trade'))slots[slot]={name:i.name,level:i.level??0};return {class:p.c.ctype,level:p.c.level,slots};}
  function refresh(){
-  if(!cfg.production.gear)return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
+  if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
    if(!data||typeof data.class!=='string'||!Number.isFinite(data.level)||!data.slots||typeof data.slots!=='object')continue;
    const slots={};for(const [slot,i] of Object.entries(data.slots).slice(0,16))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level};
    profiles[name]={class:data.class,level:data.level,slots,at:Date.now()};
@@ -1069,102 +1119,348 @@ function createGear(bot){
    try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':'dps'):member.gearRole,old=profile.slots[rule.slot];const score=gearScore(p.call('item_properties',item),role),previous=old?gearScore(p.call('item_properties',old),role):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
   }
  }return result.slice(0,20);}
- return {equip,snapshot,refresh,suggestions};
+ return {equip,snapshot,refresh,suggestions,profile:name=>profiles[name]??null};
 }
 
 // src/merchant/controller.mjs
 function createMerchant(bot){
- const {p,cfg,me,exec}=bot,e=bot.economy;let cursor=0;
+ const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  function buff(){
-  if(me.role!=='merchant'||!cfg.merchant.mluck||!p.G.skills?.mluck)return;
-  const skill=p.G.skills.mluck;if(p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown','mluck'))return;
-  const candidates=cfg.merchant.mluckOthers?Object.values(p.entities).filter(x=>x.type==='character'):bot.allies();
-  for(const c of candidates){if(c.rip||distance(p.c,c)>(skill.range??320)||c.s?.mluck?.strong&&c.s.mluck.f!==me.name||c.s?.mluck?.ms>60000)continue;
-   exec.run('mluck',['skill','mana'],()=>bot.running&&p.c.mp>=(skill.mp??0),()=>p.call('use_skill','mluck',c.id??c.name),{delay:2000});break;
+  if(me.role!=='merchant'||!cfg.merchant.mluck||!p.G.skills?.mluck)return;const skill=p.G.skills.mluck;
+  if(p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown','mluck'))return;
+  for(const c of cfg.merchant.mluckOthers?Object.values(p.entities).filter(x=>x.type==='character'):bot.allies()){
+   if(c.rip||distance(p.c,c)>(skill.range??320)||c.s?.mluck?.strong&&c.s.mluck.f!==me.name||c.s?.mluck?.ms>60000)continue;
+   if(exec.run('mluck',['skill','mana'],()=>bot.running&&p.c.mp>=(skill.mp??0),()=>p.call('use_skill','mluck',c.id??c.name),{delay:2000}))break;
   }
  }
  function tick(){
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
-  if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();
-  buff();if(bot.movement.order?.owner==='logistics'){bot.services?.restore();return;}
-  if(me.role==='merchant'&&cfg.merchant.stand&&!p.c.stand&&!p.c.moving&&!bot.movement.order&&p.c.items.some(i=>i&&p.G.items[i.name]?.stand)){
-   if(exec.run('stand',['stand'],()=>bot.running&&!p.c.moving,()=>p.call('open_stand'),{delay:5000}))return;
+  if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
+  if(bot.movement.order?.owner==='logistics'){bot.services?.interrupt();bot.services?.restore();return;}
+  if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
+  const jobs=[],add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,run,r});
+  for(let slot=0;slot<p.c.items.length;slot++){
+   const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
+   for(const [phase,r] of [['inventory',inventory],['production',production]]){
+    if(!r||!e.remaining(r)||['keep','send','consume'].includes(r.action))continue;
+    if(['sell','bank','list','exchange'].includes(r.action)&&e.spare(slot,r)<1)continue;
+    if(['upgrade','compound'].includes(r.action)&&(i.level??0)>=r.targetLevel)continue;
+    let run;if(r.action==='sell')run=()=>e.npcSell(slot,r);
+    if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
+    if(me.role==='merchant'){
+     if(r.action==='bank')run=()=>bot.bank.store(slot,r);
+     if(r.action==='list')run=()=>bot.market.listing(slot,r);
+     if(r.action==='exchange')run=()=>bot.production.exchange(slot,r);
+     if(['upgrade','compound'].includes(r.action))run=()=>bot.production.mutate(slot,r);
+    }
+    if(run)add(phase+':'+cfg.items.indexOf(r)+':'+slot,r,()=>{
+     const done=run();if(done||bot.movement.order||bot.journal)return done;
+     if(r.fallback==='bank'&&me.role==='merchant'&&r.action!=='bank')return bot.bank.store(slot,{...r,action:'bank',_originalAction:r.action});
+     if(r.fallback==='notify')e.note(r.name+': Voraussetzungen fehlen; Item bleibt erhalten');return false;
+    });
+   }
   }
-  const items=p.c.items;
-  for(let n=0;n<items.length;n++){
-   const slot=(cursor+n)%items.length,i=items[slot];if(!e.safe(i))continue;
-   const inventoryRule=e.rules(i),productionRule=e.rules(i,'production');
-   const r=e.remaining(inventoryRule)?inventoryRule:null,production=e.remaining(productionRule)?productionRule:null;let done=false;
-   if(r?.action==='sell')done=e.npcSell(slot,r);
-   else if(r?.action==='bank'&&me.role==='merchant')done=bot.bank.store(slot,r);
-   else if(r?.action==='list'&&me.role==='merchant')done=bot.market.listing(slot,r);
-   else if(r?.action==='equip')done=bot.gear.equip(slot,r);
-   if(!done&&me.role==='merchant'&&production?.action==='exchange')done=bot.production.exchange(slot,production);
-   if(!done&&me.role==='merchant'&&['upgrade','compound'].includes(production?.action))done=bot.production.mutate(slot,production);
-   if(done){cursor=(slot+1)%items.length;return;}if(bot.movement.order?.owner==='economy'){cursor=slot;return;}
+  if(me.role==='merchant'){
+   for(const r of cfg.items.filter(r=>r.enabled&&e.remaining(r))){const item={name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title};
+    if(e.rules(item,'acquisition')===r&&!e.downstreamSatisfied(item,r)){const n=e.count(item),need=Math.min(r.targetCount,r.maxCount)-n;if(need<=0||r.requestBelow>0&&n>r.requestBelow)continue;
+     const run={buy:()=>e.npcBuy(item,r,need),retrieve:()=>bot.bank.retrieve(item,r,need),marketBuy:()=>bot.market.buy(item,r),wishlist:()=>bot.market.wishlist(item,r)}[r.action];if(run)add('acquisition:'+cfg.items.indexOf(r),r,run);
+    }
+    if(r.action==='craft'&&e.rules(item,'production')===r&&e.count(item)<r.targetCount)add('craft:'+cfg.items.indexOf(r),r,()=>bot.production.craft(r.item,r));
+   }
+   add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());
+   if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
+   add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>bot.services.tick());
+  }
+  if(cfg.merchant.stand&&!p.c.stand&&!p.c.moving&&!bot.movement.order&&p.c.items.some(i=>i&&p.G.items[i.name]?.stand)&&me.role==='merchant')exec.run('stand',['stand'],()=>bot.running&&!p.c.moving,()=>p.call('open_stand'),{delay:5000});
+  for(const job of tasks.rank(jobs)){
+   if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
+   if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
+   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){tasks.selected(job.id);return;}
   }
   if(me.role!=='merchant')return;
-  for(const r of cfg.items.filter(r=>r.enabled&&e.remaining(r))){
-   const item={name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title};
-   if(e.rules(item,'acquisition')!==r||e.downstreamSatisfied(item,r))continue;const n=e.count(item),need=Math.min(r.targetCount,r.maxCount)-n;
-   if(need<=0||(r.requestBelow>0&&n>r.requestBelow))continue;
-   let done=false;
-   if(r.action==='buy')done=e.npcBuy(item,r,need);
-   if(r.action==='retrieve')done=bot.bank.retrieve(item,r,need);
-   if(r.action==='marketBuy')done=bot.market.buy(item,r);
-   if(r.action==='wishlist')done=bot.market.wishlist(item,r);
-   if(done||bot.movement.order?.owner==='economy')return;
-  }
-  for(const r of cfg.items.filter(r=>r.enabled&&r.action==='craft'&&e.remaining(r))){const item={name:r.item,level:0};if(e.rules(item,'production')===r&&e.count(item)<r.targetCount&&bot.production.craft(r.item,r))return;}
-  if(bot.production.tick()||bot.bank.gold()||bot.bank.consolidate()||bot.market.background()||bot.services?.tick())return;
-  const pos=cfg.merchant.position;if(pos.enabled&&!e.travel({...pos,in:pos.map},'Standplatz',20))return;
-  if(cfg.merchant.stand&&!p.c.stand&&p.c.items.some(i=>i?.name==='stand0'||i?.name==='stand1'))exec.run('stand',['stand'],()=>bot.running&&!p.c.moving,()=>p.call('open_stand'),{delay:5000});
+  const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
  }
- return {tick};
+ return {tick,status:tasks.status,close:tasks.clear};
 }
 
 // src/merchant/services.mjs
 function insidePolygon(point,polygon){let inside=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const [ax,ay]=polygon[i],[bx,by]=polygon[j];if((ay>point.y)!==(by>point.y)&&point.x<(bx-ax)*(point.y-ay)/(by-ay)+ax)inside=!inside;}return inside;}
+const nearGatherZone=(point,polygon)=>[[0,-24],[-24,0],[24,0],[0,24]].some(([x,y])=>insidePolygon({x:point.x+x,y:point.y+y},polygon));
 function createServices(bot){
- const {p,cfg,exec}=bot,e=bot.economy;let previousHand=null,gathering=null,merritAt=0,merritBaseline=0;
- function cast(skill,target){const s=p.G.skills?.[skill];if(!s||p.c.level<(s.level??0)||p.c.mp<(s.mp??0)||p.call('is_on_cooldown',skill))return false;return exec.run('service:'+skill,['skill','mana'],()=>bot.running&&!p.c.rip,()=>p.call('use_skill',skill,...(target?[target]:[])),{delay:10000});}
+ const {p,cfg,exec,me}=bot,e=bot.economy,key='albot:tools:'+me.name;
+ let record=p.read(key),kind=null,cache=null,version=null,lastKind='mining',nextGather=0;
+ let merritUntil=Number(p.read('albot:merrit:'+me.name))||0,anchor=null,baseline=null,since=0,probe=0;
+ if(record&&(typeof record.mainhand!=='string'||typeof record.offhand!=='string')){e.note('Werkzeug-Checkpoint ungültig; Bestand prüfen');bot.inventoryBlocked=true;record=null;}
+ function save(value){if(!p.write(key,value)){e.note('Werkzeugwechsel: Speichern fehlgeschlagen');return false;}record=value;return true;}
  function restore(){
-  if(!previousHand)return false;if(identity(p.c.slots.mainhand)===previousHand){previousHand=null;gathering=null;return false;}
-  const slot=p.c.items.findIndex(i=>identity(i)===previousHand);if(slot<0){e.note('Vorherige Waffe für Werkzeugwechsel fehlt');return true;}
-  const expected=previousHand;return e.perform('gather.restore',{slots:[slot],call:()=>p.call('equip',slot,'mainhand'),observe:()=>identity(p.c.slots.mainhand)===expected,details:{item:p.c.items[slot].name}});
+  if(!record)return false;if(p.c.q?.fishing||p.c.q?.mining){e.note('Warte auf Ende des Gathering-Vorgangs');return true;}
+  for(const target of ['mainhand','offhand']){
+   const wanted=record[target],current=p.c.slots?.[target];if(identity(current)===wanted)continue;
+   if(current&&protectedItem(current)){e.note('Werkzeug-Rückwechsel durch geschützte Ausrüstung blockiert');return true;}
+   if(!wanted){if(bot.free()<=cfg.merchant.minFreeSlots)return true;return e.perform('gather.restore',{guard:()=>!!p.c.slots[target]&&!protectedItem(p.c.slots[target]),call:()=>p.call('unequip',target),observe:()=>!p.c.slots[target],details:{slot:target}});}
+   const slot=p.c.items.findIndex(i=>identity(i)===wanted);if(slot<0||!e.safe(p.c.items[slot])){e.note('Vorherige Ausrüstung für Werkzeugwechsel fehlt');return true;}
+   return e.perform('gather.restore',{slots:[slot],guard:()=>!p.c.slots[target]||!protectedItem(p.c.slots[target]),call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===wanted,details:{item:p.c.items[slot].name,slot:target}});
+  }if(save(null))kind=null;return !!record;
  }
- function gather(kind){
-  const tool=kind==='fishing'?'rod':'pickaxe';if(p.c.q?.[kind])return true;
+ function zones(){
+  if(cache&&version===p.G)return cache;version=p.G;cache=[];
+  for(const [map,data] of Object.entries(p.G.maps??{}))if(!data.pvp&&!data.instance&&!data.ignore&&!cfg.world?.excludedMaps.includes(map))for(const z of data.zones??[]){
+   if(!['fishing','mining'].includes(z.type)||!Array.isArray(z.polygon)||z.polygon.length<3||z.polygon.length>100||z.polygon.some(x=>!Array.isArray(x)||!Number.isFinite(x[0])||!Number.isFinite(x[1])))continue;
+   const polygon=z.polygon,points=[];
+   for(let n=0;n<polygon.length;n++){const a=polygon[n],b=polygon[(n+1)%polygon.length];for(const t of [.25,.5,.75])for(const [dx,dy] of [[0,-16],[-16,0],[16,0],[0,16]]){const point={x:a[0]+(b[0]-a[0])*t+dx,y:a[1]+(b[1]-a[1])*t+dy};if(!insidePolygon(point,polygon)&&nearGatherZone(point,polygon))points.push(point);}}
+   if(points.length)cache.push({map,in:map,...points[0],points,polygon,kind:z.type});
+  }return cache;
+ }
+ function gather(activity){
+  const skill=p.G.skills?.[activity];if(!skill||p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown',activity))return false;
+  const tool=activity==='fishing'?'rod':'pickaxe',regions=zones().filter(z=>z.kind===activity),here=regions.find(z=>z.map===p.c.map&&nearGatherZone(xy(p.c),z.polygon));let zone=here?{...here,...xy(p.c)}:regions.find(z=>z.map===p.c.map)??regions[0];
+  if(zone&&!here&&zone.map===p.c.map&&p.has?.('can_move_to')){const point=zone.points.slice().sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(point=>p.call('can_move_to',point.x,point.y));if(!point){e.note('Kein erreichbarer '+activity+'-Arbeitsplatz');return false;}zone={...zone,...point};}
+  if(!zone){e.note('Keine öffentliche '+activity+'-Zone bekannt');return false;}
   if(bot.monsters().some(m=>m.target===p.c.name))return restore();
-  const regions=[];for(const [map,data] of Object.entries(p.G.maps??{}))if(data.safe&&!data.pvp&&!data.instance)for(const z of data.zones??[]){if(z.type!==kind||!Array.isArray(z.polygon)||z.polygon.length<3)continue;const polygon=z.polygon;const xs=polygon.map(x=>x[0]),ys=polygon.map(x=>x[1]);let point=null;
-   for(let x=1;x<6&&!point;x++)for(let y=1;y<6&&!point;y++){const test={x:Math.min(...xs)+(Math.max(...xs)-Math.min(...xs))*x/6,y:Math.min(...ys)+(Math.max(...ys)-Math.min(...ys))*y/6};if(insidePolygon(test,polygon))point=test;}
-   if(point)regions.push({map,in:map,...point,polygon});
+  if(!e.travel(zone,activity,5))return true;
+  if(!record&&(p.c.slots?.mainhand&&protectedItem(p.c.slots.mainhand)&&p.c.slots.mainhand.name!==tool||p.c.slots?.offhand&&protectedItem(p.c.slots.offhand))){e.note('Geschützte Ausrüstung verhindert Werkzeugwechsel');return false;}
+  if(!record&&!save({mainhand:identity(p.c.slots?.mainhand),offhand:identity(p.c.slots?.offhand)}))return false;kind=activity;
+  if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=cfg.merchant.minFreeSlots+1){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
+   const before=identity(p.c.slots.offhand);return e.perform('gather.offhand',{guard:()=>identity(p.c.slots.offhand)===before,call:()=>p.call('unequip','offhand'),observe:()=>!p.c.slots.offhand,details:{slot:'offhand'}});
   }
-  const zone=regions.find(z=>z.map===p.c.map&&insidePolygon(xy(p.c),z.polygon))??regions[0];if(!zone){e.note('Keine sichere '+kind+'-Zone bekannt');return false;}
-  if(!e.travel(zone,kind,5))return true;
-  if(p.c.slots.mainhand?.name!==tool){const slot=p.c.items.findIndex(i=>i?.name===tool&&e.safe(i));if(slot<0){const r=e.rules({name:tool,level:0},'acquisition');if(r?.action==='buy')return e.npcBuy({name:tool,level:0},{...r,goldBudget:Math.min(r.goldBudget,cfg.merchant.toolBudget)},1);e.note('Werkzeug fehlt: '+tool);return false;}
-   if(p.c.slots.mainhand?.l||p.c.slots.mainhand?.b)return false;previousHand=identity(p.c.slots.mainhand)||null;gathering=kind;
-   return e.perform('gather.equip',{slots:[slot],guard:()=>bot.free()>cfg.merchant.minFreeSlots,call:()=>p.call('equip',slot,'mainhand'),observe:()=>p.c.slots.mainhand?.name===tool,details:{item:tool}});
+  if(p.c.slots.mainhand?.name!==tool){const slot=p.c.items.findIndex(i=>i?.name===tool&&e.safe(i));
+   if(slot<0){const r=e.rules({name:tool,level:0},'acquisition');if(r?.action==='buy')return e.npcBuy({name:tool,level:0},{...r,goldBudget:Math.min(r.goldBudget,cfg.merchant.toolBudget)},1);e.note('Werkzeug fehlt: '+tool);return restore();}
+   if(p.c.slots.mainhand&&protectedItem(p.c.slots.mainhand))return restore();
+   return e.perform('gather.equip',{slots:[slot],guard:()=>!p.c.slots.offhand&&bot.free()>cfg.merchant.minFreeSlots,call:()=>p.call('equip',slot,'mainhand'),observe:()=>p.c.slots.mainhand?.name===tool,details:{item:tool}});
   }
-  return cast(kind);
+  const accepted=e.perform('gather.'+activity,{guard:()=>p.c.slots.mainhand?.name===tool&&!p.c.slots.offhand&&!p.c.moving&&!p.call('is_on_cooldown',activity)&&nearGatherZone(xy(p.c),zone.polygon),call:()=>p.call('use_skill',activity),observe:()=>!!p.c.q?.[activity]||p.call('is_on_cooldown',activity),details:{item:tool},timeout:20000});
+  if(accepted){lastKind=activity;nextGather=Date.now()+20000;}return accepted;
+ }
+ function merrit(){
+  if(!cfg.merchant.merrit||Date.now()<merritUntil)return false;if(!cfg.merchant.stand){e.note('Merrit benötigt aktivierten Stand');return false;}
+  const meta=p.G.npcs?.citizen22?.market;if(!meta?.areas)return false;
+  if(baseline!==null&&bot.count('marketparcel')>baseline){merritUntil=Date.now()+(meta.hour_ms??3600000);p.write('albot:merrit:'+me.name,merritUntil);anchor=null;baseline=null;bot.event('merchant.merrit',{received:true});return false;}
+  if(Date.now()<probe)return false;
+  const safe=point=>!(p.G.maps?.main?.npcs??[]).some(n=>Array.isArray(n.position)&&distance({x:n.position[0],y:n.position[1]},point)<=(meta.npc_clearance??40))&&!Object.values(p.entities).some(x=>x!==p.c&&(x.npc||x.type==='npc'?distance(x,point)<=(meta.npc_clearance??40):x.stand&&(distance(x,point)<=(meta.stand_clearance??10)||Math.abs(xy(x).x-point.x)<(meta.front_width??10)&&Math.abs(xy(x).y-point.y)<=(meta.front_clearance??15))));
+  if(!anchor){const points=[];for(const [x0,y0,x1,y1] of meta.areas.slice(0,8))for(let x=x0+24;x<x1-20;x+=48)for(let y=y0+24;y<y1-20;y+=48)points.push({map:'main',in:'main',x,y});anchor=points.sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(safe)??null;if(!anchor){e.note('Kein freier Merrit-Standplatz');probe=Date.now()+30000;return false;}}
+  if(!e.travel(anchor,'Merrit',3))return true;if(!safe(anchor)){anchor=null;since=0;return false;}
+  if(!p.c.stand){exec.run('stand',['stand'],()=>bot.running,()=>p.call('open_stand'),{delay:5000});return true;}
+  if(!Object.entries(p.c.slots??{}).some(([k,v])=>k.startsWith('trade')&&v)){e.note('Merrit benötigt freigegebenes Angebot/Kaufgesuch');return false;}
+  if(baseline===null){baseline=bot.count('marketparcel');since=Date.now();}
+  if(Date.now()-since>(meta.settle_ms??120000)+60000){probe=Date.now()+60000;since=0;anchor=null;baseline=null;return false;}
+  e.note('Merrit: Warte auf beobachtete Belohnung');return true;
  }
  function tick(){
-  if(cfg.merchant.massBuffs&&cfg.production.enabled){const key=cfg.production.exchange?'massproduction':'massproductionpp';if(!p.c.s?.[key]&&cast(key))return true;}
-  if(cfg.merchant.merrit){
-   const d=e.destination('merrit');if(d&&Date.now()-merritAt>3600000){
-    if(!cfg.merchant.stand){e.note('Merrit benötigt aktivierten Stand');return false;}
-    const point={...d,x:d.x+60,y:d.y+40};if(!e.travel(point,'Merrit',5))return true;
-    if(!p.c.stand)return false;
-    if(!Object.entries(p.c.slots??{}).some(([k,v])=>k.startsWith('trade')&&v)){e.note('Merrit wartet auf ein freigegebenes Angebot/Kaufgesuch');return false;}
-    if(!merritBaseline)merritBaseline=bot.count('marketparcel')+1;
-    if(bot.count('marketparcel')>=merritBaseline){merritAt=Date.now();merritBaseline=0;bot.event('merchant.merrit',{received:true});return false;}
-    e.note('Merrit: Stand geöffnet, warte auf Belohnung');return true;
-   }
-  }
-  if(cfg.merchant.fishing||cfg.merchant.mining)return gather(cfg.merchant.fishing?'fishing':'mining');
-  return restore();
+  if(cfg.merchant.massBuffs&&cfg.production.enabled){const skill=cfg.production.exchange?'massproduction':'massproductionpp',s=p.G.skills?.[skill];if(s&&!p.c.s?.[skill]&&p.c.level>=(s.level??0)&&p.c.mp>=(s.mp??0)&&!p.call('is_on_cooldown',skill)&&exec.run('service:'+skill,['skill','mana'],()=>bot.running,()=>p.call('use_skill',skill),{delay:10000}))return true;}
+  if(record&&(!kind||Date.now()<nextGather||(!cfg.merchant.fishing&&!cfg.merchant.mining)))return restore();
+  const requested=bot.strategy?.status().manual?.task;
+  if((!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;
+  for(const activity of ['fishing','mining'].filter(k=>cfg.merchant[k]&&(!requested||requested===k)).sort((a,b)=>(a===lastKind?1:0)-(b===lastKind?1:0)))if(gather(activity))return true;return restore();
  }
- return {tick,restore,get active(){return !!gathering;}};
+ return {tick,restore,merrit,get active(){return !!record;},status:()=>({gathering:kind,restorePending:!!record,merritCooldownUntil:merritUntil}),interrupt(){kind=null;anchor=null;since=0;baseline=null;}};
+}
+
+// src/world/strategy.mjs
+function rankFarmTargets(G,character,targets,mode='balanced',learned={},weight=0){
+ return targets.filter(id=>G.monsters?.[id]).map((id,index)=>{
+  const m=G.monsters[id],seconds=Math.max(1,(m.hp??100)/Math.max(1,(character.attack??1)*(character.frequency??1))),xp=(m.xp??1)/seconds;
+  const gold=materialDrops(G,G.drops?.monsters?.[id]).filter(d=>d.item==='gold').reduce((n,d)=>n+d.chance*d.quantity,0)/seconds;
+  const risk=1+Math.max(0,(m.attack??0)/Math.max(1,character.max_hp??1))*10;
+  const base=(mode==='xp'?xp:mode==='gold'?gold:mode==='materials'?1:Math.sqrt(Math.max(1,xp)*Math.max(1,gold)))/risk;
+  const adjust=1+Math.max(-weight,Math.min(weight,(learned[id]?.factor??1)-1));return {id,index,score:base*adjust};
+ }).sort((a,b)=>b.score-a.score||a.index-b.index).map(x=>x.id);
+}
+function createStrategy(bot){
+ const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null;
+ const explicitTargets=()=>me.farmTargets.length?me.farmTargets:cfg.farming.targets;
+ const state=()=>p.root.S??p.parent.S??{};
+ const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':me.role==='merchant'?'supply':'farm');
+ const permittedMap=map=>!!p.G.maps?.[map]&&!w.excludedMaps.includes(map)&&(!p.G.maps[map].pvp||cfg.farming.pvp);
+ function safeMonster(id){const m=p.G.monsters?.[id];if(!m)return false;
+  const limit={conservative:.12,balanced:.25,aggressive:.4}[w.risk],members=bot.allies().filter(x=>!x.rip),hp=Math.max(p.c.max_hp??0,...members.map(x=>x.max_hp??0));
+  return Number.isFinite(m.attack)&&m.attack<=hp*limit;
+ }
+ function requestTask(value,ttlMs=120000){
+  if(!bot.running||typeof value!=='string'||!Number.isFinite(ttlMs)||ttlMs<1000||ttlMs>3600000)return false;
+  const [kind,id]=value.split(':');
+  if(kind==='farm'&&id&&!explicitTargets().includes(id))return false;
+  if(kind==='boss'&&(!w.bosses||!w.allowedBosses.includes(id)))return false;
+  if(kind==='event'&&(!w.events||!w.allowedEvents.includes(id)))return false;
+  if(['fishing','mining','merrit','bank'].includes(kind)&&(me.role!=='merchant'||!cfg.merchant[kind]))return false;
+  if(!['farm','boss','event','fishing','mining','merrit','bank'].includes(kind))return false;
+  if(bot.journal||bot.logistics.reserved)return false;
+  manual={task:kind,id:id??null,until:Date.now()+ttlMs};activity=null;bot.target=null;bot.movement.stop();plannedAt=0;bot.event('strategy.request',{task:value,ttlMs});return true;
+ }
+ function encounter(kind,id){
+  const live=state()[id],meta=p.G.events?.[id];if(!live||typeof live!=='object'||!(live.live||live.active)||live.live===false||live.active===false)return null;
+  const type=live.type&&p.G.monsters?.[live.type]?live.type:p.G.monsters?.[id]?id:null;
+  if(!type||!safeMonster(type))return null;
+  const map=live.map??meta?.map;if(!permittedMap(map))return null;
+  const target=bot.monsters().find(m=>m.mtype===type),x=live.x??target?.x,y=live.y??target?.y;
+  if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+  return {kind,id,target:type,map,x,y,in:map,expires:Date.now()+Math.max(10000,w.cacheTtlMs*2)};
+ }
+ function validActivity(a){return a&&['boss','event'].includes(a.kind)&&typeof a.id==='string'&&Number.isFinite(a.expires)&&a.expires>Date.now()&&a.expires<Date.now()+Math.max(120000,w.cacheTtlMs*3)&&permittedMap(a.map)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&(a.kind==='boss'?w.bosses&&w.allowedBosses.includes(a.id):w.events&&w.allowedEvents.includes(a.id))&&(!a.target||p.G.monsters[a.target]&&safeMonster(a.target));}
+ function plan(){
+  const now=Date.now();if(manual?.until<=now){manual=null;activity=null;bot.target=null;bot.movement.stop();}
+  if(lastG!==p.G){lastG=p.G;plannedAt=0;rates={};}
+  if(now-plannedAt<w.cacheTtlMs)return;plannedAt=now;
+  if(me.role==='merchant')return;
+  if(cfg.party.enabled&&me.name!==bot.leader){const leader=bot.transport.fresh(bot.leader);activity=validActivity(leader?.activity)?{...leader.activity}:null;return;}
+  let next=null;
+  if(manual&&['boss','event'].includes(manual.task))next=encounter(manual.task,manual.id);
+  else if(!manual){for(const id of w.events?w.allowedEvents:[]){next=encounter('event',id);if(next)break;}if(!next)for(const id of w.bosses?w.allowedBosses:[]){next=encounter('boss',id);if(next)break;}}
+  if(activity?.id!==next?.id){bot.target=null;if(bot.movement.order?.owner==='farm'||bot.movement.order?.owner==='world')bot.movement.stop();bot.event('strategy.activity',{kind:next?.kind??'farm',id:next?.id??null});}activity=next;
+ }
+ function sample(){
+  if(!w.learning||me.role!=='farmer')return;const now=Date.now(),id=bot.target?.mtype??targets()[0],xp=p.c.xp??0,gold=p.c.gold??0;
+  if(lastSample&&id===lastSample.id&&now-lastSample.at>=10000&&!bot.journal&&xp>=lastSample.xp&&gold>=lastSample.gold){const observed=(xp-lastSample.xp)*1000/(now-lastSample.at),old=rates[id]??{xp:observed,samples:0,factor:1};old.xp=old.xp*.8+observed*.2;old.samples=Math.min(100,old.samples+1);old.factor=old.samples<3?1:Math.max(.5,Math.min(2,observed/Math.max(1,old.xp)));rates[id]=old;rates=Object.fromEntries(Object.entries(rates).slice(-32));lastSample=null;}
+  if(!lastSample||lastSample.id!==id||now-lastSample.at>60000)lastSample={id,at:now,xp,gold};
+ }
+ function targets(){if(activity?.target)return [activity.target];if(manual?.task==='farm'&&manual.id)return [manual.id];const material=bot.production?.farmTargets();if(material)return material;
+  if(rankedG!==p.G||Date.now()-rankedAt>=w.cacheTtlMs){rankedG=p.G;rankedAt=Date.now();ranked=rankFarmTargets(p.G,p.c,explicitTargets(),cfg.farming.mode,rates,w.learning?w.learningWeight:0);}return ranked;
+ }
+ function travel(){
+  if(me.role==='merchant'&&manual?.task==='bank'){bot.bank.ready();return true;}
+  if(me.role!=='farmer'||!activity)return false;
+  if(!samePlace(p.c,activity)){if(activity.kind==='event'&&p.G.events?.[activity.id]&&p.has('join'))return exec.run('event.join',['movement'],()=>bot.running&&!bot.journal,()=>p.call('join',activity.id),{delay:30000,timeout:20000});
+   bot.movement.go({...activity,radius:70},'world');return true;}
+  if(!bot.target&&distance(p.c,activity)>100){bot.movement.go({...activity,in:p.c.in??p.c.map,radius:70},'world');return true;}return false;
+ }
+ function quest(){
+  if(!w.quests||me.role!=='farmer'||activity||bot.journal||bot.logistics.reserved)return false;
+  const q=p.c.s?.monsterhunt;if(q?.c>0){if(explicitTargets().includes(q.id)&&!manual)manual={task:'farm',id:q.id,until:Date.now()+Math.min(600000,q.ms??600000)};return false;}
+  if(!p.has('use_skill')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
+  if(!bot.economy.travel(d,'Monsterhunt',70))return true;const before=JSON.stringify(q??null);
+  return bot.economy.perform('quest.monsterhunt',{guard:()=>bot.economy.at(d),call:()=>p.call('use_skill','monsterhunt'),observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==before,details:{quest:'monsterhunt'},timeout:20000});
+ }
+ function anniversary(){
+  const s=state().anniversary;if(!w.anniversary||!s?.active||!s.live||!Number.isFinite(s.expires)||s.expires<Date.now()||s.available===false||!permittedMap(s.map)||!p.has('anniversary_can_visit')||!p.call('anniversary_can_visit')||!bot.economy)return false;
+  const d={map:s.map,in:s.map,x:s.x,y:s.y};if(!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
+  if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');
+  return bot.economy.perform('quest.anniversary',{guard:()=>bot.economy.at(d,80)&&p.call('anniversary_can_visit'),call:()=>p.call('anniversary_kiss'),observe:()=>bot.count('anniversarygift')>gifts||JSON.stringify(p.c.anniversary??null)!==before,details:{quest:'anniversary'},timeout:20000});
+ }
+ return {plan,sample,targets,task,requestTask,travel,quest,anniversary,permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;lastSample=null;plannedAt=0;}};
+}
+
+// src/core/behavior.mjs
+function createBehavior(bot){
+ const {p,cfg,me}=bot,last=new Map(),checked=new Map(),supplies=new Map();
+ function requestSupply(item,quantity,ttl=120000){const r=bot.rule({name:item,level:0});if(!bot.running||!r||!Number.isSafeInteger(quantity)||quantity<1||quantity>r.maxCount||!Number.isFinite(ttl)||ttl<1000)return false;supplies.set(item,{quantity,until:Date.now()+Math.min(120000,ttl)});return true;}
+ function tick(){
+  const now=Date.now();for(const [id,v] of supplies)if(v.until<=now)supplies.delete(id);
+  for(const r of cfg.rules.filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name)).sort((a,b)=>b.priority-a.priority)){
+   const id=cfg.rules.indexOf(r);if((checked.get(id)??0)+r.everyMs>now||(last.get(id)??0)+r.cooldownMs>now)continue;checked.set(id,now);
+   const values=bot.measure(bot.target),yes=r.match==='any'?r.conditions.some(c=>matches([c],values)):matches(r.conditions,values);if(!yes)continue;
+   let accepted=false;
+   if(r.action==='notify'){bot.report(r.target);accepted=true;}
+   if(r.action==='pause'){bot.pause(r.target||r.name);accepted=true;}
+   if(r.action==='farm')accepted=bot.strategy.requestTask('farm:'+r.target,Math.min(3600000,r.everyMs+r.cooldownMs+1000));
+   if(r.action==='task')accepted=bot.strategy.requestTask(r.target,Math.max(10000,r.cooldownMs));
+   if(r.action==='skill'){const s=p.G.skills?.[r.target];accepted=!!s&&bot.skills.use(r.target,s.hostile?bot.target:s.target?p.c:null,.2,Math.max(1000,r.cooldownMs),cfg.party.aoeMaxTargets,true);}
+   if(r.action==='supply')accepted=requestSupply(r.target,r.amount);
+   if(r.action==='bank'&&me.role==='merchant'&&cfg.merchant.bank&&p.c.items.some(i=>i?.name===r.target&&bot.rule(i)?.action==='bank'))accepted=bot.strategy.requestTask('bank',Math.max(10000,r.cooldownMs));
+   if(r.action==='retreat'){const threat=bot.monsters().filter(m=>m.target===me.name).sort((a,b)=>distance(p.c,a)-distance(p.c,b))[0];if(threat){bot.farmer.retreat(threat);accepted=true;}}
+   if(accepted){last.set(id,now);bot.event('behavior.rule',{name:r.name,action:r.action,target:r.target});if(!bot.running)return;}
+  }
+ }
+ return {tick,requestSupply,need(item,n){const request=supplies.get(item);return request&&request.until>Date.now()?Math.max(0,request.quantity-n):0;},close(){supplies.clear();checked.clear();}};
+}
+
+// src/party/account.mjs
+function selectAccountTeam(members,limit,{boss=false,leader='',current=[]}={}){
+ const chosen=[],add=x=>{if(x&&!chosen.includes(x.name)&&chosen.length<limit)chosen.push(x.name);};
+ for(const x of members)if(x.name===leader||!x.rotation&&current.includes(x.name))add(x);
+ const maxLevel=Math.max(1,...members.map(x=>x.level??0));
+ const ranked=members.filter(x=>(x.running||x.level>0&&x.class!=='auto')&&(x.rotation||current.includes(x.name)||x.name===leader)).map((x,index)=>({...x,index,score:(x.running?5:0)+(x.catchUp?3+10*(maxLevel-(x.level??0))/maxLevel:0)+(x.level??0)/100+(x.class==='ranger'?2:1)})).sort((a,b)=>b.score-a.score||a.index-b.index);
+ if(boss){add(ranked.find(x=>x.class==='priest'));add(ranked.find(x=>['warrior','paladin'].includes(x.class)));}
+ for(const x of ranked)add(x);return chosen;
+}
+function createAccount(bot){
+ const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
+ const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false;
+ const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
+ const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
+ const save=next=>{if(!p.write(storageKey,next)){blocked=true;bot.report('Charakterwechsel konnte nicht gespeichert werden; Rotation gesperrt');return false;}transition=next;return true;};
+ function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence};}
+ function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
+  bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
+ }
+ function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.inventoryBlocked&&!h.threats;}
+ function receive(from,data){if(cfg.party.selection!=='adaptive'||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
+ function tick(){
+  if(cfg.party.selection!=='adaptive'||blocked)return;
+  if(me.name!==coordinator){const d=bot.transport.fresh(coordinator);if(d?.team)receive(coordinator,d.team);return;}
+  if(transition){
+   if(Date.now()>transition.until&&!transition.recovering){transition.recovering=true;bot.report('Charakterwechsel nicht bestätigt; ursprüngliche Gruppe wiederherstellen');}
+   let active;try{active=p.call('get_active_characters');}catch{return;}
+   if(!active||typeof active!=='object')return;
+   if(transition.recovering){
+    if(active[transition.in]){exec.run('account.rollback.stop',['lifecycle'],()=>safe(me.name),()=>p.call('stop_character',transition.in),{delay:60000});return;}
+    const original=bot.transport.fresh(transition.out);
+    if(original?.running&&original.realm===p.realm()&&!original.rip){const next=transition;if(save(null)){apply(next.original,next.originalLeader);changed=Date.now();}return;}
+    exec.run('account.rollback.start',['lifecycle'],()=>safe(me.name),()=>p.call('start_character',transition.out),{delay:60000,timeout:55000});return;
+   }
+   if(active[transition.out])return;
+   const peer=bot.transport.fresh(transition.in);if(peer?.running&&peer.realm===p.realm()&&!peer.rip){const next=transition;if(save(null)){apply(next.names,next.leader);sequence++;changed=Date.now();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader});}return;}
+   if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
+  }
+  if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
+  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running};});
+  const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:['boss','event'].includes(bot.strategy.task()),leader:cfg.party.leader,current:bot.farmers});
+  if(JSON.stringify(target)===JSON.stringify(bot.farmers))return;
+  const out=bot.farmers.find(n=>!target.includes(n)),into=target.find(n=>!bot.farmers.includes(n));
+  if(!out||!into||out===me.name||!p.has('stop_character')||!p.has('start_character')||!p.has('get_active_characters'))return;
+  if(!save({out,in:into,original:[...bot.farmers],originalLeader:bot.leader,names:bot.farmers.filter(n=>n!==out).concat(into),leader:cfg.party.leader||bot.farmers.filter(n=>n!==out).concat(into)[0],until:Date.now()+120000,started:false}))return;
+  if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
+  bot.event('account.rotation',{out,into});
+ }
+ return {tick,heartbeat,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
+}
+
+// src/party/aura.mjs
+function chooseAura({hpRatio=1,mpRatio=1,damageType='physical',pressure=false}){return hpRatio<.65?damageType==='magical'?'sanctuary':'bulwark':mpRatio<.3||pressure?'warding':'zeal';}
+function createAura(bot){const {p,cfg,exec}=bot;let last=0;
+ return {tick(){const s=p.G.skills?.paladin_aura;if(p.c.ctype!=='paladin'||!cfg.party.buffs||cfg.party.aura==='off'||!s||p.c.level<(s.level??60)||p.c.rip||p.c.s?.stunned||p.c.s?.silenced||bot.journal||Date.now()-last<cfg.party.auraHoldMs||p.call('is_on_cooldown','paladin_aura'))return false;
+  const allies=bot.allies().filter(x=>!x.rip),hp=Math.min(p.c.hp/p.c.max_hp,...allies.map(x=>x.hp/x.max_hp)),mp=Math.min(p.c.mp/p.c.max_mp,...allies.map(x=>x.mp/x.max_mp));
+  const aura=cfg.party.aura==='auto'?chooseAura({hpRatio:hp,mpRatio:mp,damageType:p.G.monsters[bot.target?.mtype]?.damage_type,pressure:!!(p.c.s?.poisoned||p.c.s?.burned)}):cfg.party.aura;
+  if(!s.states?.[aura]||p.c.p?.paladin_aura===aura)return false;
+  const accepted=exec.run('paladin.aura',['skill'],()=>bot.running&&!bot.journal,()=>p.call('use_skill','paladin_aura',aura),{delay:cfg.party.auraHoldMs});if(accepted)last=Date.now();return accepted;
+ },status:()=>({aura:p.c.p?.paladin_aura??null,lastChanged:last})};}
+
+// src/party/travel.mjs
+function createTeamTravel(bot){
+ const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();
+ const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
+ const realmAllowed=realm=>w.serverHop&&w.allowedRealms.includes(realm)&&/^[A-Z]{2}.+$/.test(realm);
+ function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop)return false;
+  const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
+  hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm},hop.id);return true;
+ }
+ function applyHop(){if(!hop||!safe())return false;const realm=hop.realm;if(!p.write('albot:hop:'+me.name,Date.now()))return false;
+  hopAt=Date.now();const started=exec.run('server.hop',['lifecycle'],()=>bot.running&&!bot.journal,()=>{bot.pause('Serverwechsel: '+realm);try{return Promise.resolve(p.call('change_server',realm.slice(0,2),realm.slice(2))).catch(error=>bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error)));}catch(error){bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error));}},{delay:w.hopCooldownMs});hop=null;return started;
+ }
+ function receive(from,m){
+  if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()){
+   hop={id:m.id,realm:m.data.realm,names:[],ready:new Set(),until:Date.now()+15000};bot.movement.stop();bot.transport.send(from,'hopAck',{},m.id);
+  }else if(m.type==='hopAck'&&me.name===bot.leader&&hop?.id===m.id&&hop.names.includes(from))hop.ready.add(from);
+  else if(m.type==='hopCommit'&&from===bot.leader&&hop?.id===m.id&&hop.realm===m.data?.realm){applyHop();}
+  else if(m.type==='hopCancel'&&from===bot.leader&&hop?.id===m.id)hop=null;
+  else if(m.type==='portRequest'&&w.magiport&&bot.teamNames.includes(from)&&m.data?.target===me.name&&safe()){
+   const mage=bot.transport.fresh(from),leader=me.name===bot.leader?p.c:bot.transport.fresh(bot.leader);
+   if(mage?.class==='mage'&&mage.running&&mage.realm===p.realm()&&leader&&samePlace(mage,leader)&&distance(mage,leader)<cfg.party.followDistance){consents.set(from,{until:Date.now()+10000,id:m.id,purpose:'accept'});bot.transport.send(from,'portAck',{},m.id);}
+  }else if(m.type==='portAck'&&w.magiport&&p.c.ctype==='mage'&&consents.get(from)?.purpose==='cast'&&consents.get(from)?.id===m.id&&consents.get(from)?.until>Date.now()&&safe()){
+   exec.run('magiport',['skill','mana','lifecycle'],()=>bot.running&&p.c.mp>=(p.G.skills.magiport?.mp??900)+p.c.max_mp*.2,()=>p.call('use_skill','magiport',from),{delay:15000});consents.delete(from);
+  }
+ }
+ function tick(){
+  for(const [name,t] of consents)if(t.until<Date.now())consents.delete(name);
+  if(hop){if(hop.until<Date.now()){if(me.name===bot.leader)for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);hop=null;return;}
+   if(me.name===bot.leader&&!hop.broadcast&&hop.names.every(n=>hop.ready.has(n))&&safe()){const token=hop;hop.broadcast=true;Promise.all(hop.names.filter(n=>n!==me.name).map(n=>bot.transport.send(n,'hopCommit',{realm:hop.realm},hop.id))).then(results=>{if(hop===token&&results.every(Boolean))applyHop();else if(hop===token)hop=null;},()=>{if(hop===token)hop=null;});}return;
+  }
+  if(!w.magiport||p.c.ctype!=='mage'||!safe()||p.c.mp<(p.G.skills.magiport?.mp??900)+p.c.max_mp*.2)return;
+  const leader=me.name===bot.leader?p.c:bot.transport.fresh(bot.leader);if(!leader||!samePlace(p.c,leader)||distance(p.c,leader)>cfg.party.followDistance)return;
+  for(const name of bot.farmers){const peer=bot.transport.fresh(name);if(name===me.name||!peer?.running||peer.rip||peer.realm!==p.realm()||consents.has(name)||samePlace(p.c,peer)&&distance(p.c,peer)<cfg.party.followDistance*2)continue;
+   const id=bot.session+':port:'+name+':'+Date.now();consents.set(name,{until:Date.now()+10000,id,purpose:'cast'});bot.transport.send(name,'portRequest',{target:name},id);break;
+  }
+ }
+ function accept(name){if(w.magiport&&consents.get(name)?.purpose==='accept'&&consents.get(name)?.until>Date.now()&&safe()){consents.delete(name);return exec.run('magiport.accept',['lifecycle','movement'],()=>bot.running&&!bot.journal,()=>p.call('accept_magiport',name),{delay:10000});}return false;}
+ return {requestHop,receive,tick,accept,get blocked(){return !!hop;},status:()=>({hop:hop?{realm:hop.realm,until:hop.until}:null}),close(){hop=null;consents.clear();}};
 }
 
 // src/main.mjs
@@ -1183,12 +1479,14 @@ function install(root){
   }
   const failed=(state,reason)=>{report.error(state,reason);root.ALBot={version:VERSION,status:()=>({state,reason}),testReport:()=>report.text(),exportTestReport:()=>report.flush()};report.flush(true);};
   function validate(value){
-    const errors=validateSchema(value.production?ECONOMY_DESCRIPTOR.schema:LIVE_DESCRIPTOR.schema,value);if(errors.length)return errors;
+    const errors=validateSchema(value.world?INTEGRATION_DESCRIPTOR.schema:value.production?ECONOMY_DESCRIPTOR.schema:LIVE_DESCRIPTOR.schema,value);if(errors.length)return errors;
     const full=addMissingDefaults(DESCRIPTOR.schema,value);
     errors.push(...validateProfile(DESCRIPTOR,full));
-    if(value.characters.filter(c=>c.enabled&&c.role==='farmer'&&c.group===value.party.group).length>value.party.maxFarmers)errors.push('Mehr aktive Farmer als maxFarmers.');
-    if(value.characters.some(c=>c.enabled&&c.group!==value.party.group))errors.push('Live A benötigt eine gemeinsame Gruppenkennung.');
-    if(value.characters.filter(c=>c.enabled&&c.role==='merchant').length>1)errors.push('Live A verwendet genau einen zuständigen Merchant.');
+    if(value.party.selection!=='adaptive'&&value.characters.filter(c=>c.enabled&&c.role==='farmer'&&c.group===value.party.group).length>value.party.maxFarmers)errors.push('Mehr aktive Farmer als maxFarmers.');
+    if(value.world&&value.characters.filter(c=>c.enabled&&c.role==='farmer').length>20)errors.push('Höchstens 20 Farmer im Account-Roster.');
+    if(value.world?.serverHop&&(!value.world.allowedRealms.length||value.world.allowedRealms.some(r=>!/^([A-Z]{2})([A-Za-z0-9]+)$/.test(r))))errors.push('Serverwechsel benötigt gültige erlaubte Realms.');
+    if(value.characters.some(c=>c.enabled&&c.group!==value.party.group))errors.push('ALBot benötigt eine gemeinsame Gruppenkennung.');
+    if(value.characters.filter(c=>c.enabled&&c.role==='merchant').length>1)errors.push('ALBot verwendet höchstens einen zuständigen Merchant.');
     const merchant=value.characters.find(c=>c.enabled&&c.role==='merchant');if(merchant&&value.merchant.enabled&&value.party.merchant!==merchant.name)errors.push('Zuständigen Merchant unter Gruppe & Skills auswählen.');
     if(value.party.leader&&!value.characters.some(c=>c.enabled&&c.name===value.party.leader&&c.role==='farmer'))errors.push('Leader muss aktiver Farmer sein.');
     if(value.items.some(r=>r.enabled&&r.action==='send'&&(!r.recipient||!value.characters.some(c=>c.enabled&&c.name===r.recipient))))errors.push('Lieferempfänger muss aktiv konfiguriert sein.');
@@ -1200,7 +1498,7 @@ function install(root){
   const team=cfg.characters.filter(c=>c.enabled&&c.group===me.group),farmers=team.filter(c=>c.role==='farmer').map(c=>c.name).sort();
   const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,panel;
   const checkpoint=createCheckpoint(p,key,report),journal=checkpoint.journal;
-  const bot={p,cfg,me,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit für Live A',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
+  const bot={p,cfg,me,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
     checkpoint,
     event(type,data){report.event(type,data);},
     report(message){if(message!==reportText||now()-reportTime>10000){reportText=message;reportTime=now();p.log(message);report.event('message',{message});}},
@@ -1208,58 +1506,69 @@ function install(root){
     entity(id){if(id===me.name)return p.c;const e=p.entities[id]??Object.values(p.entities).find(e=>e.name===id);return e?{...e,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}:null;},
     monsters(){return Object.entries(p.entities).filter(([,e])=>e.type==='monster'&&!e.dead&&!e.rip&&e.hp>0).map(([id,e])=>({...e,id:e.id??id,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}));},
     allies(){return bot.teamNames.map(n=>bot.entity(n)).filter(e=>e&&samePlace(p.c,e));},
-    targets(){const requested=bot.production?.farmTargets();if(requested)return requested;return me.farmTargets.length?me.farmTargets:cfg.farming.targets;},
-    allowed(e){if(!e||e.type!=='monster'||e.dead||e.rip||e.hp<=0||e.invincible||!samePlace(p.c,e)||!bot.targets().includes(e.mtype))return false;if(cfg.farming.avoidOthers&&e.target&&!bot.teamNames.includes(e.target))return false;const threats=Object.values(p.entities).filter(x=>x.type==='monster'&&x.hp>0&&bot.teamNames.includes(x.target)).length;return !!e.target||threats<cfg.farming.maxAggro;},
+    targets(){if(bot.strategy)return bot.strategy.targets();const requested=bot.production?.farmTargets();if(requested)return requested;return me.farmTargets.length?me.farmTargets:cfg.farming.targets;},
+    task(){return bot.strategy?.task()??(me.role==='merchant'?'supply':'farm');},
+    allowed(e){if(!e||e.type!=='monster'||e.dead||e.rip||e.hp<=0||e.invincible||!samePlace(p.c,e)||!bot.targets().includes(e.mtype)||cfg.world?.excludedMaps.includes(e.map))return false;if(cfg.farming.avoidOthers&&e.target&&!bot.teamNames.includes(e.target))return false;const threats=Object.values(p.entities).filter(x=>x.type==='monster'&&x.hp>0&&bot.teamNames.includes(x.target)).length;return !!e.target||threats<cfg.farming.maxAggro;},
     rule(i){if(bot.economy)return bot.economy.rules(i);return chooseRule(cfg.items,i,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});},
     consumable(i){if(protectedItem(i))return false;const r=bot.rule(i);return !r||(r.action==='consume'&&variantCount(p.c.items,i)>r.keep+r.teamReserve);},
     canConsumeImplicit(name){if(bot.inventoryBlocked||bot.logistics?.reserved)return false;const first=p.c.items.find(i=>i?.name===name);return !!first&&bot.consumable(first);},
     beginValue(j){if(bot.journal)throw Error('Andere Inventaraktion offen');const next={...j,at:now()};if(!checkpoint.begin(next)){const e=new Error('Lieferung vor Versand blockiert: Checkpoint-Speicher fehlt');e.code='NOT_DISPATCHED';throw e;}bot.journal=next;report.event('inventory.intent',{kind:j.kind,item:typeof j.item==='string'?j.item:JSON.stringify(j.item),before:j.before,quantity:j.quantity,to:j.to});},
-    endValue(result){if(!bot.journal)return;report.event('inventory.result',{result,kind:bot.journal.kind});if(result==='confirmed'&&checkpoint.clear(bot.journal)){bot.journal=null;}else {bot.inventoryBlocked=true;bot.reason='Inventaraktion ungeklärt: Bestand prüfen';if(cfg.general.pauseOnUnknown&&bot.running)bot.pause(bot.reason);}},
-    measure(target=null){const targetHpRatio=target&&Number.isFinite(target.hp)&&Number.isFinite(target.max_hp)&&target.max_hp>0?target.hp/target.max_hp:undefined;return {hpRatio:p.c.hp/p.c.max_hp,targetHpRatio,mpRatio:p.c.mp/p.c.max_mp,freeSlots:bot.free(),gold:p.c.gold,enemyCount:bot.monsters().filter(e=>distance(p.c,e)<p.c.range).length,map:p.c.map,rip:!!p.c.rip,task:me.role==='merchant'?'supply':'farm',count:bot.count};}
+    endValue(result){if(!bot.journal)return;report.event('inventory.result',{result,kind:bot.journal.kind});if(result==='confirmed'&&(bot.production?.recordDelivery(bot.journal)??true)&&checkpoint.clear(bot.journal)){bot.journal=null;}else {bot.inventoryBlocked=true;bot.reason='Inventaraktion ungeklärt: Bestand prüfen';if(cfg.general.pauseOnUnknown&&bot.running)bot.pause(bot.reason);}},
+    measure(target=null){const targetHpRatio=target&&Number.isFinite(target.hp)&&Number.isFinite(target.max_hp)&&target.max_hp>0?target.hp/target.max_hp:undefined;return {hpRatio:p.c.hp/p.c.max_hp,targetHpRatio,mpRatio:p.c.mp/p.c.max_mp,freeSlots:bot.free(),gold:p.c.gold,enemyCount:bot.monsters().filter(e=>distance(p.c,e)<p.c.range).length,map:p.c.map,rip:!!p.c.rip,task:bot.task(),count:bot.count};}
   };
   const exec=new Executor({now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:report.event,onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
   bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.services=createServices(bot);}
+  if(cfg.world){bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
   const cleanup=[];
   if(typeof root.addEventListener==='function')for(const type of ['error','unhandledrejection']){const handler=e=>{report.error(type,e.error??e.reason??e.message);report.flush(true);};root.addEventListener(type,handler);cleanup.push(()=>root.removeEventListener(type,handler));}
   const inviteAllowed=name=>bot.running&&cfg.party.enabled&&name===bot.leader&&bot.teamNames.includes(name)&&!p.c.party;
   cleanup.push(p.hook('on_party_invite',name=>{if(inviteAllowed(name))exec.run('party',['party'],()=>inviteAllowed(name),()=>p.call('accept_party_invite',name),{delay:3000});}));
-  cleanup.push(p.hook('on_party_request',name=>{if(bot.running&&cfg.party.enabled&&me.name===bot.leader&&farmers.includes(name))exec.run('party',['party'],()=>bot.running,()=>p.call('accept_party_request',name),{delay:3000});}));
+  cleanup.push(p.hook('on_party_request',name=>{if(bot.running&&cfg.party.enabled&&me.name===bot.leader&&bot.farmers.includes(name))exec.run('party',['party'],()=>bot.running,()=>p.call('accept_party_request',name),{delay:3000});}));
+  if(bot.teamTravel)cleanup.push(p.hook('on_magiport',name=>bot.teamTravel.accept(name)));
   function publish(){try{p.call('set_message',(bot.running?'ALBot ':'PAUSE ')+bot.reason.slice(0,50));}catch{}panel?.render();}
-  function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason});report.flush(true);}
+  function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.services?.interrupt();bot.strategy?.close();bot.behavior?.close();bot.account?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason});report.flush(true);}
   bot.pause=(reason='Pause')=>halt(reason);
   function tick(gen){if(disposed||!bot.running||gen!==generation)return;try{
     if(!p.c||!p.G){bot.reason='Spielzustand fehlt';return;}
     exec.poll();bot.movement.poll();
     if(!bot.running)return;
+    bot.teamTravel?.tick();if(!bot.running)return;
+    if(bot.teamTravel?.blocked)return;
+    bot.behavior?.tick();if(!bot.running)return;
     if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}
     const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();bot.logistics.poll(economyDue);
     if(!bot.running)return;
-    bot.farmer.tick();if(economyDue&&bot.running)bot.merchant?.tick();
-    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.production?.planGoals();bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
+    if(economyDue){bot.strategy?.plan();bot.strategy?.sample();}
+    const worldAction=economyDue&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.logistics.reserved&&(bot.strategy?.anniversary()||bot.strategy?.quest());
+    if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!worldAction)bot.merchant?.tick();bot.aura?.tick();
+    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.production?.planGoals();bot.account?.tick();bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
     publish();
     report.sample({reason:bot.reason,running:bot.running});
   }catch(e){report.error('tick',e);bot.pause('Fehler: '+(e.message??e));bot.report(bot.reason);}finally{if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}
-  const api={version:VERSION,schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
+  const api={version:VERSION,schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
       if(disposed)return false;if(bot.running)return true;
       const deny=reason=>{bot.reason=reason;publish();bot.report(reason);return false;};
       if(me.class!=='auto'&&me.class!==p.c.ctype)return deny('Konfigurierte Klasse stimmt nicht');
-      if(me.region+me.server!==p.realm())return deny('Falscher Realm: erwartet '+me.region+me.server);
+      if(me.region+me.server!==p.realm()&&!(cfg.world?.serverHop&&cfg.world.allowedRealms.includes(p.realm())))return deny('Falscher Realm: erwartet '+me.region+me.server);
       if(cfg.general.transport==='ipc'&&!p.ipc)return deny('Lokale IPC nicht verfügbar');
       if(bot.inventoryBlocked&&cfg.general.pauseOnUnknown)return deny('Offene Inventaraktion zuerst abgleichen');
       bot.economy?.resume();report.event('start');bot.running=true;bot.reason='Start';generation++;tick(generation);return bot.running;
     },
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null}),
+    requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
+    requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
+    requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null}),
     testReport:()=>report.text(),exportTestReport:()=>report.flush(),
     acknowledgeInventory(){if(bot.running)throw Error('Zuerst pausieren und tatsächlichen Bestand prüfen');if(!checkpoint.write(null))throw Error('Speichern fehlgeschlagen');bot.journal=null;bot.inventoryBlocked=false;bot.reason='Inventar manuell abgeglichen';publish();},
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));
-  report.setProvider(()=>({test:cfg.production?'Live B':'Live A',status:api.status(),performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',logistics:bot.logistics.stats(),production:bot.production?.status(),gear:bot.gear?.suggestions(),economy:bot.economy?.ledger,settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
+  report.setProvider(()=>({test:cfg.world?'Live C':cfg.production?'Live B':'Live A',status:api.status(),performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',logistics:bot.logistics.stats(),production:bot.production?.status(),gear:bot.gear?.suggestions(),economy:bot.economy?.ledger,strategy:bot.strategy?.status(),account:bot.account?.status(),travel:bot.teamTravel?.status(),services:bot.services?.status(),merchantTask:bot.merchant?.status(),settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,world:cfg.world,rules:cfg.rules,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
   if(!checkpoint.durable)bot.report('Speicher voll: Verbrauch wird im RAM abgeglichen; Lieferungen bleiben gesperrt. Testlog ohne localStorage.');
-  p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · Live B Testkandidat');publish();if(cfg.general.autostart)api.start();return api;
+  p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · '+(cfg.world?'Live C':cfg.production?'Live B':'Live A')+' Testkandidat');publish();if(cfg.general.autostart)api.start();return api;
 }
 
 install(root);

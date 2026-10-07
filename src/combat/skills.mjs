@@ -5,7 +5,7 @@ export function createSkills(bot){
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
-    if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp))return false;
+    if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp)return false;
     if(asArray(s.class).length&&!asArray(s.class).includes(c.ctype)||c.level<(s.level??0))return false;
     if(p.call('is_on_cooldown',id))return false;
     const cost=s.mp??(['attack','heal'].includes(id)?c.mp_cost??0:0);

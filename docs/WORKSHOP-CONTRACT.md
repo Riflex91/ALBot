@@ -82,3 +82,13 @@ Die bestehenden drei Live-Testpunkte der Roadmap bleiben ausreichend. Keine Shad
 `dist/albot.package.json` liefert ab 0.2.0-live-b das Schema `albot.live-b/v1`. Zuerst Paket, dann passendes Profil laden. Der Formulargenerator braucht keine neue Sonderoberfläche. Neue Profile haben `general.autostart: true`; explizite Werte in gespeicherten Nutzerprofilen werden nicht heimlich überschrieben. Historische A-Profile werden über `scripts/export-live-b.mjs` gezielt erweitert; dieser Übergang setzt nach Nutzerwunsch Autostart true und erzeugt einen neuen Ordner.
 
 `maxActions` ist eine neue Economy-Regelgrenze pro CODE-Instanz. Die Bankgold-Einstellung betrifft Bankbesuche. Nicht integrierte Felder (u. a. Merrit, Fishing/Mining, Ponty, Task-Halte-/Starvationzeiten, Recipe-/Fallback-Auswahl) bleiben im vollständigen geplanten Schema, werden aber im B-Paket weggelassen. Vollständiger Umfang ist weiterhin Roadmap, kein Funktionsversprechen des Teilrelease.
+
+## Live-C-Paket
+
+Ab `0.3.0-live-c` enthält das aktuelle Paket `albot.live-c/v1`. Dieselbe Werkstatt zeigt durch Paketimport zusätzlich Welt-, Account-, Merchant-Nebenaufgaben und allgemeine Verhaltensregeln. `autoUpdate`, `updateChannel` und das freie `recipe`-Feld bleiben ausgeschlossen. Unterstützte Skill-IDs bleiben die explizite sichere Skillliste; Paladin-Aura und Magiport haben eigene Fachoptionen.
+
+Ein A/B-Profil zuerst mit `scripts/export-live-c.mjs` migrieren. Importreihenfolge: aktuelles C-Paket, danach C-Profil. Kein automatisches Verwerfen fremder Felder; nicht unterstützte aktivierte Updater-/Rezeptalias-Werte verhindern die Migration. Der optionale dokumentierte B-Testübergang entfernt ausschließlich bekannte temporäre Testregeln. Der Formulargenerator bleibt unverändert.
+
+Task-Namen: `farm`, `boss`, `event`, `supply` bzw. eine explizite Merchant-Aufgabe `fishing`, `mining`, `merrit`, `bank`. Item-Regeln mit `task` wirken nur im passenden Kontext. `fallback=bank` erstellt eine geschützte Bankaktion für den Merchant, `notify` erhält den Bestand und meldet fehlende Voraussetzungen. Fallback zählt zur Economy-Aktionsgrenze der ursprünglichen Regel.
+
+„Risikoprofil“ ist eine begrenzte Schaden-/Gruppen-HP-Heuristik, keine Garantie gegen jede Bossfähigkeit. „Lernen“ ist begrenztes XP-Ranking mit deterministischem Grundrang, keine KI-Plattform oder vollständige Markt-/Reiseoptimierung. „Quests“ meint Monsterhunt; „Saisonbelohnungen“ den Anniversary-Ablauf. Details und Grenzen: [INTEGRATIONSSTAND.md](INTEGRATIONSSTAND.md).

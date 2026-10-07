@@ -4,10 +4,10 @@ export function createLogistics(bot){
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
-  const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
+  const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
   const sendRecipients=item=>[...new Set(cfg.items.filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
   const sendRule=(item,to)=>{const r=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context());return r?.action==='send'&&!bot.production?.reserved(item)?r:null;};
-  const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount;return n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;};
+  const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount,normal=n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;return Math.min(Math.max(normal,bot.behavior?.need(rule.item,n)??0),Math.max(0,rule.maxCount-n));};
   const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''});
   const matchingDemand=(d,i)=>d.item===i.name&&(!d.variant||JSON.stringify(d.variant)===JSON.stringify(signature(i)));
   const count=i=>(p.c.items??[]).reduce((n,x)=>n+(x&&x.name===i.name&&(x.level??0)===i.level&&(x.stat_type??'')===i.stat_type&&(x.p??'')===i.p&&(x.title??'')===i.title?(x.q??1):0),0);
@@ -29,13 +29,13 @@ export function createLogistics(bot){
       job.quantity=d.quantity;job.state='accepted';counters.acceptsReceived++;
     }else if(m.type==='sent'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session){incoming.sent=true;}
     else if(m.type==='receipt'&&job&&m.id===job.id&&from===job.to&&m.session===job.session&&d.quantity===job.quantity){job.receipt=true;counters.receiptsReceived++;}
-    else if(m.type==='done'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session&&incoming.observed){counters.doneReceived++;completed.set(m.id,Date.now());incoming=null;bot.endValue('confirmed');}
+    else if(m.type==='done'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session&&incoming.observed){counters.doneReceived++;completed.set(m.id,clock());incoming=null;bot.endValue('confirmed');}
   }
   function poll(allowOffer=true){
     const now=clock();for(const [id,t] of completed)if(now-t>120000)completed.delete(id);
     for(const [id,t] of nextOffer)if(t<now)nextOffer.delete(id);
     if(incoming){
-      if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(now-(incoming.lastReceipt??0)>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
+      if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(incoming.lastReceipt===undefined||now-incoming.lastReceipt>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
       if(now>incoming.until){counters.timeouts++;bot.endValue('unknown');incoming=null;}
     }
     if(job){
@@ -79,19 +79,23 @@ export function createLogistics(bot){
     }
   }
   function travel(){
-    if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked)return;
+    if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||exec.busy('inventory'))return;
     for(const [name] of transport.peers){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
       const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some(i=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&variantCount(p.c.items,i)>r.keep+r.teamReserve;}));
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>x.to===me.name&&x.surplus>0);
-      if((demand||pickup)&&(!samePlace(p.c,h)||distance(p.c,h)>200)){bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;}
+      if((demand||pickup)&&(!samePlace(p.c,h)||distance(p.c,h)>200)){
+        if(bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
+        if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;
+      }
     }
   }
   return {receive,poll,travel,get reserved(){return !!(job||incoming);},stats(){return {...counters};},
     summary(){
       const rules=cfg.items.filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}
-      const all=[...variants.values()],page=all.slice(summaryOffset,summaryOffset+12);summaryOffset=(summaryOffset+12)%Math.max(1,all.length);
-      return page.map(item=>{const r=ruleFor(item),n=count(item);return {item:item.name,variant:item,need:demandFor(r,n),surplus:r?.action==='send'?Math.max(0,n-r.keep-r.teamReserve):0,to:r?.action==='send'?r.recipient:''};});
+      const all=[...variants.values()],result=[];let bytes=0;
+      for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:demandFor(r,countNow),surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
+      summaryOffset=(summaryOffset+result.length)%Math.max(1,all.length);return result;
     },
     close(){if(incoming||job?.state==='sent'||job?.state==='accepted')bot.endValue('unknown');job=null;incoming=null;}
   };

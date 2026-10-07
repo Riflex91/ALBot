@@ -57,3 +57,10 @@ Vier Berichte vom 7. Oktober 2026, Profil `Live C · 02-regelwechsel`, Runtime `
 - Monsterhunt und Anniversary starten nicht, solange ein manueller Strategieauftrag aktiv ist.
 - Die persönliche Phase-02-Datei wurde aus dem zuvor funktionierenden 0.3.1-Settings-Satz neu erzeugt; AOE, Production, Events, Quests und Magiport sind dort wieder ausgeschaltet.
 - Der nächste gültige Live-Nachweis benötigt weiterhin mindestens einen echten Bee-Angriff. Vollständiger Repository-Testlauf wurde in der Entwicklungsumgebung nicht ausgeführt; gezielte Movement-/Farmer-Regressionen laufen 4/4 grün.
+
+
+## Erster 0.3.3-Start – Exportfehler korrigiert
+
+Vier unmittelbar nach dem Start erzeugte Headless-Berichte bestätigen `0.3.3-live-c`, brechen aber vor dem eigentlichen Live-C-Start mit `Profil: unbekanntes Feld omittedItemRules` ab.
+
+Das war kein Runtime-/Movement-Fehler: `omittedItemRules` ist Metadatum des Testberichts und wurde beim manuellen Neuaufbau der persönlichen Phase-02-Datei versehentlich in `ALBotConfig` übernommen. Das Feld wurde aus beiden 0.3.3-Phase-02-Dateien entfernt. Die Konfiguration enthält jetzt ausschließlich die erlaubten Top-Level-Felder `general`, `characters`, `farming`, `party`, `skills`, `merchant`, `items`, `production`, `world` und `rules`. Die 0.3.3-Runtime selbst wurde dafür nicht geändert.

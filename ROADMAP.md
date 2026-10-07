@@ -1,6 +1,5 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
-Stand: 7. Oktober 2026. **Live A grundlegend bestanden. Live B: Schritte 01–03 im Browser bestanden. Schritt 04 bestätigte Upgrade/Kauf, aber die Lieferung scheiterte, weil ein temporär nicht annehmbares Offer verworfen wurde. 0.2.2-live-b wiederholt dieselbe Offer-ID bis zur kurzen Frist und verhindert das Nachkaufen eines verbrauchten +0-Inputs, wenn das +1-Produktionsziel bereits erfüllt ist. Schritt-04-Retest steht aus. P3/P4 bleiben teilweise implementiert.**
-Stand: 7. Oktober 2026. **Live A grundlegend bestanden. Live B: Schritt 01 (Abholung) im Browser bestanden; Schritt 02 (Bank) mit 0.2.0 durch Merchant-Loot/Inventory-Starvation blockiert. 0.2.1-live-b korrigiert diese Prioritätsgrenze; Bank-Wiederholung steht aus. P3/P4 bleiben teilweise implementiert.**Werkstatt 2.0 und P1/P2-Testkandidat 0.1.4-live-a implementiert. Der dritte Browser-Teamlauf bestätigt persistenten Checkpoint und aktiven Teamkampf; die ausbleibende Lieferung wurde auf eine `hpot1`/`hpot0`-Profilabweichung und die bisherige Ein-Empfänger-Regelauswahl zurückgeführt. `0.1.4-live-a` unterstützt mehrere Lieferempfänger pro Item und eine eigene Nachschubschwelle. Live-Wiederholung und Headless-Nachweis bleiben offen; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
+Stand: 7. Oktober 2026. **Live A grundlegend bestanden. Live B ist mit 0.2.2-live-b in Browser und Windows-Headless vollständig bestanden: 01 Abholung, 02 Bank, 03 Bank→NPC sowie 04 Upgrade und bestätigte Lieferung. Die 0.2.2-Korrekturen für Offer-Retry und Basis-Nachkauf sind live bestätigt. P3/P4 bleiben teilweise implementiert; Linux-Live-Nachweis und die übrigen offenen Funktionsblöcke stehen weiter aus.**
 
 Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Der Teilrelease konsumiert bereits das reduzierte Schema albot.live-a/v1; die übrigen Spielmodule folgen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 
@@ -92,9 +91,9 @@ Fertig, wenn die lokale Oberfläche ein gültiges, vollständiges Bundle erzeugt
 - [ ] Fishing/Mining inklusive Werkzeugwechsel/-rückwechsel und sicherer Zone; Merrit, Teilnahme an Giveaways, geeignete Wishlist und begrenzte Schnäppchensuche.
 - [ ] Auto-Optimierung berücksichtigt accountweite Ziele, aktuelle Preise und Verlustregeln. Alte Zahlen wie 150M/170M oder 80 Prozent werden veränderbare Profile, keine versteckten universellen Konstanten.
 
-**Live B, ca. 15–20 Minuten:** mit kleinen festgelegten Mengen eine vollständige Kette durchspielen: Farmer sammelt → Merchant übernimmt → Bank/NPC → eine günstige freigegebene Verarbeitung → Lieferung. Gezielt eine Unterbrechung vor/nach einer normalen Übergabe und veränderten Inventarslot abgleichen. Teure/seltene Items werden nicht als Testmaterial verwendet. Erfolgsbeobachtung ist Pflicht, lange Einzelfreigabe-Zeremonien nicht.
+**Live B – bestanden (Browser + Windows-Headless, 7. Oktober 2026):** Die festgelegte Kette Farmer sammelt → Merchant übernimmt → Bank/NPC → günstige freigegebene Verarbeitung → Lieferung wurde mit `0.2.2-live-b` vollständig live nachgewiesen. Browser und Headless bestätigten Wertaktionen durch beobachtete Inventar-/Bankänderungen; der abschließende Liefer-Handshake lief ohne Timeout bis `done`. Details: [docs/LIVE-B-ERGEBNIS.md](docs/LIVE-B-ERGEBNIS.md).
 
-Fertig, wenn fachliche Teilaktionen zu einer funktionierenden Auftragskette zusammenspielen und Regelkonflikte keine Verkäufe/Verarbeitungen gegen die Nutzervorgabe auslösen.
+Der Live-Testpunkt ist bestanden. Das schließt P3/P4 nicht pauschal ab: die oben noch offenen Funktionsblöcke bleiben offen.
 
 ### P5 — Accountstrategie, Welt und adaptive Optimierung
 

@@ -74,3 +74,11 @@ test('expected attack and loot races are transient diagnostics, not hard inciden
  a.load();a.root.ALBot.start();await new Promise(resolve=>setImmediate(resolve));
  const report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.actionStats.attack.transient,1);assert.equal(report.actionStats.attack.transientReasons.not_there,1);assert.equal(report.actionStats.loot.transient,1);assert.equal(report.actionStats.loot.transientReasons.openning,1);assert.equal(report.incidents.some(x=>x.where==='attack'||x.where==='loot'),false);assert.equal(a.root.ALBot.status().target,null);a.root.ALBot.dispose();
 });
+
+
+test('Live B merchant keeps recovery but skips farmer loot so economy inventory stays available',()=>{
+ const a=harness('M'),cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema),character=defaultsFor(ECONOMY_DESCRIPTOR.schema.properties.characters.items);
+ cfg.characters=[{...character,name:'M',role:'merchant',class:'merchant'}];cfg.party.merchant='M';cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=true;cfg.general.autostart=true;
+ a.root.ALBotConfig=cfg;a.c.ctype='merchant';a.c.gold=1000000;a.c.items[0]={name:'gslime',q:2};let loots=0;a.root.loot=()=>{loots++;return Promise.resolve();};
+ a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(loots,0);assert.equal(a.root.ALBot.status().reason,'Merchant bereit');a.root.ALBot.dispose();
+});

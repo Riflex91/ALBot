@@ -11,7 +11,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.3.3-live-c';
+const VERSION='0.3.4-live-c';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -401,6 +401,7 @@ function createTestReport(p,version){
 // src/core/checkpoint.mjs
 // Reserve a small fixed-size record, rather than rewriting the whole profile.
 // Only our obsolete optional configuration cache may be removed, never other bots.
+function recoverableNonValueJournal(j){return !!j&&j.kind==='quest.monsterhunt'&&(j.cost??0)===0&&(j.loss??0)===0&&Array.isArray(j.slots)&&j.slots.length===0;}
 function createCheckpoint(p,key,report){
   try{p.root.localStorage?.removeItem('cstore_'+key+':config');}catch{}
   const stored=p.read(key);let durable=true;
@@ -485,7 +486,7 @@ function createTransport(bot){
 
 // src/core/movement.mjs
 function createMovement(bot){
-  const {p,exec}=bot;let order=null,blockedUntil=0;const smart=()=>p.root.smart??p.parent?.smart;
+  const {p,exec}=bot;let order=null,blockedUntil=0;
   const stop=()=>{if(order||p.root.smart?.moving||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
@@ -504,8 +505,7 @@ function createMovement(bot){
     if(!accepted)order=null;return false;
   }
   function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.event?.('movement.arrived',{owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
-    const state=smart(),searching=order.mode==='smart_move'&&state?.moving&&state?.searching&&!state?.found;
-    if(!searching&&now-order.progress>12000){const failed=order;stop();blockedUntil=now+3000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:'no_progress'});}
+    if(order.mode!=='smart_move'&&now-order.progress>12000){const failed=order;stop();blockedUntil=now+3000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:'no_progress'});}
   }
   return {go,poll,stop,get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner){if(order&&order.owner!==owner)return false;if(!p.call('can_move_to',x,y))return false;return go({map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);},
@@ -1525,6 +1525,7 @@ function install(root){
     endValue(result){if(!bot.journal)return;report.event('inventory.result',{result,kind:bot.journal.kind});if(result==='confirmed'&&(bot.production?.recordDelivery(bot.journal)??true)&&checkpoint.clear(bot.journal)){bot.journal=null;}else {bot.inventoryBlocked=true;bot.reason='Inventaraktion ungeklärt: Bestand prüfen';if(cfg.general.pauseOnUnknown&&bot.running)bot.pause(bot.reason);}},
     measure(target=null){const targetHpRatio=target&&Number.isFinite(target.hp)&&Number.isFinite(target.max_hp)&&target.max_hp>0?target.hp/target.max_hp:undefined;return {hpRatio:p.c.hp/p.c.max_hp,targetHpRatio,mpRatio:p.c.mp/p.c.max_mp,freeSlots:bot.free(),gold:p.c.gold,enemyCount:bot.monsters().filter(e=>distance(p.c,e)<p.c.range).length,map:p.c.map,rip:!!p.c.rip,task:bot.task(),count:bot.count};}
   };
+  if(recoverableNonValueJournal(bot.journal)&&checkpoint.clear(bot.journal)){report.event('checkpoint.recovered',{kind:bot.journal.kind,reason:'non_value_monsterhunt'});bot.journal=null;bot.inventoryBlocked=false;}
   const exec=new Executor({now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:report.event,onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
   bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.services=createServices(bot);}

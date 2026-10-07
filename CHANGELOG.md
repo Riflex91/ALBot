@@ -6,6 +6,7 @@
 - Headless hält den `smart_move`-Suchzustand am Parent-Kontext. Die Stillstandserkennung liest deshalb jetzt `root.smart` oder `parent.smart`, damit laufende BFS-Pfadsuche nicht nach zwölf Sekunden fälschlich abgebrochen wird.
 - Opportunistische Monsterhunt-/Anniversary-Aktionen geben einem aktiven manuellen Strategieauftrag Vorrang; ein `farm:bee`-Regelauftrag darf nicht unmittelbar von World-/Economy-Arbeit verdrängt werden.
 - Die persönliche Phase-02-Testdatei wurde vollständig aus dem zuvor funktionierenden 0.3.1-Settings-Satz neu aufgebaut. Dabei bleiben AOE, Production, Events, Quests und Magiport wie im validierten Phase-02-Profil ausgeschaltet.
+- Ein erster 0.3.3-Testexport stoppte beim Boot, weil das reine Berichtsfeld `omittedItemRules` versehentlich als Profilfeld serialisiert worden war. Die persönliche Phase-02-Datei enthält nun nur die zehn erlaubten Top-Level-Profilfelder; die Runtime blieb unverändert 0.3.3.
 - Gezielte Movement-/Farmer-Regressionen laufen lokal 4/4 grün. Vollständiger Repository-Testlauf wurde in dieser Umgebung nicht ausgeführt. Live-Retest bleibt erforderlich.
 
 

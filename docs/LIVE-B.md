@@ -1,6 +1,6 @@
-# Live B – Merchant-Kette, 0.2.0-live-b
+# Live B – Merchant-Kette, 0.2.1-live-b
 
-Stand 7. Oktober 2026. Dieser Kandidat bereitet den nächsten gemeinsamen Live-Test vor. Er ist noch kein bestandener Live-Nachweis und noch nicht der vollständige Super-Bot. Autostart ist standardmäßig **true**. Browser fordert immer `performance_trick()` an; Headless verwendet lokale IPC, wenn verfügbar.
+Stand 7. Oktober 2026. `0.2.1-live-b` ist die Korrektur für den beim Browserlauf von Schritt 02 gefundenen Merchant-Loot/Bank-Starvation-Fehler. Schritt 01 Abholung ist live bestätigt; Schritt 02 muss mit diesem Kandidaten wiederholt werden. Dieser Kandidat bereitet den nächsten gemeinsamen Live-Test vor. Er ist noch kein bestandener Live-Nachweis und noch nicht der vollständige Super-Bot. Autostart ist standardmäßig **true**. Browser fordert immer `performance_trick()` an; Headless verwendet lokale IPC, wenn verfügbar.
 
 ## Testdateien erzeugen
 
@@ -54,7 +54,7 @@ Im Browser den gesamten Inhalt der jeweiligen `.js`-Datei in CODE einfügen und 
 
 Browser: **Testlog speichern**, alternativ `ALBot.exportTestReport()`. Headless: `test-logs/CHARAKTER/test-ausgeführtertest.json`. Vor dem nächsten Schritt alle vier Dateien in einen Ordner mit Schrittnamen kopieren, da der Client diese Dateinamen wiederverwendet. Berichte enthalten Profilname, Version, Umgebung, Economy-Budget, Produktionsschritte, Inventar, `actionStats`, begrenzte Ereignisse und Fehler.
 
-Bestanden ist die Kette erst mit beobachteter Abholung, Bankänderungen, NPC-Verkauf, günstiger Verarbeitung und bestätigter Lieferung. `returned` beziehungsweise ein erfülltes Promise genügt bei Wertaktionen nicht. Die 46 Offlineprüfungen sind gezielte Funktions-/Grenztests, keine Shadow-Tests und kein Live-Nachweis. Der neue Lauf kann zunächst headless erfolgen; Browserkompatibilität der neuen Bank-/Produktionsaktionen bleibt bis zu einer realen Browserausführung offen.
+Bestanden ist die Kette erst mit beobachteter Abholung, Bankänderungen, NPC-Verkauf, günstiger Verarbeitung und bestätigter Lieferung. Der Browserlauf von `0.2.0-live-b` hat Schritt 01 bestanden. Schritt 02 startete keine Bankaktion, weil der gemeinsame Farmer-Tick beim Merchant unmittelbar vorher Loot auf der Inventarressource reservierte; `0.2.1-live-b` überspringt Farmer-Loot für die Merchant-Rolle, behält aber deren Recovery/Regeneration. Erst Schritt 02 erneut ausführen, danach bei Erfolg mit Schritt 03 fortfahren. `returned` beziehungsweise ein erfülltes Promise genügt bei Wertaktionen nicht. Die 46 Offlineprüfungen sind gezielte Funktions-/Grenztests, keine Shadow-Tests und kein Live-Nachweis. Der neue Lauf kann zunächst headless erfolgen; Browserkompatibilität der neuen Bank-/Produktionsaktionen bleibt bis zu einer realen Browserausführung offen.
 
 ## Umfang und bekannte Grenzen
 

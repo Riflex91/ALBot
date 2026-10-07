@@ -67,14 +67,14 @@ export function createStrategy(bot){
   if(!bot.target&&distance(p.c,activity)>100){bot.movement.go({...activity,in:p.c.in??p.c.map,radius:70},'world');return true;}return false;
  }
  function quest(){
-  if(!w.quests||me.role!=='farmer'||activity||bot.journal||bot.logistics.reserved)return false;
+  if(manual||!w.quests||me.role!=='farmer'||activity||bot.journal||bot.logistics.reserved)return false;
   const q=p.c.s?.monsterhunt;if(q?.c>0){if(explicitTargets().includes(q.id)&&!manual)manual={task:'farm',id:q.id,until:Date.now()+Math.min(600000,q.ms??600000)};return false;}
   if(!p.has('use_skill')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
   if(!bot.economy.travel(d,'Monsterhunt',70))return true;const before=JSON.stringify(q??null);
   return bot.economy.perform('quest.monsterhunt',{guard:()=>bot.economy.at(d),call:()=>p.call('use_skill','monsterhunt'),observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==before,details:{quest:'monsterhunt'},timeout:20000});
  }
  function anniversary(){
-  const s=state().anniversary;if(!w.anniversary||!s?.active||!s.live||!Number.isFinite(s.expires)||s.expires<Date.now()||s.available===false||!permittedMap(s.map)||!p.has('anniversary_can_visit')||!p.call('anniversary_can_visit')||!bot.economy)return false;
+  const s=state().anniversary;if(manual||!w.anniversary||!s?.active||!s.live||!Number.isFinite(s.expires)||s.expires<Date.now()||s.available===false||!permittedMap(s.map)||!p.has('anniversary_can_visit')||!p.call('anniversary_can_visit')||!bot.economy)return false;
   const d={map:s.map,in:s.map,x:s.x,y:s.y};if(!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
   if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');
   return bot.economy.perform('quest.anniversary',{guard:()=>bot.economy.at(d,80)&&p.call('anniversary_can_visit'),call:()=>p.call('anniversary_kiss'),observe:()=>bot.count('anniversarygift')>gifts||JSON.stringify(p.c.anniversary??null)!==before,details:{quest:'anniversary'},timeout:20000});

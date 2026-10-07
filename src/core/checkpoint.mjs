@@ -1,5 +1,6 @@
 // Reserve a small fixed-size record, rather than rewriting the whole profile.
 // Only our obsolete optional configuration cache may be removed, never other bots.
+export function recoverableNonValueJournal(j){return !!j&&j.kind==='quest.monsterhunt'&&(j.cost??0)===0&&(j.loss??0)===0&&Array.isArray(j.slots)&&j.slots.length===0;}
 export function createCheckpoint(p,key,report){
   try{p.root.localStorage?.removeItem('cstore_'+key+':config');}catch{}
   const stored=p.read(key);let durable=true;

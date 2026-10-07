@@ -1,5 +1,23 @@
 # Änderungen
 
+## 0.3.3-live-c · 7. Oktober 2026 · Headless-Pfadsuche und manuelle Aufgabenpriorität korrigiert
+
+- Vier echte Headless-Berichte mit `0.3.2-live-c` geprüft: alle Instanzen starten, aber kein Bee-Angriff; Ranger 1/2 melden mehrere `movement.failed: no_progress`, Ranger 3 wird nach aktivierter Bee-Regel zeitweise von Monsterhunt-/Economy-Bewegung verdrängt.
+- Headless hält den `smart_move`-Suchzustand am Parent-Kontext. Die Stillstandserkennung liest deshalb jetzt `root.smart` oder `parent.smart`, damit laufende BFS-Pfadsuche nicht nach zwölf Sekunden fälschlich abgebrochen wird.
+- Opportunistische Monsterhunt-/Anniversary-Aktionen geben einem aktiven manuellen Strategieauftrag Vorrang; ein `farm:bee`-Regelauftrag darf nicht unmittelbar von World-/Economy-Arbeit verdrängt werden.
+- Die persönliche Phase-02-Testdatei wurde vollständig aus dem zuvor funktionierenden 0.3.1-Settings-Satz neu aufgebaut. Dabei bleiben AOE, Production, Events, Quests und Magiport wie im validierten Phase-02-Profil ausgeschaltet.
+- Ein erster 0.3.3-Testexport stoppte beim Boot, weil das reine Berichtsfeld `omittedItemRules` versehentlich als Profilfeld serialisiert worden war. Die persönliche Phase-02-Datei enthält nun nur die zehn erlaubten Top-Level-Profilfelder; die Runtime blieb unverändert 0.3.3.
+- Gezielte Movement-/Farmer-Regressionen laufen lokal 4/4 grün. Vollständiger Repository-Testlauf wurde in dieser Umgebung nicht ausgeführt. Live-Retest bleibt erforderlich.
+
+
+## 0.3.2-live-c · 7. Oktober 2026 · Bee-Pfadsuche und Regelbesitz korrigiert
+
+- Vier Headless-Berichte des 0.3.1-Phase-02-Retests geprüft: kein `movement.failed` mehr, aber nur Ranger 3 aktivierte `farm:bee`; echte Bee-Angriffe wurden weiterhin nicht nachgewiesen.
+- `smart_move`-Pfadsuche darf länger als zwölf Sekunden ohne Positionsänderung rechnen. Erst nach gefundener Route zählt fehlender Positionsfortschritt wieder als Fehler; dann wird nach drei Sekunden neu geplant und `movement.failed: no_progress` protokolliert.
+- Ein expliziter, zeitlich begrenzter `farm:<ziel>`-Auftrag aus einer Verhaltensregel behält während seiner TTL Vorrang vor normalem Follow-/Wait-for-Team. Damit wird ein Bee-Auftrag nicht unmittelbar zurück zum Goo-Leader gezogen.
+- Zwei gezielte Regressionen ergänzen genau diese Fehlerbilder. Der Bee-Live-Retest bleibt ausstehend; keine Live-C-Freigabe daraus abgeleitet.
+
+
 ## 0.3.1-live-c · 7. Oktober 2026 · Bee-Bewegung repariert
 
 - Acht Browserberichte geprüft: Normalbetrieb ohne Incidents; Bee-Regeln ausgelöst, aber neun fehlgeschlagene Bewegungen. Fishing war in beiden verwendeten Profilen ausgeschaltet.

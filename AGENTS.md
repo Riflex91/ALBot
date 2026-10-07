@@ -1,6 +1,6 @@
 # Arbeitsvertrag für ALBot
 
-Der Nutzer autorisiert nach vollständig bestätigtem Live B die Entwicklung **bis zum nächsten Live-Test C**. Aktueller Kandidat `0.3.1-live-c`, Schema `src/config/live-c.mjs`; Anleitung docs/LIVE-C.md und genaue Funktionszuordnung docs/INTEGRATIONSSTAND.md lesen. Neue C-Funktionen nicht als live bestanden darstellen. Keine automatischen Logins oder zusätzlichen Shadow-/Freigabephasen. Vorhandene Nutzerkonfiguration schützen; C-Testdateien separat ausliefern. Optionaler automatischer Updater und die ausdrücklich genannten Optimierungslücken bleiben offen.
+Der Nutzer autorisiert nach vollständig bestätigtem Live B die Entwicklung **bis zum nächsten Live-Test C**. Aktueller Kandidat `0.3.3-live-c`, Schema `src/config/live-c.mjs`; Anleitung docs/LIVE-C.md und genaue Funktionszuordnung docs/INTEGRATIONSSTAND.md lesen. Neue C-Funktionen nicht als live bestanden darstellen. Keine automatischen Logins oder zusätzlichen Shadow-/Freigabephasen. Vorhandene Nutzerkonfiguration schützen; C-Testdateien separat ausliefern. Optionaler automatischer Updater und die ausdrücklich genannten Optimierungslücken bleiben offen.
 
 Vor einer Änderung README.md, ROADMAP.md, HOW-TO-USE.md, docs/RUNTIME-VERTRAG.md und docs/WORKSHOP-CONTRACT.md lesen. Für eine Portierung außerdem den passenden Abschnitt in docs/BOT-ANALYSE.md und die dort verlinkten Originalfunktionen lesen.
 

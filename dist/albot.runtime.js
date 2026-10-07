@@ -1,4 +1,4 @@
-/* ALBot 0.3.1-live-c · Live C pending */
+/* ALBot 0.3.2-live-c · Live C pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -9,7 +9,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.3.1-live-c';
+const VERSION='0.3.3-live-c';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -483,7 +483,7 @@ function createTransport(bot){
 
 // src/core/movement.mjs
 function createMovement(bot){
-  const {p,exec}=bot;let order=null,blockedUntil=0;
+  const {p,exec}=bot;let order=null,blockedUntil=0;const smart=()=>p.root.smart??p.parent?.smart;
   const stop=()=>{if(order||p.root.smart?.moving||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
@@ -502,7 +502,8 @@ function createMovement(bot){
     if(!accepted)order=null;return false;
   }
   function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.event?.('movement.arrived',{owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
-    if(now-order.progress>12000||now-order.started>120000){stop();blockedUntil=now+10000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 10 Sekunden';}
+    const state=smart(),searching=order.mode==='smart_move'&&state?.moving&&state?.searching&&!state?.found;
+    if(!searching&&now-order.progress>12000){const failed=order;stop();blockedUntil=now+3000;bot.reason='Weg ohne Fortschritt; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:'no_progress'});}
   }
   return {go,poll,stop,get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner){if(order&&order.owner!==owner)return false;if(!p.call('can_move_to',x,y))return false;return go({map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);},
@@ -740,12 +741,12 @@ function createFarmer(bot){
     if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
     if(bot.free()<cfg.farming.freeSlots){bot.reason='Inventarreserve erreicht';bot.target=null;bot.skills.rotation(null);return;}
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
-    const leader=bot.transport.fresh(bot.leader);
-    if(cfg.party.enabled&&bot.leader!==me.name){
+    const leader=bot.transport.fresh(bot.leader),directedFarm=bot.strategy?.status?.().manual?.task==='farm';
+    if(cfg.party.enabled&&!directedFarm&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){bot.reason='Warte auf Kampf-Leader';bot.target=null;bot.skills.rotation(null);return;}
       if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){bot.target=null;bot.reason='Folge '+bot.leader;bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
     }
-    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe';bot.target=null;bot.skills.rotation(null);return;}
+    if(cfg.party.enabled&&!directedFarm&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe';bot.target=null;bot.skills.rotation(null);return;}
     const mobs=bot.monsters().filter(bot.allowed);
     const focus=cfg.party.enabled&&cfg.party.focusFire&&leader?.target?mobs.find(e=>e.id===leader.target):null;
     const previous=bot.target&&mobs.find(e=>e.id===bot.target.id);
@@ -1329,14 +1330,14 @@ function createStrategy(bot){
   if(!bot.target&&distance(p.c,activity)>100){bot.movement.go({...activity,in:p.c.in??p.c.map,radius:70},'world');return true;}return false;
  }
  function quest(){
-  if(!w.quests||me.role!=='farmer'||activity||bot.journal||bot.logistics.reserved)return false;
+  if(manual||!w.quests||me.role!=='farmer'||activity||bot.journal||bot.logistics.reserved)return false;
   const q=p.c.s?.monsterhunt;if(q?.c>0){if(explicitTargets().includes(q.id)&&!manual)manual={task:'farm',id:q.id,until:Date.now()+Math.min(600000,q.ms??600000)};return false;}
   if(!p.has('use_skill')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
   if(!bot.economy.travel(d,'Monsterhunt',70))return true;const before=JSON.stringify(q??null);
   return bot.economy.perform('quest.monsterhunt',{guard:()=>bot.economy.at(d),call:()=>p.call('use_skill','monsterhunt'),observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==before,details:{quest:'monsterhunt'},timeout:20000});
  }
  function anniversary(){
-  const s=state().anniversary;if(!w.anniversary||!s?.active||!s.live||!Number.isFinite(s.expires)||s.expires<Date.now()||s.available===false||!permittedMap(s.map)||!p.has('anniversary_can_visit')||!p.call('anniversary_can_visit')||!bot.economy)return false;
+  const s=state().anniversary;if(manual||!w.anniversary||!s?.active||!s.live||!Number.isFinite(s.expires)||s.expires<Date.now()||s.available===false||!permittedMap(s.map)||!p.has('anniversary_can_visit')||!p.call('anniversary_can_visit')||!bot.economy)return false;
   const d={map:s.map,in:s.map,x:s.x,y:s.y};if(!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
   if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');
   return bot.economy.perform('quest.anniversary',{guard:()=>bot.economy.at(d,80)&&p.call('anniversary_can_visit'),call:()=>p.call('anniversary_kiss'),observe:()=>bot.count('anniversarygift')>gifts||JSON.stringify(p.c.anniversary??null)!==before,details:{quest:'anniversary'},timeout:20000});

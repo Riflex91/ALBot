@@ -26,7 +26,7 @@ import {createSkills} from './combat/skills.mjs';
 import {createFarmer} from './combat/farmer.mjs';
 import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
-import {createCheckpoint} from './core/checkpoint.mjs';
+import {createCheckpoint,recoverableNonValueJournal} from './core/checkpoint.mjs';
 export function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
@@ -79,6 +79,7 @@ export function install(root){
     endValue(result){if(!bot.journal)return;report.event('inventory.result',{result,kind:bot.journal.kind});if(result==='confirmed'&&(bot.production?.recordDelivery(bot.journal)??true)&&checkpoint.clear(bot.journal)){bot.journal=null;}else {bot.inventoryBlocked=true;bot.reason='Inventaraktion ungeklärt: Bestand prüfen';if(cfg.general.pauseOnUnknown&&bot.running)bot.pause(bot.reason);}},
     measure(target=null){const targetHpRatio=target&&Number.isFinite(target.hp)&&Number.isFinite(target.max_hp)&&target.max_hp>0?target.hp/target.max_hp:undefined;return {hpRatio:p.c.hp/p.c.max_hp,targetHpRatio,mpRatio:p.c.mp/p.c.max_mp,freeSlots:bot.free(),gold:p.c.gold,enemyCount:bot.monsters().filter(e=>distance(p.c,e)<p.c.range).length,map:p.c.map,rip:!!p.c.rip,task:bot.task(),count:bot.count};}
   };
+  if(recoverableNonValueJournal(bot.journal)&&checkpoint.clear(bot.journal)){report.event('checkpoint.recovered',{kind:bot.journal.kind,reason:'non_value_monsterhunt'});bot.journal=null;bot.inventoryBlocked=false;}
   const exec=new Executor({now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:report.event,onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
   bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.services=createServices(bot);}

@@ -90,3 +90,9 @@ Accountrotation ist explizit `selection=adaptive`; `rotation=false` hält aktive
 Magiport benötigt aktuelle, konfigurierte Peers am Leader und eine kurzlebige Zustimmung mit identischer Auftrags-ID. Keine beliebigen Teleportanfragen annehmen. Zielregel, MPreserve und ruhendes Inventar gelten zusätzlich. Realmwechsel und Rotation bleiben im persönlichen C-Testprofil ausgeschaltet.
 
 Produktionsziele mit Empfänger zählen bestätigte Liefermenge und letzte Transfer-IDs persistent. Bestätigung wird vor dem Leeren des Wertjournals gespeichert. Gleiche Zielidentität (Name/Item/Level/Menge/Empfänger) startet nach Reload nicht neu; ein bewusst neues Ziel erhält eine neue Identität. Allgemeine Budgets werden dabei nicht automatisch zurückgesetzt.
+
+## Merchant-Ergänzungen (0.4.0-merchant)
+
+Der C-Vertrag wird additiv um optionale `merchant.partialBank` (false) und `partialBankMaxStack` (9999) erweitert. Alte C-Profile ohne diese Felder bleiben gültig. Die vollständige Werkstatt ergänzt Vorgaben beim Paketimport. Aktivierte Teilentnahme erlaubt einen begrenzten temporären Arbeitsbestand oberhalb der Item-Höchstmenge, nur bis zur bestätigten Rest-Rücklagerung. Zwischenstand `albot:bank-partial:NAME`, Bericht `bankPartial`; keine neue öffentliche Aktions-API. Offene Bankarbeit sperrt andere Inventararbeit, Rotation und Realmwechsel. Pausieren bleibt möglich; unbekannte Wertaktionen bleiben manuell abzugleichen.
+
+Merrit beobachtet das offizielle eigene `character.on('merrit', handler)`-Ereignis; die API gibt eine Listener-ID zurück, Cleanup verwendet `character.remove(id)`. Für alternative EventEmitter-Kontexte steht ein on/off-Fallback bereit. Namensgebundene neue Receipt oder beobachtete zusätzliche Parcels bleiben alternative Bestätigungspfade. Keine CM-Nachricht oder Cash-Differenz als Geschenk interpretieren. Umfang und gezielter Ergänzungstest: [MERCHANT-ERGAENZUNGEN.md](MERCHANT-ERGAENZUNGEN.md).

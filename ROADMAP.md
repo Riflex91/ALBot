@@ -76,7 +76,7 @@ Fertig, wenn normales Farmen und Teamkommunikation in beiden Umgebungen funktion
 - [ ] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen.
 - [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Priorität und Filter sind für Live-A-Items bereits in der Spiellaufzeit eingebunden; weitere Aktionsphasen folgen. Die Vorschau ist kein Shadow-Testlauf.
 - [ ] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze.
-- [ ] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget.
+- [x] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget. 0.4.0 ergänzt opt-in-Teilentnahme mit temporärem Arbeitsbestand, persistentem Wiederanlauf und Rest-Rücklagerung; dieser neue Teil noch nicht live bestätigt.
 - [ ] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty.
 - [ ] Mluck-Service, Merchant-Buffs und faire Task-Priorisierung. Lange Markt-/Merrit-/Gathering-Aufgaben dürfen notwendigen Nachschub nicht verdrängen.
 - [ ] Wiederanlauf gleicht beobachtete Bestände ab; ein unklarer Transfer wird nicht blind erneut gesendet.
@@ -183,7 +183,7 @@ Implementiert und mit 46 gezielten Offlineprüfungen geprüft: gemeinsame Aktion
 
 Die offenen P3/P4-Häkchen bleiben bewusst offen, soweit sie umfangreichere Fähigkeiten umfassen: faire langfristige Priorisierung, Teilentnahme großer Bankstapel, Merrit/Fishing/Mining/Ponty, empirische Beschaffungsoptimierung und vollständige Account-Ziele. Diese Restarbeiten werden nach Rückmeldung zum Kernablauf weitergeführt; der nächste Test ist ein Merchant-Kettentest, keine Vollfreigabe von P4. Details und exakt begrenzte Aktionen: [LIVE-B.md](docs/LIVE-B.md).
 
-## 9. Aktuelle Übergabe: Live C vorbereitet
+## 9. Historische Übergabe: Live C vorbereitet
 
 Live B vollständig bestätigt; 0.2.2-Fixes sind im C-Kern erhalten. Implementiert: Wenn–dann-Aktionen und erlaubte temporäre Aufgaben; Item-Fallbacks; faire Merchant-Auswahl mit Haltezeit/Alterung; Fishing/Mining mit Offhand-/Tool-Rückwechsel und persistentem Zustand; Merrit-Anker/Parcel-Bestätigung; budgetierter Ponty-Scan; bestätigte Produktionsziellieferungen über Reload; Boss-/Event-Whitelist, Monsterhunt und Anniversary; öffentliche Karten-/Risikofilter und begrenztes Farmranking; bekannte Accountprofile/Catch-up, wiederanlauffähiger Einzelwechsel, Paladin-Auren und abgestimmter Magiport/Leader-Realmwechsel.
 
@@ -202,3 +202,9 @@ Acht Browserberichte ausgewertet: Goo-Normalbetrieb ohne Incidents; Bee-Regeln a
 ### Live C bestätigt
 
 Am 7. Oktober 2026 bestätigt der Nutzer nach Auslieferung von 0.3.1: alle Tests bestanden. Der vereinbarte Live-C-Ablauf ist abgeschlossen. Vorherige Fehlermeldungen sind historisch; offene Implementierungsbereiche und ausgeschaltete Optionen bleiben offen. Keine zusätzlichen C-Umgebungsnachweise oder neuen Logauswertungen behauptet. Siehe docs/LIVE-C-ERGEBNIS.md.
+
+## 10. Merchant-Ergänzungen nach bestandenem Live C
+
+Folgeauftrag autorisiert die Weiterentwicklung. 0.4.0-merchant schließt Bank-Teilentnahme und Merrit-Bestätigung über eigene Shell-Events/neue Receipts. Die Bankoption ist ausdrücklich aktivierbar und standardmäßig aus; größere Stapel werden nur vorübergehend entnommen, geteilt und mit bestätigtem Mengenabgleich zurückgelagert. Persistenter Wiederanlauf und Vorrang vor Inventar-/Liefer-/Rotationsarbeit. Schema additiv und alte Profile kompatibel, bestehender Werkstattgenerator unverändert. 70 gezielte Prüfungen unter Windows bestanden; neue Abläufe noch nicht live bestätigt. Persönliche Normal-/Bank-/Merrit-Exporte und ein kurzer Ergänzungsablauf liegen bereit. Keine erneute A/B/C-Gesamtrunde und keine Shadow-Phase. Details: [MERCHANT-ERGAENZUNGEN.md](docs/MERCHANT-ERGAENZUNGEN.md).
+
+Nächste Entwicklungsblöcke: versionsgebundener optionaler Updater, accountweite Gear-/Beschaffungsoptimierung und begrenzte Markt-/Reise-/Teamwerte; anschließend verbleibende Integrationslücken und Gesamtfreigabe. Historische offene Bank-/Shell-Vermerke oben beschreiben den früheren Stand; aktuelle Übernahmematrix ist aktualisiert.

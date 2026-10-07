@@ -10,7 +10,7 @@ const version=VERSION;
 const files=['src/runtime/primitives.js','src/version.mjs','editor/lib/schema.mjs','editor/lib/contract.mjs','src/config/live-a.mjs','src/config/live-b.mjs','src/config/live-c.mjs','src/core/policy.mjs','src/core/executor.mjs','src/core/test-report.mjs','src/core/checkpoint.mjs','src/core/fair-tasks.mjs','src/runtime/ports.mjs','src/party/transport.mjs','src/core/movement.mjs','src/combat/skills.mjs','src/items/logistics.mjs','src/combat/farmer.mjs','src/ui/panel.mjs','src/merchant/economy.mjs','src/merchant/bank.mjs','src/merchant/market.mjs','src/production/materials.mjs','src/production/planner.mjs','src/production/production.mjs','src/production/gear.mjs','src/merchant/controller.mjs','src/merchant/services.mjs','src/world/strategy.mjs','src/core/behavior.mjs','src/party/account.mjs','src/party/aura.mjs','src/party/travel.mjs','src/main.mjs'];
 checkDescriptor(LIVE_DESCRIPTOR);
 const chunks=await Promise.all(files.map(async path=>'// '+path+'\n'+(await readFile(path,'utf8')).replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace(/^export /gm,'')));
-const code='/* ALBot '+version+' · Live C pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';
+const code='/* ALBot '+version+' · Merchant-Ergänzungen pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';
 new Script(code);
 const runtime={version,contractVersion:1,schemaId:LIVE_DESCRIPTOR.schemaId,sha256:createHash('sha256').update(code).digest('hex'),code};
 const pkg={format:'albot-package',formatVersion:1,descriptor:LIVE_DESCRIPTOR,runtime};await checkPackage(pkg);

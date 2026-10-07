@@ -1,7 +1,7 @@
 import {distance,samePlace} from '../core/policy.mjs';
 export function createTeamTravel(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();
- const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
+ const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
  const realmAllowed=realm=>w.serverHop&&w.allowedRealms.includes(realm)&&/^[A-Z]{2}.+$/.test(realm);
  function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;

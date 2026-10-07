@@ -1,6 +1,6 @@
 # Übernahmematrix · Stand Live C
 
-Zuordnung der Funktionsmatrix aus BOT-ANALYSE.md zum tatsächlichen Code. „Implementiert“ bezeichnet Code mit gezielten Offlineprüfungen; neue C-Funktionen sind noch nicht live freigegeben. Live A/B gelten nur für ihre dokumentierten Szenarien. Die gesamte Vereinigung bleibt bei den genannten Lücken offen.
+Zuordnung der Funktionsmatrix aus BOT-ANALYSE.md zum tatsächlichen Code. „Implementiert“ bezeichnet Code mit gezielten Offlineprüfungen. Live A/B/C gelten nur für ihre dokumentierten Szenarien; C wurde nach 0.3.1 vom Nutzer bestätigt. Aktuelle Merchant-Ergänzungen 0.4.0 sind noch nicht live bestätigt. Die gesamte Vereinigung bleibt bei den genannten Lücken offen.
 
 | Vorgängerfunktion | Modul / Konfiguration | Tatsächlicher Stand |
 |---|---|---|
@@ -20,7 +20,7 @@ Zuordnung der Funktionsmatrix aus BOT-ANALYSE.md zum tatsächlichen Code. „Imp
 | Lieferung, Tränke, Materialbedarf | logistics, behavior / items, merchant | Beidseitiger Handshake, reservierter Versand; explizite Level-0-Nachschubanfrage neu in C |
 | Goldlogistik | bank / merchant.bankGold | Goldausgleich bei Bankbesuchen; keine neue Farmer→Merchant-Goldtransfer-Automatik |
 | Mluck und Produktionsbuffs | merchant/controller, services / merchant | Klassen-/Level-/Cooldownprüfung; faire Auswahl und Halte-/Wartezeiten neu C |
-| Bank, Packwahl, Gold | merchant/bank / items.pack, merchant | Ganze passende Stapel entnehmen, vor Einlagerung Überschuss splitten; **Teilentnahme zu großer Bankstapel offen** |
+| Bank, Packwahl, Gold | merchant/bank / items.pack, merchant | Ganze passende Stapel; 0.4.0 ergänzt ausdrücklich aktivierbare Teilentnahme via temporärer Entnahme/Split/Rücklagerung, Mengen-/Slot-Checkpoint und Abgleich. Standard aus; noch nicht live bestätigt. |
 | Konsolidierung und Erweiterung | bank / consolidate, expandBank, bankBudget | Explizite Budgets und beobachtete Änderung; noch kein vollständiger Bankkapazitätsoptimierer |
 | NPC-Kauf/-Verkauf | economy / buy, sell | Gold-API, Livepreis, Menge/Reserve/Budget; B live |
 | Stand, Spielerhandel, Listings, Wishlist | market / items | Explizite Angebote/Slots, Limits, passive Kaufexposition; kein impliziter Handel |
@@ -32,7 +32,7 @@ Zuordnung der Funktionsmatrix aus BOT-ANALYSE.md zum tatsächlichen Code. „Imp
 | Produktionsgraph | production/planner / goals, acquireBy | Bestand→Bank/NPC/Markt/Farm/Exchange/Craft/Mutation, Tiefen-/Knotenlimit; C merkt bestätigte Ziellieferungen über Reload |
 | Materialien und Dropquellen | production/materials / items.farm | Erlaubte Monster und Zeitbudget; keine Erfolgsgarantie aus Dropwahrscheinlichkeiten |
 | Fishing/Mining, Werkzeug-Rückwechsel | merchant/services / merchant | C: öffentliche G-Zonen, Ufer-/24px-Prüfung, Offhand vor Doublehand, persistenter Rückwechsel, Schutz/MP/Level/Cooldown |
-| Merrit | services / merchant.merrit, stand | C: freier öffentlicher Standplatz, bestehendes freigegebenes Angebot, Parcel-Abgleich/Cooldown; **Shell-only-Abgleich offen** |
+| Merrit | services / merchant.merrit, stand | Freier öffentlicher Standplatz und Angebot; 0.4.0 ergänzt eigene Shell-Events/neue namensgebundene Receipts, persistierten Cooldown und Listener-Cleanup. Neue Bestätigungspfade noch nicht live nachgewiesen. |
 | Saisonaktion | world/strategy / world.anniversary | C: aktive Anniversary, Besuchsberechtigung, Reise und beobachtete Status-/Giftänderung |
 | Teamwahl, Catch-up, Rotation | party/account / selection, maxFarmers, characters | C: bekannte Profile, fester Leader, Klassenbedarf/Catch-up, Haltezeit, Stop vor Start, persistente Rückkehr bei Unterbrechung; **keine vollständige Gear-Synergieoptimierung** |
 | Paladin-Auren | party/aura / party.aura, auraHoldMs | C: Level 60, physischer/magischer Druck, Ressourcen, Haltezeit |

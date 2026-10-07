@@ -18,7 +18,7 @@ export function createLogistics(bot){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
       counters.offersReceived++;
-      if(bot.checkpoint?.durable===false||job||incoming||bot.journal||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
+      if(bot.checkpoint?.durable===false||job||incoming||bot.journal||bot.bank?.pending||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
       const quantity=Math.min(d.quantity,capacity(d.item),cfg.merchant.maxDelivery);if(quantity<1)return;
       incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
@@ -63,7 +63,7 @@ export function createLogistics(bot){
       }
       return;
     }
-    if(bot.checkpoint?.durable===false||!allowOffer||incoming||bot.inventoryBlocked||!bot.running)return;
+    if(bot.checkpoint?.durable===false||!allowOffer||incoming||bot.bank?.pending||bot.inventoryBlocked||!bot.running)return;
     if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.supply))return;
     outer:for(let slot=0;slot<p.c.items.length;slot++){
       const item=p.c.items[slot];if(!item||protectedItem(item))continue;
@@ -79,7 +79,7 @@ export function createLogistics(bot){
     }
   }
   function travel(){
-    if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||exec.busy('inventory'))return;
+    if(me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     for(const [name] of transport.peers){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
       const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some(i=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&variantCount(p.c.items,i)>r.keep+r.teamReserve;}));
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>x.to===me.name&&x.surplus>0);

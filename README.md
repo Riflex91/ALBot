@@ -6,6 +6,8 @@ Ein gemeinsamer Adventure-Land-Bot für Browser-CODE und den vorhandenen Node.js
 
 Aktuell: [Werkstattpaket](dist/albot.package.json), [C-Team-Beispiel](profiles/live-c-team.json). Persönliche C-Dateien aus A/B/C-Profilen erzeugt `scripts/export-live-c.mjs`. Paket in der vorhandenen Werkstatt laden, passendes C-Profil öffnen und fertige bot.js exportieren. Neue Exporte verwenden **autostart: true**. Die gleiche exportierte Datei läuft in Browser-CODE und Headless. Historische A/B-Dateien bleiben erhalten; der B-Exporter nutzt [das archivierte B-Paket](dist/albot-live-b.package.json).
 
+Aktuelle Weiterentwicklung: **0.4.0-merchant**, Bank-Teilentnahme mit Rest-Rücklagerung und Merrit-Bestätigung über eigene Events/Receipts. 70 gezielte Prüfungen bestanden; diese Ergänzungen noch nicht live bestätigt. [Anleitung](docs/MERCHANT-ERGAENZUNGEN.md). Persönlicher Export: `node scripts/export-merchant.mjs Profil.json neuer-Ordner`. Das bestätigte C-Paket 0.3.1 liegt unter `dist/albot-live-c.package.json`.
+
 Build: `npm run build`; gezielte Prüfungen: `npm test`. Node ab 22.9, keine npm-Abhängigkeiten. Build/Export sind Windows-/Linux-portabel; tatsächlich ausgeführte Prüfungen dieses Kandidaten erfolgten unter Windows. Linux ist weiterhin nicht live nachgewiesen. Kein eigener Host, Socket oder Node-Zugriff im Bot.
 
 Die [Bot-Werkstatt](editor/Bot-Werkstatt.html) als Datei herunterladen und lokal im Browser öffnen. Sie konfiguriert den vollständigen geplanten Bot und kann später fertige Bot-Pakete samt neuen Einstellungsschemata laden. [Anleitung](editor/README.md) · [verbindlicher Integrationsvertrag](docs/WORKSHOP-CONTRACT.md).

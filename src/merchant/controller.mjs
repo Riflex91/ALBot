@@ -11,6 +11,7 @@ export function createMerchant(bot){
   }
  }
  function tick(){
+  if(bot.bank.pending){bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
   if(bot.movement.order?.owner==='logistics'){bot.services?.interrupt();bot.services?.restore();return;}

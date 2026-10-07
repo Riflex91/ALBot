@@ -1007,6 +1007,18 @@
             "minimum": 0,
             "maximum": 1000000000000
           },
+          "partialBank": {
+            "type": "boolean",
+            "title": "Bankstapel vorübergehend ganz entnehmen und Rest zurücklagern",
+            "default": false
+          },
+          "partialBankMaxStack": {
+            "type": "integer",
+            "title": "Maximaler temporärer Bankstapel",
+            "default": 9999,
+            "minimum": 1,
+            "maximum": 1000000
+          },
           "taskHoldMs": {
             "type": "integer",
             "title": "Aufträge mindestens halten (ms)",

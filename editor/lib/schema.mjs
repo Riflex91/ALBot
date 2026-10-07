@@ -64,6 +64,7 @@ export const DESCRIPTOR = {
       stand:flag('Stand automatisch öffnen'),mluck:flag('Mluck-Service',true),mluckOthers:flag('Mluck auch für andere Spieler'),massBuffs:flag('Produktions-/Exchange-Buffs',true),
       bank:flag('Bankaufträge',true),consolidate:flag('Bankbestände zusammenlegen'),expandBank:flag('Bankkapazität kaufen'),bankBudget:int('Budget für Bankerweiterung',0),
       bankGold:flag('Goldbestand über Bank ausgleichen'),goldTarget:int('Gold-Zielbestand im Inventar',200000),
+      partialBank:flag('Bankstapel vorübergehend ganz entnehmen und Rest zurücklagern'),partialBankMaxStack:int('Maximaler temporärer Bankstapel',9999,1,1000000),
       taskHoldMs:int('Aufträge mindestens halten (ms)',30000,1000,600000),starvationMs:int('Maximale Wartezeit dringender Aufträge (ms)',120000,1000,3600000),
       ponty:flag('Ponty-Angebote prüfen'),pontyMaxSpend:int('Ponty-Budget je Kauf',100000),bargainRatio:num('Maximaler Anteil am geschätzten Marktwert',0.65,0,1),giveaways:flag('An Giveaways teilnehmen'),merrit:flag('Merrit-Belohnungen'),fishing:flag('Fishing'),mining:flag('Mining'),toolBudget:int('Werkzeugbudget',10000)
     }),

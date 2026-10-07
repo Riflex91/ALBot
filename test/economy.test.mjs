@@ -44,6 +44,35 @@ test('bank partial stack keeps reserves and verifies a split before storage',asy
 test('unobserved value action blocks instead of treating a resolved promise as success',async()=>{
  const {bot,advance}=fixture();assert.equal(bot.economy.perform('buy',{call:()=>Promise.resolve({success:true}),observe:()=>false}),true);await Promise.resolve();advance();assert.equal(bot.inventoryBlocked,true);assert.equal(bot.journal.kind,'buy');
 });
+
+test('partial bank retrieve returns excess before any other inventory action, survives reload and counts one rule action',async()=>{
+ const {bot,c,rule,advance}=fixture();bot.cfg.merchant.partialBank=true;bot.cfg.merchant.partialBankMaxStack=100;rule.action='retrieve';rule.batch=5;rule.maxCount=15;rule.maxActions=1;c.bank.items0[0]={name:'hpot0',q:90};const calls=[];
+ bot.p.call=(name,...args)=>{calls.push(name);if(name==='bank_retrieve'){const [pack,slot,dest]=args;c.items[dest]=c.bank[pack][slot];c.bank[pack][slot]=null;}else if(name==='split'){const [slot,q]=args,dest=c.items.findIndex(i=>!i);c.items[slot].q-=q;c.items[dest]={name:'hpot0',q};}else if(name==='bank_store'){const [slot,pack,dest]=args;c.bank[pack][dest]=c.items[slot];c.items[slot]=null;}else assert.fail(name);return Promise.resolve();};
+ assert.equal(bot.bank.retrieve({name:'hpot0'},rule,5),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.economy.count({name:'hpot0'}),100);assert.equal(bot.bank.pending,true);
+ assert.equal(bot.economy.perform('sell',{call:()=>assert.fail('No sell while temporary excess is held'),observe:()=>true}),false);
+ bot.bank=createBank(bot);bot.cfg.merchant.bank=false;assert.equal(bot.bank.recover(),true);await Promise.resolve();bot.exec.poll();assert.equal(c.items[1].q,85);assert.equal(c.items[2].q,5);
+ bot.bank=createBank(bot);bot.bank.recover();await Promise.resolve();bot.exec.poll();bot.bank.recover();assert.equal(bot.bank.pending,false);assert.equal(bot.economy.count({name:'hpot0'}),15);assert.equal(c.bank.items0[0].q,85);assert.deepEqual(calls,['bank_retrieve','split','bank_store']);assert.equal(bot.economy.remaining(rule),false);advance();
+});
+
+test('partial bank rejects disabled, oversized and protected stacks and never retries an ambiguous withdrawal',async()=>{
+ for(const mode of ['disabled','oversize','protected','unknown','changed']){
+  const {bot,c,rule,advance}=fixture();rule.action='retrieve';rule.batch=5;rule.maxCount=15;c.bank.items0[0]={name:'hpot0',q:90};bot.cfg.merchant.partialBank=mode!=='disabled';bot.cfg.merchant.partialBankMaxStack=mode==='oversize'?80:100;if(mode==='protected')c.bank.items0[0].l='locked';let calls=0;
+  bot.p.call=()=>{calls++;if(mode==='changed'){c.items[1]=c.bank.items0[0];c.bank.items0[0]=null;}return Promise.resolve();};
+  const accepted=bot.bank.retrieve({name:'hpot0'},rule,5);assert.equal(accepted,['unknown','changed'].includes(mode));if(!accepted){assert.equal(calls,0);continue;}await Promise.resolve();if(mode==='unknown')advance();else{bot.exec.poll();c.items[1].q--;}
+  bot.bank=createBank(bot);bot.bank.recover();assert.equal(bot.inventoryBlocked,true);assert.equal(calls,1);assert.equal(bot.bank.pending,true);
+ }
+});
+
+test('Merrit accepts its own shell event, persists cooldown and never infers a gift from an unrelated cash change',()=>{
+ const {bot,c,data}=fixture();bot.cfg.merchant.merrit=true;bot.cfg.merchant.stand=true;c.map=c.in='main';c.x=c.y=24;c.stand=true;c.slots.trade1={name:'hpot0',q:1,price:20};c.cash=0;bot.count=name=>c.items.reduce((n,i)=>n+(i?.name===name?(i.q??1):0),0);bot.p.entities={};bot.p.G.maps={main:{npcs:[]}};bot.p.G.npcs.citizen22={market:{areas:[[0,0,100,100]],hour_ms:3600000}};
+ bot.services=createServices(bot);assert.equal(bot.services.merrit(),true);c.cash=10;assert.equal(bot.services.merrit(),true);assert.equal(bot.services.status().merritCooldownUntil,0);
+ bot.services.observeMerrit({shells:1});assert.equal(bot.services.merrit(),false);assert.equal(bot.services.status().merritReward.source,'character-event');assert.equal(bot.services.status().merritReward.shells,1);assert.ok(data.get('albot:merrit:M')>Date.now());bot.services=createServices(bot);assert.equal(bot.services.merrit(),false);
+});
+
+test('Merrit ignores an old or foreign receipt and accepts a new receipt without a parcel increment',()=>{
+ const {bot,c}=fixture();bot.cfg.merchant.merrit=true;bot.cfg.merchant.stand=true;c.map=c.in='main';c.x=c.y=24;c.stand=true;c.slots.trade1={name:'hpot0',q:1,price:20};bot.count=()=>0;bot.p.entities={};bot.p.G.maps={main:{npcs:[]}};bot.p.G.npcs.citizen22={market:{areas:[[0,0,100,100]],hour_ms:3600000}};c.merrit_receipt={id:'old',name:'M',at:Date.now(),shells:1};bot.services=createServices(bot);
+ assert.equal(bot.services.merrit(),true);assert.equal(bot.services.merrit(),true);c.merrit_receipt={id:'foreign',name:'Other',at:Date.now(),shells:1};assert.equal(bot.services.merrit(),true);c.merrit_receipt={id:'new',name:'M',at:Date.now(),shells:1};assert.equal(bot.services.merrit(),false);assert.equal(bot.services.status().merritReward.source,'receipt');assert.equal(bot.services.status().merritReward.parcel,false);
+});
 test('budgets survive module reload and include outstanding wishlist liabilities',()=>{
  const {bot,c}=fixture();bot.cfg.merchant.maxSpendPerHour=500;
  assert.equal(bot.economy.perform('buy',{cost:400,call:()=>Promise.resolve(),observe:()=>false}),true);

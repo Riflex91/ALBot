@@ -7,6 +7,8 @@ function omitC(schema,keys){for(const key of keys)delete schema.properties[key];
 omitC(INTEGRATION_DESCRIPTOR.schema.properties.general,['autoUpdate','updateChannel']);
 omitC(INTEGRATION_DESCRIPTOR.schema.properties.items.items,['recipe']);
 INTEGRATION_DESCRIPTOR.schema.properties.general.properties.messageTtlMs.minimum=6000;
+// Additive optional fields keep already exported Live-C profiles loadable.
+INTEGRATION_DESCRIPTOR.schema.properties.merchant.required=INTEGRATION_DESCRIPTOR.schema.properties.merchant.required.filter(k=>!['partialBank','partialBankMaxStack'].includes(k));
 INTEGRATION_DESCRIPTOR.schema.properties.merchant.properties.bankGold.title='Goldbestand bei Bankbesuchen ausgleichen';
 INTEGRATION_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=SUPPORTED_SKILLS;
 INTEGRATION_DESCRIPTOR.schema.properties.skills.items.properties.skill.default='supershot';

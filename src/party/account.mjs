@@ -16,7 +16,7 @@ export function createAccount(bot){
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
  }
- function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.inventoryBlocked&&!h.threats;}
+ function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal||!!bot.bank?.pending,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.inventoryBlocked&&!h.threats;}
  function receive(from,data){if(cfg.party.selection!=='adaptive'||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
   if(cfg.party.selection!=='adaptive'||blocked)return;

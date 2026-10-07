@@ -90,6 +90,8 @@
       "bankBudget": 0,
       "bankGold": false,
       "goldTarget": 200000,
+      "partialBank": false,
+      "partialBankMaxStack": 9999,
       "taskHoldMs": 30000,
       "starvationMs": 120000,
       "ponty": false,

@@ -111,3 +111,8 @@ test('Live C blocked Bee approach routes to the monster instead of an obstructed
  assert.equal(destination.x,520);assert.equal(destination.y,753);assert.match(a.root.ALBot.status().reason,/Unterwegs zu bee/);let report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.movement.mode,'smart_move');assert.equal(report.movement.destination.x,520);
  a.c.x=500;a.c.y=753;a.c.moving=true;const next=[...a.timers.entries()][0];a.timers.delete(next[0]);next[1]();report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.movement,null);assert.ok(stops>0);a.root.ALBot.dispose();
 });
+
+test('old C profiles remain valid and Merrit character listeners are removed on reload/dispose',()=>{
+ const a=harness(),cfg=defaultsFor(INTEGRATION_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name:'A'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.enabled=false;delete cfg.merchant.partialBank;delete cfg.merchant.partialBankMaxStack;a.root.ALBotConfig=cfg;const listeners=new Map();let serial=0;a.c.on=(event,fn)=>{assert.equal(event,'merrit');const id=String(++serial);listeners.set(id,fn);return id;};a.c.remove=id=>listeners.delete(id);
+ a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(listeners.size,1);a.load();assert.equal(listeners.size,1);a.root.ALBot.dispose();assert.equal(listeners.size,0);
+});

@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.4.0-merchant · 7. Oktober 2026 · Ergänzungen noch nicht live bestätigt
+
+- Neue ausdrückliche Bank-Teilentnahme: begrenzten Stapel entnehmen, gewünschte Menge splitten, Rest zurücklagern. Persistenter Zwischenstand, Vorrang vor anderen Inventaraktionen, Wiederanlauf und beidseitiger Mengenabgleich.
+- Zwei additive optionale C-Felder: merchant.partialBank (Standard false), partialBankMaxStack. Bestehende A/B/C-Profile bleiben ladbar; die Werkstatt liest die neuen Felder aus dem Paket ohne Änderung am Formulargenerator.
+- Merrit bestätigt eigene Shell-Ereignisse und neue eigene Receipts, ignoriert alte/fremde Receipts und beliebige Cash-Änderungen. Gültige Listings genauer geprüft; Eventlistener werden bereinigt.
+- Separater persönlicher Export mit Normalbetrieb und zwei begrenzten Beispielaufträgen; bestätigtes C-Paket archiviert. Autostart true.
+- 70 gezielte Prüfungen insgesamt bestanden, Paket-/Syntax-/Bytekontrollen. Kein neuer Spielstart. [Ablauf und Grenzen](docs/MERCHANT-ERGAENZUNGEN.md).
+
 ## 0.3.1-live-c · 7. Oktober 2026 · Bee-Bewegung repariert
 
 - Acht Browserberichte geprüft: Normalbetrieb ohne Incidents; Bee-Regeln ausgelöst, aber neun fehlgeschlagene Bewegungen. Fishing war in beiden verwendeten Profilen ausgeschaltet.

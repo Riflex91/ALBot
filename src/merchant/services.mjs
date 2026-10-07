@@ -5,6 +5,9 @@ export function createServices(bot){
  const {p,cfg,exec,me}=bot,e=bot.economy,key='albot:tools:'+me.name;
  let record=p.read(key),kind=null,cache=null,version=null,lastKind='mining',nextGather=0;
  let merritUntil=Number(p.read('albot:merrit:'+me.name))||0,anchor=null,baseline=null,since=0,probe=0;
+ let merritGift=null,lastReward=null,baselineReceipt=null;
+ // This is the official event on the local character, never a CM/IPC payload.
+ function observeMerrit(data){if(bot.running&&baseline!==null&&Number.isSafeInteger(data?.shells)&&data.shells>0&&data.shells<=1000)merritGift={shells:data.shells,at:Date.now()};}
  if(record&&(typeof record.mainhand!=='string'||typeof record.offhand!=='string')){e.note('Werkzeug-Checkpoint ungültig; Bestand prüfen');bot.inventoryBlocked=true;record=null;}
  function save(value){if(!p.write(key,value)){e.note('Werkzeugwechsel: Speichern fehlgeschlagen');return false;}record=value;return true;}
  function restore(){
@@ -49,14 +52,18 @@ export function createServices(bot){
  function merrit(){
   if(!cfg.merchant.merrit||Date.now()<merritUntil)return false;if(!cfg.merchant.stand){e.note('Merrit benötigt aktivierten Stand');return false;}
   const meta=p.G.npcs?.citizen22?.market;if(!meta?.areas)return false;
-  if(baseline!==null&&bot.count('marketparcel')>baseline){merritUntil=Date.now()+(meta.hour_ms??3600000);p.write('albot:merrit:'+me.name,merritUntil);anchor=null;baseline=null;bot.event('merchant.merrit',{received:true});return false;}
+  const receipt=p.c.merrit_receipt??p.c.p?.merrit_receipt,receiptSeen=baseline!==null&&typeof receipt?.id==='string'&&receipt.id!==baselineReceipt&&receipt.id.length<=160&&receipt.name===me.name&&Number.isFinite(receipt.at)&&receipt.at>=since&&receipt.at<=Date.now()+2000&&(receipt.quantity>0||receipt.shells>0);
+  if(baseline!==null&&(bot.count('marketparcel')>baseline||merritGift||receiptSeen)){
+   const until=Date.now()+(meta.hour_ms??3600000);if(!p.write('albot:merrit:'+me.name,until)){e.note('Merrit-Belohnung beobachtet; Cooldown konnte nicht gespeichert werden');return true;}
+   merritUntil=until;lastReward={received:true,source:receiptSeen?'receipt':merritGift?'character-event':'inventory',shells:receiptSeen?receipt.shells??0:merritGift?.shells??0,parcel:bot.count('marketparcel')>baseline};anchor=null;baseline=null;merritGift=null;bot.event('merchant.merrit',lastReward);return false;
+  }
   if(Date.now()<probe)return false;
   const safe=point=>!(p.G.maps?.main?.npcs??[]).some(n=>Array.isArray(n.position)&&distance({x:n.position[0],y:n.position[1]},point)<=(meta.npc_clearance??40))&&!Object.values(p.entities).some(x=>x!==p.c&&(x.npc||x.type==='npc'?distance(x,point)<=(meta.npc_clearance??40):x.stand&&(distance(x,point)<=(meta.stand_clearance??10)||Math.abs(xy(x).x-point.x)<(meta.front_width??10)&&Math.abs(xy(x).y-point.y)<=(meta.front_clearance??15))));
   if(!anchor){const points=[];for(const [x0,y0,x1,y1] of meta.areas.slice(0,8))for(let x=x0+24;x<x1-20;x+=48)for(let y=y0+24;y<y1-20;y+=48)points.push({map:'main',in:'main',x,y});anchor=points.sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(safe)??null;if(!anchor){e.note('Kein freier Merrit-Standplatz');probe=Date.now()+30000;return false;}}
   if(!e.travel(anchor,'Merrit',3))return true;if(!safe(anchor)){anchor=null;since=0;return false;}
   if(!p.c.stand){exec.run('stand',['stand'],()=>bot.running,()=>p.call('open_stand'),{delay:5000});return true;}
-  if(!Object.entries(p.c.slots??{}).some(([k,v])=>k.startsWith('trade')&&v)){e.note('Merrit benötigt freigegebenes Angebot/Kaufgesuch');return false;}
-  if(baseline===null){baseline=bot.count('marketparcel');since=Date.now();}
+  if(!Object.entries(p.c.slots??{}).some(([k,v])=>/^trade\d+$/.test(k)&&v&&p.G.items[v.name]&&v.name!=='placeholder'&&!v.l&&!v.acl&&!v.v&&v.giveaway===undefined&&!v.want&&Number.isFinite(v.price)&&v.price>0&&(v.q===undefined||v.q>0)&&(!v.b||p.c.gold>=v.price))){e.note('Merrit benötigt freigegebenes Angebot/Kaufgesuch');return false;}
+  if(baseline===null){baseline=bot.count('marketparcel');baselineReceipt=receipt?.id??null;since=Date.now();}
   if(Date.now()-since>(meta.settle_ms??120000)+60000){probe=Date.now()+60000;since=0;anchor=null;baseline=null;return false;}
   e.note('Merrit: Warte auf beobachtete Belohnung');return true;
  }
@@ -67,5 +74,5 @@ export function createServices(bot){
   if((!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;
   for(const activity of ['fishing','mining'].filter(k=>cfg.merchant[k]&&(!requested||requested===k)).sort((a,b)=>(a===lastKind?1:0)-(b===lastKind?1:0)))if(gather(activity))return true;return restore();
  }
- return {tick,restore,merrit,get active(){return !!record;},status:()=>({gathering:kind,restorePending:!!record,merritCooldownUntil:merritUntil}),interrupt(){kind=null;anchor=null;since=0;baseline=null;}};
+ return {tick,restore,merrit,observeMerrit,get active(){return !!record;},status:()=>({gathering:kind,restorePending:!!record,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt(){kind=null;anchor=null;since=0;baseline=null;merritGift=null;}};
 }

@@ -17,7 +17,7 @@ export function createFarmer(bot){
     const resource=c.hp/c.max_hp<cfg.farming.hpBelow?'hp':c.mp/c.max_mp<cfg.farming.mpBelow?'mp':null;
     if(resource&&!p.call('is_on_cooldown','use_hp')){
       let slot=-1;
-      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.logistics.reserved)slot=c.items.findIndex(i=>i&&!protectedItem(i)&&p.G.items[i.name]?.type==='pot'&&(p.G.items[i.name]?.gives??[]).some(g=>g[0]===resource)&&bot.consumable(i));
+      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)slot=c.items.findIndex(i=>i&&!protectedItem(i)&&p.G.items[i.name]?.type==='pot'&&(p.G.items[i.name]?.gives??[]).some(g=>g[0]===resource)&&bot.consumable(i));
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
         exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&!p.call('is_on_cooldown','use_hp'),()=>{bot.beginValue({kind:'consume',item:item.name,before});return p.call('equip',slot);},{delay:2000,value:true,observe:()=>bot.count(item.name)<before,onSettle:s=>bot.endValue(s)});

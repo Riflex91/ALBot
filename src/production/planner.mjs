@@ -1,7 +1,8 @@
 import {materialDrops} from './materials.mjs';
+import {findRecipe,recipeIngredients} from './recipes.mjs';
 // Bounded dependency planning: stock -> bank/NPC -> recipe/mutation -> farm.
 // Plans never dispatch actions and never override an explicit keep rule.
-export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,maxDepth=8}){
+export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,maxDepth=8,permit=()=>true,score=null,recipeFor=()=>'',helpers=()=>[]}){
  const steps=[],visiting=new Set(),allocated=new Map(),bankAllocated=new Map(),surplus=new Map();let nodes=0;
  function need(name,l,q,depth){
   const key=name+':'+l;if(++nodes>256)throw Error('Produktionsplan überschreitet 256 Abhängigkeiten');if(!Number.isSafeInteger(q)||q<1)throw Error('Ungültige Produktionsmenge');if(depth>maxDepth)throw Error('Produktionstiefe überschritten: '+key);
@@ -10,29 +11,38 @@ export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allo
   const available=Math.max(0,stock(name,l)-(allocated.get(key)??0)),take=Math.min(q,available);allocated.set(key,(allocated.get(key)??0)+take);q-=take;if(q<=0)return;
   visiting.add(key);
   try{
-   const stored=allowed.includes('bank')?Math.min(q,Math.max(0,bank(name,l)-(bankAllocated.get(key)??0))):0;
+   const stored=allowed.includes('bank')&&permit(name,l,'retrieve')?Math.min(q,Math.max(0,bank(name,l)-(bankAllocated.get(key)??0))):0;
    if(stored){bankAllocated.set(key,(bankAllocated.get(key)??0)+stored);steps.push({kind:'retrieve',item:name,level:l,quantity:stored});q-=stored;}if(!q)return;
-   if(l===0&&allowed.includes('npc')&&canBuy(name)){steps.push({kind:'buy',item:name,level:0,quantity:q});return;}
-   const recipe=G.craft?.[name];
-   if(l===0&&recipe&&allowed.includes('craft')){
+   const found=findRecipe(G,name,recipeFor(name,l)),recipe=found?.recipe;
+   const ways=[];if(l===0&&allowed.includes('npc')&&canBuy(name)&&permit(name,l,'buy'))ways.push('buy');
+   if(l===0&&recipe&&allowed.includes('craft')&&permit(name,l,'craft'))ways.push('craft');
+   if(l>0&&(G.items?.[name]?.upgrade||G.items?.[name]?.compound)&&permit(name,l-1,G.items[name].compound?'compound':'upgrade'))ways.push(G.items[name].compound?'compound':'upgrade');
+   const sources=l===0&&allowed.includes('exchange')?Object.entries(G.items??{}).filter(([source,m])=>Number.isSafeInteger(m.e)&&m.e>0&&!visiting.has(source+':0')&&permit(source,0,'exchange')&&materialDrops(G,G.drops?.[source]).some(x=>x.item===name)):[];
+   if(sources.length)ways.push('exchange');if(allowed.includes('market')&&permit(name,l,'marketBuy'))ways.push('marketBuy');if(allowed.includes('farm')&&permit(name,l,'farm'))ways.push('farm');
+   if(score)sources.sort((a,b)=>score({kind:'exchange',item:name,level:l,quantity:q,sources:[a]})-score({kind:'exchange',item:name,level:l,quantity:q,sources:[b]}));
+   if(score)ways.sort((a,b)=>score({kind:a,item:name,level:l,quantity:q,recipe,sources})-score({kind:b,item:name,level:l,quantity:q,recipe,sources}));
+   const way=ways[0];
+   if(score&&way&&!Number.isFinite(score({kind:way,item:name,level:l,quantity:q,recipe,sources})))throw Error('Kein bewertbarer Weg innerhalb der Preis-/Zeitgrenzen: '+key);
+   if(way==='buy'){steps.push({kind:'buy',item:name,level:0,quantity:q});return;}
+   if(way==='craft'){
     const yieldCount=recipe.q??recipe.quantity??1;if(!Number.isSafeInteger(yieldCount)||yieldCount<1)throw Error('Unbekannte Rezeptmenge: '+name);
-    const batches=Math.ceil(q/yieldCount);for(const row of recipe.items??[]){if(!Array.isArray(row)||!Number.isFinite(row[0])||row[0]<=0||!row[1])throw Error('Unbekanntes Rezept: '+name);need(row[1],row[2]??0,row[0]*batches,depth+1);}
+    const batches=Math.ceil(q/yieldCount);for(const row of recipeIngredients(recipe))need(row.item,row.level,row.quantity*batches,depth+1);
     surplus.set(key,(surplus.get(key)??0)+batches*yieldCount-q);
-    steps.push({kind:'craft',item:name,level:0,quantity:batches});return;
+    steps.push({kind:'craft',item:name,level:0,quantity:batches,recipe:found.key});return;
    }
-   const meta=G.items?.[name];if(l>0&&(meta?.upgrade||meta?.compound)){
-    const kind=meta.compound?'compound':'upgrade';need(name,l-1,q*(kind==='compound'?3:1),depth+1);steps.push({kind,item:name,level:l-1,targetLevel:l,quantity:q});return;
+   const meta=G.items?.[name];if(['upgrade','compound'].includes(way)){
+    const kind=way;need(name,l-1,q*(kind==='compound'?3:1),depth+1);for(const h of helpers(name,l-1,kind))need(h.item,h.level??0,h.quantity*q,depth+1);steps.push({kind,item:name,level:l-1,targetLevel:l,quantity:q});return;
    }
-   if(l===0&&allowed.includes('exchange')){
-    for(const [source,meta] of Object.entries(G.items??{})){if(!Number.isSafeInteger(meta.e)||meta.e<1||visiting.has(source+':0'))continue;
+   if(way==='exchange'){
+    for(const [source,meta] of sources){
      const yieldPerExchange=materialDrops(G,G.drops?.[source]).filter(x=>x.item===name).reduce((n,x)=>n+x.chance*x.quantity,0);if(!(yieldPerExchange>0))continue;
      const attempts=Math.ceil(q/yieldPerExchange);need(source,0,attempts*meta.e,depth+1);steps.push({kind:'exchange',item:source,level:0,quantity:attempts,output:name,probabilistic:true});return;
     }
    }
-   if(allowed.includes('market')){steps.push({kind:'marketBuy',item:name,level:l,quantity:q});return;}
-   if(allowed.includes('farm')){steps.push({kind:'farm',item:name,level:l,quantity:q});return;}
+   if(way==='marketBuy'){steps.push({kind:'marketBuy',item:name,level:l,quantity:q});return;}
+   if(way==='farm'){steps.push({kind:'farm',item:name,level:l,quantity:q});return;}
    throw Error('Kein freigegebener Beschaffungsweg: '+key);
   }finally{visiting.delete(key);}
  }
- need(item,level,quantity,0);return steps;
+ need(item,level,quantity,0);Object.defineProperty(steps,'reservations',{value:[...allocated].filter(([,q])=>q>0).map(([key,quantity])=>({item:key.slice(0,key.lastIndexOf(':')),level:Number(key.slice(key.lastIndexOf(':')+1)),quantity}))});return steps;
 }

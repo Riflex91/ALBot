@@ -4,7 +4,7 @@ import {Script} from 'node:vm';
 import {defaultsFor,addMissingDefaults,checkPackage,validateProfile,envelope,exportBundle} from '../editor/lib/contract.mjs';
 const [input,destination]=process.argv.slice(2);
 if(!input||!destination)throw Error('Aufruf: node scripts/export-merchant.mjs <C-Profil.json> <neuer Ausgabeordner>');
-const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot.package.json',import.meta.url),'utf8'))),descriptor=pkg.descriptor;
+const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot-merchant.package.json',import.meta.url),'utf8'))),descriptor=pkg.descriptor;
 const source=JSON.parse(await readFile(resolve(input),'utf8'));
 if(source.format!=='albot-profile'||source.schemaId!==descriptor.schemaId)throw Error('Passendes C-Profil erforderlich.');
 const base=addMissingDefaults(descriptor.schema,source.config);base.general.autostart=true;

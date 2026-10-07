@@ -18,6 +18,10 @@ function pair(){
  }
  return {...bots,sends:()=>sends};
 }
+test('urgent nearby supply restores a gathering tool before advertising a transfer',()=>{
+ const {A,sends}=pair();let restored=0;A.services={active:true,waiting:false,interrupt(){},restore(){restored++;this.active=false;return true;}};A.transport.peers.set('B',{});
+ A.logistics.poll();assert.equal(restored,1);assert.equal(A.logistics.stats().offersSent,0);assert.equal(sends(),0);A.logistics.poll();A.logistics.poll();assert.equal(sends(),1);
+});
 test('transfer needs receiver acceptance and observed inventory on both sides; no duplicate send',async()=>{
  const {A,B,sends}=pair();A.logistics.poll();assert.equal(sends(),0);assert.equal(B.journal.kind,'receive');
  A.logistics.poll();assert.equal(sends(),1);assert.equal(A.p.c.items[0].q,91);assert.equal(B.p.c.items[0].q,10);

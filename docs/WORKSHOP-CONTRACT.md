@@ -92,3 +92,7 @@ Ein A/B-Profil zuerst mit `scripts/export-live-c.mjs` migrieren. Importreihenfol
 Task-Namen: `farm`, `boss`, `event`, `supply` bzw. eine explizite Merchant-Aufgabe `fishing`, `mining`, `merrit`, `bank`. Item-Regeln mit `task` wirken nur im passenden Kontext. `fallback=bank` erstellt eine geschützte Bankaktion für den Merchant, `notify` erhält den Bestand und meldet fehlende Voraussetzungen. Fallback zählt zur Economy-Aktionsgrenze der ursprünglichen Regel.
 
 „Risikoprofil“ ist eine begrenzte Schaden-/Gruppen-HP-Heuristik, keine Garantie gegen jede Bossfähigkeit. „Lernen“ ist begrenztes XP-Ranking mit deterministischem Grundrang, keine KI-Plattform oder vollständige Markt-/Reiseoptimierung. „Quests“ meint Monsterhunt; „Saisonbelohnungen“ den Anniversary-Ablauf. Details und Grenzen: [INTEGRATIONSSTAND.md](INTEGRATIONSSTAND.md).
+
+## P3/P4 0.5.0
+
+Aktuelles Paket: albot.p3p4/v1. Neue Ziellogik, Vorrang expliziter Regeln, Budgets, Rezept-/Itemdaten, Unterbrechung und Schema-Migration sind vollständig in [P3-P4.md](P3-P4.md) beschrieben. Öffentliche ALBot-API und Headless-Fähigkeiten bleiben gleich. Neue Berichtsbereiche: gearTargets, market, performance; production ergänzt autonomy/blocked. Alte A/B/C-Schemaerkennung bleibt erhalten. Werkstatt kann alte Profile in P3/P4 übernehmen; fehlende Felder erhalten Vorgaben, aktive Updater und unbekannte Felder werden abgelehnt. Explizite Auswahl beim Paketwechsel erhält bestehende Einstellungen. Der gemeinsame Test steht aus: [P3-P4-LIVE.md](P3-P4-LIVE.md).

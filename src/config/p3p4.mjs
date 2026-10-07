@@ -1,0 +1,10 @@
+import {DESCRIPTOR} from '../../editor/lib/schema.mjs';
+import {SUPPORTED_SKILLS} from './live-a.mjs';
+export const P3P4_DESCRIPTOR=structuredClone(DESCRIPTOR);
+P3P4_DESCRIPTOR.schemaId='albot.p3p4/v1';
+P3P4_DESCRIPTOR.schema.title='ALBot · P3/P4';
+for(const key of ['autoUpdate','updateChannel'])delete P3P4_DESCRIPTOR.schema.properties.general.properties[key];
+P3P4_DESCRIPTOR.schema.properties.general.required=P3P4_DESCRIPTOR.schema.properties.general.required.filter(k=>!['autoUpdate','updateChannel'].includes(k));
+P3P4_DESCRIPTOR.schema.properties.general.properties.messageTtlMs.minimum=6000;
+P3P4_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=SUPPORTED_SKILLS;
+P3P4_DESCRIPTOR.schema.properties.skills.items.properties.skill.default='supershot';

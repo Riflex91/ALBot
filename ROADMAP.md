@@ -73,27 +73,27 @@ Fertig, wenn normales Farmen und Teamkommunikation in beiden Umgebungen funktion
 ### P3 — Merchant, alle Item-Regeln und lokale Oberfläche
 
 - [x] Lokalen Editor mit Katalog aus den verfügbaren Spieldaten bauen; jedes Item einzeln suchbar, Rollen- und Charakterausnahmen, Kopieren/Mehrfachbearbeitung und erweiterbare Schema-Vorgaben.
-- [x] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen. Implementiert in policy/economy/logistics/production; weitergehende accountweite Gearreservierung gehört zum offenen P4-Optimierungsblock.
+- [x] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen. Implementiert in policy/economy/logistics/production; accountweite Gearziele und Reservierungen sind ab 0.5.0 ergänzt.
 - [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Priorität und Filter gelten inzwischen in inventory/acquisition/production. Die Vorschau ist kein Shadow-Testlauf.
 - [x] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze. Regelgebundene Übergabe/Versorgung, Reserven und Platzgrenzen implementiert; A/B bestätigen die dokumentierten Lieferketten. Farmer→Merchant-Goldtransfer ist eine zusätzliche noch fehlende Automatik, kein behaupteter Bestandteil des Bank-Goldausgleichs.
 - [x] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget. 0.4.0 ergänzt opt-in-Teilentnahme mit temporärem Arbeitsbestand, persistentem Wiederanlauf und Rest-Rücklagerung; dieser neue Teil noch nicht live bestätigt.
-- [x] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty. Regelgebundene Implementierung vorhanden, Marktvergleich als Median aktuell sichtbarer Angebote. Langzeitpreishistorie und kostenoptimale Beschaffung sind zusätzliche offene P4/P5-Arbeiten; nicht alle Handelswege sind live nachgewiesen.
-- [ ] Mluck-Service, Merchant-Buffs und faire Task-Priorisierung. Mluck/Buffs, Haltezeit/Alterung und Vorrang für Logistik sind implementiert. Noch offen: belastbar begrenzte Versorgungslatenz beim Übergang aus langen Gathering-/Merrit-Aufgaben; vorhandene Prioritätslogik nicht als umfassenden Nachweis ausgeben.
+- [x] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty. Regelgebundene Implementierung vorhanden, Marktvergleich einschließlich begrenzter Angebotshistorie und Kosten-/Zeitplanung in 0.5.0; nicht alle Handelswege sind live nachgewiesen.
+- [x] Mluck-Service, Merchant-Buffs und faire Task-Priorisierung. Mluck/Buffs, Haltezeit/Alterung und Vorrang für Logistik sind implementiert. 0.5.0 prüft Logistik in jedem Economy-Tick, unterbricht auch nahe Merrit-Aufgaben und gibt Gathering-Aufträge regelmäßig zurück. Bereits gestartete Serverqueues müssen beobachtet enden; keine feste Netzwerklatenz versprechen.
 - [x] Wiederanlauf gleicht beobachtete Bestände ab; ein unklarer Transfer wird nicht blind erneut gesendet. Wertjournal, beidseitiger Lieferabgleich und Sperre bei Unklarheit vorhanden; 0.4.0 ergänzt Bank-Zwischenzustand. Manuelle Aufklärung unbekannter Wertaktionen bleibt vorgesehen.
 
 Fertig, wenn die lokale Oberfläche ein gültiges, vollständiges Bundle erzeugt und Farmer/Merchant dieselben Regeln anwenden. Logikprüfungen an Regelpriorität, Mengenreserven und Item-Identität; gemeinsamer Live-Termin folgt nach P4.
 
 ### P4 — Gear, Produktion und vollständige Merchant-Autonomie — Live-Test B
 
-- [ ] Rollen-/Klassenbezogene Gear-Bewertung für aktive und offline bekannte eigene Charaktere, Zielausrüstung und Reservierungen.
-- [ ] Upgrade und Compound mit Ziellevel, Scroll/Offering-Regeln, Verlustbudget, Goldreserve und Ergebnisabgleich.
-- [ ] Exchange und Craft aus aktuellen Rezepten; Bedarf, Zutaten, Arbeitsplätze und Kapazität konsistent planen.
-- [ ] v3-Produktionsgraph übernehmen: vorhandener Bestand → Bank → Kauf → Farmauftrag → Exchange/Craft/Upgrade/Compound → Lieferung. Rekursion/Zyklen und Mengen begrenzen.
-- [ ] Beschaffung nach Kosten, erwarteter Farmzeit, Dropquelle und passender aktueller Gruppe; keine Erfolgswahrscheinlichkeit als Garantie darstellen.
-- [ ] Fishing/Mining inklusive Werkzeugwechsel/-rückwechsel und sicherer Zone; Merrit, Teilnahme an Giveaways, geeignete Wishlist und begrenzte Schnäppchensuche.
-- [ ] Auto-Optimierung berücksichtigt accountweite Ziele, aktuelle Preise und Verlustregeln. Alte Zahlen wie 150M/170M oder 80 Prozent werden veränderbare Profile, keine versteckten universellen Konstanten.
+- [x] Rollen-/Klassenbezogene Gear-Bewertung für aktive und offline bekannte eigene Charaktere, Zielausrüstung und Reservierungen.
+- [x] Upgrade und Compound mit Ziellevel, Scroll/Offering-Regeln, Verlustbudget, Goldreserve und Ergebnisabgleich.
+- [x] Exchange und Craft aus aktuellen Rezepten; Bedarf, Zutaten, Arbeitsplätze und Kapazität konsistent planen.
+- [x] v3-Produktionsgraph übernehmen: vorhandener Bestand → Bank → Kauf → Farmauftrag → Exchange/Craft/Upgrade/Compound → Lieferung. Rekursion/Zyklen und Mengen begrenzen.
+- [x] Beschaffung nach Kosten, erwarteter Farmzeit, Dropquelle und passender aktueller Gruppe; keine Erfolgswahrscheinlichkeit als Garantie darstellen.
+- [x] Fishing/Mining inklusive Werkzeugwechsel/-rückwechsel und sicherer Zone; Merrit, Teilnahme an Giveaways, geeignete Wishlist und begrenzte Schnäppchensuche.
+- [x] Auto-Optimierung berücksichtigt accountweite Ziele, aktuelle Preise und Verlustregeln. Alte Zahlen wie 150M/170M oder 80 Prozent werden veränderbare Profile, keine versteckten universellen Konstanten.
 
-**Konkreter P4-Reststand nach Codeabgleich vom 7. Oktober:**
+**Historischer P4-Reststand vor 0.5.0 (durch den folgenden Abschluss ersetzt):**
 
 | Punkt | Bereits implementiert | Noch zu entwickeln / klären |
 |---|---|---|
@@ -222,3 +222,11 @@ Am 7. Oktober 2026 bestätigt der Nutzer nach Auslieferung von 0.3.1: alle Tests
 Folgeauftrag autorisiert die Weiterentwicklung. 0.4.0-merchant schließt Bank-Teilentnahme und Merrit-Bestätigung über eigene Shell-Events/neue Receipts. Die Bankoption ist ausdrücklich aktivierbar und standardmäßig aus; größere Stapel werden nur vorübergehend entnommen, geteilt und mit bestätigtem Mengenabgleich zurückgelagert. Persistenter Wiederanlauf und Vorrang vor Inventar-/Liefer-/Rotationsarbeit. Schema additiv und alte Profile kompatibel, bestehender Werkstattgenerator unverändert. 70 gezielte Prüfungen unter Windows bestanden; neue Abläufe noch nicht live bestätigt. Persönliche Normal-/Bank-/Merrit-Exporte und ein kurzer Ergänzungsablauf liegen bereit. Keine erneute A/B/C-Gesamtrunde und keine Shadow-Phase. Details: [MERCHANT-ERGAENZUNGEN.md](docs/MERCHANT-ERGAENZUNGEN.md).
 
 Nächste Entwicklungsblöcke: versionsgebundener optionaler Updater, accountweite Gear-/Beschaffungsoptimierung und begrenzte Markt-/Reise-/Teamwerte; anschließend verbleibende Integrationslücken und Gesamtfreigabe. Historische offene Bank-/Shell-Vermerke oben beschreiben den früheren Stand; aktuelle Übernahmematrix ist aktualisiert.
+
+## P3/P4-Implementierungsabschluss · 0.5.0-p3p4
+
+Der Nutzer beauftragte das vollständige Schließen der P3/P4-Lücken vor einem gemeinsamen großen Test. Neues Schema albot.p3p4/v1: accountweite Gearziele, abgeleitete begrenzte Beschaffungs-/Lieferregeln mit explizitem Regelvorrang, Scroll-/Offeringabhängigkeiten, Rezeptalias und Spezialoutput, Stapel-/Arbeitsplatzvorbereitung, Bankabgleich vor automatischem Kauf, Kosten-/Zeit-/Reisewahl mit konservativer Gruppenrate, begrenzte Angebotspreishistorie und Merchant-Unterbrechungen. Bestehende A/B/C-Verträge, Profile und bestätigte Artefakte bleiben erhalten; Updater weiterhin außerhalb dieses Auftrags.
+
+Die P3/P4-Häkchen bezeichnen den implementierten Umfang, **keinen neuen Live-Erfolg**. Der frühere Reststand in der Tabelle oben ist historische Ausgangslage. Aktueller Vertrag: [P3-P4.md](docs/P3-P4.md); ein gemeinsamer Testtermin mit sieben nacheinander geladenen Abschnitten: [P3-P4-LIVE.md](docs/P3-P4-LIVE.md). Browser und Headless verwenden denselben Code; Autostart true. Keine Shadow-Tests und kein automatischer Login. Optionale fehlende Markt-/Saisonfälle und Linux erst nach tatsächlicher Ausführung bestätigen.
+
+Abschlussprüfung am 7. Oktober 2026: 83 gezielte Prüfungen bestanden, keine übersprungen. Runtime und Werkstatt gebaut; generischer Bot 213208 Bytes bei 1048576 Bytes Limit. Auch der Export mit 1276 Item-Regeln besteht die Größenprüfung. Live-Freigabe bleibt bis zur Auswertung des gemeinsamen Testlaufs offen.

@@ -91,3 +91,19 @@ export const DESCRIPTOR = {
 DESCRIPTOR.schema.properties.items.maxItems=2000;
 DESCRIPTOR.schema.properties.farming.properties.targets.default=['goo'];
 DESCRIPTOR.schema.properties.production.properties.acquireBy.default=['bank','npc','farm','craft','exchange'];
+Object.assign(DESCRIPTOR.schema.properties.production.properties,{
+ autonomy:flag('Fehlende Regeln für konfigurierte Produktions-/Gearziele ableiten'),
+ strategy:choice('Beschaffung bewerten',{balanced:'Gold und Zeit',cost:'Goldkosten',time:'Erwartete Zeit'}),
+ fallbackKillsPerHour:num('Unbekannte Farmrate: geschätzte Kills/Stunde',20,1,100000),
+ goldPerHour:int('Zeitwert in Gold/Stunde',100000),travelSpeed:num('Geschätzte Reisegeschwindigkeit',50,1,1000),
+ helperMaxPrice:int('Maximaler Stückpreis für automatisch beschaffte Zutaten/Scrolls',100000),
+ gearTargets:list('Accountweite Ausrüstungsziele',obj('Ausrüstungsziel',{
+  name:text('Zielname','Ausrüstungsziel',{minLength:1}),enabled:flag('Aktiv',true),character:text('Zielcharakter','',{'x-catalog':'characters',minLength:1}),slot:text('Equipment-Slot','mainhand',{minLength:1}),
+  item:text('Zielitem','',{'x-catalog':'items',minLength:1}),level:int('Ziellevel',0,0,99),budget:int('Gesamtes Gold-/Verlustbudget',100000),priority:int('Priorität',0,-10000,10000)
+ }))
+});
+Object.assign(DESCRIPTOR.schema.properties.merchant.properties,{
+ marketHistory:flag('Begrenzte Historie beobachteter Angebotspreise',true),marketHistoryTtlMs:int('Angebotspreise gültig (ms)',21600000,60000,86400000),
+ serviceSliceMs:int('Nebenauftrag spätestens neu bewerten nach (ms)',30000,2000,600000)
+});
+for(const section of ['production','merchant'])DESCRIPTOR.schema.properties[section].required=Object.keys(DESCRIPTOR.schema.properties[section].properties);

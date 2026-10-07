@@ -6,7 +6,14 @@ import {defaultsFor} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
 import {ECONOMY_DESCRIPTOR} from '../src/config/live-b.mjs';
 import {INTEGRATION_DESCRIPTOR} from '../src/config/live-c.mjs';
+import {P3P4_DESCRIPTOR} from '../src/config/p3p4.mjs';
 const code=readFileSync(new URL('../dist/albot.runtime.js',import.meta.url),'utf8');
+test('P3/P4 same bundle autostarts browser/headless and releases planning listeners on reload',()=>{
+ for(const browser of [false,true]){const a=harness(),cfg=defaultsFor(P3P4_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(P3P4_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.autoTravel=false;a.root.ALBotConfig=cfg;
+  const events=new Map();let id=0;a.root.game={on:(name,handler)=>{events.set(++id,{name,handler});return id;},remove:key=>events.delete(key)};if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
+  a.load();assert.equal(a.root.ALBot.schemaId,'albot.p3p4/v1');assert.equal(a.root.ALBot.status().running,true,JSON.stringify(a.root.ALBot.status()));assert.equal(events.size,2);a.load();assert.equal(events.size,2);assert.equal(a.timers.size,1);a.root.ALBot.dispose();assert.equal(events.size,0);assert.equal(a.timers.size,0);
+ }
+});
 
 test('Live C same classic bundle boots browser and headless; declared rule and task survive no stale timers',()=>{
  for(const browser of [false,true]){

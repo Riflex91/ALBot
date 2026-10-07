@@ -5,7 +5,7 @@ export function createServices(bot){
  const {p,cfg,exec,me}=bot,e=bot.economy,key='albot:tools:'+me.name;
  let record=p.read(key),kind=null,cache=null,version=null,lastKind='mining',nextGather=0;
  let merritUntil=Number(p.read('albot:merrit:'+me.name))||0,anchor=null,baseline=null,since=0,probe=0;
- let merritGift=null,lastReward=null,baselineReceipt=null;
+ let merritGift=null,lastReward=null,baselineReceipt=null,sliceStarted=0;
  // This is the official event on the local character, never a CM/IPC payload.
  function observeMerrit(data){if(bot.running&&baseline!==null&&Number.isSafeInteger(data?.shells)&&data.shells>0&&data.shells<=1000)merritGift={shells:data.shells,at:Date.now()};}
  if(record&&(typeof record.mainhand!=='string'||typeof record.offhand!=='string')){e.note('Werkzeug-Checkpoint ungültig; Bestand prüfen');bot.inventoryBlocked=true;record=null;}
@@ -68,11 +68,13 @@ export function createServices(bot){
   e.note('Merrit: Warte auf beobachtete Belohnung');return true;
  }
  function tick(){
+  if(!sliceStarted)sliceStarted=Date.now();if(record&&Date.now()-sliceStarted>=(cfg.merchant.serviceSliceMs??30000)){interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();nextGather=Date.now()+cfg.general.economyTickMs;return restore();}
   if(cfg.merchant.massBuffs&&cfg.production.enabled){const skill=cfg.production.exchange?'massproduction':'massproductionpp',s=p.G.skills?.[skill];if(s&&!p.c.s?.[skill]&&p.c.level>=(s.level??0)&&p.c.mp>=(s.mp??0)&&!p.call('is_on_cooldown',skill)&&exec.run('service:'+skill,['skill','mana'],()=>bot.running,()=>p.call('use_skill',skill),{delay:10000}))return true;}
   if(record&&(!kind||Date.now()<nextGather||(!cfg.merchant.fishing&&!cfg.merchant.mining)))return restore();
   const requested=bot.strategy?.status().manual?.task;
   if((!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;
   for(const activity of ['fishing','mining'].filter(k=>cfg.merchant[k]&&(!requested||requested===k)).sort((a,b)=>(a===lastKind?1:0)-(b===lastKind?1:0)))if(gather(activity))return true;return restore();
  }
- return {tick,restore,merrit,observeMerrit,get active(){return !!record;},status:()=>({gathering:kind,restorePending:!!record,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt(){kind=null;anchor=null;since=0;baseline=null;merritGift=null;}};
+ function interrupt(){kind=null;anchor=null;since=0;baseline=null;merritGift=null;sliceStarted=0;}
+ return {tick,restore,merrit,observeMerrit,get active(){return !!record;},get waiting(){return !!anchor||baseline!==null;},status:()=>({gathering:kind,restorePending:!!record,merritWaiting:!!anchor||baseline!==null,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt};
 }

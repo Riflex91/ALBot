@@ -6,9 +6,9 @@ export function materialDrops(G,table,multiplier=1,seen=new Set()){
   else if(row[1]!=='open')rows.push({item:row[1],chance:row[0]*multiplier,quantity:Math.max(1,Number(row[2])||1)});
  }return rows;
 }
-export function materialSources(G,item,quantity,allowedMonsters,maxHours){
+export function materialSources(G,item,quantity,allowedMonsters,maxHours,rate=()=>({value:20,source:'configured-estimate'})){
  const result=[];for(const monster of allowedMonsters){const yieldPerKill=materialDrops(G,G.drops?.monsters?.[monster]).filter(x=>x.item===item).reduce((n,x)=>n+x.chance*x.quantity,0);
-  if(!(yieldPerKill>0))continue;const hours=quantity/(20*yieldPerKill); // conservative estimate, not a measured rate
-  if(hours<=maxHours)result.push({monster,item,quantity,estimatedHours:hours});
+  if(!(yieldPerKill>0))continue;const measured=rate(monster),hours=quantity/(measured.value*yieldPerKill);
+  if(hours<=maxHours)result.push({monster,item,quantity,estimatedHours:hours,rateSource:measured.source,killsPerHour:measured.value});
  }return result.sort((a,b)=>a.estimatedHours-b.estimatedHours).slice(0,10);
 }

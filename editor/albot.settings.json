@@ -1056,6 +1056,25 @@
             "default": 10000,
             "minimum": 0,
             "maximum": 1000000000000
+          },
+          "marketHistory": {
+            "type": "boolean",
+            "title": "Begrenzte Historie beobachteter Angebotspreise",
+            "default": true
+          },
+          "marketHistoryTtlMs": {
+            "type": "integer",
+            "title": "Angebotspreise gültig (ms)",
+            "default": 21600000,
+            "minimum": 60000,
+            "maximum": 86400000
+          },
+          "serviceSliceMs": {
+            "type": "integer",
+            "title": "Nebenauftrag spätestens neu bewerten nach (ms)",
+            "default": 30000,
+            "minimum": 2000,
+            "maximum": 600000
           }
         },
         "required": [
@@ -1088,7 +1107,10 @@
           "merrit",
           "fishing",
           "mining",
-          "toolBudget"
+          "toolBudget",
+          "marketHistory",
+          "marketHistoryTtlMs",
+          "serviceSliceMs"
         ],
         "additionalProperties": false
       },
@@ -1631,6 +1653,136 @@
             },
             "default": [],
             "maxItems": 500
+          },
+          "autonomy": {
+            "type": "boolean",
+            "title": "Fehlende Regeln für konfigurierte Produktions-/Gearziele ableiten",
+            "default": false
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Beschaffung bewerten",
+            "default": "balanced",
+            "maxLength": 160,
+            "enum": [
+              "balanced",
+              "cost",
+              "time"
+            ],
+            "x-labels": {
+              "balanced": "Gold und Zeit",
+              "cost": "Goldkosten",
+              "time": "Erwartete Zeit"
+            }
+          },
+          "fallbackKillsPerHour": {
+            "type": "number",
+            "title": "Unbekannte Farmrate: geschätzte Kills/Stunde",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "goldPerHour": {
+            "type": "integer",
+            "title": "Zeitwert in Gold/Stunde",
+            "default": 100000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "travelSpeed": {
+            "type": "number",
+            "title": "Geschätzte Reisegeschwindigkeit",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "helperMaxPrice": {
+            "type": "integer",
+            "title": "Maximaler Stückpreis für automatisch beschaffte Zutaten/Scrolls",
+            "default": 100000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "gearTargets": {
+            "type": "array",
+            "title": "Accountweite Ausrüstungsziele",
+            "description": "",
+            "items": {
+              "type": "object",
+              "title": "Ausrüstungsziel",
+              "description": "",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "title": "Zielname",
+                  "default": "Ausrüstungsziel",
+                  "maxLength": 160,
+                  "minLength": 1
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "title": "Aktiv",
+                  "default": true
+                },
+                "character": {
+                  "type": "string",
+                  "title": "Zielcharakter",
+                  "default": "",
+                  "maxLength": 160,
+                  "x-catalog": "characters",
+                  "minLength": 1
+                },
+                "slot": {
+                  "type": "string",
+                  "title": "Equipment-Slot",
+                  "default": "mainhand",
+                  "maxLength": 160,
+                  "minLength": 1
+                },
+                "item": {
+                  "type": "string",
+                  "title": "Zielitem",
+                  "default": "",
+                  "maxLength": 160,
+                  "x-catalog": "items",
+                  "minLength": 1
+                },
+                "level": {
+                  "type": "integer",
+                  "title": "Ziellevel",
+                  "default": 0,
+                  "minimum": 0,
+                  "maximum": 99
+                },
+                "budget": {
+                  "type": "integer",
+                  "title": "Gesamtes Gold-/Verlustbudget",
+                  "default": 100000,
+                  "minimum": 0,
+                  "maximum": 1000000000000
+                },
+                "priority": {
+                  "type": "integer",
+                  "title": "Priorität",
+                  "default": 0,
+                  "minimum": -10000,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "name",
+                "enabled",
+                "character",
+                "slot",
+                "item",
+                "level",
+                "budget",
+                "priority"
+              ],
+              "additionalProperties": false
+            },
+            "default": [],
+            "maxItems": 500
           }
         },
         "required": [
@@ -1647,7 +1799,14 @@
           "maxChainDepth",
           "maxFarmHours",
           "acquireBy",
-          "goals"
+          "goals",
+          "autonomy",
+          "strategy",
+          "fallbackKillsPerHour",
+          "goldPerHour",
+          "travelSpeed",
+          "helperMaxPrice",
+          "gearTargets"
         ],
         "additionalProperties": false
       },

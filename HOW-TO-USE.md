@@ -1,3 +1,7 @@
+# Ergänzung: aktueller Super-Bot P3/P4
+
+Der folgende Headless-Client-Vertrag bleibt unverändert maßgeblich. Der neue Bot 0.5.0-p3p4 verwendet keine neue Host-API. Für KI-Arbeit am Bot zusätzlich [P3/P4-Regel-/Produktionsvertrag](docs/P3-P4.md), [RUNTIME-VERTRAG](docs/RUNTIME-VERTRAG.md) und [WORKSHOP-CONTRACT](docs/WORKSHOP-CONTRACT.md) lesen. Eine klassische Datei für Browser/Headless, Autostart true, Browser immer performance_trick. Explizite Item-Regeln gewinnen vor automatischer Zielplanung. Testbericht weiter test-ausgeführtertest.json; gemeinsamer Ablauf [P3-P4-LIVE](docs/P3-P4-LIVE.md).
+
 # Adventure Land Headless 1.2.2 — Benutzerhandbuch und Bot-Vertrag für KIs
 
 Stand: 6. Oktober 2026. Implementierung: dieses Projekt, API-Version 1.

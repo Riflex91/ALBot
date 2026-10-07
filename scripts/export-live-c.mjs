@@ -1,12 +1,12 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {Script} from 'node:vm';
-import {INTEGRATION_DESCRIPTOR as descriptor} from '../src/config/live-c.mjs';
 import {DESCRIPTOR} from '../editor/lib/schema.mjs';
 import {addMissingDefaults,defaultsFor,envelope,exportBundle,validateProfile,checkPackage} from '../editor/lib/contract.mjs';
 
 const [input,destination,...options]=process.argv.slice(2);
 if(!input||!destination||options.some(o=>o!=='--from-live-b-test'))throw Error('Aufruf: node scripts/export-live-c.mjs <Profil oder vollständiger Testbericht.json> <neuer Ausgabeordner> [--from-live-b-test]');
+const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot-live-c.package.json',import.meta.url),'utf8'))),descriptor=pkg.descriptor;
 const source=JSON.parse(await readFile(resolve(input),'utf8'));
 let value;
 if(source.format==='albot-profile'&&['albot.live-a/v1','albot.live-b/v1','albot.live-c/v1','albot.config/v1'].includes(source.schemaId))value=structuredClone(source.config);
@@ -35,7 +35,6 @@ for(const [name,cfg] of stages){
  }
  if(name==='03-merchant-nebenaufgabe'){cfg.merchant.fishing=true;cfg.merchant.massBuffs=false;}
 }
-const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot.package.json',import.meta.url),'utf8')));
 if(pkg.runtime.schemaId!==descriptor.schemaId)throw Error('Zuerst den Live-C-Build erzeugen.');
 const outputs=[];
 for(const [name,cfg] of stages){const errors=validateProfile(descriptor,cfg).concat(validateProfile(DESCRIPTOR,addMissingDefaults(DESCRIPTOR.schema,cfg)));if(errors.length)throw Error(name+': '+errors.join('; '));const bundle=exportBundle(descriptor,cfg,pkg.runtime);new Script(bundle.code);outputs.push({name,cfg,code:bundle.code,bytes:bundle.bytes});}

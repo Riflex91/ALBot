@@ -27,7 +27,10 @@ export function createBank(bot){
   }
   bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: Bestand weicht vom Checkpoint ab; manuell prüfen');return true;
  }
- const packs=()=>Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&Array.isArray(items));
+ let observed=false,stockRows=[];
+ const packs=()=>{const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&Array.isArray(items));if(rows.length){observed=true;stockRows=rows.flatMap(([pack,items])=>items.filter(i=>e.safe(i)&&e.explicit(i)?.action!=='keep').map(i=>({pack,item:{...i}}))).slice(0,2000);}return rows;};
+ const stock=(name,level)=>{packs();return stockRows.reduce((n,r)=>n+(r.item.name===name&&(r.item.level??0)===level?(r.item.q??1):0),0);};
+ const packFor=item=>{packs();return stockRows.find(r=>identity(r.item)===identity(item))?.pack;};
  const definitions=()=>p.G.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
@@ -49,7 +52,7 @@ export function createBank(bot){
  }
  function retrieve(item,r,wanted){
   if(pending)return recover();
-  if(!ready(r.pack||'items0')||bot.free()<=cfg.merchant.minFreeSlots)return false;
+  if(!ready(r.pack||packFor(item)||'items0')||bot.free()<=cfg.merchant.minFreeSlots)return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
@@ -89,5 +92,5 @@ export function createBank(bot){
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
  }
- return {store,retrieve,consolidate,gold,expand,packs,ready,recover,get pending(){return !!pending;},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {store,retrieve,consolidate,gold,expand,packs,ready,recover,stock,inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get pending(){return !!pending;},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

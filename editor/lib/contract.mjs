@@ -71,11 +71,11 @@ function overlap(a,b){if(a.action==='send'&&b.action==='send'&&a.recipient&&b.re
 function outcome(r){const x={...r};for(const k of ['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task'])delete x[k];return JSON.stringify(x);}
 export function validateProfile(descriptor,c){
   const errors=validateSchema(descriptor.schema,c);
-  if(errors.length||descriptor.schemaId!=='albot.config/v1')return errors;
+  if(errors.length||!['albot.config/v1','albot.p3p4/v1'].includes(descriptor.schemaId))return errors;
   // An imported descriptor can ADD v1 fields, but cannot redefine the existing
   // contract while retaining its identity. Project only known fields to check it.
   const known=(s,v)=>s.type==='object'&&v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(s.properties).filter(([k])=>own(v,k)).map(([k,x])=>[k,known(x,v[k])])):s.type==='array'&&Array.isArray(v)?v.map(x=>known(s.items,x)):v;
-  const coreErrors=validateSchema(DESCRIPTOR.schema,known(DESCRIPTOR.schema,c));
+  const coreErrors=validateSchema(DESCRIPTOR.schema,descriptor.schemaId==='albot.p3p4/v1'?addMissingDefaults(DESCRIPTOR.schema,known(DESCRIPTOR.schema,c)):known(DESCRIPTOR.schema,c));
   if(coreErrors.length)return coreErrors;
   const names=c.characters.map(x=>x.name);
   if(names.some(n=>!n.trim()||n!==n.trim()))errors.push('Charaktername darf nicht leer sein oder Rand-Leerzeichen enthalten.');
@@ -106,6 +106,12 @@ export function validateProfile(descriptor,c){
     for(const x of r.conditions){if(!['map','task','rip'].includes(x.field)&&!Number.isFinite(Number(x.value)))errors.push(r.name+': Vergleichswert muss eine Zahl sein.');if(x.field==='rip'&&!['true','false'].includes(x.value))errors.push(r.name+': Tot-Wert muss true oder false sein.');if(['map','task','rip'].includes(x.field)&&!['eq','neq'].includes(x.operator))errors.push(r.name+': für Text/Ja-Nein nur Gleich/Ungleich verwenden.');if(x.field==='itemCount'&&!x.item)errors.push(r.name+': Item-ID in Bedingung fehlt.');}
   }
   for(const g of c.production.goals)ref(g.recipient,g.name);
+  const targetKeys=new Set();for(const g of c.production.gearTargets??[]){
+    ref(g.character,g.name);const key=g.character+':'+g.slot;
+    if(g.enabled&&targetKeys.has(key))errors.push(g.name+': doppeltes Ausrüstungsziel für '+key);if(g.enabled)targetKeys.add(key);
+    if(!/^[a-zA-Z0-9_]+$/.test(g.item)||!['mainhand','offhand','helmet','chest','pants','shoes','gloves','cape','belt','amulet','orb','ring1','ring2','earring1','earring2','elixir'].includes(g.slot))errors.push(g.name+': ungültiges Item oder Equipment-Slot.');
+    if(g.enabled&&!c.characters.some(x=>x.name===g.character&&x.enabled))errors.push(g.name+': Zielcharakter muss aktiviert sein.');
+  }
   return [...new Set(errors)].slice(0,100);
 }
 export function resolveItem(c,query){
@@ -113,7 +119,7 @@ export function resolveItem(c,query){
   const rows=c.items.map((r,index)=>({r,index})).filter(({r})=>r.enabled&&r.item===query.item&&query.level>=r.minLevel&&query.level<=r.maxLevel&&(r.role==='all'||r.role===query.role)&&['character','statType','property','title','map','server','task'].every(k=>!r[k]||r[k]===query[k])&&(phaseOf(r.action)==='all'||phaseOf(r.action)===query.phase));
   rows.sort((a,b)=>ruleRank(b.r)-ruleRank(a.r)||b.r.priority-a.r.priority||a.index-b.index);
   const r=rows[0]?.r;
-  return {rule:r??null,candidates:rows.map(x=>({name:x.r.name,rank:ruleRank(x.r),priority:x.r.priority})),reason:r?'„'+r.name+'“ gewinnt: Spezifität '+ruleRank(r)+', Priorität '+r.priority+'.':'Keine passende Regel: behalten.',quantity:!r||r.action==='keep'?0:Math.max(0,Math.min(r.batch,(query.quantity??0)-r.keep-r.teamReserve))};
+  return {rule:r??null,candidates:rows.map(x=>({name:x.r.name,rank:ruleRank(x.r),priority:x.r.priority})),reason:r?'„'+r.name+'“ gewinnt: Spezifität '+ruleRank(r)+', Priorität '+r.priority+'. Explizite Regel vor automatischer Zielplanung.':c.production?.enabled&&c.production.autonomy?'Keine explizite Regel. Ein konfiguriertes Ziel kann beim tatsächlichen Bedarf eine begrenzte Regel ableiten; diese Vorschau führt keinen Produktionsplan aus.':'Keine passende Regel: behalten.',quantity:!r||r.action==='keep'?0:Math.max(0,Math.min(r.batch,(query.quantity??0)-r.keep-r.teamReserve))};
 }
 export function envelope(descriptor,config){return {format:'albot-profile',formatVersion:1,schemaId:descriptor.schemaId,config};}
 export function addMissingDefaults(schema,value,path='',changes=[]){
@@ -130,6 +136,10 @@ export function addMissingDefaults(schema,value,path='',changes=[]){
 }
 export function importProfile(descriptor,value){
   if(value?.format!=='albot-profile'||value.formatVersion!==1)throw Error('Kein Super-Bot-Profil. Alte Generatorprofile bleiben in der klassischen Werkstatt nutzbar.');
+  if(descriptor.schemaId==='albot.p3p4/v1'&&['albot.live-a/v1','albot.live-b/v1','albot.live-c/v1','albot.config/v1'].includes(value.schemaId)){
+    const config=structuredClone(value.config);if(config.general?.autoUpdate)throw Error('Aktiver Updater gehört nicht zu P3/P4; im bisherigen Profil ausdrücklich deaktivieren.');delete config.general.autoUpdate;delete config.general.updateChannel;
+    const next=addMissingDefaults(descriptor.schema,config),errors=validateProfile(descriptor,next);if(errors.length)throw Error(errors.join('\n'));return next;
+  }
   if(value.schemaId!==descriptor.schemaId)throw Error('Profil benötigt das Schema '+value.schemaId+'. Zuerst passendes Bot-Paket / Schema laden.');
   const errors=validateProfile(descriptor,value.config);if(errors.length)throw Error(errors.join('\n'));return structuredClone(value.config);
 }

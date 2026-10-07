@@ -1,3 +1,7 @@
+# Aktueller Folgeauftrag: vollständiges P3/P4
+
+0.5.0-p3p4 schließt die P3/P4-Implementierungslücken. Vor Änderungen docs/P3-P4.md und docs/P3-P4-LIVE.md lesen. Gemeinsamer großer Test vorbereitet, noch nicht live bestätigt. Neues Schema src/config/p3p4.mjs; frühere A/B/C-Verträge und persönliche bestätigte Dateien schützen. Keine Shadow-Tests oder automatischen Logins. Updater außerhalb dieses Auftrags. Neue Ziellogik nur bei autonomy=true; explizite Item-Regeln, Reserven, Gold-/Verlustbudgets und bestätigter Wiederanlauf bleiben verbindlich.
+
 # Arbeitsvertrag für ALBot
 
 Live C mit `0.3.1-live-c` wurde am 7. Oktober 2026 vom Nutzer als vollständig bestanden bestätigt. Maßgeblich: docs/LIVE-C-ERGEBNIS.md; Schema `src/config/live-c.mjs`, Anleitung docs/LIVE-C.md und genaue Funktionszuordnung docs/INTEGRATIONSSTAND.md lesen. Bestätigung auf den vereinbarten Testablauf begrenzen; ausgeschaltete Optionen und Linux nicht pauschal als live geprüft darstellen. Der bisherige Entwicklungsauftrag bis Live C ist abgeschlossen. Keine automatischen Logins oder zusätzlichen Shadow-/Freigabephasen. Vorhandene Nutzerkonfiguration schützen. Optionaler automatischer Updater und die ausdrücklich genannten Optimierungslücken bleiben offen.

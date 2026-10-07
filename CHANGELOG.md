@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.3.4-live-c · 7. Oktober 2026 · Native smart_move-Lebensdauer und sichere Checkpoint-Erholung
+
+- Vier eindeutige 0.3.3-Headless-Berichte mit Profil `FIXED-2002` geprüft. Merchant startet sauber. Ranger 1/2 aktivieren `farm:bee`, wählen ein Bee-Ziel und starten `combat/smart_move`, bleiben aber nahezu am Startpunkt und werden weiterhin durch ALBots eigenen `movement.failed: no_progress`-Wächter abgebrochen. Kein Bee-Angriff nachgewiesen.
+- Adventure Lands `smart_move` besitzt eigene Pfadsuche, Promise-Abschluss und Fehlerbehandlung. Deshalb wird der 12-Sekunden-Positions-Stallwächter jetzt nur noch auf normales `move` angewendet. `smart_move` bleibt bis zu seinem nativen Abschluss bzw. dem vorhandenen 120-Sekunden-Executor-Timeout in Besitz.
+- Ranger 3 war durch einen alten persistenten `quest.monsterhunt`-Checkpoint blockiert. Ein Monsterhunt-Journal mit `cost=0`, `loss=0` und ohne Inventarslots ist keine Wertaktion und wird beim Start jetzt automatisch sicher bereinigt.
+- Gezielter lokaler Modulharness: 6/6 Regressionen bestanden. Vollständiger Repository-Testlauf wurde in dieser Umgebung nicht ausgeführt.
+- Persönliche Phase 02 neu als `02-regelwechsel-0.3.4-FIXED.js` mit eindeutigem Profil `Live C · 02-regelwechsel · FIXED-034` erzeugt. Live-Bee-Nachweis bleibt ausstehend.
+
+
 ## 0.3.3-live-c · 7. Oktober 2026 · Headless-Pfadsuche und manuelle Aufgabenpriorität korrigiert
 
 - Vier echte Headless-Berichte mit `0.3.2-live-c` geprüft: alle Instanzen starten, aber kein Bee-Angriff; Ranger 1/2 melden mehrere `movement.failed: no_progress`, Ranger 3 wird nach aktivierter Bee-Regel zeitweise von Monsterhunt-/Economy-Bewegung verdrängt.

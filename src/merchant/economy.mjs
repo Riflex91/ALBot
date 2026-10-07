@@ -9,6 +9,11 @@ export function createEconomy(bot){
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
  const rules=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
  const count=item=>variantCount(p.c.items,item);
+ const downstreamSatisfied=(item,r)=>{
+  if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;
+  const production=rules(item,'production');if(!production||!['upgrade','compound'].includes(production.action)||production.targetLevel<=(item.level??0))return false;
+  return count({...item,level:production.targetLevel})>=Math.min(production.targetCount,production.maxCount);
+ };
  const safe=i=>!protectedItem(i)&&typeof i.name==='string'&&i.name!=='placeholder';
  const spare=(slot,r)=>{const i=p.c.items[slot];return safe(i)&&r&&(!['sell','bank','list','send'].includes(r.action)||!bot.production?.reserved(i))?Math.max(0,Math.min(i.q??1,r.batch,count(i)-r.keep-r.teamReserve)):0;};
  const value=i=>{try{const v=p.call('item_value',i);return Number.isFinite(v)&&v>=0?v:Infinity;}catch{return Infinity;}};
@@ -52,5 +57,5 @@ export function createEconomy(bot){
  function npcSell(slot,r){const i=p.c.items[slot],q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice)return false;const before=count(i),gold=p.c.gold;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!travel(d,'NPC-Verkauf'))return false;
   return perform('sell',{slots:[slot],rule:r,guard:()=>spare(slot,r)>=q&&at(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>p.call('sell',slot,q),observe:()=>count(i)<=before-q&&p.c.gold>=gold+q*r.minPrice,details:{item:i.name,quantity:q,before}});
  }
- return {rules,count,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
+ return {rules,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }

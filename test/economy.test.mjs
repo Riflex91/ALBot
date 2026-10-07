@@ -88,3 +88,14 @@ test('market buy rejects an offer whose price changes before dispatch',()=>{
  bot.economy.perform=(kind,action)=>{assert.equal(action.cost,40);assert.equal(action.guard(),true);offer.price=100;assert.equal(action.guard(),false);return false;};
  assert.equal(bot.market.buy({name:'hpot0',level:0},rule),false);assert.equal(c.items[0].q,10);
 });
+
+
+test('fulfilled upgrade target suppresses reacquisition of the consumed base item',()=>{
+ const {bot,c,rule}=fixture();
+ const buy={...rule,name:'Basishelm',item:'helmet',action:'buy',minLevel:0,maxLevel:0,targetCount:1,maxCount:1};
+ const upgrade={...rule,name:'Upgradehelm',item:'helmet',action:'upgrade',minLevel:0,maxLevel:0,targetLevel:1,targetCount:1,maxCount:1};
+ bot.cfg.items=[buy,upgrade];c.items=[{name:'helmet',level:1},...Array(41).fill(null)];
+ const base={name:'helmet',level:0,stat_type:'',p:'',title:''};
+ assert.equal(bot.economy.downstreamSatisfied(base,buy),true);
+ c.items[0]=null;assert.equal(bot.economy.downstreamSatisfied(base,buy),false);
+});

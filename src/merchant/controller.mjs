@@ -32,7 +32,7 @@ export function createMerchant(bot){
   if(me.role!=='merchant')return;
   for(const r of cfg.items.filter(r=>r.enabled&&e.remaining(r))){
    const item={name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title};
-   if(e.rules(item,'acquisition')!==r)continue;const n=e.count(item),need=Math.min(r.targetCount,r.maxCount)-n;
+   if(e.rules(item,'acquisition')!==r||e.downstreamSatisfied(item,r))continue;const n=e.count(item),need=Math.min(r.targetCount,r.maxCount)-n;
    if(need<=0||(r.requestBelow>0&&n>r.requestBelow))continue;
    let done=false;
    if(r.action==='buy')done=e.npcBuy(item,r,need);

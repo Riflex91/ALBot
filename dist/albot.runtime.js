@@ -1,4 +1,4 @@
-/* ALBot 0.2.1-live-b · Live B pending */
+/* ALBot 0.2.2-live-b · Live B pending */
 (function(root){"use strict";
 // src/runtime/primitives.js
 // Scoped to the bundle: jsdom CODE does not necessarily expose these browser
@@ -9,7 +9,7 @@ const TextEncoder=root.TextEncoder??class {
 };
 
 // src/version.mjs
-const VERSION='0.2.1-live-b';
+const VERSION='0.2.2-live-b';
 
 // editor/lib/schema.mjs
 // This data contract is shared by the editor and the future bot runtime.
@@ -568,7 +568,7 @@ function createSkills(bot){
 
 // src/items/logistics.mjs
 function createLogistics(bot){
-  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0;const completed=new Map(),nextOffer=new Map();
+  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0;const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
@@ -589,7 +589,7 @@ function createLogistics(bot){
       if(bot.checkpoint?.durable===false||job||incoming||bot.journal||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
       const quantity=Math.min(d.quantity,capacity(d.item),cfg.merchant.maxDelivery);if(quantity<1)return;
-      incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:Date.now()+cfg.general.messageTtlMs};
+      incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.
       try{bot.beginValue({kind:'receive',...incoming});}catch(e){incoming=null;throw e;}counters.acceptsSent++;transport.send(from,'accept',{quantity},m.id);
     }else if(m.type==='accept'&&job&&job.state==='offered'&&m.id===job.id&&from===job.to&&m.session===job.session){
@@ -600,7 +600,7 @@ function createLogistics(bot){
     else if(m.type==='done'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session&&incoming.observed){counters.doneReceived++;completed.set(m.id,Date.now());incoming=null;bot.endValue('confirmed');}
   }
   function poll(allowOffer=true){
-    const now=Date.now();for(const [id,t] of completed)if(now-t>120000)completed.delete(id);
+    const now=clock();for(const [id,t] of completed)if(now-t>120000)completed.delete(id);
     for(const [id,t] of nextOffer)if(t<now)nextOffer.delete(id);
     if(incoming){
       if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(now-(incoming.lastReceipt??0)>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
@@ -608,6 +608,15 @@ function createLogistics(bot){
     }
     if(job){
       if(job.state==='sent'&&count(job.item)<=job.before-job.quantity&&job.receipt){counters.doneSent++;transport.send(job.to,'done',{},job.id);completed.set(job.id,now);job=null;bot.endValue('confirmed');return;}
+      if(job.state==='offered'){
+        const current=p.c.items[job.slot],rule=current&&sendRule(current,job.to);
+        if(fingerprint(current)!==job.fingerprint||transferable(p.c.items,job.slot,rule)<job.quantity){nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+5000);job=null;return;}
+        const retryMs=Math.max(500,Math.min(2000,Math.floor(cfg.general.messageTtlMs/3)));
+        if(now-(job.lastOffer??0)>=retryMs){
+          const peer=transport.fresh(job.to);
+          if(peer?.session===job.session){job.lastOffer=now;transport.send(job.to,'offer',{item:job.item,quantity:job.quantity},job.id);}
+        }
+      }
       if(now>job.until){counters.timeouts++;if(job.state==='sent'||job.state==='accepted')bot.endValue('unknown');nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+10000);job=null;return;}
       if(job.state==='accepted'&&!bot.inventoryBlocked){
         const j=job;
@@ -632,7 +641,7 @@ function createLogistics(bot){
         const peer=transport.fresh(to);if(!near(to)||!peer)continue;
         const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);if(!demand)continue;
         const quantity=Math.min(transferable(p.c.items,slot,r),cfg.merchant.maxDelivery,Math.floor(demand.need));if(quantity<1)continue;
-        job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,before:count(signature(item)),offerKey:key,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
+        job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,before:count(signature(item)),offerKey:key,lastOffer:now,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
         nextOffer.set(key,now+5000);counters.offersSent++;transport.send(job.to,'offer',{item:job.item,quantity},job.id);break outer;
       }
     }
@@ -737,6 +746,11 @@ function createEconomy(bot){
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
  const rules=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});
  const count=item=>variantCount(p.c.items,item);
+ const downstreamSatisfied=(item,r)=>{
+  if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;
+  const production=rules(item,'production');if(!production||!['upgrade','compound'].includes(production.action)||production.targetLevel<=(item.level??0))return false;
+  return count({...item,level:production.targetLevel})>=Math.min(production.targetCount,production.maxCount);
+ };
  const safe=i=>!protectedItem(i)&&typeof i.name==='string'&&i.name!=='placeholder';
  const spare=(slot,r)=>{const i=p.c.items[slot];return safe(i)&&r&&(!['sell','bank','list','send'].includes(r.action)||!bot.production?.reserved(i))?Math.max(0,Math.min(i.q??1,r.batch,count(i)-r.keep-r.teamReserve)):0;};
  const value=i=>{try{const v=p.call('item_value',i);return Number.isFinite(v)&&v>=0?v:Infinity;}catch{return Infinity;}};
@@ -780,7 +794,7 @@ function createEconomy(bot){
  function npcSell(slot,r){const i=p.c.items[slot],q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice)return false;const before=count(i),gold=p.c.gold;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!travel(d,'NPC-Verkauf'))return false;
   return perform('sell',{slots:[slot],rule:r,guard:()=>spare(slot,r)>=q&&at(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>p.call('sell',slot,q),observe:()=>count(i)<=before-q&&p.c.gold>=gold+q*r.minPrice,details:{item:i.name,quantity:q,before}});
  }
- return {rules,count,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
+ return {rules,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }
 
 // src/merchant/bank.mjs
@@ -1092,7 +1106,7 @@ function createMerchant(bot){
   if(me.role!=='merchant')return;
   for(const r of cfg.items.filter(r=>r.enabled&&e.remaining(r))){
    const item={name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title};
-   if(e.rules(item,'acquisition')!==r)continue;const n=e.count(item),need=Math.min(r.targetCount,r.maxCount)-n;
+   if(e.rules(item,'acquisition')!==r||e.downstreamSatisfied(item,r))continue;const n=e.count(item),need=Math.min(r.targetCount,r.maxCount)-n;
    if(need<=0||(r.requestBelow>0&&n>r.requestBelow))continue;
    let done=false;
    if(r.action==='buy')done=e.npcBuy(item,r,need);

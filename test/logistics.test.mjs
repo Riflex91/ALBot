@@ -87,3 +87,14 @@ test('multi-recipient potion supply waits until 50 and then sends 3000 to each f
  B.p.c.items[0].q=50;
  await finishDelivery(A,B,advance);assert.deepEqual(sends[2],{to:'B',item:'hpot0',amount:3000});assert.equal(B.p.c.items[0].q,3050);
 });
+
+
+test('offer retries after temporary receiver inventory busy and transfers exactly once',async()=>{
+ const {A,B,sends}=pair();let now=1000;A.exec.now=()=>now;B.exec.now=()=>now;let release;
+ assert.equal(B.exec.run('temporary.inventory',['inventory'],()=>true,()=>new Promise(r=>{release=r;}),{timeout:5000}),true);
+ A.logistics.poll();assert.equal(A.logistics.stats().offersSent,1);assert.equal(B.logistics.stats().offersReceived,1);assert.equal(B.logistics.stats().acceptsSent,0);assert.equal(sends(),0);
+ release();await Promise.resolve();B.exec.poll();now+=2500;
+ A.logistics.poll();assert.equal(B.logistics.stats().offersReceived,2);assert.equal(B.logistics.stats().acceptsSent,1);assert.equal(sends(),1);
+ B.logistics.poll();A.logistics.poll();await Promise.resolve();A.exec.poll();
+ assert.equal(A.logistics.stats().sendsStarted,1);assert.equal(A.logistics.stats().timeouts,0);assert.equal(A.inventoryBlocked,false);
+});

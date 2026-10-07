@@ -1,8 +1,8 @@
 {
-  "version": "0.3.3-live-c",
+  "version": "0.3.4-live-c",
   "schemaId": "albot.live-c/v1",
-  "bytes": 171672,
-  "sha256": "738eff8953dbee83295e130f3cb30ae3085acbe753fbda3b60c0153173a8ce02",
+  "bytes": 171907,
+  "sha256": "a1cdee79cd18f99774ffb59846683c436a45e81013c0735ed8070021bcc10171",
   "liveTest": "pending",
-  "runtimeBytes": 166845
+  "runtimeBytes": 167080
 }

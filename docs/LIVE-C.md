@@ -1,10 +1,10 @@
 # Live C · 0.3.1-live-c
 
-Live B wurde vom Nutzer in Browser und Windows-Headless vollständig bestätigt. Dieser Kandidat integriert die nächsten Roadmap-Funktionen. **Live C ist noch nicht bestanden.** Keine Shadow-Tests, kein automatischer Spielstart durch die Entwicklung.
+Live B wurde vom Nutzer in Browser und Windows-Headless vollständig bestätigt. **Live C mit 0.3.1 ist ebenfalls laut Nutzerbestätigung vom 7. Oktober 2026 bestanden.** Umfang und Nachweisgrenzen: [LIVE-C-ERGEBNIS.md](LIVE-C-ERGEBNIS.md). Die folgende Anleitung dokumentiert den vereinbarten Ablauf. Keine Shadow-Tests, kein automatischer Spielstart durch die Entwicklung.
 
 Entwicklungsprüfung unter Windows: **65 gezielte Bot-/Werkstatt-Prüfungen bestanden**, klassischer Build/Syntax und beide Paket-Hashes geprüft. Der tatsächliche C-Build mit 1.276 Regeln für alle 638 Katalogitems misst **381.564 UTF-8-Bytes**, weit unter 1.048.576 Byte. Persönliche Testdateien etwa 173 KB. Werkstattimport/-export, Katalog, Mehrfachbearbeitung und Regelvorschau zusätzlich im DOM geprüft; importierter Runtimecode wurde dabei nicht ausgeführt. Aktive Clientkonfiguration und CODE/main.js per unverändertem Hash geprüft; neue Clientvorlagen offline validiert. Kein Linux-/Live-C-Erfolg daraus abgeleitet.
 
-Browser-Rückmeldung: Bee-Regeln wurden ausgelöst, die Wege scheiterten. 0.3.1 repariert Hinderniswege und Merchant-Status; erneuter Live-Lauf steht aus. [Auswertung](LIVE-C-ERGEBNIS.md). Merchant darf in Phase 01/02 ohne Nachschubbedarf warten; Fishing ist ausschließlich in Phase 03 aktiv.
+Frühere Browser-Rückmeldung: Bee-Regeln wurden ausgelöst, die Wege scheiterten. 0.3.1 repariert Hinderniswege und Merchant-Status; anschließend hat der Nutzer alle Tests als bestanden bestätigt. [Auswertung](LIVE-C-ERGEBNIS.md). Merchant darf in Phase 01/02 ohne Nachschubbedarf warten; Fishing ist ausschließlich in Phase 03 aktiv.
 
 ## Dateien und Einstellungen
 

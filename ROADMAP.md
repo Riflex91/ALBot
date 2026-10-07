@@ -1,7 +1,7 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 Stand: 7. Oktober 2026. **Live A grundlegend bestanden. Live B ist mit 0.2.2-live-b in Browser und Windows-Headless vollständig bestanden: 01 Abholung, 02 Bank, 03 Bank→NPC sowie 04 Upgrade und bestätigte Lieferung. Die 0.2.2-Korrekturen für Offer-Retry und Basis-Nachkauf sind live bestätigt. P3/P4 bleiben teilweise implementiert; Linux-Live-Nachweis und die übrigen offenen Funktionsblöcke stehen weiter aus.**
 
-**Nächster Testpunkt: Live C, `0.3.1-live-c`, vorbereitet und noch nicht live bestanden.** Neue Etappe: deklarative Verhaltensregeln, faire Merchant-Aufträge und Nebenaufgaben, Welt-/Accountplanung, Aurapolitik und abgestimmte Reisen. Genaue Implementierungszuordnung und verbleibende Lücken: [INTEGRATIONSSTAND.md](docs/INTEGRATIONSSTAND.md). Der Nutzer autorisiert Entwicklung bis zu diesem nächsten gemeinsamen Live-Termin.
+**Live C mit `0.3.1-live-c` ist laut Nutzerbestätigung vom 7. Oktober 2026 bestanden.** Der vereinbarte Testpunkt und der Entwicklungsauftrag bis zu diesem Termin sind abgeschlossen. Dies bestätigt den Testablauf, nicht alle ausgeschalteten Welt-/Account-/Teamreiseoptionen oder noch offene Funktionen. Genaue Implementierungszuordnung und verbleibende Lücken: [INTEGRATIONSSTAND.md](docs/INTEGRATIONSSTAND.md). Nachweis und Grenzen: [LIVE-C-ERGEBNIS.md](docs/LIVE-C-ERGEBNIS.md).
 
 Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Das aktuelle Teilrelease verwendet albot.live-c/v1; A/B-Artefakte bleiben verfügbar. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator pro Botversion neu zu programmieren.
 
@@ -198,3 +198,7 @@ Offen bleiben insbesondere Updater, Teilentnahme zu großer Bankstapel, Shell-on
 ### Live-C-Korrektur 0.3.1
 
 Acht Browserberichte ausgewertet: Goo-Normalbetrieb ohne Incidents; Bee-Regeln aktiv, aber neun fehlgeschlagene Wege. Hindernisrouting zum tatsächlichen Monsterpunkt, Ankunfts-Stopp und Fehlerfreigabe repariert. Merchant ohne freigegebenen Auftrag/Nachschubbedarf wartet korrekt; irreführendes Überschreiben seiner Meldungen entfernt. 65 gezielte Prüfungen bestanden. Bee-Wiederholung und Phase 03 Fishing bleiben live ausstehend. [Auswertung](docs/LIVE-C-ERGEBNIS.md).
+
+### Live C bestätigt
+
+Am 7. Oktober 2026 bestätigt der Nutzer nach Auslieferung von 0.3.1: alle Tests bestanden. Der vereinbarte Live-C-Ablauf ist abgeschlossen. Vorherige Fehlermeldungen sind historisch; offene Implementierungsbereiche und ausgeschaltete Optionen bleiben offen. Keine zusätzlichen C-Umgebungsnachweise oder neuen Logauswertungen behauptet. Siehe docs/LIVE-C-ERGEBNIS.md.

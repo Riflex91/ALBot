@@ -2,7 +2,7 @@
 
 Ein gemeinsamer Adventure-Land-Bot für Browser-CODE und den vorhandenen Node.js-Headless-Client. Ziel: die Spielfunktionen aus ALFinal sowie v3, v4 und v5 zusammenführen, einschließlich Farmer, Merchant, Item-Regeln, Gruppenplanung und Produktion.
 
-**Stand 7. Oktober 2026:** Live A hat einen kurzen Browser- und Windows-Headless-Nachweis mit bestätigten Lieferungen. **0.2.0-live-b** ist der neue Kandidat für die Merchant-Kette, noch ohne Live-Nachweis. P3/P4 sind teilweise implementiert; der vollständige Super-Bot ist noch in Entwicklung. [Live-B-Anleitung](docs/LIVE-B.md).
+**Stand 7. Oktober 2026:** Live A hat einen kurzen Browser- und Windows-Headless-Nachweis mit bestätigten Lieferungen. Live B: Schritt 01 (Abholung) ist im Browser bestanden; Schritt 02 (Bank) wurde in `0.2.0-live-b` durch Merchant-Loot/Inventory-Starvation blockiert. **0.2.1-live-b** korrigiert diese Prioritätsgrenze und wartet auf den Bank-Retest. P3/P4 sind teilweise implementiert. [Live-B-Anleitung](docs/LIVE-B.md) · [Live-B-Ergebnis](docs/LIVE-B-ERGEBNIS.md).
 
 Zum nächsten Test: [Live-B-Anleitung](docs/LIVE-B.md), [Werkstattpaket](dist/albot.package.json), [Team-Beispiel](profiles/live-b-team.json). Persönliche Testdateien aus dem vorhandenen Live-A-Profil erzeugt `scripts/export-live-b.mjs`. Neue Profile verwenden **autostart: true**. Historische Live-A-Dateien bleiben als Rückfall verfügbar. Die exakt gleiche exportierte Datei läuft in Browser-CODE und Headless.
 

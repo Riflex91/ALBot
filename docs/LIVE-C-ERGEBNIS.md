@@ -39,3 +39,21 @@ Vier Berichte vom 7. Oktober 2026, Profil `Live C · 02-regelwechsel`, Runtime `
 - Gezielt geprüft wurden der lange `smart_move`-Suchzustand mit anschließendem No-Progress-Retry sowie der Bee-Regelauftrag bei entferntem Goo-Leader. Das ist kein Live-Nachweis.
 
 Für den nächsten Retest Phase 02 mit `0.3.2-live-c` laden. Erfolg verlangt weiterhin mindestens einen tatsächlich beobachteten Bee-Angriff eines regelgesteuerten Farmers; bei mehreren gesunden/freien Farmern sollen deren Bee-Regelaufträge ebenfalls nicht zum Goo-Leader zurückspringen.
+
+
+## Headless-Retest mit 0.3.2 – noch nicht bestanden
+
+Vier Berichte vom 7. Oktober 2026, Profil `Live C · 02-regelwechsel`, Runtime `0.3.2-live-c`.
+
+- Alle vier Instanzen starten erfolgreich mit 0.3.2; der vorherige Konfigurations-Bootfehler ist damit beseitigt.
+- Ranger 1 und Ranger 2 aktivieren die Bee-Regel jeweils zweimal, melden aber vier bzw. fünf `movement.failed: no_progress`. Kein Ranger-Bericht enthält einen `attack`-Aktionsblock.
+- Ranger 3 erreicht zunächst mehrere Movement-Ankünfte, aktiviert `farm:bee`, wird danach aber von einer Economy-/Monsterhunt-Bewegung verdrängt. Das zeigt eine zweite Prioritätslücke außerhalb der bereits korrigierten Follow-/Wait-for-Team-Logik.
+- Der Headless-Lauf legt außerdem offen, dass der `smart_move`-Suchzustand am Parent-Kontext liegt. 0.3.2 prüfte nur `root.smart`; deshalb konnte aktive Pfadsuche weiterhin fälschlich als Stillstand gewertet werden.
+- Die verwendete persönliche 0.3.2-Testdatei enthielt zusätzlich versehentlich aktivierte Optionen (u. a. AOE, Production, Events/Quests und Magiport), die im zuvor funktionierenden Phase-02-Profil ausgeschaltet waren. Dieser Exportfehler wird nicht als Botverhalten gewertet.
+
+### Korrektur 0.3.3-live-c
+
+- Movement liest den Smart-Move-Zustand aus `root.smart` oder `parent.smart`.
+- Monsterhunt und Anniversary starten nicht, solange ein manueller Strategieauftrag aktiv ist.
+- Die persönliche Phase-02-Datei wurde aus dem zuvor funktionierenden 0.3.1-Settings-Satz neu erzeugt; AOE, Production, Events, Quests und Magiport sind dort wieder ausgeschaltet.
+- Der nächste gültige Live-Nachweis benötigt weiterhin mindestens einen echten Bee-Angriff. Vollständiger Repository-Testlauf wurde in der Entwicklungsumgebung nicht ausgeführt; gezielte Movement-/Farmer-Regressionen laufen 4/4 grün.

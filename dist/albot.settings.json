@@ -1,10 +1,10 @@
 {
   "format": "albot-settings",
   "formatVersion": 1,
-  "schemaId": "albot.live-a/v1",
+  "schemaId": "albot.live-b/v1",
   "schema": {
     "type": "object",
-    "title": "ALBot · Live A",
+    "title": "ALBot · Live B",
     "properties": {
       "general": {
         "type": "object",
@@ -21,7 +21,7 @@
           "autostart": {
             "type": "boolean",
             "title": "Beim Laden starten",
-            "default": false
+            "default": true
           },
           "environment": {
             "type": "string",
@@ -392,6 +392,20 @@
             "title": "Merchant-Automatik",
             "default": true
           },
+          "goldReserve": {
+            "type": "integer",
+            "title": "Merchant-Goldreserve",
+            "default": 100000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "maxSpendPerHour": {
+            "type": "integer",
+            "title": "Maximale Goldausgaben pro Stunde",
+            "default": 1000000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
           "pickup": {
             "type": "boolean",
             "title": "Beute abholen",
@@ -415,14 +429,126 @@
             "default": 4,
             "minimum": 1,
             "maximum": 42
+          },
+          "position": {
+            "type": "object",
+            "title": "Standplatz",
+            "description": "",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "title": "Fester Standplatz",
+                "default": false
+              },
+              "map": {
+                "type": "string",
+                "title": "Karte",
+                "default": "main",
+                "maxLength": 160
+              },
+              "x": {
+                "type": "number",
+                "title": "X",
+                "default": 0,
+                "minimum": -1000000,
+                "maximum": 1000000
+              },
+              "y": {
+                "type": "number",
+                "title": "Y",
+                "default": 0,
+                "minimum": -1000000,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "enabled",
+              "map",
+              "x",
+              "y"
+            ],
+            "additionalProperties": false
+          },
+          "stand": {
+            "type": "boolean",
+            "title": "Stand automatisch öffnen",
+            "default": false
+          },
+          "mluck": {
+            "type": "boolean",
+            "title": "Mluck-Service",
+            "default": true
+          },
+          "mluckOthers": {
+            "type": "boolean",
+            "title": "Mluck auch für andere Spieler",
+            "default": false
+          },
+          "massBuffs": {
+            "type": "boolean",
+            "title": "Produktions-/Exchange-Buffs",
+            "default": true
+          },
+          "bank": {
+            "type": "boolean",
+            "title": "Bankaufträge",
+            "default": true
+          },
+          "consolidate": {
+            "type": "boolean",
+            "title": "Bankbestände zusammenlegen",
+            "default": false
+          },
+          "expandBank": {
+            "type": "boolean",
+            "title": "Bankkapazität kaufen",
+            "default": false
+          },
+          "bankBudget": {
+            "type": "integer",
+            "title": "Budget für Bankerweiterung",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "bankGold": {
+            "type": "boolean",
+            "title": "Goldbestand bei Bankbesuchen ausgleichen",
+            "default": false
+          },
+          "goldTarget": {
+            "type": "integer",
+            "title": "Gold-Zielbestand im Inventar",
+            "default": 200000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "giveaways": {
+            "type": "boolean",
+            "title": "An Giveaways teilnehmen",
+            "default": false
           }
         },
         "required": [
           "enabled",
+          "goldReserve",
+          "maxSpendPerHour",
           "pickup",
           "supply",
           "maxDelivery",
-          "minFreeSlots"
+          "minFreeSlots",
+          "position",
+          "stand",
+          "mluck",
+          "mluckOthers",
+          "massBuffs",
+          "bank",
+          "consolidate",
+          "expandBank",
+          "bankBudget",
+          "bankGold",
+          "goldTarget",
+          "giveaways"
         ],
         "additionalProperties": false
       },
@@ -522,6 +648,33 @@
               },
               "default": [],
               "maxItems": 500
+            },
+            "goldReserve": {
+              "type": "integer",
+              "title": "Eigene Goldreserve",
+              "default": 10000,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "gearRole": {
+              "type": "string",
+              "title": "Ausrüstungsziel",
+              "default": "auto",
+              "maxLength": 160,
+              "enum": [
+                "auto",
+                "dps",
+                "tank",
+                "healer",
+                "economy"
+              ],
+              "x-labels": {
+                "auto": "Automatisch",
+                "dps": "Schaden",
+                "tank": "Tank",
+                "healer": "Heilung",
+                "economy": "Economy"
+              }
             }
           },
           "required": [
@@ -532,7 +685,9 @@
             "group",
             "region",
             "server",
-            "farmTargets"
+            "farmTargets",
+            "goldReserve",
+            "gearRole"
           ],
           "additionalProperties": false
         },
@@ -792,7 +947,7 @@
       "items": {
         "type": "array",
         "title": "Alle Items · Regeln",
-        "description": "Live A: Schutz, Trank-/Skillverbrauch und bestätigte Lieferung aus vorhandenen Beständen. Kein Kauf, Verkauf oder Bankzugriff.",
+        "description": "Ein Regelsatz für Farmer und Merchant. Charakterregeln vor Rollenregeln, danach Varianten und Priorität. Gesperrte, ausgerüstete oder reservierte Items bleiben geschützt.",
         "items": {
           "type": "object",
           "title": "Item-Regel",
@@ -906,12 +1061,38 @@
               "enum": [
                 "keep",
                 "consume",
-                "send"
+                "equip",
+                "send",
+                "bank",
+                "retrieve",
+                "sell",
+                "buy",
+                "list",
+                "wishlist",
+                "marketBuy",
+                "upgrade",
+                "compound",
+                "exchange",
+                "craft",
+                "farm"
               ],
               "x-labels": {
-                "keep": "Behalten / reservieren",
-                "consume": "Verbrauch erlauben",
-                "send": "Überschuss liefern"
+                "keep": "Behalten / schützen",
+                "consume": "Verbrauchen",
+                "equip": "Ausrüsten",
+                "send": "An Charakter liefern",
+                "bank": "Bank einlagern",
+                "retrieve": "Bank entnehmen",
+                "sell": "NPC-Verkauf",
+                "buy": "NPC-Kauf",
+                "list": "Markt anbieten",
+                "wishlist": "Kaufgesuch",
+                "marketBuy": "Markt kaufen",
+                "upgrade": "Upgrade",
+                "compound": "Compound",
+                "exchange": "Exchange",
+                "craft": "Craft",
+                "farm": "Gezielt farmen"
               }
             },
             "keep": {
@@ -963,6 +1144,97 @@
               "minimum": 0,
               "maximum": 1000000000000
             },
+            "maxActions": {
+              "type": "integer",
+              "title": "Maximale Economy-Aktionen pro Botstart (0 = unbegrenzt)",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "minPrice": {
+              "type": "integer",
+              "title": "Mindestverkaufspreis pro Stück",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 1000000000000
+            },
+            "maxPrice": {
+              "type": "integer",
+              "title": "Maximaler Kaufpreis pro Stück",
+              "default": 1000,
+              "minimum": 1,
+              "maximum": 1000000000000
+            },
+            "priceSource": {
+              "type": "string",
+              "title": "Preisquelle",
+              "default": "fixed",
+              "maxLength": 160,
+              "enum": [
+                "fixed",
+                "market",
+                "npc"
+              ],
+              "x-labels": {
+                "fixed": "Fester Grenzpreis",
+                "market": "Aktuelle Marktbeobachtung",
+                "npc": "NPC-Preis"
+              }
+            },
+            "goldBudget": {
+              "type": "integer",
+              "title": "Goldbudget je Auftrag",
+              "default": 10000,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "lossBudget": {
+              "type": "integer",
+              "title": "Maximaler möglicher Itemverlust in Gold",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000000000
+            },
+            "targetLevel": {
+              "type": "integer",
+              "title": "Ziellevel bei Verarbeitung",
+              "default": 1,
+              "minimum": 0,
+              "maximum": 99
+            },
+            "scroll": {
+              "type": "string",
+              "title": "Scroll-ID (leer = nach Grade)",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "items"
+            },
+            "offering": {
+              "type": "string",
+              "title": "Offering-ID (leer = keines)",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "items"
+            },
+            "minChance": {
+              "type": "number",
+              "title": "Mindest-Erfolgschance (0–1)",
+              "default": 1,
+              "minimum": 0,
+              "maximum": 1
+            },
+            "pack": {
+              "type": "string",
+              "title": "Bankfach (leer = automatisch)",
+              "default": "",
+              "maxLength": 160
+            },
+            "slot": {
+              "type": "string",
+              "title": "Equipment-/Stand-Slot (falls erforderlich)",
+              "default": "",
+              "maxLength": 160
+            },
             "ttlMs": {
               "type": "integer",
               "title": "Auftrag gültig (ms)",
@@ -993,12 +1265,219 @@
             "batch",
             "recipient",
             "teamReserve",
+            "maxActions",
+            "minPrice",
+            "maxPrice",
+            "priceSource",
+            "goldBudget",
+            "lossBudget",
+            "targetLevel",
+            "scroll",
+            "offering",
+            "minChance",
+            "pack",
+            "slot",
             "ttlMs"
           ],
           "additionalProperties": false
         },
         "default": [],
         "maxItems": 2000
+      },
+      "production": {
+        "type": "object",
+        "title": "Produktion & Gear",
+        "description": "",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Produktionsaufträge",
+            "default": false
+          },
+          "upgrade": {
+            "type": "boolean",
+            "title": "Upgrade zulassen",
+            "default": false
+          },
+          "compound": {
+            "type": "boolean",
+            "title": "Compound zulassen",
+            "default": false
+          },
+          "exchange": {
+            "type": "boolean",
+            "title": "Exchange zulassen",
+            "default": false
+          },
+          "craft": {
+            "type": "boolean",
+            "title": "Craft zulassen",
+            "default": false
+          },
+          "gear": {
+            "type": "boolean",
+            "title": "Ausrüstung automatisch verbessern",
+            "default": false
+          },
+          "offlineProfiles": {
+            "type": "boolean",
+            "title": "Offline-Charaktere berücksichtigen",
+            "default": true
+          },
+          "minImprovement": {
+            "type": "number",
+            "title": "Mindestverbesserung als Anteil",
+            "default": 0.05,
+            "minimum": 0,
+            "maximum": 10
+          },
+          "lossBudget": {
+            "type": "integer",
+            "title": "Verlustbudget pro Stunde (Goldwert)",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "minChance": {
+            "type": "number",
+            "title": "Globale Mindest-Erfolgschance",
+            "default": 1,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "maxChainDepth": {
+            "type": "integer",
+            "title": "Maximale Produktionstiefe",
+            "default": 8,
+            "minimum": 1,
+            "maximum": 32
+          },
+          "maxFarmHours": {
+            "type": "number",
+            "title": "Maximale Farmzeit je Materialauftrag (Stunden)",
+            "default": 12,
+            "minimum": 0,
+            "maximum": 168
+          },
+          "acquireBy": {
+            "type": "array",
+            "title": "Erlaubte Beschaffungswege (bank, npc, market, farm, craft, exchange)",
+            "description": "",
+            "items": {
+              "type": "string",
+              "title": "ID",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "",
+              "minLength": 1
+            },
+            "default": [
+              "bank",
+              "npc",
+              "farm",
+              "craft",
+              "exchange"
+            ],
+            "maxItems": 500
+          },
+          "goals": {
+            "type": "array",
+            "title": "Produktionsziele",
+            "description": "",
+            "items": {
+              "type": "object",
+              "title": "Ziel",
+              "description": "",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "title": "Zielname",
+                  "default": "Neues Ziel",
+                  "maxLength": 160,
+                  "minLength": 1
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "title": "Aktiv",
+                  "default": true
+                },
+                "item": {
+                  "type": "string",
+                  "title": "Zielitem",
+                  "default": "",
+                  "maxLength": 160,
+                  "x-catalog": "items",
+                  "minLength": 1
+                },
+                "level": {
+                  "type": "integer",
+                  "title": "Ziellevel",
+                  "default": 0,
+                  "minimum": 0,
+                  "maximum": 99
+                },
+                "quantity": {
+                  "type": "integer",
+                  "title": "Menge",
+                  "default": 1,
+                  "minimum": 1,
+                  "maximum": 1000000000000
+                },
+                "recipient": {
+                  "type": "string",
+                  "title": "Empfänger",
+                  "default": "",
+                  "maxLength": 160,
+                  "x-catalog": "characters"
+                },
+                "budget": {
+                  "type": "integer",
+                  "title": "Gesamtbudget",
+                  "default": 100000,
+                  "minimum": 0,
+                  "maximum": 1000000000000
+                },
+                "priority": {
+                  "type": "integer",
+                  "title": "Priorität",
+                  "default": 0,
+                  "minimum": -10000,
+                  "maximum": 10000
+                }
+              },
+              "required": [
+                "name",
+                "enabled",
+                "item",
+                "level",
+                "quantity",
+                "recipient",
+                "budget",
+                "priority"
+              ],
+              "additionalProperties": false
+            },
+            "default": [],
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "enabled",
+          "upgrade",
+          "compound",
+          "exchange",
+          "craft",
+          "gear",
+          "offlineProfiles",
+          "minImprovement",
+          "lossBudget",
+          "minChance",
+          "maxChainDepth",
+          "maxFarmHours",
+          "acquireBy",
+          "goals"
+        ],
+        "additionalProperties": false
       }
     },
     "required": [
@@ -1008,7 +1487,8 @@
       "merchant",
       "characters",
       "skills",
-      "items"
+      "items",
+      "production"
     ],
     "additionalProperties": false
   }

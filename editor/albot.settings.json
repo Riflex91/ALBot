@@ -22,7 +22,7 @@
           "autostart": {
             "type": "boolean",
             "title": "Beim Laden starten",
-            "default": false
+            "default": true
           },
           "environment": {
             "type": "string",
@@ -973,6 +973,18 @@
             "minimum": 0,
             "maximum": 1000000000000
           },
+          "bankGold": {
+            "type": "boolean",
+            "title": "Goldbestand über Bank ausgleichen",
+            "default": false
+          },
+          "goldTarget": {
+            "type": "integer",
+            "title": "Gold-Zielbestand im Inventar",
+            "default": 200000,
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
           "taskHoldMs": {
             "type": "integer",
             "title": "Aufträge mindestens halten (ms)",
@@ -1051,6 +1063,8 @@
           "consolidate",
           "expandBank",
           "bankBudget",
+          "bankGold",
+          "goldTarget",
           "taskHoldMs",
           "starvationMs",
           "ponty",
@@ -1264,6 +1278,13 @@
               "minimum": 0,
               "maximum": 1000000000000
             },
+            "maxActions": {
+              "type": "integer",
+              "title": "Maximale Economy-Aktionen pro Botstart (0 = unbegrenzt)",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000
+            },
             "minPrice": {
               "type": "integer",
               "title": "Mindestverkaufspreis pro Stück",
@@ -1400,6 +1421,7 @@
             "batch",
             "recipient",
             "teamReserve",
+            "maxActions",
             "minPrice",
             "maxPrice",
             "priceSource",

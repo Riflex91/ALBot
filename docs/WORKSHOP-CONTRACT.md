@@ -75,3 +75,10 @@ Für allgemeine Bedingungen sind `hpRatio` (eigener HP-Anteil), `targetHpRatio` 
 Vor Auslieferung jede konfigurierbare Aktion an ein tatsächlich implementiertes Modul binden. Kein Feld darf wirkungslos als angeblich unterstützt durchgereicht werden. Für Teilreleases die unvollständigen Module ausdrücklich aus dem ausgelieferten Schema entfernen und eine passende andere Schema-ID verwenden; die vollständig geplante v1-Konfiguration nicht stillschweigend nur teilweise ausführen.
 
 Die bestehenden drei Live-Testpunkte der Roadmap bleiben ausreichend. Keine Shadow-Phase. Als zusätzliche Exportprüfung das endgültige Paket mit einem realistischen umfangreichen Profil zusammenstellen und unter 1.048.576 UTF-8-Bytes bleiben. Das Entwicklungsziel bleibt 900 KiB. Konfigurationen für alle 638 mitgelieferten Item-IDs mit jeweils Farmer- und Merchant-Regel sind durch den kompakten Export berücksichtigt.
+
+
+## Live-B-Paket
+
+`dist/albot.package.json` liefert ab 0.2.0-live-b das Schema `albot.live-b/v1`. Zuerst Paket, dann passendes Profil laden. Der Formulargenerator braucht keine neue Sonderoberfläche. Neue Profile haben `general.autostart: true`; explizite Werte in gespeicherten Nutzerprofilen werden nicht heimlich überschrieben. Historische A-Profile werden über `scripts/export-live-b.mjs` gezielt erweitert; dieser Übergang setzt nach Nutzerwunsch Autostart true und erzeugt einen neuen Ordner.
+
+`maxActions` ist eine neue Economy-Regelgrenze pro CODE-Instanz. Die Bankgold-Einstellung betrifft Bankbesuche. Nicht integrierte Felder (u. a. Merrit, Fishing/Mining, Ponty, Task-Halte-/Starvationzeiten, Recipe-/Fallback-Auswahl) bleiben im vollständigen geplanten Schema, werden aber im B-Paket weggelassen. Vollständiger Umfang ist weiterhin Roadmap, kein Funktionsversprechen des Teilrelease.

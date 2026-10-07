@@ -29,6 +29,15 @@ test('slot substitution after acceptance never sends the replacement item',()=>{
  const {A,sends}=pair();A.logistics.poll();A.p.c.items[0]={name:'sword',level:9};A.logistics.poll();assert.equal(sends(),0);
 });
 
+test('empty recipient advertises requested upgrade level and rejects another variant',()=>{
+ const {A,B,sends}=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ A.cfg.items=[{...r,item:'helmet',role:'merchant',action:'send',recipient:'B',minLevel:0,maxLevel:1,keep:0,batch:1},{...r,item:'helmet',role:'farmer',action:'keep',minLevel:1,maxLevel:1,targetCount:1,maxCount:1}];
+ A.p.c.items[0]={name:'helmet',level:0};B.p.c.items[0]=null;
+ const demand=B.logistics.summary()[0];assert.equal(demand.variant.level,1);assert.equal(demand.need,1);
+ A.logistics.poll();assert.equal(A.logistics.stats().offersSent,0);
+ A.p.c.items[0].level=1;A.logistics.poll();A.logistics.poll();assert.equal(sends(),1);assert.equal(B.p.c.items[0].level,1);
+});
+
 test('merchant skips stocked item and supplies the item the peer actually needs',()=>{
  const {A,B,sends}=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
  A.cfg.items=[

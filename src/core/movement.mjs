@@ -6,6 +6,7 @@ export function createMovement(bot){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order)return false;
+    if(p.c.stand){exec.run('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return false;}
     const dest={...d,radius:d.radius??20};
     // Smart movement can enter public maps; never attempt somebody else's instance.
     if(!samePlace(p.c,d)&&p.G.maps[d.map]?.instance){bot.reason='Zielinstanz nicht erreichbar';return false;}

@@ -1,7 +1,7 @@
 {
   "format": "albot-profile",
   "formatVersion": 1,
-  "schemaId": "albot.config/v1",
+  "schemaId": "albot.live-b/v1",
   "config": {
     "general": {
       "name": "Mein Super-Bot",
@@ -15,17 +15,13 @@
       "maxPending": 32,
       "messageTtlMs": 10000,
       "ui": true,
-      "autoUpdate": false,
-      "updateChannel": "stable",
       "pauseOnUnknown": true
     },
-    "characters": [],
     "farming": {
       "enabled": true,
       "targets": [
         "goo"
       ],
-      "mode": "balanced",
       "autoTravel": true,
       "loot": true,
       "lootEveryMs": 1000,
@@ -42,30 +38,24 @@
       "kiting": true,
       "rangeBuffer": 15,
       "maxAggro": 2,
-      "avoidOthers": true,
-      "pvp": false
+      "avoidOthers": true
     },
     "party": {
       "enabled": true,
       "group": "team1",
-      "leader": "",
+      "leader": "Farmer1",
       "merchant": "",
-      "selection": "fixed",
       "maxFarmers": 3,
       "followDistance": 180,
       "focusFire": true,
-      "waitForTeam": true,
+      "waitForTeam": false,
       "healing": true,
       "energize": true,
       "buffs": true,
       "revive": true,
       "aoe": false,
-      "aoeMaxTargets": 3,
-      "rotationCooldownMs": 60000,
-      "aura": "auto",
-      "auraHoldMs": 30000
+      "aoeMaxTargets": 3
     },
-    "skills": [],
     "merchant": {
       "enabled": true,
       "goldReserve": 100000,
@@ -90,17 +80,23 @@
       "bankBudget": 0,
       "bankGold": false,
       "goldTarget": 200000,
-      "taskHoldMs": 30000,
-      "starvationMs": 120000,
-      "ponty": false,
-      "pontyMaxSpend": 100000,
-      "bargainRatio": 0.65,
-      "giveaways": false,
-      "merrit": false,
-      "fishing": false,
-      "mining": false,
-      "toolBudget": 10000
+      "giveaways": false
     },
+    "characters": [
+      {
+        "name": "Farmer1",
+        "enabled": true,
+        "class": "ranger",
+        "role": "farmer",
+        "group": "team1",
+        "region": "EU",
+        "server": "II",
+        "farmTargets": [],
+        "goldReserve": 10000,
+        "gearRole": "auto"
+      }
+    ],
+    "skills": [],
     "items": [],
     "production": {
       "enabled": false,
@@ -123,24 +119,6 @@
         "exchange"
       ],
       "goals": []
-    },
-    "world": {
-      "bosses": false,
-      "events": false,
-      "quests": false,
-      "anniversary": false,
-      "allowedBosses": [],
-      "allowedEvents": [],
-      "excludedMaps": [],
-      "risk": "conservative",
-      "serverHop": false,
-      "allowedRealms": [],
-      "hopCooldownMs": 300000,
-      "magiport": false,
-      "learning": true,
-      "learningWeight": 0.15,
-      "cacheTtlMs": 60000
-    },
-    "rules": []
+    }
   }
 }

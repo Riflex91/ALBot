@@ -18,6 +18,7 @@ export const ITEM_RULE = obj('Item-Regel',{
   map:text('Nur Karte (leer = alle)'),server:text('Nur Realm, z. B. EUII (leer = alle)'),task:text('Nur Aktivität (leer = alle)'),
   action:choice('Aktion',actions),keep:int('Mindestbestand behalten',0),targetCount:int('Zielbestand',100),requestBelow:int('Nachschub anfordern bei Bestand ≤ (0 = unter Zielbestand)',0),maxCount:int('Maximalbestand',1000),batch:int('Maximale Menge je Aktion',100,1),
   recipient:text('Lieferempfänger','',{'x-catalog':'characters'}),teamReserve:int('Zusätzliche Teamreserve',0),
+  maxActions:int('Maximale Economy-Aktionen pro Botstart (0 = unbegrenzt)',0,0,1000000),
   minPrice:int('Mindestverkaufspreis pro Stück',1,1),maxPrice:int('Maximaler Kaufpreis pro Stück',1000,1),priceSource:choice('Preisquelle',{fixed:'Fester Grenzpreis',market:'Aktuelle Marktbeobachtung',npc:'NPC-Preis'}),
   goldBudget:int('Goldbudget je Auftrag',10000),lossBudget:int('Maximaler möglicher Itemverlust in Gold',0),
   targetLevel:int('Ziellevel bei Verarbeitung',1,0,99),scroll:text('Scroll-ID (leer = nach Grade)','',{'x-catalog':'items'}),offering:text('Offering-ID (leer = keines)','',{'x-catalog':'items'}),minChance:num('Mindest-Erfolgschance (0–1)',1,0,1),
@@ -31,7 +32,7 @@ export const DESCRIPTOR = {
   format:'albot-settings',formatVersion:1,schemaId:'albot.config/v1',
   schema:obj('ALBot-Konfiguration',{
     general:obj('Projekt & Betrieb',{
-      name:text('Profilname','Mein Super-Bot',{minLength:1}),autostart:flag('Beim Laden starten'),environment:choice('Ausführungsart',{auto:'Automatisch erkennen'},'auto'),
+      name:text('Profilname','Mein Super-Bot',{minLength:1}),autostart:flag('Beim Laden starten',true),environment:choice('Ausführungsart',{auto:'Automatisch erkennen'},'auto'),
       combatTickMs:int('Kampfintervall (ms)',250,100,5000),economyTickMs:int('Economy-Intervall (ms)',2000,500,60000),planningTickMs:int('Strategie-Intervall (ms)',10000,1000,600000),
       transport:choice('Teamtransport',{auto:'Lokales IPC, sonst CM',ipc:'Nur lokales IPC',cm:'CM'}),allowRemoteCM:flag('CM zu konfigurierten externen Teammitgliedern'),
       maxPending:int('Maximal offene Aufträge',32,1,256),messageTtlMs:int('Nachrichten gültig (ms)',10000,1000,120000),ui:flag('Ingame-Bedienpanel im Browser',true),
@@ -62,6 +63,7 @@ export const DESCRIPTOR = {
       position:obj('Standplatz',{enabled:flag('Fester Standplatz'),map:text('Karte','main'),x:num('X',0,-1000000,1000000),y:num('Y',0,-1000000,1000000)}),
       stand:flag('Stand automatisch öffnen'),mluck:flag('Mluck-Service',true),mluckOthers:flag('Mluck auch für andere Spieler'),massBuffs:flag('Produktions-/Exchange-Buffs',true),
       bank:flag('Bankaufträge',true),consolidate:flag('Bankbestände zusammenlegen'),expandBank:flag('Bankkapazität kaufen'),bankBudget:int('Budget für Bankerweiterung',0),
+      bankGold:flag('Goldbestand über Bank ausgleichen'),goldTarget:int('Gold-Zielbestand im Inventar',200000),
       taskHoldMs:int('Aufträge mindestens halten (ms)',30000,1000,600000),starvationMs:int('Maximale Wartezeit dringender Aufträge (ms)',120000,1000,3600000),
       ponty:flag('Ponty-Angebote prüfen'),pontyMaxSpend:int('Ponty-Budget je Kauf',100000),bargainRatio:num('Maximaler Anteil am geschätzten Marktwert',0.65,0,1),giveaways:flag('An Giveaways teilnehmen'),merrit:flag('Merrit-Belohnungen'),fishing:flag('Fishing'),mining:flag('Mining'),toolBudget:int('Werkzeugbudget',10000)
     }),

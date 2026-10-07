@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 import {DESCRIPTOR,ITEM_RULE} from '../lib/schema.mjs';
 import {checkDescriptor,defaultsFor,parseData,validateProfile,resolveItem,envelope,importProfile,exportBundle,checkPackage,addMissingDefaults,SLOT_LIMIT} from '../lib/contract.mjs';
-const profile=()=>defaultsFor(DESCRIPTOR.schema);
+const profile=()=>{const c=defaultsFor(DESCRIPTOR.schema);c.characters=[{...defaultsFor(DESCRIPTOR.schema.properties.characters.items),name:'Ranger'}];return c;};
 const rule=changes=>({...defaultsFor(ITEM_RULE),...changes});
 const query={item:'hpot1',role:'farmer',character:'Ranger',level:0,quantity:500,phase:'inventory'};
 const runtime={version:'test',schemaId:DESCRIPTOR.schemaId,contractVersion:1,code:'globalThis.started=globalThis.ALBotConfig.general.name;'};

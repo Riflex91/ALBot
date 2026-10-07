@@ -57,3 +57,12 @@ Ein Scheduler mit schneller Kampfspur und langsamen Economy-/Planungsspuren. Kei
 `on_destroy` zur Bereinigung verwenden. Browser-Hot-Reload ebenfalls explizit behandeln: alte lokale Botinstanz stoppen, Timer entfernen, Listener abmelden, verspätete Promises anhand der Generation ignorieren. Ein anderer Charakter im gleichen Browser darf davon nicht betroffen sein.
 
 STOP verhindert neue Spielaufträge; für bereits gesendete Aktionen nur noch Ergebnisse abgleichen. Pause, Wiederaufnahme und Charakter-Ausloggen sind unterschiedliche Befehle. Ein Bot-STOP muss keinen Clientprozess beenden.
+
+
+## Live-B-Erweiterung (0.2.0-live-b)
+
+Die öffentliche ALBot-API bleibt `start()`, `pause()`, `stop()`, `status()`, `testReport()`, `exportTestReport()`, `acknowledgeInventory()` und `dispose()`, plus `version` und `schemaId`. Neue Profile starten automatisch. Keine neue Host-API erforderlich: Economy verwendet dieselben Ports, `get`/`set`, Executor und persistente Wertjournale. `status().journal`/`inventoryBlocked` entscheiden über ungeklärte Aktionen; `acknowledgeInventory()` verlangt einen pausierten Bot und manuellen Bestandsabgleich.
+
+`albot.live-b/v1` ergänzt die tatsächlich verfügbaren Merchant-/Item-/Produktionseinstellungen. Regeln werden in acquisition, inventory und production aufgelöst; keep gilt phasenübergreifend. `maxActions` zählt pro Regel gestartete Economy-Aktionen in dieser CODE-Instanz (keine Lieferung, kein Verbrauch, keine vorgelagerte Bank-Stackteilung). Pause/Resume erhält die Zähler. Gold-/Verlustbudgets werden vor Dispatch namensgebunden gespeichert; konservativ keine Rückerstattung bei Fehlschlag/Unklarheit. Eine Produktion benötigt explizite Regeln für jeden Schritt. Planer maximal 256 Abhängigkeiten und konfigurierbare Rekursionstiefe.
+
+Testbericht enthält zusätzlich `economy`, `production`, `gear` und Live-B-Profilwerte. Gearprofile sind begrenzt und namensgebunden. Browser nutzt weiter performance_trick; keine DOM-/Node-Abhängigkeit in Fachmodulen. Neue API-Aufrufe werden im Executor ausgeführt, Inventaränderungen anhand aktueller Mengen/Identitäten bestätigt. `buy_with_gold` verhindert versehentlichen Shell-Kauf. Details, Grenzen und Testpfad: [LIVE-B.md](LIVE-B.md).

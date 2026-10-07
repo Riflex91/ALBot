@@ -4,9 +4,21 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {defaultsFor} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
+import {ECONOMY_DESCRIPTOR} from '../src/config/live-b.mjs';
 const code=readFileSync(new URL('../dist/albot.runtime.js',import.meta.url),'utf8');
+
+test('Live B defaults autostart in both environments and reports economy without experimental options',()=>{
+ for(const browser of [false,true]){
+  const a=harness('M'),cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(ECONOMY_DESCRIPTOR.schema.properties.characters.items),name:'M',role:'merchant',class:'merchant'}];cfg.party.merchant='M';cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;
+  a.root.ALBotConfig=cfg;a.c.ctype='merchant';a.c.gold=1000000;
+  if(browser){delete a.root.parent.headless;a.root.performance_trick=()=>{};}
+  a.load();assert.equal(a.root.ALBot.status().running,true,JSON.stringify(a.root.ALBot.status()));
+  assert.equal(a.root.ALBot.schemaId,'albot.live-b/v1');assert.equal(JSON.parse(a.root.ALBot.testReport()).test,'Live B');
+  assert.equal(cfg.merchant.fishing,undefined);a.root.ALBot.dispose();assert.equal(a.timers.size,0);
+ }
+});
 function harness(name='A',sharedParent=null){
- const cfg=defaultsFor(LIVE_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(LIVE_DESCRIPTOR.schema.properties.characters.items),name}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.autoTravel=false;cfg.farming.loot=false;
+ const cfg=defaultsFor(LIVE_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(LIVE_DESCRIPTOR.schema.properties.characters.items),name}];cfg.general.autostart=false;cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.autoTravel=false;cfg.farming.loot=false;
  const calls=[],timers=new Map(),storage=new Map(),listeners=new Set();let next=0;
  const parent=sharedParent??{server_region:'EU',server_identifier:'II',entities:{},headless:{apiVersion:1,capabilities:{localMessages:true},send:async()=>({queued:[]}),onMessage:f=>{listeners.add(f);return ()=>listeners.delete(f);}},caracAL:{siblings:[]}};
  const c={name,type:'character',ctype:'ranger',map:'main',in:'main',x:0,y:0,hp:100,max_hp:100,mp:100,max_mp:100,range:100,attack:20,level:60,items:Array(42).fill(null),s:{},slots:{}};
@@ -59,6 +71,6 @@ test('unavailable or failing browser performance trick is diagnosed without prev
 test('expected attack and loot races are transient diagnostics, not hard incidents',async()=>{
  const a=harness();a.cfg.farming.loot=true;a.root.parent.entities={goo:{id:'goo',type:'monster',mtype:'goo',hp:100,x:10,y:10,target:null}};
  a.root.attack=()=>Promise.reject(new Error('not_there'));a.root.loot=()=>Promise.reject(new Error('openning'));
- a.load();a.root.ALBot.start();await Promise.resolve();await Promise.resolve();
+ a.load();a.root.ALBot.start();await new Promise(resolve=>setImmediate(resolve));
  const report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.actionStats.attack.transient,1);assert.equal(report.actionStats.attack.transientReasons.not_there,1);assert.equal(report.actionStats.loot.transient,1);assert.equal(report.actionStats.loot.transientReasons.openning,1);assert.equal(report.incidents.some(x=>x.where==='attack'||x.where==='loot'),false);assert.equal(a.root.ALBot.status().target,null);a.root.ALBot.dispose();
 });

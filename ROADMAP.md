@@ -1,6 +1,6 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 
-Stand: 6. Oktober 2026. **Werkstatt 2.0 und P1/P2-Testkandidat 0.1.4-live-a implementiert. Der dritte Browser-Teamlauf bestätigt persistenten Checkpoint und aktiven Teamkampf; die ausbleibende Lieferung wurde auf eine `hpot1`/`hpot0`-Profilabweichung und die bisherige Ein-Empfänger-Regelauswahl zurückgeführt. `0.1.4-live-a` unterstützt mehrere Lieferempfänger pro Item und eine eigene Nachschubschwelle. Live-Wiederholung und Headless-Nachweis bleiben offen; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
+Stand: 7. Oktober 2026. **Live A grundlegend bestanden (kurze Browser-/Windows-Headless-Läufe mit 0.1.4). 0.2.0-live-b bereitet den nächsten Test vor. P3/P4 sind teilweise implementiert, kein Live-B-Ergebnis vorweggenommen.**Werkstatt 2.0 und P1/P2-Testkandidat 0.1.4-live-a implementiert. Der dritte Browser-Teamlauf bestätigt persistenten Checkpoint und aktiven Teamkampf; die ausbleibende Lieferung wurde auf eine `hpot1`/`hpot0`-Profilabweichung und die bisherige Ein-Empfänger-Regelauswahl zurückgeführt. `0.1.4-live-a` unterstützt mehrere Lieferempfänger pro Item und eine eigene Nachschubschwelle. Live-Wiederholung und Headless-Nachweis bleiben offen; siehe [Auswertung](docs/LIVE-A-ERGEBNIS.md).**
 
 Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Der Teilrelease konsumiert bereits das reduzierte Schema albot.live-a/v1; die übrigen Spielmodule folgen. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator neu zu programmieren.
 
@@ -161,7 +161,7 @@ Der Client bietet bereits lokale Nachrichten und Prozessverwaltung, jedoch keine
 
 Diese Planung verspricht Funktionszusammenführung, keinen heute bereits fertigen Bot und keine aus früheren Projekten abgeleitete Garantie für fehlerfreien Dauerbetrieb.
 
-## 7. Übergabe an Live A
+## 7. Historische Übergabe an Live A
 
 Testkandidat und Ablauf: [docs/LIVE-A.md](docs/LIVE-A.md). Build, Syntax, Paket-Hash, Größenlimit und 21 gezielte Tests bestanden. Darunter Kontextisolation, Stop/Reload, fehlende jsdom-Hilfsfunktionen, Item-Identität, Reserven sowie Annahme und beidseitiger Mengenabgleich einer Lieferung. Keine Shadow-Tests, kein echter Login, kein Live- oder Linux-Erfolg behauptet. P3-P6 bleiben offen. Die aktive Client-Konfiguration wurde nicht umgestellt.
 
@@ -172,3 +172,12 @@ Vom Nutzer gelieferte Screenshots belegen Browser-Goo-Kills und danach QuotaExce
 ### Live-A-Korrektur 0.1.3 (6. Oktober 2026)
 
 Der zweite Browser-Teamtest mit `0.1.2-live-a` hat den früheren Storage-/CM-Blocker beseitigt: alle vier Berichte verwenden einen persistenten Checkpoint und alle drei Ranger kämpfen gegen `goo`. Gefunden wurden stattdessen zwei konkrete Laufzeitgrenzen. Erstens konnte ein nicht benötigtes erstes Supply-Item weitere benötigte Items für denselben Empfänger bis zum Timeout verdrängen. `0.1.3-live-a` bindet Angebote deshalb an den frischen gemeldeten Empfängerbedarf, begrenzt die Menge auf `need` und führt Item-spezifische Angebots-Cooldowns. Zweitens werden die bekannten Adventure-Land-Races `attack:not_there` und `loot:openning` als transiente Zustände behandelt und aggregiert berichtet, während unbekannte Fehler weiterhin Incidents bleiben. Skillbedingungen unterscheiden nun explizit den eigenen `hpRatio` vom `targetHpRatio` des aktuellen Gegners. Testberichte enthalten dauerhafte `actionStats` und Logistikzähler. Gezielt geprüft wurden Syntax des zusammengesetzten Runtime-Bundles, Demand-Supply und die beiden transienten Fehlerpfade; echter Wiederholungslauf und Headless bleiben ausstehend.
+
+
+## 8. Aktueller Stand: Live B vorbereitet
+
+Der Folgeauftrag autorisiert Entwicklung bis zum nächsten Live-Test. Live A: Browser-Teamkampf/Verbrauch und fünf bestätigte Merchant-Lieferungen; Windows headless sechs bestätigte Lieferungen und fünf Trankverwendungen, ohne ungeklärtes Inventar. Kurze Funktionsnachweise, kein Dauerlauf und kein Linuxnachweis.
+
+Implementiert und mit 46 gezielten Offlineprüfungen geprüft: gemeinsame Aktionsphasen, Bank/NPC-/Marktgrundlagen, persistente Ausgaben-/Verlustgrenzen, exakte Variantenmeldungen, Upgrade/Compound-Chanceabfrage, gewöhnliche Rezepte/Exchange, begrenzte Produktionspläne und Geargrundlagen. Vier exportierbare Live-B-Profile führen Abholung → Bank → NPC → günstiges Upgrade → Lieferung durch. Autostart ab jetzt standardmäßig true. Build/Syntax/Paket/Größe geprüft; kein Shadow-Test und kein neuer Login.
+
+Die offenen P3/P4-Häkchen bleiben bewusst offen, soweit sie umfangreichere Fähigkeiten umfassen: faire langfristige Priorisierung, Teilentnahme großer Bankstapel, Merrit/Fishing/Mining/Ponty, empirische Beschaffungsoptimierung und vollständige Account-Ziele. Diese Restarbeiten werden nach Rückmeldung zum Kernablauf weitergeführt; der nächste Test ist ein Merchant-Kettentest, keine Vollfreigabe von P4. Details und exakt begrenzte Aktionen: [LIVE-B.md](docs/LIVE-B.md).

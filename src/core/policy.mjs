@@ -2,7 +2,7 @@ import {ruleRank} from '../../editor/lib/contract.mjs';
 export const xy=e=>({x:e?.real_x??e?.x,y:e?.real_y??e?.y});
 export const distance=(a,b)=>Math.hypot(xy(a).x-xy(b).x,xy(a).y-xy(b).y);
 export const samePlace=(a,b)=>!!a&&!!b&&a.map===b.map&&String(a.in??a.map)===String(b.in??b.map);
-export const protectedItem=i=>!i||!!(i.l||i.b||i.bound||i.locked||i.equipped||i.reserved);
+export const protectedItem=i=>!i||!!(i.l||i.b||i.bound||i.locked||i.equipped||i.reserved||i.giveaway);
 export const identity=i=>i?JSON.stringify([i.name,i.level??0,i.stat_type??'',i.p??'',i.title??'',i.acc??'',i.rid??'',i.l??'',i.b??'']):'';
 export const fingerprint=i=>identity(i)+':'+(i?.q??1);
 export function chooseRule(rules,item,context){

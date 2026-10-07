@@ -1,26 +1,26 @@
 [
   {
     "name": "01-abholung",
-    "version": "0.2.1-live-b",
-    "bytes": 133272,
+    "version": "0.2.2-live-b",
+    "bytes": 134400,
     "autostart": true
   },
   {
     "name": "02-bank",
-    "version": "0.2.1-live-b",
-    "bytes": 133122,
+    "version": "0.2.2-live-b",
+    "bytes": 134250,
     "autostart": true
   },
   {
     "name": "03-bank-npc",
-    "version": "0.2.1-live-b",
-    "bytes": 133278,
+    "version": "0.2.2-live-b",
+    "bytes": 134406,
     "autostart": true
   },
   {
     "name": "04-upgrade-lieferung",
-    "version": "0.2.1-live-b",
-    "bytes": 133753,
+    "version": "0.2.2-live-b",
+    "bytes": 134881,
     "autostart": true
   }
 ]

@@ -73,13 +73,13 @@ Fertig, wenn normales Farmen und Teamkommunikation in beiden Umgebungen funktion
 ### P3 — Merchant, alle Item-Regeln und lokale Oberfläche
 
 - [x] Lokalen Editor mit Katalog aus den verfügbaren Spieldaten bauen; jedes Item einzeln suchbar, Rollen- und Charakterausnahmen, Kopieren/Mehrfachbearbeitung und erweiterbare Schema-Vorgaben.
-- [ ] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen.
-- [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Priorität und Filter sind für Live-A-Items bereits in der Spiellaufzeit eingebunden; weitere Aktionsphasen folgen. Die Vorschau ist kein Shadow-Testlauf.
-- [ ] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze.
+- [x] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen. Implementiert in policy/economy/logistics/production; weitergehende accountweite Gearreservierung gehört zum offenen P4-Optimierungsblock.
+- [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Priorität und Filter gelten inzwischen in inventory/acquisition/production. Die Vorschau ist kein Shadow-Testlauf.
+- [x] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze. Regelgebundene Übergabe/Versorgung, Reserven und Platzgrenzen implementiert; A/B bestätigen die dokumentierten Lieferketten. Farmer→Merchant-Goldtransfer ist eine zusätzliche noch fehlende Automatik, kein behaupteter Bestandteil des Bank-Goldausgleichs.
 - [x] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget. 0.4.0 ergänzt opt-in-Teilentnahme mit temporärem Arbeitsbestand, persistentem Wiederanlauf und Rest-Rücklagerung; dieser neue Teil noch nicht live bestätigt.
-- [ ] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty.
-- [ ] Mluck-Service, Merchant-Buffs und faire Task-Priorisierung. Lange Markt-/Merrit-/Gathering-Aufgaben dürfen notwendigen Nachschub nicht verdrängen.
-- [ ] Wiederanlauf gleicht beobachtete Bestände ab; ein unklarer Transfer wird nicht blind erneut gesendet.
+- [x] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty. Regelgebundene Implementierung vorhanden, Marktvergleich als Median aktuell sichtbarer Angebote. Langzeitpreishistorie und kostenoptimale Beschaffung sind zusätzliche offene P4/P5-Arbeiten; nicht alle Handelswege sind live nachgewiesen.
+- [ ] Mluck-Service, Merchant-Buffs und faire Task-Priorisierung. Mluck/Buffs, Haltezeit/Alterung und Vorrang für Logistik sind implementiert. Noch offen: belastbar begrenzte Versorgungslatenz beim Übergang aus langen Gathering-/Merrit-Aufgaben; vorhandene Prioritätslogik nicht als umfassenden Nachweis ausgeben.
+- [x] Wiederanlauf gleicht beobachtete Bestände ab; ein unklarer Transfer wird nicht blind erneut gesendet. Wertjournal, beidseitiger Lieferabgleich und Sperre bei Unklarheit vorhanden; 0.4.0 ergänzt Bank-Zwischenzustand. Manuelle Aufklärung unbekannter Wertaktionen bleibt vorgesehen.
 
 Fertig, wenn die lokale Oberfläche ein gültiges, vollständiges Bundle erzeugt und Farmer/Merchant dieselben Regeln anwenden. Logikprüfungen an Regelpriorität, Mengenreserven und Item-Identität; gemeinsamer Live-Termin folgt nach P4.
 
@@ -92,6 +92,20 @@ Fertig, wenn die lokale Oberfläche ein gültiges, vollständiges Bundle erzeugt
 - [ ] Beschaffung nach Kosten, erwarteter Farmzeit, Dropquelle und passender aktueller Gruppe; keine Erfolgswahrscheinlichkeit als Garantie darstellen.
 - [ ] Fishing/Mining inklusive Werkzeugwechsel/-rückwechsel und sicherer Zone; Merrit, Teilnahme an Giveaways, geeignete Wishlist und begrenzte Schnäppchensuche.
 - [ ] Auto-Optimierung berücksichtigt accountweite Ziele, aktuelle Preise und Verlustregeln. Alte Zahlen wie 150M/170M oder 80 Prozent werden veränderbare Profile, keine versteckten universellen Konstanten.
+
+**Konkreter P4-Reststand nach Codeabgleich vom 7. Oktober:**
+
+| Punkt | Bereits implementiert | Noch zu entwickeln / klären |
+|---|---|---|
+| Gear | Rollenbewertung, Live-Klassen-/Slotprüfung, Verbesserungsschwelle, bekannte Offlineprofile und Vorschläge | Gemeinsame Zielausrüstung/Reservierung für den ganzen Account, automatische Zuordnung und Beschaffungsplanung |
+| Upgrade/Compound | Ziellevel, identische Inputs, Scroll/Offering-Auswahl, Chancevorschau, Verlustreserve, Ergebnisabgleich | Vollständige Goldkostenbehandlung der Mutation überprüfen: Vorschau setzt cost derzeit auf 0; fehlende Hilfsmittel als automatische Plandependenzen aufnehmen |
+| Exchange/Craft | Gewöhnliche aktuelle G-Rezepte, Zutaten/Reserven, NPC-Reise, Craftkosten und beobachtete Änderungen | Freie Rezept-/Exchange-Zielangabe, umfassende Kapazitäts-/Stapelvorbereitung und Spezialrezepte |
+| Produktionsgraph | Bestand/Bank/NPC/Markt/Farm/Exchange/Craft/Mutation, Mengenallokation, Zyklen-/Tiefengrenze, bestätigte Ziellieferungen | Hilfsmittelabhängigkeiten und Kapazitätsplanung vervollständigen; vollständige v3-Autonomie nicht aus dem vorhandenen begrenzten Graph ableiten |
+| Beschaffungswahl | Dropquellen, erwartete Ausbeute, erlaubte Monster und Farmzeitlimit | Gemessene Killrate des aktuellen Teams statt fester Schätzung von 20 Kills/Stunde; Kosten-/Zeit-/Reisevergleich aller erlaubten Wege statt fester Wegreihenfolge |
+| Nebenaufgaben/Handel | Fishing/Mining, Werkzeugrückwechsel, Merrit, Giveaways, Wishlist und begrenzter Ponty-Scan | Versorgungslatenz/Unterbrechungsübergänge abschließen; neue 0.4.0-Bank-/Merrit-Pfade live bestätigen. Vorhandene Fähigkeiten benötigen keinen erneuten vollständigen Neubau |
+| Auto-Optimierung | Konfigurierbare Budgets/Ziele, aktueller Angebotsmedian, begrenzte Farmbewertung | Accountweiter gemeinsamer Optimierer, Markt-/Reise-/Gruppenmesswerte und kostenbewusste Zielpriorisierung |
+
+Die offenen P4-Häkchen bedeuten **teilweise implementiert, Zielumfang noch nicht vollständig erreicht**. Sie bedeuten nicht „kein Code vorhanden“. Ein bestandener Live-Test und die Anzahl gezielter Tests ersetzen diese Restarbeiten nicht. Die Priorität bleibt zunächst P3/P4 vervollständigen, danach optionaler Updater und abschließende Integration.
 
 **Live B – bestanden (Browser + Windows-Headless, 7. Oktober 2026):** Die festgelegte Kette Farmer sammelt → Merchant übernimmt → Bank/NPC → günstige freigegebene Verarbeitung → Lieferung wurde mit `0.2.2-live-b` vollständig live nachgewiesen. Browser und Headless bestätigten Wertaktionen durch beobachtete Inventar-/Bankänderungen; der abschließende Liefer-Handshake lief ohne Timeout bis `done`. Details: [docs/LIVE-B-ERGEBNIS.md](docs/LIVE-B-ERGEBNIS.md).
 

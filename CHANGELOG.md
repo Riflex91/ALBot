@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.3.2-live-c · 7. Oktober 2026 · Bee-Pfadsuche und Regelbesitz korrigiert
+
+- Vier Headless-Berichte des 0.3.1-Phase-02-Retests geprüft: kein `movement.failed` mehr, aber nur Ranger 3 aktivierte `farm:bee`; echte Bee-Angriffe wurden weiterhin nicht nachgewiesen.
+- `smart_move`-Pfadsuche darf länger als zwölf Sekunden ohne Positionsänderung rechnen. Erst nach gefundener Route zählt fehlender Positionsfortschritt wieder als Fehler; dann wird nach drei Sekunden neu geplant und `movement.failed: no_progress` protokolliert.
+- Ein expliziter, zeitlich begrenzter `farm:<ziel>`-Auftrag aus einer Verhaltensregel behält während seiner TTL Vorrang vor normalem Follow-/Wait-for-Team. Damit wird ein Bee-Auftrag nicht unmittelbar zurück zum Goo-Leader gezogen.
+- Zwei gezielte Regressionen ergänzen genau diese Fehlerbilder. Der Bee-Live-Retest bleibt ausstehend; keine Live-C-Freigabe daraus abgeleitet.
+
+
 ## 0.3.1-live-c · 7. Oktober 2026 · Bee-Bewegung repariert
 
 - Acht Browserberichte geprüft: Normalbetrieb ohne Incidents; Bee-Regeln ausgelöst, aber neun fehlgeschlagene Bewegungen. Fishing war in beiden verwendeten Profilen ausgeschaltet.

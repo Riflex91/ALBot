@@ -1,1 +1,1 @@
-export const VERSION='0.3.3-live-c';
+export const VERSION='0.3.4-live-c';

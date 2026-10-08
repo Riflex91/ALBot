@@ -16,16 +16,18 @@ export function createGoldLogistics(bot){
    try{bot.beginValue({kind:'gold.receive',...job});send('goldAccept',{quantity:job.quantity});}catch(e){job=null;throw e;}
   }else if(job&&job.peer===from&&job.id===m.id&&job.session===m.session){
    if(m.type==='goldAccept'&&job.state==='offered'&&d.quantity===job.quantity)job.state='accepted';
+   if(m.type==='goldCancel'&&job.state==='receiving'&&!job.observed&&p.c.gold===job.before&&d.quantity===job.quantity&&d.notDispatched===true){bot.event('gold.cancelled',{id:job.id,peer:from,reason:'Sender hat Auftrag ohne Dispatch beendet; Empfängerbestand unverändert'});finished.set(job.id,Date.now());job=null;bot.endValue('confirmed');return;}
    if(m.type==='goldReceipt'&&job.state==='sent'&&d.quantity===job.quantity)job.receipt=true;
    if(m.type==='goldDone'&&job.state==='receiving'&&job.observed){finished.set(job.id,Date.now());job=null;bot.endValue('confirmed');}
   }
  }
+ function sendCancelled(j){transport.send(j.peer,'goldCancel',{quantity:j.quantity,notDispatched:true},j.id);bot.event('gold.cancelled',{id:j.id,state:j.state,reason:'Kein Goldversand ausgeführt'});}
  function poll(offer=false){
   const now=Date.now();for(const [id,at] of finished)if(now-at>120000)finished.delete(id);
   if(job){const j=job;
    if(j.state==='receiving'&&p.c.gold===j.before+j.quantity){j.observed=true;if(!j.lastReceipt||now-j.lastReceipt>1500){j.lastReceipt=now;send('goldReceipt',{quantity:j.quantity});}}
    if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+15000;return;}
-   if(now>j.until){job=null;next=now+15000;if(j.state!=='offered')bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
+   if(now>j.until){job=null;next=now+15000;if(j.state==='offered'||j.state==='accepted')sendCancelled(j);else bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
    if(j.state==='offered'&&now-j.lastOffer>1500){j.lastOffer=now;send('goldOffer',{quantity:j.quantity});}
    if(j.state==='accepted'){
     const guard=()=>bot.running&&!bot.journal&&!bot.inventoryBlocked&&!(bot.logistics.itemReserved??bot.logistics.reserved)&&!bot.bank?.pending&&!!near(j.peer)&&transport.fresh(j.peer)?.session===j.session&&Number.isSafeInteger(p.c.gold)&&surplus()>=j.quantity;
@@ -43,5 +45,5 @@ export function createGoldLogistics(bot){
    if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Goldüberschuss abholen: '+name;bot.movement.go({...h,radius:120},'gold');return true;
   }return false;
  }
- return {receive,poll,travel,surplus,get reserved(){return !!job;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const unknown=job&&job.state!=='offered';job=null;if(unknown)bot.endValue('unknown');}};
+ return {receive,poll,travel,surplus,get reserved(){return !!job;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
 }

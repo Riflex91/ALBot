@@ -21,7 +21,7 @@ export function createMerchant(bot){
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
   if(me.role==='merchant'&&!bot.movement.order)bot.reason=bot.production.status().blocked??'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
-  const jobs=[],add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,run,r});
+  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),run,r});
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
    for(const [phase,r] of [['inventory',inventory],['production',production]]){

@@ -56,3 +56,6 @@ test('monsterhunt uses interact, retains travel ownership, and confirms quest st
  assert.equal(strategy.quest(),true);assert.equal(strategy.busy,true);assert.equal(bot.movement.order.owner,'quest');strategy.plan();assert.equal(strategy.requestTask('farm:goo'),false);at=true;bot.movement.order=null;assert.equal(strategy.quest(),true);assert.deepEqual(calls,[['interact','monsterhunt']]);assert.equal(bot.journal,null);strategy.quest();assert.equal(strategy.busy,false);assert.equal(strategy.quest(),false);
  const follower=botFixture();follower.cfg.world.quests=true;follower.bot.me.name='B';follower.bot.economy={destination:()=>assert.fail('Follower must not start a competing quest trip')};assert.equal(createStrategy(follower.bot).quest(),false);
 });
+
+
+test('critical inventory space work overrides ordinary held market and production tasks',()=>{let now=1000;const tasks=createFairTasks({now:()=>now}),market={id:'market',priority:100},bank={id:'bank',priority:-400,critical:true};tasks.rank([market]);tasks.selected('market');now+=2000;assert.equal(tasks.rank([market,bank])[0].id,'bank');bank.critical=false;assert.equal(tasks.rank([market,bank])[0].id,'market');});

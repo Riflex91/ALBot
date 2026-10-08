@@ -5,7 +5,7 @@ export const FULL_DESCRIPTOR=structuredClone(P3P4_DESCRIPTOR);
 FULL_DESCRIPTOR.schemaId='albot.full/v1';FULL_DESCRIPTOR.schema.title='ALBot · Vollbetrieb';
 const bool=(title,value=false)=>({type:'boolean',title,default:value});
 const number=(title,value,minimum=0,maximum=1000000000)=>({type:'integer',title,default:value,minimum,maximum});
-Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{testLogging:bool('Fortlaufendes Testlog schreiben',true)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{testLogging:bool('Fortlaufendes Testlog schreiben',true),transferIntervalMs:number('Neue Übergabe frühestens nach (ms)',250,250,10000)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
  collectGold:bool('Farmer-Gold oberhalb ihrer Reserven abholen'),goldTransferMax:number('Gold je bestätigter Übergabe',100000,1),goldCollectBelow:number('Goldabholung erst ab Überschuss',10000,1),
  bankWorkspace:number('Freie Bankplätze je Pack anstreben',2,0,42),bankReclaim:bool('Bei Bankdruck explizit verkäuflichen Bestand zum NPC freigeben')
@@ -29,7 +29,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.skills.items.properties,{minTarg
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{adaptivePull:bool('Pullgröße aus tatsächlichen Kämpfen lernen',true),pullHp:{type:'number',title:'HP-Bereitschaft vor neuem Pull',default:.8,minimum:.1,maximum:1},pullMp:{type:'number',title:'MP-Bereitschaft vor neuem Pull',default:.5,minimum:0,maximum:1},potionUtilization:{type:'number',title:'Mindestnutzung eines Tranks außerhalb Notfall',default:.65,minimum:0,maximum:1},orbit:bool('Kampfbewegung am Farmanker halten',true)});
 
-Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{townTravel:bool('Town und Laufen nach Reisezeit vergleichen',true),townMinSavingsMs:number('Mindestzeitgewinn durch Town (ms)',30000,1000,300000),servicePositionError:number('Maximale Unsicherheit eines Serviceziels (Pixel)',70,10,300)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{townTravel:bool('Town und Laufen nach Reisezeit vergleichen',true),townMinSavingsMs:number('Mindestzeitgewinn durch Town (ms)',3000,1000,300000),servicePositionError:number('Maximale Unsicherheit eines Serviceziels (Pixel)',70,10,300)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{orbitRadius:number('Maximaler Orbitabstand vom Farmanker',220,50,1000),knowledgeFreshMs:number('Lernwissen vollständig frisch (ms)',21600000,1000,604800000)});
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{materialPreference:{type:'number',title:'Materialnutzen relativ zu normalem Farmen',default:1.25,minimum:0,maximum:100},materialXpPerGold:{type:'number',title:'EXP-Nutzen je Goldwert des Materialziels',default:10,minimum:0,maximum:100000}});

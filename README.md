@@ -1,3 +1,9 @@
+# Aktuelle Livekorrektur 0.8.1-full
+
+Goldversand trotz laufender Farmbeute repariert, Town bei laufender Bewegung und geringerem Zeitgewinn, getrennten 250-ms-Übergabetakt eingebunden und Pickup-Pendel während Besorgung begrenzt. [Befunde, Änderungen und Umgang mit alter Goldsperre](docs/CHANGELOG-0.8.1.md). 158 Prüfungen unter Windows bestanden; neue Livebestätigung steht aus. Vorhandene Wertjournale werden nicht automatisch gelöscht.
+
+---
+
 # Aktueller Stand: gemeinsame Integration 0.8.0-full
 
 Die im v3/v4-Quellaudit benannten Fehler F01–F03 und Fachbereiche D01–D15 sind in die bestehende Runtime und Werkstatt integriert. [Umsetzung, Einstellungen und Grenzen](docs/PARITAET-0.8.0.md). Ein gemeinsames Browser-/Headless-Bundle mit erhaltenen Profilwerten; Autostart true. 154 gezielte Prüfungen bestanden unter Windows. Der nächste Schritt ist der gemeinsame Livetest; neue Livebestätigung und Linux-Livebetrieb stehen aus. Die folgenden Audit-/Releaseabschnitte dokumentieren frühere Stände.

@@ -1,3 +1,9 @@
+# Aktuelle Livekorrektur 0.8.1-full
+
+Goldversand trotz laufender Farmbeute repariert, Town bei laufender Bewegung und geringerem Zeitgewinn, getrennten 250-ms-Übergabetakt eingebunden und Pickup-Pendel während Besorgung begrenzt. Vor weiteren Änderungen docs/CHANGELOG-0.8.1.md lesen. [Befunde, Änderungen und Umgang mit alter Goldsperre](docs/CHANGELOG-0.8.1.md). 158 Prüfungen unter Windows bestanden; neue Livebestätigung steht aus. Vorhandene Wertjournale werden nicht automatisch gelöscht.
+
+---
+
 # Maßgeblicher Implementierungsstand 0.8.0-full
 
 Vor weiteren Änderungen docs/PARITAET-0.8.0.md lesen. F01–F03 und D01–D15 aus dem historischen v3/v4-Audit sind integriert; keine Gleichheit sämtlicher historischer Hotfix-Hilfsfunktionen behaupten. Gemeinsame Aktionsauswahl prüft Guards direkt vor Dispatch. Nicht ausgeführte Wertabsichten dürfen kein fremdes Journal abschließen. Gearzusage und Empfängerslot binden; vorhandene Gearquellen mit ihrem tatsächlichen Level anfordern. 154 gezielte Prüfungen unter Windows; neuer gemeinsamer Livetest und Linux bleiben offen. Profile, explizite Regeln, Budgets und Journale schützen. Keine Shadow-Tests, Updater oder automatischen Logins.

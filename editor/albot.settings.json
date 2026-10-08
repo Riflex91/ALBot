@@ -106,6 +106,13 @@
             "type": "boolean",
             "title": "Fortlaufendes Testlog schreiben",
             "default": true
+          },
+          "transferIntervalMs": {
+            "type": "integer",
+            "title": "Neue Übergabe frühestens nach (ms)",
+            "default": 250,
+            "minimum": 250,
+            "maximum": 10000
           }
         },
         "required": [
@@ -121,7 +128,8 @@
           "messageTtlMs",
           "ui",
           "pauseOnUnknown",
-          "testLogging"
+          "testLogging",
+          "transferIntervalMs"
         ],
         "additionalProperties": false
       },
@@ -1286,7 +1294,7 @@
           "townMinSavingsMs": {
             "type": "integer",
             "title": "Mindestzeitgewinn durch Town (ms)",
-            "default": 30000,
+            "default": 3000,
             "minimum": 1000,
             "maximum": 300000
           },

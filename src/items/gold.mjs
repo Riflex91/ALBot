@@ -24,12 +24,12 @@ export function createGoldLogistics(bot){
   const now=Date.now();for(const [id,at] of finished)if(now-at>120000)finished.delete(id);
   if(job){const j=job;
    if(j.state==='receiving'&&p.c.gold===j.before+j.quantity){j.observed=true;if(!j.lastReceipt||now-j.lastReceipt>1500){j.lastReceipt=now;send('goldReceipt',{quantity:j.quantity});}}
-   if(j.state==='sent'&&p.c.gold===j.before-j.quantity&&j.receipt){send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+15000;return;}
+   if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+15000;return;}
    if(now>j.until){job=null;next=now+15000;if(j.state!=='offered')bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
    if(j.state==='offered'&&now-j.lastOffer>1500){j.lastOffer=now;send('goldOffer',{quantity:j.quantity});}
    if(j.state==='accepted'){
-    const guard=()=>bot.running&&!bot.journal&&!bot.inventoryBlocked&&!(bot.logistics.itemReserved??bot.logistics.reserved)&&!bot.bank?.pending&&!!near(j.peer)&&transport.fresh(j.peer)?.session===j.session&&p.c.gold===j.before&&surplus()>=j.quantity;
-    exec.run('gold.send',['inventory','gold'],guard,()=>{bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
+    const guard=()=>bot.running&&!bot.journal&&!bot.inventoryBlocked&&!(bot.logistics.itemReserved??bot.logistics.reserved)&&!bot.bank?.pending&&!!near(j.peer)&&transport.fresh(j.peer)?.session===j.session&&Number.isSafeInteger(p.c.gold)&&surplus()>=j.quantity;
+    exec.run('gold.send',['inventory','gold'],guard,()=>{j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
    }return;
   }
   if(!offer||!cfg.merchant.collectGold||!cfg.merchant.enabled||me.role!=='farmer'||now<next||!idle()||surplus()<cfg.merchant.goldCollectBelow||!near(cfg.party.merchant))return;

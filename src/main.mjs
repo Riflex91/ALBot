@@ -76,7 +76,7 @@ export function install(root){
   if(!me){p.log('Eigenen Namen zuerst in der Werkstatt aktivieren.');failed('unconfigured','Eigenen Namen zuerst aktivieren');return;}
   report.configure?.({continuous:cfg.general.testLogging===true});
   const team=cfg.characters.filter(c=>c.enabled&&c.group===me.group),farmers=team.filter(c=>c.role==='farmer').map(c=>c.name);if(cfg.general.testLogging===undefined)farmers.sort();
-  const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,panel;
+  const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastTransfer=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,panel;
   const checkpoint=createCheckpoint(p,key,report);let journal=checkpoint.journal;
   if(journal?.kind==='quest.monsterhunt'&&journal.quest==='monsterhunt'&&journal.cost===0&&journal.loss===0&&Array.isArray(journal.slots)&&journal.slots.length===0&&!p.G.skills?.monsterhunt){if(checkpoint.clear(journal)){report.event('checkpoint.repaired',{kind:journal.kind,reason:'Alter ungültiger use_skill(monsterhunt)-Aufruf ohne Inventarwirkung'});journal=null;}}
   const bot={p,cfg,me,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
@@ -123,7 +123,7 @@ export function install(root){
     if(bot.teamTravel?.blocked)return;
     bot.behavior?.tick();if(!bot.running)return;
     if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}
-    const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();bot.gold?.poll(economyDue);bot.logistics.poll(economyDue);
+    const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();const transferDue=now()-lastTransfer>=(cfg.general.transferIntervalMs??cfg.general.economyTickMs);if(transferDue)lastTransfer=now();bot.gold?.poll(transferDue);bot.logistics.poll(transferDue);
     if(!bot.running)return;
     bot.allocation?.tick();bot.teamPlan?.tick();bot.encounter?.tick();bot.content?.flush();if(economyDue){bot.strategy?.plan();bot.strategy?.sample();}
     if(bot.priority){bot.priority.run([

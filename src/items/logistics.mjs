@@ -93,7 +93,7 @@ export function createLogistics(bot){
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;
-        if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;
+        if(bot.movement.order?.owner==='economy'){if(!demand)continue;bot.movement.stop();}bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;
       }
     }
   }

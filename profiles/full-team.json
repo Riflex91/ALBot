@@ -16,7 +16,8 @@
       "messageTtlMs": 10000,
       "ui": true,
       "pauseOnUnknown": true,
-      "testLogging": true
+      "testLogging": true,
+      "transferIntervalMs": 250
     },
     "characters": [
       {
@@ -183,7 +184,7 @@
       "marketMinSamples": 3,
       "mluckTravel": true,
       "townTravel": true,
-      "townMinSavingsMs": 30000,
+      "townMinSavingsMs": 3000,
       "servicePositionError": 70
     },
     "items": [

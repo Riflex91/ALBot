@@ -1,3 +1,9 @@
+# Aktuelle Livekorrektur 0.8.1-full
+
+Goldversand trotz laufender Farmbeute repariert, Town bei laufender Bewegung und geringerem Zeitgewinn, getrennten 250-ms-Übergabetakt eingebunden und Pickup-Pendel während Besorgung begrenzt. [Befunde, Änderungen und Umgang mit alter Goldsperre](docs/CHANGELOG-0.8.1.md). 158 Prüfungen unter Windows bestanden; neue Livebestätigung steht aus. Vorhandene Wertjournale werden nicht automatisch gelöscht.
+
+---
+
 # Aktueller Umsetzungsstand · 0.8.0-full
 
 F01/F02/F03 und die abgegrenzten Fachbereiche D01–D15 des v3/v4-Audits sind umgesetzt und in Kampf, Produktion, Gear und Logistik verbunden. Maßgeblich: [PARITAET-0.8.0](docs/PARITAET-0.8.0.md). 154 gezielte Prüfungen bestanden; Browser-/Headless-Vertrag, Syntax und Bytegrenze geprüft. Nächster Schritt: gemeinsamer Vollbetrieb mit allen aktivierten Funktionen, aktuellen Charakterlogs und einem Neustart. Neue Livebestätigung und Linux-Livebetrieb bleiben ausstehend. Kein Updater, Shadow-Verfahren oder automatischer Login. Historische offene Häkchen unten beschreiben den jeweiligen früheren Release; sie ersetzen nicht die aktuelle Umsetzungsmatrix.

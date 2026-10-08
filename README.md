@@ -1,3 +1,9 @@
+# Aktueller Stand: gemeinsame Integration 0.8.0-full
+
+Die im v3/v4-Quellaudit benannten Fehler F01–F03 und Fachbereiche D01–D15 sind in die bestehende Runtime und Werkstatt integriert. [Umsetzung, Einstellungen und Grenzen](docs/PARITAET-0.8.0.md). Ein gemeinsames Browser-/Headless-Bundle mit erhaltenen Profilwerten; Autostart true. 154 gezielte Prüfungen bestanden unter Windows. Der nächste Schritt ist der gemeinsame Livetest; neue Livebestätigung und Linux-Livebetrieb stehen aus. Die folgenden Audit-/Releaseabschnitte dokumentieren frühere Stände.
+
+---
+
 # Aktueller Audit: v3/v4-Parität noch unvollständig
 
 Der erneute Quellvergleich von 0.7.0 findet verbleibende Unterschiede bei Pull-/AoE-Steuerung, Bewegung, Gear-Lieferung, wirtschaftlicher Disposition, Materialplanung und Fähigkeitenkoordination. Die vorhandenen Ergänzungen sind keine vollständige Funktionsgleichheit. Maßgeblich sind [V3-V4-PARITAET-0.7.0](docs/V3-V4-PARITAET-0.7.0.md) mit 15 abgegrenzten Restbereichen und drei eingegrenzten Implementierungsbefunden sowie das vollständige Modulinventar. Runtime und persönliche Botdateien wurden bei diesem Audit nicht geändert.

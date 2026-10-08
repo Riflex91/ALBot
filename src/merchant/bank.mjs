@@ -90,7 +90,7 @@ export function createBank(bot){
  }
  function reclaim(){if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<=cfg.merchant.minFreeSlots)return false;
   for(const [pack,items] of packs()){if(packMap(pack)!==p.c.map||items.filter(i=>!i).length>=(cfg.merchant.bankWorkspace??2))continue;
-   for(let slot=0;slot<items.length;slot++){const item=items[slot],r=item&&e.explicit(item);if(!e.safe(item)||r?.action!=='sell'||!e.remaining(r)||r.keep||r.teamReserve||(item.q??1)>r.batch||e.count(item)+(item.q??1)>r.maxCount||!Number.isFinite(e.value(item))||e.value(item)<r.minPrice||bot.production?.reserved(item)||bot.production?.status().steps?.some(s=>s.item===item.name)||(cfg.production.goals??[]).some(g=>g.enabled&&g.item===item.name)||(cfg.production.gearTargets??[]).some(g=>g.enabled&&g.item===item.name))continue;
+   for(let slot=0;slot<items.length;slot++){const item=items[slot],r=item&&(e.explicit(item)??bot.intelligence?.disposition(item));if(!e.safe(item)||r?.action!=='sell'||!e.remaining(r)||r.keep||r.teamReserve||(item.q??1)>r.batch||e.count(item)+(item.q??1)>r.maxCount||!Number.isFinite(e.value(item))||e.value(item)<r.minPrice||bot.production?.reserved(item)||bot.production?.status().steps?.some(s=>s.item===item.name)||(cfg.production.goals??[]).some(g=>g.enabled&&g.item===item.name)||(cfg.production.gearTargets??[]).some(g=>g.enabled&&g.item===item.name))continue;
     const before=e.count(item),bankBefore=variantCount(items,item),fp=fingerprint(item),dest=p.c.items.findIndex(i=>!i),q=item.q??1;
     const record={item:{...item},pack,slot,dest,before,bankBefore,quantity:q,gold:p.c.gold};if(!p.write(reclaimKey,record))return false;reclaiming=record;
     return e.perform('bank.reclaim',{guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>e.count(item)===before+q&&variantCount(p.c.bank?.[pack]??[],item)===bankBefore-q,details:{item:item.name,quantity:q,pack,reason:'Bankdruck; explizite NPC-Verkaufsregel ohne Reserven'}});
@@ -102,7 +102,7 @@ export function createBank(bot){
   const count=e.count(r.item),bank=variantCount(p.c.bank?.[r.pack]??[],r.item);
   if(count===r.before&&p.c.gold>r.gold){if(p.write(reclaimKey,null))reclaiming=null;return true;}
   if(count===r.before&&p.c.bank&&bank===r.bankBefore){if(p.write(reclaimKey,null))reclaiming=null;return true;}
-  const item=p.c.items[r.dest],rule=item&&e.explicit(item);
+  const item=p.c.items[r.dest],rule=item&&(e.explicit(item)??bot.intelligence?.disposition(item));
   if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity});return true;}
   e.note('Bankfreigabe: Bestand oder Verkaufsregel geändert; Auftrag benötigt Prüfung');return true;
  }

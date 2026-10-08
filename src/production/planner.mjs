@@ -1,8 +1,9 @@
+import {killQuantile} from './probability.mjs';
 import {materialDrops} from './materials.mjs';
 import {findRecipe,recipeIngredients} from './recipes.mjs';
 // Bounded dependency planning: stock -> bank/NPC -> recipe/mutation -> farm.
 // Plans never dispatch actions and never override an explicit keep rule.
-export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,maxDepth=8,permit=()=>true,score=null,recipeFor=()=>'',helpers=()=>[]}){
+export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,maxDepth=8,permit=()=>true,score=null,recipeFor=()=>'',helpers=()=>[],confidence='mean'}){
  const steps=[],visiting=new Set(),allocated=new Map(),bankAllocated=new Map(),surplus=new Map();let nodes=0;
  function need(name,l,q,depth){
   const key=name+':'+l;if(++nodes>256)throw Error('Produktionsplan überschreitet 256 Abhängigkeiten');if(!Number.isSafeInteger(q)||q<1)throw Error('Ungültige Produktionsmenge');if(depth>maxDepth)throw Error('Produktionstiefe überschritten: '+key);
@@ -28,7 +29,7 @@ export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allo
     const yieldCount=recipe.q??recipe.quantity??1;if(!Number.isSafeInteger(yieldCount)||yieldCount<1)throw Error('Unbekannte Rezeptmenge: '+name);
     const batches=Math.ceil(q/yieldCount);for(const row of recipeIngredients(recipe))need(row.item,row.level,row.quantity*batches,depth+1);
     surplus.set(key,(surplus.get(key)??0)+batches*yieldCount-q);
-    steps.push({kind:'craft',item:name,level:0,quantity:batches,recipe:found.key});return;
+    steps.push({kind:'craft',item:name,level:0,quantity:batches,outputQuantity:batches*yieldCount,recipe:found.key});return;
    }
    const meta=G.items?.[name];if(['upgrade','compound'].includes(way)){
     const kind=way;need(name,l-1,q*(kind==='compound'?3:1),depth+1);for(const h of helpers(name,l-1,kind))need(h.item,h.level??0,h.quantity*q,depth+1);steps.push({kind,item:name,level:l-1,targetLevel:l,quantity:q});return;
@@ -36,7 +37,7 @@ export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allo
    if(way==='exchange'){
     for(const [source,meta] of sources){
      const yieldPerExchange=materialDrops(G,G.drops?.[source]).filter(x=>x.item===name).reduce((n,x)=>n+x.chance*x.quantity,0);if(!(yieldPerExchange>0))continue;
-     const attempts=Math.ceil(q/yieldPerExchange);need(source,0,attempts*meta.e,depth+1);steps.push({kind:'exchange',item:source,level:0,quantity:attempts,output:name,probabilistic:true});return;
+     const rewards=materialDrops(G,G.drops?.[source]).filter(x=>x.item===name),probability=Math.min(1,rewards.reduce((n,x)=>n+x.chance,0)),successes=Math.ceil(q/Math.min(...rewards.map(x=>x.quantity)));const attempts=confidence==='p90'?killQuantile(probability,successes,.9):Math.ceil(q/yieldPerExchange);need(source,0,attempts*meta.e,depth+1);steps.push({kind:'exchange',item:source,level:0,quantity:attempts,output:name,probabilistic:true});return;
     }
    }
    if(way==='marketBuy'){steps.push({kind:'marketBuy',item:name,level:l,quantity:q});return;}

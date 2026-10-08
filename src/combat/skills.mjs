@@ -1,6 +1,7 @@
 import {distance,samePlace,matches} from '../core/policy.mjs';
 import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
+export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 export function createSkills(bot){
   const {p,cfg,exec}=bot,last=new Map();
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
@@ -17,25 +18,25 @@ export function createSkills(bot){
     const off=p.G.items[c.slots?.offhand?.name];if(s.offhand_type&&off?.type!==s.offhand_type&&off?.wtype!==s.offhand_type)return false;
     if(asArray(s.slot).some(v=>!Array.isArray(v)||c.slots?.[v[0]]?.name!==v[1]))return false;
     if(s.consume&&!bot.canConsumeImplicit(s.consume))return false;
-    if(s.condition&&!s.toggle&&(target??c).s?.[s.condition])return false;
+    if(s.condition&&!s.toggle&&conditionActive(target??c,s.condition))return false;
     if(target&&s.hostile&&(target.immune===true||target.invincible||['entangle','stomp'].includes(id)&&Object.keys(target.s??{}).some(k=>p.G.conditions?.[k]?.immune)))return false;
     if(target){if(!samePlace(c,target)||(!target.rip&&target.hp<=0))return false;const range=s.range??((c.range??0)*(s.range_multiplier??1)+(s.range_bonus??0));if(distance(c,target)>range)return false;if(s.no_self&&target.name===c.name)return false;}
     return true;
   }
   function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false){
-    const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro'}[id];if(!explicit&&role&&roles?.[role]&&roles[role]!==p.c.name)return false;
+    const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro',agitate:'aggro',huntersmark:'mark'}[id];if(!explicit&&role){let owner=roles?.[role];if(bot.capabilities){if(!owner||!bot.capabilities.available(owner,id,target))owner=(bot.farmers??[]).filter(n=>bot.capabilities.available(n,id,target)).sort()[0];}if(owner&&owner!==p.c.name)return false;}
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
     if(id==='energize'&&!cfg.party.energize||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;
     if(!explicit&&cfg.skills.some(r=>r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype)))return false;
     if((last.get(id)??0)+every>Date.now()||!(cfg.general.testLogging!==undefined?FULL_SKILLS:SUPPORTED_SKILLS).includes(id))return false;
-    const s=p.G.skills[id];if(!s)return false;
+    const s=p.G.skills[id];if(!s)return false;const control=cfg.skills.find(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype));
     let extra,argsTarget=target;
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
     const candidates=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
-    if(multi){if(!cfg.party.aoe||candidates.length<2||candidates.length>Math.min(maxTargets,cfg.party.aoeMaxTargets)||candidates.some(e=>!bot.allowed(e)||!e.target||!bot.teamNames.includes(e.target)))return false;argsTarget=['cleave','stomp'].includes(id)?null:candidates.slice(0,id==='3shot'?3:5);target=candidates[0];}
+    if(multi){if(!cfg.party.aoe||candidates.length<(control?.minTargets??2)||candidates.length>Math.min(maxTargets,cfg.party.aoeMaxTargets)||candidates.some(e=>!bot.allowed(e)||!e.target||!bot.teamNames.includes(e.target)))return false;argsTarget=['cleave','stomp'].includes(id)?null:candidates.slice(0,id==='3shot'?3:5);target=candidates[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}
-    let burstMana=0;if(id==='cburst'){const budget=Math.floor(p.c.mp-p.c.max_mp*reserve-(s.mp??0));burstMana=Math.min(budget,Math.ceil((target?.hp??0)/Math.max(.001,s.ratio??.5)));if(!target||burstMana<=0)return false;argsTarget=[[target.id,burstMana]];}
+    let burstMana=0;if(id==='cburst'){const budget=Math.floor(Math.min(p.c.mp-p.c.max_mp*reserve-(s.mp??0),p.c.max_mp*(control?.manaBudget??1)));burstMana=Math.min(budget,Math.ceil((target?.hp??0)/Math.max(.001,s.ratio??.5)));if(!target||burstMana<=0)return false;argsTarget=[[target.id,burstMana]];}
     const consume=s.consume,prior=consume?bot.count(consume):0;
     if(s.hostile&&target&&target.type!=='monster')return false;
     if(s.target&&!target)return false;
@@ -73,7 +74,7 @@ export function createSkills(bot){
   function custom(target){for(const r of cfg.skills.filter(r=>r.enabled&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype)).sort((a,b)=>b.priority-a.priority)){
     const s=bot.measure(target);if(!matches(r.conditions,s))continue;
     const allies=bot.allies().filter(e=>!e.rip);const t=r.target==='enemy'?target:r.target==='self'?p.c:r.target==='leader'?bot.entity(bot.leader):allies.sort((a,b)=>r.target==='lowestHp'?a.hp/a.max_hp-b.hp/b.max_hp:a.mp/a.max_mp-b.mp/b.max_mp)[0];
-    if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
+    if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
   }return false;}
   function rotation(t){
     if(custom(t)||support())return;

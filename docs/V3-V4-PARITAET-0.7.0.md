@@ -1,3 +1,5 @@
+> Historischer Audit des Standes 0.7.0. Die anschließende Umsetzung F01–F03/D01–D15 ist in [PARITAET-0.8.0](PARITAET-0.8.0.md) dokumentiert; neue gemeinsame Livebestätigung steht aus.
+
 # Erneuter Quellvergleich: v3/v4 und ALBot 0.7.0
 
 Stand: 8. Oktober 2026. **ALBot hat noch nicht alle fachlichen Abläufe von v3/v4 gleichwertig implementiert.** 0.7.0 erweitert die Grundfunktionen erheblich, schließt aber nicht sämtliche Unterschiede. Die bisherige Formulierung „alle Auditpunkte umgesetzt“ war als Aussage vollständiger Funktionsgleichheit zu weitgehend.

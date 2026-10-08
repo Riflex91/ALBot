@@ -8,7 +8,7 @@ export function createEconomy(bot){
  let ledger=p.read(ledgerKey)??{hour:Date.now(),spent:0,loss:0,goals:{}};
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
  const explicit=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
- const rules=(item,phase='inventory')=>explicit(item,phase)??bot.production?.derivedRule(item,phase)??(phase==='inventory'?bot.intelligence?.disposition(item):null)??null;
+ const rules=(item,phase='inventory')=>explicit(item,phase)??bot.production?.derivedRule(item,phase)??(()=>{const r=bot.intelligence?.disposition(item);return r&&phaseOf(r.action)===phase?r:null;})()??null;
  const count=item=>variantCount(p.c.items,item);
  const downstreamSatisfied=(item,r)=>{
   if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;

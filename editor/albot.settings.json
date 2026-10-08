@@ -459,6 +459,58 @@
             "default": 60000,
             "minimum": 1000,
             "maximum": 3600000
+          },
+          "adaptivePull": {
+            "type": "boolean",
+            "title": "Pullgröße aus tatsächlichen Kämpfen lernen",
+            "default": true
+          },
+          "pullHp": {
+            "type": "number",
+            "title": "HP-Bereitschaft vor neuem Pull",
+            "default": 0.8,
+            "minimum": 0.1,
+            "maximum": 1
+          },
+          "pullMp": {
+            "type": "number",
+            "title": "MP-Bereitschaft vor neuem Pull",
+            "default": 0.5,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "potionUtilization": {
+            "type": "number",
+            "title": "Mindestnutzung eines Tranks außerhalb Notfall",
+            "default": 0.65,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "orbit": {
+            "type": "boolean",
+            "title": "Kampfbewegung am Farmanker halten",
+            "default": true
+          },
+          "orbitRadius": {
+            "type": "integer",
+            "title": "Maximaler Orbitabstand vom Farmanker",
+            "default": 220,
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "knowledgeFreshMs": {
+            "type": "integer",
+            "title": "Lernwissen vollständig frisch (ms)",
+            "default": 21600000,
+            "minimum": 1000,
+            "maximum": 604800000
+          },
+          "potionCarryMax": {
+            "type": "integer",
+            "title": "Gemeinsame HP-/MP-Trank-Obergrenze je Farmer",
+            "default": 10000,
+            "minimum": 1,
+            "maximum": 1000000
           }
         },
         "required": [
@@ -732,7 +784,8 @@
                 "massproduction",
                 "massproductionpp",
                 "massexchange",
-                "massexchangepp"
+                "massexchangepp",
+                "agitate"
               ]
             },
             "class": {
@@ -805,7 +858,7 @@
             "maxTargets": {
               "type": "integer",
               "title": "Maximale Ziele",
-              "default": 1,
+              "default": 5,
               "minimum": 1,
               "maximum": 20
             },
@@ -902,6 +955,34 @@
               },
               "default": [],
               "maxItems": 500
+            },
+            "minTargets": {
+              "type": "integer",
+              "title": "Mindestzahl Ziele",
+              "default": 2,
+              "minimum": 1,
+              "maximum": 20
+            },
+            "minInjured": {
+              "type": "integer",
+              "title": "Mindestzahl verletzte Mitglieder",
+              "default": 2,
+              "minimum": 1,
+              "maximum": 20
+            },
+            "hpThreshold": {
+              "type": "number",
+              "title": "HP-Schwelle für Heilung/Schutz",
+              "default": 0.7,
+              "minimum": 0,
+              "maximum": 1
+            },
+            "manaBudget": {
+              "type": "number",
+              "title": "Maximaler MP-Anteil für Burst",
+              "default": 0.2,
+              "minimum": 0.01,
+              "maximum": 1
             }
           },
           "required": [
@@ -1196,6 +1277,25 @@
             "type": "boolean",
             "title": "Für benötigte Mluck-Erneuerung sicher anreisen",
             "default": true
+          },
+          "townTravel": {
+            "type": "boolean",
+            "title": "Town und Laufen nach Reisezeit vergleichen",
+            "default": true
+          },
+          "townMinSavingsMs": {
+            "type": "integer",
+            "title": "Mindestzeitgewinn durch Town (ms)",
+            "default": 30000,
+            "minimum": 1000,
+            "maximum": 300000
+          },
+          "servicePositionError": {
+            "type": "integer",
+            "title": "Maximale Unsicherheit eines Serviceziels (Pixel)",
+            "default": 70,
+            "minimum": 10,
+            "maximum": 300
           }
         },
         "required": [
@@ -1977,6 +2077,20 @@
               "p90"
             ],
             "default": "p90"
+          },
+          "materialPreference": {
+            "type": "number",
+            "title": "Materialnutzen relativ zu normalem Farmen",
+            "default": 1.25,
+            "minimum": 0,
+            "maximum": 100
+          },
+          "materialXpPerGold": {
+            "type": "number",
+            "title": "EXP-Nutzen je Goldwert des Materialziels",
+            "default": 10,
+            "minimum": 0,
+            "maximum": 100000
           }
         },
         "required": [
@@ -2154,6 +2268,13 @@
             "type": "boolean",
             "title": "Serverwechsel nach geprüftem Standortdruck",
             "default": true
+          },
+          "questPreference": {
+            "type": "number",
+            "title": "Nutzengewicht für Monsterhunt",
+            "default": 1.1,
+            "minimum": 0,
+            "maximum": 100
           }
         },
         "required": [

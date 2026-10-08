@@ -102,3 +102,5 @@ test('offer retries after temporary receiver inventory busy and transfers exactl
  B.logistics.poll();A.logistics.poll();await Promise.resolve();A.exec.poll();
  assert.equal(A.logistics.stats().sendsStarted,1);assert.equal(A.logistics.stats().timeouts,0);assert.equal(A.inventoryBlocked,false);
 });
+
+test('first offer carries gear promise before receiver opens its value journal',()=>{const {A,B,sends}=pair();const promise={slot:'mainhand',expected:'empty',expires:Date.now()+10000};let accepted=false;A.allocation={offer:()=>promise,reserve:j=>j.gearAck==='empty',guard:()=>true};B.allocation={accept:(id,from,session,item,g)=>{assert.equal(g.slot,'mainhand');assert.equal(B.journal,null);accepted=true;return true;}};A.logistics.poll();assert.equal(accepted,true);A.logistics.poll();assert.equal(sends(),1);B.logistics.poll();A.logistics.poll();assert.equal(B.journal,null);assert.equal(A.journal,null);});

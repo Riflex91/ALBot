@@ -1,20 +1,21 @@
 import {arrived,samePlace,distance,xy} from './policy.mjs';
 export function createMovement(bot){
-  const {p,exec}=bot;let order=null,blockedUntil=0;
+  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0;
   const stop=()=>{if(order||p.root.smart?.moving||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
-    if(order)return false;
+    if(order||exec.pending.has('travel.town'))return false;
     if(p.c.stand){exec.run('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return false;}
     const dest={...d,radius:d.radius??20};
     // Smart movement can enter public maps; never attempt somebody else's instance.
     if(!samePlace(p.c,d)&&p.G.maps[d.map]?.instance){bot.reason='Zielinstanz nicht erreichbar';return false;}
+    const spawn=p.G.maps[p.c.map]?.spawns?.[0];if(bot.me?.role==='merchant'&&bot.cfg.merchant.townTravel!==false&&samePlace(p.c,d)&&Array.isArray(spawn)&&p.has('town')&&!p.c.moving&&!p.c.c?.town&&Date.now()-lastTown>30000&&!bot.monsters().some(m=>m.target===p.c.name)){const speed=Math.max(1,p.c.speed??40),walk=distance(p.c,d)/speed*1000,town=townMs+Math.hypot(spawn[0]-d.x,spawn[1]-d.y)/speed*1000;if(walk-town>(bot.cfg.merchant.townMinSavingsMs??30000)){lastTown=Date.now();const at=Date.now();exec.run('travel.town',['movement'],()=>bot.running&&!bot.monsters().some(m=>m.target===p.c.name),()=>p.call('town'),{timeout:15000,delay:30000,waitForObservation:true,observe:()=>samePlace(p.c,d)&&!p.c.c?.town&&Math.hypot(xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])<60,onSettle(result){if(result==='confirmed')townMs=(townMs+Date.now()-at)/2;}});return false;}}
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     token.mode=local?'move':'smart_move';
-    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'){stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason:error?.reason??error?.message??state});}}});
+    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'||state==='superseded'){stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason:error?.reason??error?.message??state});}}});
     if(accepted)bot.event?.('movement.request',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }

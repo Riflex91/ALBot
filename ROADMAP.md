@@ -1,3 +1,9 @@
+# Aktueller Umsetzungsstand · 0.8.0-full
+
+F01/F02/F03 und die abgegrenzten Fachbereiche D01–D15 des v3/v4-Audits sind umgesetzt und in Kampf, Produktion, Gear und Logistik verbunden. Maßgeblich: [PARITAET-0.8.0](docs/PARITAET-0.8.0.md). 154 gezielte Prüfungen bestanden; Browser-/Headless-Vertrag, Syntax und Bytegrenze geprüft. Nächster Schritt: gemeinsamer Vollbetrieb mit allen aktivierten Funktionen, aktuellen Charakterlogs und einem Neustart. Neue Livebestätigung und Linux-Livebetrieb bleiben ausstehend. Kein Updater, Shadow-Verfahren oder automatischer Login. Historische offene Häkchen unten beschreiben den jeweiligen früheren Release; sie ersetzen nicht die aktuelle Umsetzungsmatrix.
+
+---
+
 # Aktueller Auditstand · v3/v4-Parität noch offen
 
 Der erneute Vergleich von 0.7.0 bestätigt vorhandene Grundabläufe, aber keine vollständige Vereinigung. Maßgeblich: [V3-V4-PARITAET-0.7.0](docs/V3-V4-PARITAET-0.7.0.md). Offen sind F01/F02/F03 und D01–D15: Mengen-/Materialintegration und Gear-Equip-Zusage, Pull-/AoE und Bewegung, ökonomische Bestandsoptimierung sowie gemeinsame Aktions-/Service-/Fähigkeitsentscheidungen. Der aktuelle Auftrag ist eine Prüfung; keine Runtimeänderung und kein neuer Live-Nachweis. Vor einem als vollständig bezeichneten Gesamtvergleich sind diese Punkte abzuarbeiten. Updater und Shadow-Verfahren bleiben ausgeschlossen.

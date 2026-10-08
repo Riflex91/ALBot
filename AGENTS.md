@@ -1,3 +1,9 @@
+# Maßgeblicher Implementierungsstand 0.8.0-full
+
+Vor weiteren Änderungen docs/PARITAET-0.8.0.md lesen. F01–F03 und D01–D15 aus dem historischen v3/v4-Audit sind integriert; keine Gleichheit sämtlicher historischer Hotfix-Hilfsfunktionen behaupten. Gemeinsame Aktionsauswahl prüft Guards direkt vor Dispatch. Nicht ausgeführte Wertabsichten dürfen kein fremdes Journal abschließen. Gearzusage und Empfängerslot binden; vorhandene Gearquellen mit ihrem tatsächlichen Level anfordern. 154 gezielte Prüfungen unter Windows; neuer gemeinsamer Livetest und Linux bleiben offen. Profile, explizite Regeln, Budgets und Journale schützen. Keine Shadow-Tests, Updater oder automatischen Logins.
+
+---
+
 # Maßgeblicher Folgeaudit: v3/v4-Parität
 
 Vor weiteren Paritätsänderungen docs/V3-V4-PARITAET-0.7.0.md lesen. 0.7.0 implementiert viele Grundmechanismen, aber nicht alle fachlichen Abläufe. F01/F02/F03 und D01–D15 bleiben offen; alte Formulierungen „alle Auditpunkte umgesetzt“ nicht als Vollständigkeitsnachweis verwenden. Das vollständige strukturelle Quelleninventar steht in docs/V3-V4-MODULINVENTAR-0.7.0.csv. Der Audit hat keine Runtime oder persönlichen Profile geändert, keine Spielaktionen und keine Shadow-Tests ausgeführt. Grundfunktionen erhalten und fehlende Entscheidungen in die bestehende Runtime/Werkstatt integrieren; keine zweite Architektur.

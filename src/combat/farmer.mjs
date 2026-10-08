@@ -14,10 +14,10 @@ export function createFarmer(bot){
       if(cfg.farming.respawn&&now-deadSince>=cfg.farming.respawnDelayMs)exec.run('respawn',['lifecycle'],()=>p.c.rip,()=>p.call('respawn'),{delay:15000});return true;
     }
     deadSince=0;
-    const resource=c.hp/c.max_hp<cfg.farming.hpBelow?'hp':c.mp/c.max_mp<cfg.farming.mpBelow?'mp':null;
+    const preparing=me.role==='farmer'&&!bot.monsters().some(m=>m.target===c.name)&&bot.encounter?.status().phase==='RECOVER';const resource=c.hp/c.max_hp<(preparing?(cfg.farming.pullHp??cfg.farming.hpBelow):cfg.farming.hpBelow)?'hp':c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
     if(resource&&!p.call('is_on_cooldown','use_hp')){
       let slot=-1;
-      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)slot=c.items.findIndex(i=>i&&!protectedItem(i)&&p.G.items[i.name]?.type==='pot'&&(p.G.items[i.name]?.gives??[]).some(g=>g[0]===resource)&&bot.consumable(i));
+      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===resource)?.[1]??0})).filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&r.restore>0&&bot.consumable(r.i)&&(cfg.farming.potionUtilization===undefined||c.hp/c.max_hp<cfg.farming.restBelow||(c['max_'+resource]-c[resource])/r.restore>=(cfg.farming.potionUtilization??.65))).sort((a,b)=>Math.abs(a.restore-(c['max_'+resource]-c[resource]))-Math.abs(b.restore-(c['max_'+resource]-c[resource])))[0]?.slot??-1;
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
         exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&!p.call('is_on_cooldown','use_hp'),()=>{bot.beginValue({kind:'consume',item:item.name,before});return p.call('equip',slot);},{delay:2000,value:true,observe:()=>bot.count(item.name)<before,onSettle:s=>bot.endValue(s)});
@@ -28,7 +28,7 @@ export function createFarmer(bot){
     if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>e.target===c.name).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
-  function retreat(t){const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>m.target===c.name);if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
+  function retreat(t){if(bot.navigation?.orbit(t))return;const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>m.target===c.name);if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
   function tick(){
     bot.recovering=false;
@@ -53,7 +53,7 @@ export function createFarmer(bot){
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){waitSafely('Warte auf Gruppe');return;}
-    const mobs=bot.monsters().filter(bot.allowed);
+    bot.encounter?.pull();const mobs=bot.monsters().filter(bot.allowed);
     const focus=cfg.party.enabled&&cfg.party.focusFire&&leader?.target&&(!bot.teamPlan||leader.farmPlan?.id===bot.teamPlan.heartbeat()?.id||leader.activity)?mobs.find(e=>e.id===leader.target):null;
     const previous=bot.target&&mobs.find(e=>e.id===bot.target.id);
     bot.target=focus??previous??mobs.sort((a,b)=>(a.target===c.name?-10000:0)+distance(c,a)-((b.target===c.name?-10000:0)+distance(c,b)))[0]??null;
@@ -64,7 +64,7 @@ export function createFarmer(bot){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);
     if(cfg.farming.kiting&&target.target===c.name&&c.range>(target.range??20)+25&&d<Math.min(range,(target.range??20)+35))retreat(target);
-    else if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order)bot.movement.go(combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}
+    else if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }

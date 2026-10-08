@@ -34,12 +34,12 @@ export function createGear(bot){
   if(['weapon','tool'].includes(type)){if(target==='mainhand'){if(!Object.hasOwn(cls.mainhand??{},w)&&!Object.hasOwn(cls.doublehand??{},w))return false;if(Object.hasOwn(cls.doublehand??{},w)&&p.c.slots.offhand)return false;}else if(target!=='offhand'||!Object.hasOwn(cls.offhand??{},w)||Object.hasOwn(cls.doublehand??{},p.G.items[p.c.slots.mainhand?.name]?.wtype??''))return false;}
   else if(['shield','source','quiver','misc_offhand'].includes(type)){if(target!=='offhand'||!Object.hasOwn(cls.offhand??{},type))return false;}
   else if(!['ring','earring'].includes(type)&&target!==type)return false;
-  const current=p.c.slots[target];if(current?.l||current?.b)return false;
+  const current=p.c.slots[target];if(current?.l||current?.b||bot.allocation?.equipGuard(item,target)===false)return false;
   const role=me.gearRole==='auto'?(p.c.ctype==='priest'?'healer':p.c.ctype==='merchant'?'economy':'dps'):me.gearRole;
   let nextScore,oldScore;try{nextScore=gearScore(p.call('item_properties',item),role,p.c.ctype);oldScore=current?gearScore(p.call('item_properties',current),role,p.c.ctype):0;}catch{return false;}
   if(current&&nextScore<oldScore*(1+cfg.production.minImprovement))return false;
   const oldId=identity(current);
-  return e.perform('gear.equip',{slots:[slot],rule:r,guard:()=>identity(p.c.slots[target])===oldId,call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===identity(item),details:{item:item.name,slot:target}});
+  return e.perform('gear.equip',{slots:[slot],rule:r,guard:()=>identity(p.c.slots[target])===oldId&&bot.allocation?.equipGuard(item,target)!==false,call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===identity(item),details:{item:item.name,slot:target}});
  }
  function suggestions(){const result=[];if(!cfg.production.gear)return result;for(const [name,profile] of Object.entries(profiles)){
   const member=cfg.characters.find(c=>c.name===name);if(!member)continue;

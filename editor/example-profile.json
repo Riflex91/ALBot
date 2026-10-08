@@ -46,7 +46,15 @@
       "autoTargets": true,
       "elixirs": true,
       "switchImprovement": 0.2,
-      "planHoldMs": 60000
+      "planHoldMs": 60000,
+      "adaptivePull": true,
+      "pullHp": 0.8,
+      "pullMp": 0.5,
+      "potionUtilization": 0.65,
+      "orbit": true,
+      "orbitRadius": 220,
+      "knowledgeFreshMs": 21600000,
+      "potionCarryMax": 10000
     },
     "party": {
       "enabled": true,
@@ -116,7 +124,10 @@
       "bankWorkspace": 2,
       "bankReclaim": false,
       "marketMinSamples": 3,
-      "mluckTravel": true
+      "mluckTravel": true,
+      "townTravel": true,
+      "townMinSavingsMs": 30000,
+      "servicePositionError": 70
     },
     "items": [],
     "production": {
@@ -165,7 +176,9 @@
       "optimizeGear": true,
       "autoDisposition": true,
       "autoSellMaxValue": 100,
-      "farmConfidence": "p90"
+      "farmConfidence": "p90",
+      "materialPreference": 1.25,
+      "materialXpPerGold": 10
     },
     "world": {
       "bosses": false,
@@ -184,7 +197,8 @@
       "learningWeight": 0.15,
       "cacheTtlMs": 60000,
       "questTargets": true,
-      "autoHop": true
+      "autoHop": true,
+      "questPreference": 1.1
     },
     "rules": []
   }

@@ -1,3 +1,9 @@
+# Aktueller Integrationsstand 0.8.0-full
+
+Die abgegrenzten F01–F03 und D01–D15 des v3/v4-Audits sind in die bestehende Runtime eingebunden. Die genaue fachliche Umsetzung, Einstellungen und Grenzen stehen in [PARITAET-0.8.0](PARITAET-0.8.0.md). 154 gezielte Prüfungen bestanden unter Windows. Neuer gemeinsamer Live-Nachweis und Linux bleiben ausstehend. Folgende Audit-/Releaseabschnitte sind historische Stände.
+
+---
+
 # Aktueller Integrationsstand: v3/v4-Parität unvollständig
 
 Der erneute Audit gegen die tatsächlichen v3-Installer bis Alpha33 und die v4-Modelle relativiert die bisherige Vollständigkeitsformulierung. Aktuell maßgeblich ist [V3-V4-PARITAET-0.7.0](V3-V4-PARITAET-0.7.0.md): Grundfunktionen vorhanden, 15 konkret abgegrenzte Restbereiche und drei Implementierungsbefunde. Kein neuer Live-Nachweis; Runtime und persönliche Konfiguration bleiben bei diesem Audit unverändert.

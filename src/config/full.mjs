@@ -1,6 +1,6 @@
 import {P3P4_DESCRIPTOR} from './p3p4.mjs';
 import {SUPPORTED_SKILLS} from './live-a.mjs';
-export const FULL_SKILLS=[...SUPPORTED_SKILLS,'burst','cburst','mshield','aether_shield','cleansing_light','guardians_oath','beacon_of_resolve','mluck','mcourage','mfrenzy','massproduction','massproductionpp','massexchange','massexchangepp'];
+export const FULL_SKILLS=[...SUPPORTED_SKILLS,'burst','cburst','mshield','aether_shield','cleansing_light','guardians_oath','beacon_of_resolve','mluck','mcourage','mfrenzy','massproduction','massproductionpp','massexchange','massexchangepp','agitate'];
 export const FULL_DESCRIPTOR=structuredClone(P3P4_DESCRIPTOR);
 FULL_DESCRIPTOR.schemaId='albot.full/v1';FULL_DESCRIPTOR.schema.title='ALBot · Vollbetrieb';
 const bool=(title,value=false)=>({type:'boolean',title,default:value});
@@ -24,3 +24,16 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{autoTargets:
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{optimizeGear:bool('Gearalternativen und Ziellevel wirtschaftlich auswählen',true),autoDisposition:bool('Ungeregelte ungeschützte Items wirtschaftlich einordnen',true),autoSellMaxValue:number('Automatischer NPC-Verkauf höchstens Itemwert',100,0,1000000),farmConfidence:{type:'string',title:'Farmzeitbudget',enum:['mean','p90'],default:'p90'}});
 Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{marketMinSamples:number('Unabhängige Marktanbieter für Preisreferenz',3,1,20),mluckTravel:bool('Für benötigte Mluck-Erneuerung sicher anreisen',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{autoHop:bool('Serverwechsel nach geprüftem Standortdruck',true)});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.skills.items.properties,{minTargets:number('Mindestzahl Ziele',2,1,20),minInjured:number('Mindestzahl verletzte Mitglieder',2,1,20),hpThreshold:{type:'number',title:'HP-Schwelle für Heilung/Schutz',default:.7,minimum:0,maximum:1},manaBudget:{type:'number',title:'Maximaler MP-Anteil für Burst',default:.2,minimum:.01,maximum:1}});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{adaptivePull:bool('Pullgröße aus tatsächlichen Kämpfen lernen',true),pullHp:{type:'number',title:'HP-Bereitschaft vor neuem Pull',default:.8,minimum:.1,maximum:1},pullMp:{type:'number',title:'MP-Bereitschaft vor neuem Pull',default:.5,minimum:0,maximum:1},potionUtilization:{type:'number',title:'Mindestnutzung eines Tranks außerhalb Notfall',default:.65,minimum:0,maximum:1},orbit:bool('Kampfbewegung am Farmanker halten',true)});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{townTravel:bool('Town und Laufen nach Reisezeit vergleichen',true),townMinSavingsMs:number('Mindestzeitgewinn durch Town (ms)',30000,1000,300000),servicePositionError:number('Maximale Unsicherheit eines Serviceziels (Pixel)',70,10,300)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{orbitRadius:number('Maximaler Orbitabstand vom Farmanker',220,50,1000),knowledgeFreshMs:number('Lernwissen vollständig frisch (ms)',21600000,1000,604800000)});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{materialPreference:{type:'number',title:'Materialnutzen relativ zu normalem Farmen',default:1.25,minimum:0,maximum:100},materialXpPerGold:{type:'number',title:'EXP-Nutzen je Goldwert des Materialziels',default:10,minimum:0,maximum:100000}});
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{questPreference:{type:'number',title:'Nutzengewicht für Monsterhunt',default:1.1,minimum:0,maximum:100}});
+
+FULL_DESCRIPTOR.schema.properties.skills.items.properties.maxTargets.default=5;
+Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{potionCarryMax:number('Gemeinsame HP-/MP-Trank-Obergrenze je Farmer',10000,1,1000000)});

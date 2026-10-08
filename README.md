@@ -1,4 +1,8 @@
-# Aktuell: integrierte Autonomie · 0.7.0-full
+# Aktueller Audit: v3/v4-Parität noch unvollständig
+
+Der erneute Quellvergleich von 0.7.0 findet verbleibende Unterschiede bei Pull-/AoE-Steuerung, Bewegung, Gear-Lieferung, wirtschaftlicher Disposition, Materialplanung und Fähigkeitenkoordination. Die vorhandenen Ergänzungen sind keine vollständige Funktionsgleichheit. Maßgeblich sind [V3-V4-PARITAET-0.7.0](docs/V3-V4-PARITAET-0.7.0.md) mit 15 abgegrenzten Restbereichen und drei eingegrenzten Implementierungsbefunden sowie das vollständige Modulinventar. Runtime und persönliche Botdateien wurden bei diesem Audit nicht geändert.
+
+# Implementierte Ergänzungen: Autonomie · 0.7.0-full
 
 Die im Vergleich zu 0.6.2 benannten fachlichen Ergänzungen sind jetzt integriert: gemeinsame automatische Spawn-/Materialplanung, Elixiere, wirtschaftliche Gear-/Beutedisposition, Markt-/Mluck-Entscheidungen, globale Priorität und gebundener Wiederanlauf. Vollständige Zuordnung, Konfiguration und Grenzen: [AUTONOMIE-0.7.0](docs/AUTONOMIE-0.7.0.md). Neues Bundle und Werkstatt sind offline geprüft; gemeinsamer Livebetrieb und Linux bleiben unbestätigt. Updater entfällt.
 

@@ -1,4 +1,8 @@
-# Aktueller Folgeauftrag 0.7.0-full
+# Maßgeblicher Folgeaudit: v3/v4-Parität
+
+Vor weiteren Paritätsänderungen docs/V3-V4-PARITAET-0.7.0.md lesen. 0.7.0 implementiert viele Grundmechanismen, aber nicht alle fachlichen Abläufe. F01/F02/F03 und D01–D15 bleiben offen; alte Formulierungen „alle Auditpunkte umgesetzt“ nicht als Vollständigkeitsnachweis verwenden. Das vollständige strukturelle Quelleninventar steht in docs/V3-V4-MODULINVENTAR-0.7.0.csv. Der Audit hat keine Runtime oder persönlichen Profile geändert, keine Spielaktionen und keine Shadow-Tests ausgeführt. Grundfunktionen erhalten und fehlende Entscheidungen in die bestehende Runtime/Werkstatt integrieren; keine zweite Architektur.
+
+# Implementierungsauftrag 0.7.0-full
 
 Vor Änderungen docs/AUTONOMIE-0.7.0.md lesen. Integrierte gemeinsame Planung und Economy; autoTargets/elixirs/optimizeGear/autoDisposition/farmConfidence/marketMinSamples/mluckTravel/autoHop sind optionale Ergänzungen zu full/v1. Bestehende Regeln und Budgets schützen. Keine Inventar-/Produktions-/Gearallokationsjournale pauschal löschen. Neue gemeinsame Livebestätigung und Linux fehlen. Keine Shadow-Tests, Updater oder automatischen Logins. Audit von 0.6.2 bleibt als historische Gegenüberstellung; aktuelle Grenzen stehen in der Autonomiematrix.
 

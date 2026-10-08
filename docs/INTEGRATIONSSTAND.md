@@ -1,4 +1,8 @@
-# Aktueller Integrationsstand 0.7.0-full
+# Aktueller Integrationsstand: v3/v4-Parität unvollständig
+
+Der erneute Audit gegen die tatsächlichen v3-Installer bis Alpha33 und die v4-Modelle relativiert die bisherige Vollständigkeitsformulierung. Aktuell maßgeblich ist [V3-V4-PARITAET-0.7.0](V3-V4-PARITAET-0.7.0.md): Grundfunktionen vorhanden, 15 konkret abgegrenzte Restbereiche und drei Implementierungsbefunde. Kein neuer Live-Nachweis; Runtime und persönliche Konfiguration bleiben bei diesem Audit unverändert.
+
+# Implementierte Ergänzungen 0.7.0-full
 
 Die im Audit von 0.6.2 benannten Ergänzungen wurden umgesetzt. Die exakte fachliche Zuordnung mit Einschränkungen steht in [AUTONOMIE-0.7.0](AUTONOMIE-0.7.0.md). Die folgenden älteren Abschnitte dokumentieren historische Releases. Neuer gemeinsamer Livetest und Linux bleiben ausstehend; Implementierung ist kein Live-Nachweis.
 

@@ -1,4 +1,8 @@
-# Aktueller Folgeauftrag · 0.7.0-full
+# Aktueller Auditstand · v3/v4-Parität noch offen
+
+Der erneute Vergleich von 0.7.0 bestätigt vorhandene Grundabläufe, aber keine vollständige Vereinigung. Maßgeblich: [V3-V4-PARITAET-0.7.0](docs/V3-V4-PARITAET-0.7.0.md). Offen sind F01/F02/F03 und D01–D15: Mengen-/Materialintegration und Gear-Equip-Zusage, Pull-/AoE und Bewegung, ökonomische Bestandsoptimierung sowie gemeinsame Aktions-/Service-/Fähigkeitsentscheidungen. Der aktuelle Auftrag ist eine Prüfung; keine Runtimeänderung und kein neuer Live-Nachweis. Vor einem als vollständig bezeichneten Gesamtvergleich sind diese Punkte abzuarbeiten. Updater und Shadow-Verfahren bleiben ausgeschlossen.
+
+# Historischer Umsetzungsstand · 0.7.0-full
 
 Die 20 fachlichen Auditpunkte und fünf zusätzlichen v5-Vertragsbereiche sind in die gemeinsame Runtime eingebunden. Maßgeblich ist die genaue Implementierungs-/Grenzenmatrix in [AUTONOMIE-0.7.0](docs/AUTONOMIE-0.7.0.md); historische Häkchen sind keine neuen Live-Nachweise. P3/P4-Werkstatt, gemeinsame Regeln/Logistik, Produktion und Autonomie werden gemeinsam getestet. Nächster Schritt: integrierter Livetest mit allen Charakteren, aktuellen Logs und einem Neustart; neue gemeinsame Bestätigung und Linux stehen aus. Keine neuen Shadow- oder Zwischenfreigaben. Updater bleibt ausgeschlossen.
 

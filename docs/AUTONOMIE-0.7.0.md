@@ -1,3 +1,5 @@
+> Korrektur nach erneutem v3/v4-Quellaudit: Die folgende Tabelle beschreibt hinzugefügte Grundmechanismen, keine vollständige Funktionsgleichheit. Verbleibende Unterschiede und drei eingegrenzte Implementierungsbefunde stehen verbindlich in [V3-V4-PARITAET-0.7.0](V3-V4-PARITAET-0.7.0.md).
+
 # Integrierte Autonomie · 0.7.0-full
 
 Stand 8. Oktober 2026. Der Auftrag ergänzt die fachlichen Lücken aus FUNKTIONSVERGLEICH-0.6.2.md. Ein klassisches Bundle und ein Profil für Browser und bestehenden Headless-Client. Neue Abläufe sind implementiert und offline geprüft; ein gemeinsamer Live-Nachweis steht aus. Frühere Livebestätigungen gelten weiterhin nur für ihre damaligen Szenarien. Updater, Shadow-Verfahren und zusätzliche Host-/Telemetrieinfrastruktur bleiben ausgeschlossen.

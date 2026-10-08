@@ -36,8 +36,9 @@ export function createGoldLogistics(bot){
   const peer=transport.fresh(cfg.party.merchant);if(peer.journal||peer.pending||peer.inventoryBlocked)return;
   job={id:bot.session+':gold:'+(++serial),peer:cfg.party.merchant,session:peer.session,state:'offered',quantity:Math.min(surplus(),cfg.merchant.goldTransferMax),before:p.c.gold,until:now+cfg.general.messageTtlMs,lastOffer:now};send('goldOffer',{quantity:job.quantity});
  }
- function travel(){if(!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
+ function travel(){if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
   for(const name of bot.farmers){const h=transport.fresh(name);if(!h?.running||h.rip||h.journal||h.pending||h.realm!==p.realm()||!(h.goldSurplus>=cfg.merchant.goldCollectBelow))continue;
+   if(bot.strategy?.canVisit?.(h)===false)continue;
    if(bot.services?.waiting)bot.services.interrupt();if(samePlace(p.c,h)&&distance(p.c,h)<200)return false;
    if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Goldüberschuss abholen: '+name;bot.movement.go({...h,radius:120},'gold');return true;
   }return false;

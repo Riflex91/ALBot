@@ -1,4 +1,4 @@
-# Super-Bot 0.6.1 · gemeinsamer Livebetrieb
+# Super-Bot 0.6.2 · gemeinsamer Livebetrieb
 
 Ein vollständiges Betriebsprofil ersetzt die getrennten P3/P4-Testabschnitte. Alle Module arbeiten in derselben Runtime und demselben Scheduler. Der Updater ist auf Nutzerwunsch ausgeschlossen. Implementiert und gezielt geprüft bedeutet noch keinen bestandenen Vollbetriebs-Livetest.
 
@@ -63,3 +63,5 @@ Schema `albot.full/v1`, `src/config/full.mjs`. Ergänzungen zu P3/P4: general.te
 Build: Node >=22.9, `npm ci`, `npm run build`, `npm run build:editor`, `npm test`. Terser ist ausschließlich Buildabhängigkeit, Kompression ist deaktiviert und lokale Namen werden verkürzt; keine Property-Mangling-/Hostabhängigkeit im Bot. Export: `node scripts/export-full.mjs Profil.json NEUER-Ordner [Client-config.json]`. Quelle und bestehende Ausgabeordner werden nicht überschrieben. Für den zugrunde liegenden Vertrag zusätzlich P3-P4.md, RUNTIME-VERTRAG.md, WORKSHOP-CONTRACT.md und HOW-TO-USE.md lesen.
 
 0.6.1 entfernt beim Laden ausschließlich den alten bekannten Fehlaufruf-Checkpoint quest.monsterhunt ohne Slots/Kosten. Damit müssen die betroffenen Ranger keine echten Inventarsperren manuell löschen. Die Reparatur wird als checkpoint.repaired protokolliert. Echte ungeklärte Lieferungen/Gold-/Bankaktionen bleiben geschützt.
+
+Aktuelle Risikokorrektur: [0.6.2](CHANGELOG-0.6.2.md). Prat aus den letzten Logs wird nicht als sicheres Teamziel behandelt. Fehlgeschlagene Ziele erhalten eine zeitlich begrenzte Sperre; Rückzug/Erholung haben Vorrang vor Merchant-Aufträgen. Neue Livebestätigung ausstehend.

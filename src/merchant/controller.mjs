@@ -11,11 +11,14 @@ export function createMerchant(bot){
   }
  }
  function tick(){
+  if(bot.recovering)return;
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
+  const route=bot.movement.order;if(['logistics','gold'].includes(route?.owner)){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&!peer?.running||bot.strategy?.canVisit?.(peer??route.dest)===false)bot.movement.stop();}
   bot.logistics.travel();if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
+  if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
   if(me.role==='merchant'&&!bot.movement.order)bot.reason=bot.production.status().blocked??'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
   const jobs=[],add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,run,r});

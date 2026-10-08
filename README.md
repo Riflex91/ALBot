@@ -1,4 +1,4 @@
-# Aktuell: gemeinsamer Vollbetrieb · 0.6.1-full
+# Aktuell: gemeinsamer Vollbetrieb · 0.6.2-full
 
 Der gesamte vereinbarte Spielumfang ist in einem gemeinsamen Runtime-/Profilvertrag implementiert und als Vollbetriebs-Livetest-Kandidat ausgeliefert. Kein optionaler Updater. Alle Module teilen Scheduler, Ressourcen, Reservierungen und Wertjournale. Die neuen Wege sind noch nicht gemeinsam live bestätigt; frühere A/B/C-Nachweise bleiben auf ihre Szenarien begrenzt. Einstieg: [VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Schema: `albot.full/v1`.
 
@@ -27,3 +27,5 @@ Keine eigene Headless-Laufzeit, Telemetrieplattform oder umfassende Log-Infrastr
 Das Headless-Handbuch ist eine Kopie der Client-Dokumentation. Seine Installationsdateien wie `src/cli.js`, `.env.example` und `config.example.json` gehören zum separaten Client und sind in diesem Planungsrepository nicht enthalten. Die ergänzende [Typdefinition](docs/headless-api.d.ts) liegt hier bei.
 
 Vollbetriebs-Testprotokoll: Browser **Testordner wählen** → fortlaufendes JSONL; Headless mit tools/client-test-report.js automatisch Desktop/ALBot-Testlogs. Jede Datei enthält Charakter und UTC-Startzeit. Historische kompakte Berichte bleiben unter test-logs/CHARAKTER/. Details und Reparatur des gemeldeten vollen Browser-Speichers: [LIVE-A.md](docs/LIVE-A.md).
+
+Aktuelle Risikokorrektur: [0.6.2](docs/CHANGELOG-0.6.2.md). Prat aus den letzten Logs wird nicht als sicheres Teamziel behandelt. Fehlgeschlagene Ziele erhalten eine zeitlich begrenzte Sperre; Rückzug/Erholung haben Vorrang vor Merchant-Aufträgen. Neue Livebestätigung ausstehend.

@@ -1,5 +1,6 @@
 import {distance,samePlace,xy} from '../core/policy.mjs';
 import {materialDrops} from '../production/materials.mjs';
+import {assessCombat} from './risk.mjs';
 export function rankFarmTargets(G,character,targets,mode='balanced',learned={},weight=0){
  return targets.filter(id=>G.monsters?.[id]).map((id,index)=>{
   const m=G.monsters[id],seconds=Math.max(1,(m.hp??100)/Math.max(1,(character.attack??1)*(character.frequency??1))),xp=(m.xp??1)/seconds;
@@ -11,11 +12,21 @@ export function rankFarmTargets(G,character,targets,mode='balanced',learned={},w
 }
 export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null,questVisit=null,nextQuest=0;
+ const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();
  const explicitTargets=()=>me.farmTargets.length?me.farmTargets:cfg.farming.targets;
  const state=()=>p.root.S??p.parent.S??{};
  const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':activity?.kind==='quest'?'quest':me.role==='merchant'?'supply':'farm');
  const permittedMap=map=>!!p.G.maps?.[map]&&!w.excludedMaps.includes(map)&&(!p.G.maps[map].pvp||cfg.farming.pvp);
- function safeMonster(id){const m=p.G.monsters?.[id];if(!m)return false;
+ function members(){return [p.c,...(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2).map(h=>({...h,...h.stats,...h.gear?.stats,hp:h.hp,max_hp:h.max_hp}))].filter(c=>c.name!==cfg.party.merchant);}
+ function risk(id,live){return assessCombat({...p.G.monsters?.[id],...live,hp:Math.max(p.G.monsters?.[id]?.hp??0,live?.max_hp??live?.hp??0)},members(),w.risk,cfg.farming.maxAggro);}
+ function safeTarget(id,live){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live);if(!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
+ function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;failed=Object.fromEntries(Object.entries(failed).filter(([,until])=>until>Date.now()).slice(-31));failed[id]=Date.now()+cfg.farming.deathWindowMs;p.write?.(riskKey,failed);activity=null;manual=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.failedTarget',{target:id,reason,retryAfter:failed[id]});}
+ function canVisit(h){if(!full)return true;if(bot.recovering||h.threats>0||h.rip||h.hp/h.max_hp<cfg.farming.resumeAbove)return false;
+  if(h.activity?.target){const m=p.G.monsters?.[h.activity.target];if(!m||!Number.isFinite(m.attack)||!(m.frequency>0)||m.attack*m.frequency>p.c.max_hp*.03)return false;}
+  for(const spawn of p.G.maps?.[h.map]?.monsters??[]){const m=p.G.monsters?.[spawn.type],b=spawn.boundary;if(!(m?.aggro>0)||!Array.isArray(b)||b.length!==4)continue;const margin=(m.range??30)+120;if(h.x>=b[0]-margin&&h.x<=b[2]+margin&&h.y>=b[1]-margin&&h.y<=b[3]+margin&&m.attack*m.frequency>p.c.max_hp*.03)return false;}
+  return true;
+ }
+ function safeMonster(id){if(full)return safeTarget(id);const m=p.G.monsters?.[id];if(!m)return false;
   const limit={conservative:.12,balanced:.25,aggressive:.4}[w.risk],members=bot.allies().filter(x=>!x.rip),hp=Math.max(p.c.max_hp??0,...members.map(x=>x.max_hp??0));
   return Number.isFinite(m.attack)&&m.attack<=hp*limit;
  }
@@ -62,12 +73,13 @@ export function createStrategy(bot){
   if(lastSample&&id===lastSample.id&&now-lastSample.at>=10000&&!bot.journal&&xp>=lastSample.xp&&gold>=lastSample.gold){const observed=(xp-lastSample.xp)*1000/(now-lastSample.at),old=rates[id]??{xp:observed,samples:0,factor:1};old.xp=old.xp*.8+observed*.2;old.samples=Math.min(100,old.samples+1);old.factor=old.samples<3?1:Math.max(.5,Math.min(2,observed/Math.max(1,old.xp)));rates[id]=old;rates=Object.fromEntries(Object.entries(rates).slice(-32));lastSample=null;}
   if(!lastSample||lastSample.id!==id||now-lastSample.at>60000)lastSample={id,at:now,xp,gold};
  }
- function targets(){if(activity?.target)return [activity.target];if(manual?.task==='farm'&&manual.id)return [manual.id];const material=bot.production?.farmTargets();if(material)return material;
-  if(rankedG!==p.G||Date.now()-rankedAt>=w.cacheTtlMs){rankedG=p.G;rankedAt=Date.now();ranked=rankFarmTargets(p.G,p.c,explicitTargets(),cfg.farming.mode,rates,w.learning?w.learningWeight:0);}return ranked;
+ function targets(){if(activity?.target)return [activity.target].filter(id=>safeTarget(id));if(manual?.task==='farm'&&manual.id)return [manual.id].filter(id=>safeTarget(id));const material=bot.production?.farmTargets();if(material)return material.filter(id=>safeTarget(id));
+  if(rankedG!==p.G||Date.now()-rankedAt>=w.cacheTtlMs){rankedG=p.G;rankedAt=Date.now();ranked=rankFarmTargets(p.G,p.c,explicitTargets(),cfg.farming.mode,rates,w.learning?w.learningWeight:0);}return ranked.filter(id=>safeTarget(id));
  }
  function travel(){
   if(me.role==='merchant'&&manual?.task==='bank'){bot.bank.ready();return true;}
   if(me.role!=='farmer'||!activity)return false;
+  if(full&&cfg.party.enabled&&cfg.party.waitForTeam&&me.name===bot.leader&&(bot.farmers??[]).some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()||!samePlace(p.c,bot.transport.fresh(n))||distance(p.c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe vor Aktivitätsreise';if(bot.movement.order?.owner==='world')bot.movement.stop();return true;}
   if(!samePlace(p.c,activity)){if(activity.kind==='event'&&p.G.events?.[activity.id]&&p.has('join'))return exec.run('event.join',['movement'],()=>bot.running&&!bot.journal,()=>p.call('join',activity.id),{delay:30000,timeout:20000});
    bot.movement.go({...activity,radius:70},'world');return true;}
   if(!bot.target&&distance(p.c,activity)>100){bot.movement.go({...activity,in:p.c.in??p.c.map,radius:70},'world');return true;}return false;
@@ -95,5 +107,5 @@ export function createStrategy(bot){
   if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');
   return bot.economy.perform('quest.anniversary',{guard:()=>bot.economy.at(d,80)&&p.call('anniversary_can_visit'),call:()=>p.call('anniversary_kiss'),observe:()=>bot.count('anniversarygift')>gifts||JSON.stringify(p.c.anniversary??null)!==before,details:{quest:'anniversary'},timeout:20000});
  }
- return {plan,sample,targets,task,requestTask,travel,quest,anniversary,get busy(){return !!questVisit;},interruptQuest(){if(questVisit?.phase==='travel'){questVisit=null;nextQuest=Date.now()+60000;if(bot.movement.order?.owner==='quest')bot.movement.stop();bot.event('quest.interrupted',{reason:'Eigene Aggro: Kampf/Erholung hat Vorrang'});}},permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,questVisit:questVisit?{...questVisit}:null,learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;questVisit=null;lastSample=null;plannedAt=0;}};
+ return {plan,sample,targets,task,safeTarget,failActivity,canVisit,requestTask,travel,quest,anniversary,get busy(){return !!questVisit;},interruptQuest(){if(questVisit?.phase==='travel'){questVisit=null;nextQuest=Date.now()+60000;if(bot.movement.order?.owner==='quest')bot.movement.stop();bot.event('quest.interrupted',{reason:'Eigene Aggro: Kampf/Erholung hat Vorrang'});}},permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,questVisit:questVisit?{...questVisit}:null,failedTargets:{...failed},learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;questVisit=null;lastSample=null;plannedAt=0;}};
 }

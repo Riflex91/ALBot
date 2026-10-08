@@ -78,7 +78,7 @@ export function install(root){
     allies(){return bot.teamNames.map(n=>bot.entity(n)).filter(e=>e&&samePlace(p.c,e));},
     targets(){if(bot.strategy)return bot.strategy.targets();const requested=bot.production?.farmTargets();if(requested)return requested;return me.farmTargets.length?me.farmTargets:cfg.farming.targets;},
     task(){return bot.strategy?.task()??(me.role==='merchant'?'supply':'farm');},
-    allowed(e){if(!e||e.type!=='monster'||e.dead||e.rip||e.hp<=0||e.invincible||!samePlace(p.c,e)||!bot.targets().includes(e.mtype)||cfg.world?.excludedMaps.includes(e.map))return false;if(cfg.farming.avoidOthers&&e.target&&!bot.teamNames.includes(e.target))return false;const threats=Object.values(p.entities).filter(x=>x.type==='monster'&&x.hp>0&&bot.teamNames.includes(x.target)).length;return !!e.target||threats<cfg.farming.maxAggro;},
+    allowed(e){if(!e||e.type!=='monster'||e.dead||e.rip||e.hp<=0||e.invincible||!samePlace(p.c,e)||!bot.targets().includes(e.mtype)||cfg.world?.excludedMaps.includes(e.map))return false;if(bot.strategy?.safeTarget?.(e.mtype,e)===false)return false;if(cfg.farming.avoidOthers&&e.target&&!bot.teamNames.includes(e.target))return false;const threats=Object.values(p.entities).filter(x=>x.type==='monster'&&x.hp>0&&bot.teamNames.includes(x.target)).length;return !!e.target||threats<cfg.farming.maxAggro;},
     rule(i){if(bot.economy)return bot.economy.rules(i);return chooseRule(cfg.items,i,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:me.role==='merchant'?'supply':'farm'});},
     consumable(i){if(protectedItem(i)||bot.bank?.pending)return false;const r=bot.rule(i);return !r||(r.action==='consume'&&variantCount(p.c.items,i)>r.keep+r.teamReserve);},
     canConsumeImplicit(name){if(bot.inventoryBlocked||bot.logistics?.reserved)return false;const first=p.c.items.find(i=>i?.name===name);return !!first&&bot.consumable(first);},
@@ -115,8 +115,8 @@ export function install(root){
     if(!bot.running)return;
     if(economyDue){bot.strategy?.plan();bot.strategy?.sample();}
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
-    if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!worldAction&&!bot.strategy?.busy)bot.merchant?.tick();bot.aura?.tick();
-    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.production?.planGoals();bot.account?.tick();bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
+    if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy)bot.merchant?.tick();bot.aura?.tick();
+    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
     publish();
     report.sample({reason:bot.reason,running:bot.running});
   }catch(e){report.error('tick',e);bot.pause('Fehler: '+(e.message??e));bot.report(bot.reason);}finally{if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}

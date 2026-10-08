@@ -242,3 +242,7 @@ Abschlussprüfung 8. Oktober 2026: 94 Bot-/Werkstatt-Prüfungen und 31 Client-Pr
 ## Vollbetrieb-Korrektur · 0.6.1-full
 
 Erster Browserlauf zeigt zwei API-/Auflösungsfehler und konkurrierende Questbewegung. Repariert: interact(monsterhunt), Leader-Questbesitz und beobachteter Status ohne falsches Inventarjournal, gezielte Altzustands-Recovery, Händler ohne Standort überspringen, Browser-Ordnerfähigkeit und Downloadhinweis. 100 gezielte Prüfungen bestanden. Live-Wiederholung ausstehend; Details: [CHANGELOG-0.6.1.md](docs/CHANGELOG-0.6.1.md).
+
+### Vollbetrieb-Korrektur 0.6.2 · 8. Oktober 2026
+
+Der neue gemeinsame Browserlauf war wegen Todesfällen und Merchant-Reisewechseln nicht bestanden. Risikobewertung, Ziel-Sperren, Gruppenrückzug und zusammenhängende Händlerwege repariert; neun neue gezielte Regressionen. Erneuter gemeinsamer Vollbetriebsnachweis bleibt offen. [Änderungen](docs/CHANGELOG-0.6.2.md).

@@ -1,3 +1,7 @@
+# Aktuelle Livekorrektur 0.6.2-full
+
+Vor weiteren Änderungen docs/CHANGELOG-0.6.2.md lesen. Risikoprüfung über aktuelle Farmerwerte und konservative Schadens-/Zeitbudgets, persistente begrenzte Ziel-Sperre; keine Wertjournale löschen. Merchant-Economywege bis Ankunft/Timeout halten, sichere Logistik darf vorgehen. Erholung vor Economy. Neue Livebestätigung steht aus.
+
 # Aktuelle Livekorrektur 0.6.1-full
 
 Vor weiteren Änderungen docs/CHANGELOG-0.6.1.md lesen: Monsterhunt ist interact, kein Skill; Leader-Questbesitz ohne Inventarjournal. Alte genau identifizierte Fehlaufruf-Checkpoints werden gezielt migriert, echte Wertjournale bleiben geschützt. npcFor muss Händler ohne Kartenstandort überspringen. Browser-FSA ist optional, Downloadfallback verbindlich. 100 gezielte Prüfungen bestanden, neue Livebestätigung ausstehend.

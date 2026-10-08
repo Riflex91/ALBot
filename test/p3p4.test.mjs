@@ -56,6 +56,13 @@ test('ready craft inputs stay reserved while surplus is available and completed 
  assert.equal(bot.production.status().steps[0].kind,'craft');assert.equal(bot.production.reservedQuantity(c.items[0]),5);const sell={...defaultsFor(P3P4_DESCRIPTOR.schema.properties.items.items),item:'herb',action:'sell'};assert.equal(bot.economy.spare(0,sell),3);
  cfg.production.goals.push({name:'Own herb reserve',enabled:true,item:'herb',level:0,quantity:4,recipient:'',budget:1000,priority:10});bot.production.planGoals();assert.equal(bot.production.status().steps.length,0);assert.equal(bot.economy.spare(0,sell),4); // No route to replace the missing unreserved fifth ingredient.
 });
+
+test('full operation yields an unavailable production goal while preserving its allocated ingredients',()=>{
+ const {bot,c,cfg}=fixture();cfg.general.testLogging=true;cfg.production.craft=true;bot.p.G.items.herb={s:9999};bot.p.G.items.result={};bot.p.G.craft.result={cost:1,items:[[5,'herb']]};c.items[0]={name:'herb',q:8};
+ cfg.production.goals=[{name:'Result',enabled:true,item:'result',level:0,quantity:1,recipient:'',budget:1000,priority:10},{name:'Other',enabled:true,item:'helmet',level:0,quantity:1,recipient:'',budget:1000,priority:0}];
+ bot.production.planGoals();assert.equal(bot.production.activeGoal.name,'Result');bot.economy.travel=()=>false;assert.equal(bot.production.tick(),false);assert.equal(bot.production.status().waiting.length,1);
+ bot.production.planGoals();assert.equal(bot.production.activeGoal.name,'Other');assert.equal(bot.production.reservedQuantity(c.items[0]),5);
+});
 test('one physical transfer satisfies one matching goal and replay does not spill into another',()=>{
  const {bot,cfg}=fixture(),g={name:'First',enabled:true,item:'helmet',level:0,quantity:1,recipient:'A',budget:1000,priority:10};cfg.production.goals=[g,{...g,name:'Second',priority:0}];const j={kind:'send',id:'same',to:'A',item:{name:'helmet',level:0},quantity:1};assert.equal(bot.production.recordDelivery(j),true);assert.equal(bot.production.recordDelivery(j),true);assert.deepEqual(bot.production.status().deliveries.map(x=>x.quantity),[1,0]);
 });

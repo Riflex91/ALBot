@@ -1,8 +1,8 @@
 {
-  "version": "0.5.0-p3p4",
-  "schemaId": "albot.p3p4/v1",
-  "bytes": 213208,
-  "sha256": "0cd832c75fcce976fff9650fd3b5286145b5c388ae1c452e166d4644e82518e1",
+  "version": "0.6.0-full",
+  "schemaId": "albot.full/v1",
+  "bytes": 189983,
+  "sha256": "f7eef5756c2e418c50211c67495fbcf3910b742423e6d9d4d89ca4b0a208bd4a",
   "liveTest": "pending",
-  "runtimeBytes": 207905
+  "runtimeBytes": 184258
 }

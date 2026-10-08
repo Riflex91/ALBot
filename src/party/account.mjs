@@ -1,10 +1,16 @@
-export function selectAccountTeam(members,limit,{boss=false,leader='',current=[]}={}){
+export function selectAccountTeam(members,limit,{boss=false,leader='',current=[],synergy=false,damageType='physical'}={}){
  const chosen=[],add=x=>{if(x&&!chosen.includes(x.name)&&chosen.length<limit)chosen.push(x.name);};
  for(const x of members)if(x.name===leader||!x.rotation&&current.includes(x.name))add(x);
  const maxLevel=Math.max(1,...members.map(x=>x.level??0));
  const ranked=members.filter(x=>(x.running||x.level>0&&x.class!=='auto')&&(x.rotation||current.includes(x.name)||x.name===leader)).map((x,index)=>({...x,index,score:(x.running?5:0)+(x.catchUp?3+10*(maxLevel-(x.level??0))/maxLevel:0)+(x.level??0)/100+(x.class==='ranger'?2:1)})).sort((a,b)=>b.score-a.score||a.index-b.index);
  if(boss){add(ranked.find(x=>x.class==='priest'));add(ranked.find(x=>['warrior','paladin'].includes(x.class)));}
- for(const x of ranked)add(x);return chosen;
+ if(synergy){while(chosen.length<limit){const classes=chosen.map(name=>members.find(x=>x.name===name)?.class),candidates=ranked.filter(x=>!chosen.includes(x.name)).map(x=>{
+   const s=x.stats??{},damage=Math.max(0,(s.attack??0)*(s.frequency??1)),defense=damageType==='magical'?s.resistance:s.armor;
+   const survivability=Math.log1p(Math.max(0,s.max_hp??0))/2+Math.log1p(Math.max(0,defense??0))/3;
+   const utility=(x.class==='priest'&&!classes.includes('priest')?boss?12:4:0)+(x.class==='mage'&&!classes.includes('mage')&&classes.some(c=>['priest','paladin','warrior'].includes(c))?3:0)+(['warrior','paladin'].includes(x.class)&&!classes.some(c=>['warrior','paladin'].includes(c))?boss?8:1:0);
+   return {...x,teamScore:x.score+Math.log1p(damage)+survivability+utility-(x.rip?100:0)};
+  }).sort((a,b)=>b.teamScore-a.teamScore||a.index-b.index);if(!candidates.length)break;add(candidates[0]);}
+ }else for(const x of ranked)add(x);return chosen;
 }
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
@@ -16,7 +22,7 @@ export function createAccount(bot){
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
  }
- function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal||!!bot.bank?.pending,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.inventoryBlocked&&!h.threats;}
+ function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal||!!bot.bank?.pending,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,reserved:!!bot.logistics.reserved,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.reserved&&!h.inventoryBlocked&&!h.threats;}
  function receive(from,data){if(cfg.party.selection!=='adaptive'||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
   if(cfg.party.selection!=='adaptive'||blocked)return;
@@ -36,8 +42,10 @@ export function createAccount(bot){
    if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
   }
   if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
-  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running};});
-  const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:['boss','event'].includes(bot.strategy.task()),leader:cfg.party.leader,current:bot.farmers});
+  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,stats:h?.gear?.stats??g?.stats};});
+  const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();
+  const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:['boss','event'].includes(task),leader:cfg.party.leader,current:bot.farmers,synergy:!!cfg.party.gearSynergy,damageType:p.G.monsters[leaderActivity?.target??bot.target?.mtype]?.damage_type});
+  bot.accountChoice={names:target,reason:cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte, Catch-up und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder'};
   if(JSON.stringify(target)===JSON.stringify(bot.farmers))return;
   const out=bot.farmers.find(n=>!target.includes(n)),into=target.find(n=>!bot.farmers.includes(n));
   if(!out||!into||out===me.name||!p.has('stop_character')||!p.has('start_character')||!p.has('get_active_characters'))return;
@@ -45,5 +53,5 @@ export function createAccount(bot){
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }
- return {tick,heartbeat,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
+ return {tick,heartbeat,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
 }

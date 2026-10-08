@@ -71,11 +71,11 @@ function overlap(a,b){if(a.action==='send'&&b.action==='send'&&a.recipient&&b.re
 function outcome(r){const x={...r};for(const k of ['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task'])delete x[k];return JSON.stringify(x);}
 export function validateProfile(descriptor,c){
   const errors=validateSchema(descriptor.schema,c);
-  if(errors.length||!['albot.config/v1','albot.p3p4/v1'].includes(descriptor.schemaId))return errors;
+  if(errors.length||!['albot.config/v1','albot.p3p4/v1','albot.full/v1'].includes(descriptor.schemaId))return errors;
   // An imported descriptor can ADD v1 fields, but cannot redefine the existing
   // contract while retaining its identity. Project only known fields to check it.
   const known=(s,v)=>s.type==='object'&&v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(s.properties).filter(([k])=>own(v,k)).map(([k,x])=>[k,known(x,v[k])])):s.type==='array'&&Array.isArray(v)?v.map(x=>known(s.items,x)):v;
-  const coreErrors=validateSchema(DESCRIPTOR.schema,descriptor.schemaId==='albot.p3p4/v1'?addMissingDefaults(DESCRIPTOR.schema,known(DESCRIPTOR.schema,c)):known(DESCRIPTOR.schema,c));
+  const coreErrors=validateSchema(DESCRIPTOR.schema,descriptor.schemaId!=='albot.config/v1'?addMissingDefaults(DESCRIPTOR.schema,known(DESCRIPTOR.schema,c)):known(DESCRIPTOR.schema,c));
   if(coreErrors.length)return coreErrors;
   const names=c.characters.map(x=>x.name);
   if(names.some(n=>!n.trim()||n!==n.trim()))errors.push('Charaktername darf nicht leer sein oder Rand-Leerzeichen enthalten.');
@@ -136,7 +136,7 @@ export function addMissingDefaults(schema,value,path='',changes=[]){
 }
 export function importProfile(descriptor,value){
   if(value?.format!=='albot-profile'||value.formatVersion!==1)throw Error('Kein Super-Bot-Profil. Alte Generatorprofile bleiben in der klassischen Werkstatt nutzbar.');
-  if(descriptor.schemaId==='albot.p3p4/v1'&&['albot.live-a/v1','albot.live-b/v1','albot.live-c/v1','albot.config/v1'].includes(value.schemaId)){
+  if(['albot.p3p4/v1','albot.full/v1'].includes(descriptor.schemaId)&&value.schemaId!==descriptor.schemaId&&['albot.live-a/v1','albot.live-b/v1','albot.live-c/v1','albot.config/v1','albot.p3p4/v1'].includes(value.schemaId)){
     const config=structuredClone(value.config);if(config.general?.autoUpdate)throw Error('Aktiver Updater gehört nicht zu P3/P4; im bisherigen Profil ausdrücklich deaktivieren.');delete config.general.autoUpdate;delete config.general.updateChannel;
     const next=addMissingDefaults(descriptor.schema,config),errors=validateProfile(descriptor,next);if(errors.length)throw Error(errors.join('\n'));return next;
   }

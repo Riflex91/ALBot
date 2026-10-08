@@ -13,7 +13,7 @@ export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null;
  const explicitTargets=()=>me.farmTargets.length?me.farmTargets:cfg.farming.targets;
  const state=()=>p.root.S??p.parent.S??{};
- const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':me.role==='merchant'?'supply':'farm');
+ const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':activity?.kind==='quest'?'quest':me.role==='merchant'?'supply':'farm');
  const permittedMap=map=>!!p.G.maps?.[map]&&!w.excludedMaps.includes(map)&&(!p.G.maps[map].pvp||cfg.farming.pvp);
  function safeMonster(id){const m=p.G.monsters?.[id];if(!m)return false;
   const limit={conservative:.12,balanced:.25,aggressive:.4}[w.risk],members=bot.allies().filter(x=>!x.rip),hp=Math.max(p.c.max_hp??0,...members.map(x=>x.max_hp??0));
@@ -31,24 +31,29 @@ export function createStrategy(bot){
   manual={task:kind,id:id??null,until:Date.now()+ttlMs};activity=null;bot.target=null;bot.movement.stop();plannedAt=0;bot.event('strategy.request',{task:value,ttlMs});return true;
  }
  function encounter(kind,id){
-  const live=state()[id],meta=p.G.events?.[id];if(!live||typeof live!=='object'||!(live.live||live.active)||live.live===false||live.active===false)return null;
+  let live=state()[id];const meta=p.G.events?.[id],visible=bot.monsters().find(m=>m.mtype===id&&p.G.monsters[id]?.boss);
+  if(!live&&visible)live={live:true,type:id,map:visible.map,x:visible.real_x??visible.x,y:visible.real_y??visible.y};
+  if(!live||typeof live!=='object'||!(live.live||live.active)||live.live===false||live.active===false||Number.isFinite(live.hp)&&live.hp<=0||Number.isFinite(live.expires)&&live.expires<Date.now())return null;
   const type=live.type&&p.G.monsters?.[live.type]?live.type:p.G.monsters?.[id]?id:null;
   if(!type||!safeMonster(type))return null;
   const map=live.map??meta?.map;if(!permittedMap(map))return null;
-  const target=bot.monsters().find(m=>m.mtype===type),x=live.x??target?.x,y=live.y??target?.y;
+  const target=bot.monsters().find(m=>m.mtype===type);let x=live.x??target?.real_x??target?.x,y=live.y??target?.real_y??target?.y;
+  if(!Number.isFinite(x)||!Number.isFinite(y)){const spawn=p.G.maps[map]?.monsters?.find(m=>m.type===type),b=spawn?.boundary;if(Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)){x=(b[0]+b[2])/2;y=(b[1]+b[3])/2;}}
   if(!Number.isFinite(x)||!Number.isFinite(y))return null;
   return {kind,id,target:type,map,x,y,in:map,expires:Date.now()+Math.max(10000,w.cacheTtlMs*2)};
  }
- function validActivity(a){return a&&['boss','event'].includes(a.kind)&&typeof a.id==='string'&&Number.isFinite(a.expires)&&a.expires>Date.now()&&a.expires<Date.now()+Math.max(120000,w.cacheTtlMs*3)&&permittedMap(a.map)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&(a.kind==='boss'?w.bosses&&w.allowedBosses.includes(a.id):w.events&&w.allowedEvents.includes(a.id))&&(!a.target||p.G.monsters[a.target]&&safeMonster(a.target));}
+ function validActivity(a){return a&&['boss','event','quest'].includes(a.kind)&&typeof a.id==='string'&&Number.isFinite(a.expires)&&a.expires>Date.now()&&a.expires<Date.now()+Math.max(120000,w.cacheTtlMs*3)&&permittedMap(a.map)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&(a.kind==='quest'?w.quests&&w.questTargets:a.kind==='boss'?w.bosses&&w.allowedBosses.includes(a.id):w.events&&w.allowedEvents.includes(a.id))&&(!a.target||p.G.monsters[a.target]&&safeMonster(a.target));}
  function plan(){
   const now=Date.now();if(manual?.until<=now){manual=null;activity=null;bot.target=null;bot.movement.stop();}
   if(lastG!==p.G){lastG=p.G;plannedAt=0;rates={};}
-  if(now-plannedAt<w.cacheTtlMs)return;plannedAt=now;
+  if(activity){const live=state()[activity.id],visible=bot.monsters().some(m=>m.mtype===activity.target),questGone=activity.kind==='quest'&&me.name===bot.leader&&(!(p.c.s?.monsterhunt?.c>0)||p.c.s.monsterhunt.id!==activity.id);if(activity.expires<=now||questGone||activity.kind!=='quest'&&(live&&(live.live===false||live.active===false||live.hp===0)||!live&&!visible)||!safeMonster(activity.target)){activity=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.return',{reason:'Aktivität beendet, nicht mehr beobachtet oder Risiko geändert'});}}
   if(me.role==='merchant')return;
-  if(cfg.party.enabled&&me.name!==bot.leader){const leader=bot.transport.fresh(bot.leader);activity=validActivity(leader?.activity)?{...leader.activity}:null;return;}
+  if(cfg.party.enabled&&me.name!==bot.leader){const leader=bot.transport.fresh(bot.leader);activity=leader?.running&&leader.realm===p.realm()&&!leader.rip&&validActivity(leader.activity)?{...leader.activity}:null;return;}
+  if(now-plannedAt<w.cacheTtlMs)return;plannedAt=now;
   let next=null;
   if(manual&&['boss','event'].includes(manual.task))next=encounter(manual.task,manual.id);
   else if(!manual){for(const id of w.events?w.allowedEvents:[]){next=encounter('event',id);if(next)break;}if(!next)for(const id of w.bosses?w.allowedBosses:[]){next=encounter('boss',id);if(next)break;}}
+  if(!next&&!manual&&w.quests&&w.questTargets&&p.c.s?.monsterhunt?.c>0){const id=p.c.s.monsterhunt.id,d=safeMonster(id)&&bot.movement.farmLocation?.(id);if(d&&permittedMap(d.map))next={...d,kind:'quest',id,target:id,expires:now+Math.max(10000,w.cacheTtlMs*2)};}
   if(activity?.id!==next?.id){bot.target=null;if(bot.movement.order?.owner==='farm'||bot.movement.order?.owner==='world')bot.movement.stop();bot.event('strategy.activity',{kind:next?.kind??'farm',id:next?.id??null});}activity=next;
  }
  function sample(){

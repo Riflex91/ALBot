@@ -37,6 +37,16 @@ test('bank confirms both sides and does not consume a protected or changed slot'
  assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.journal,null);assert.equal(c.bank.items0[0].q,10);
  c.items[0]={name:'hpot0',q:10,l:'l'};assert.equal(bot.bank.store(0,rule),false);
 });
+test('empty unlocked bank packs expose 42 slots and a compatible stack is used even in a full pack',async()=>{
+ const {bot,c,rule}=fixture();c.bank.items0=[];assert.equal(bot.bank.capacity()[0].free,42);
+ c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[7]={name:'hpot0',q:50};let selected;
+ bot.p.call=(name,slot,pack,dest)=>{assert.equal(name,'bank_store');selected=dest;c.bank[pack][dest].q+=c.items[slot].q;c.items[slot]=null;return Promise.resolve();};assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(selected,7);assert.equal(c.bank.items0[7].q,60);assert.equal(bot.journal,null);
+});
+test('bank pressure reclaims only an explicit unreserved sale and resumes sale before other inventory jobs',async()=>{
+ const {bot,c,rule}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.bankWorkspace=2;const sale={...rule,name:'Carrot sale',item:'carrot',action:'sell',keep:0,teamReserve:0,minPrice:1,maxActions:1};bot.cfg.items=[sale];bot.p.G.items.carrot={g:20,s:9999};c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[4]={name:'carrot',q:2};const calls=[];
+ bot.p.call=(name,...args)=>{calls.push(name);if(name==='item_value')return 10;if(name==='find_npc')return {map:'bank',in:'bank',x:0,y:-100};if(name==='bank_retrieve'){const [pack,slot,dest]=args;c.items[dest]=c.bank[pack][slot];c.bank[pack][slot]=null;}if(name==='sell'){const [slot,q]=args;c.items[slot]=null;c.gold+=q*10;}return Promise.resolve();};
+ assert.equal(bot.bank.reclaim(),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.bank.pending,true);bot.bank=createBank(bot);assert.equal(bot.bank.recoverCapacity(),true);await Promise.resolve();bot.exec.poll();bot.bank.recoverCapacity();assert.equal(bot.bank.pending,false);assert.equal(c.bank.items0[4],null);assert.equal(calls.filter(x=>x==='bank_retrieve').length,1);assert.equal(calls.filter(x=>x==='sell').length,1);
+});
 test('bank partial stack keeps reserves and verifies a split before storage',async()=>{
  const {bot,c,rule}=fixture();rule.keep=7;bot.p.call=(name,slot,q)=>{assert.equal(name,'split');assert.equal(q,3);c.items[slot].q-=q;c.items[1]={name:'hpot0',q};return Promise.resolve();};
  assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.journal,null);assert.equal(c.items[0].q,7);assert.equal(c.items[1].q,3);

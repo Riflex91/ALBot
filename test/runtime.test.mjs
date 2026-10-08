@@ -7,7 +7,16 @@ import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
 import {ECONOMY_DESCRIPTOR} from '../src/config/live-b.mjs';
 import {INTEGRATION_DESCRIPTOR} from '../src/config/live-c.mjs';
 import {P3P4_DESCRIPTOR} from '../src/config/p3p4.mjs';
+import {FULL_DESCRIPTOR} from '../src/config/full.mjs';
 const code=readFileSync(new URL('../dist/albot.runtime.js',import.meta.url),'utf8');
+
+test('full live bundle starts identical browser/headless with diagnostics and one scheduler',()=>{
+ for(const browser of [false,true]){const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.autoTravel=false;a.root.ALBotConfig=cfg;if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}a.load();assert.equal(a.root.ALBot.schemaId,'albot.full/v1');assert.equal(a.root.ALBot.status().running,true,JSON.stringify(a.root.ALBot.status()));const report=JSON.parse(a.root.ALBot.testReport());assert.equal(report.continuousLog,true);assert.equal(report.test,'Vollbetrieb');assert.equal(a.timers.size,1);a.load();assert.equal(a.timers.size,1);a.root.ALBot.dispose();assert.equal(a.timers.size,0);}
+});
+
+test('full roster preserves configured initial team before unknown offline substitutes',()=>{
+ const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.characters=['A','Ranger2','Ranger3','Mage','Priest'].map(name=>({...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name}));cfg.party.leader='A';cfg.party.merchant='';cfg.party.selection='adaptive';cfg.party.maxFarmers=3;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.autoTravel=false;a.root.ALBotConfig=cfg;a.load();assert.equal(a.root.ALBot.status().running,true,JSON.stringify(a.root.ALBot.status()));assert.deepEqual(JSON.parse(a.root.ALBot.testReport()).account.names,['A','Ranger2','Ranger3']);a.root.ALBot.dispose();
+});
 test('P3/P4 same bundle autostarts browser/headless and releases planning listeners on reload',()=>{
  for(const browser of [false,true]){const a=harness(),cfg=defaultsFor(P3P4_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(P3P4_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.autoTravel=false;a.root.ALBotConfig=cfg;
   const events=new Map();let id=0;a.root.game={on:(name,handler)=>{events.set(++id,{name,handler});return id;},remove:key=>events.delete(key)};if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}

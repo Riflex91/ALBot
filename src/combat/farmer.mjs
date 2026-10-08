@@ -30,6 +30,7 @@ export function createFarmer(bot){
   }
   function retreat(t){const c=p.c,d=distance(c,t)||1,from=xy(c),toward=xy(t),dx=(from.x-toward.x)/d,dy=(from.y-toward.y)/d;for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*45,ny=from.y+y*45;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function tick(){
+    if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover())return;
     const c=p.c,now=Date.now();
     if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}

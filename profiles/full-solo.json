@@ -18,7 +18,22 @@
       "pauseOnUnknown": true,
       "testLogging": true
     },
-    "characters": [],
+    "characters": [
+      {
+        "name": "Farmer1",
+        "enabled": true,
+        "class": "ranger",
+        "role": "farmer",
+        "group": "team1",
+        "region": "EU",
+        "server": "II",
+        "rotation": true,
+        "catchUp": false,
+        "goldReserve": 10000,
+        "gearRole": "auto",
+        "farmTargets": []
+      }
+    ],
     "farming": {
       "enabled": true,
       "targets": [
@@ -47,13 +62,13 @@
     "party": {
       "enabled": true,
       "group": "team1",
-      "leader": "",
+      "leader": "Farmer1",
       "merchant": "",
       "selection": "fixed",
       "maxFarmers": 3,
       "followDistance": 180,
       "focusFire": true,
-      "waitForTeam": true,
+      "waitForTeam": false,
       "healing": true,
       "energize": true,
       "buffs": true,

@@ -4,7 +4,7 @@ import {Script} from 'node:vm';
 import {checkPackage,importProfile,defaultsFor,validateProfile,envelope,exportBundle} from '../editor/lib/contract.mjs';
 const [input,destination]=process.argv.slice(2);
 if(!input||!destination)throw Error('node scripts/export-p3p4.mjs <Profil.json> <neuer Ausgabeordner>');
-const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot.package.json',import.meta.url),'utf8'))),d=pkg.descriptor;
+const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot-p3p4.package.json',import.meta.url),'utf8'))),d=pkg.descriptor;
 if(d.schemaId!=='albot.p3p4/v1')throw Error('Zuerst P3/P4 bauen.');
 const base=importProfile(d,JSON.parse(await readFile(resolve(input),'utf8')));base.general.autostart=true;
 const merchant=base.characters.find(c=>c.enabled&&c.role==='merchant'&&c.name===base.party.merchant),farmer=base.characters.find(c=>c.enabled&&c.role==='farmer');if(!merchant||!farmer)throw Error('Zuständiger Merchant und Farmer erforderlich.');

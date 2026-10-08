@@ -1,1 +1,1 @@
-export const VERSION='0.5.0-p3p4';
+export const VERSION='0.6.0-full';

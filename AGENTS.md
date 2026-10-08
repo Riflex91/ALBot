@@ -1,3 +1,7 @@
+# Aktueller Auftrag · Vollbetrieb 0.6.0-full
+
+Der Nutzer beauftragte den gesamten integrierten Bot zum gemeinsamen echten Livetest; optionalen Updater ausdrücklich nicht einbauen. Vor Änderungen docs/VOLLBETRIEB.md lesen. Aktueller Vertrag src/config/full.mjs, albot.full/v1. Ein Betriebsprofil und ein Scheduler; keine getrennten Testabschnitte. Autostart true, Browser performance_trick. Fortlaufende benannte Diagnosedateien mit Grund/Ergebnis sind ausdrücklich autorisiert: Desktopausgabe über vorhandenen Client, Browser nach Ordnerfreigabe. 2048 RAM-Ereignisse, Dateien rotieren bei 16 MiB; keine Logs im localStorage. Historische Grenzen unten beschreiben alte Releases und schränken diesen Auftrag nicht ein. Keine Shadow-Tests oder automatischen Logins. Neue gemeinsame Livebestätigung und Linux bleiben ausstehend.
+
 # Aktueller Folgeauftrag: vollständiges P3/P4
 
 0.5.0-p3p4 schließt die P3/P4-Implementierungslücken. Vor Änderungen docs/P3-P4.md und docs/P3-P4-LIVE.md lesen. Gemeinsamer großer Test vorbereitet, noch nicht live bestätigt. Neues Schema src/config/p3p4.mjs; frühere A/B/C-Verträge und persönliche bestätigte Dateien schützen. Keine Shadow-Tests oder automatischen Logins. Updater außerhalb dieses Auftrags. Neue Ziellogik nur bei autonomy=true; explizite Item-Regeln, Reserven, Gold-/Verlustbudgets und bestätigter Wiederanlauf bleiben verbindlich.

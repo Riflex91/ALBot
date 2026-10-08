@@ -16,12 +16,12 @@ export function createGear(bot){
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
  if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))profiles={};
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
- function snapshot(){const slots={};for(const [slot,i] of Object.entries(p.c.slots??{}))if(i&&!slot.startsWith('trade'))slots[slot]={name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??'',l:!!i.l,b:!!i.b};return {class:p.c.ctype,level:p.c.level,slots};}
+ function snapshot(){const slots={};for(const [slot,i] of Object.entries(p.c.slots??{}))if(i&&!slot.startsWith('trade'))slots[slot]={name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??'',l:!!i.l,b:!!i.b};const stats=Object.fromEntries(["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].filter(k=>Number.isFinite(p.c[k])).map(k=>[k,p.c[k]]));return {class:p.c.ctype,level:p.c.level,slots,stats};}
  function refresh(){
   if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
    if(!data||typeof data.class!=='string'||!Number.isFinite(data.level)||!data.slots||typeof data.slots!=='object')continue;
    const slots={};for(const [slot,i] of Object.entries(data.slots).slice(0,16))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level,stat_type:typeof i.stat_type==='string'?i.stat_type:'',p:typeof i.p==='string'?i.p:'',title:typeof i.title==='string'?i.title:'',l:!!i.l,b:!!i.b};
-   profiles[name]={class:data.class,level:data.level,slots,at:Date.now()};
+   profiles[name]={class:data.class,level:data.level,slots,stats:Object.fromEntries(Object.entries(data.stats??{}).filter(([k,v])=>["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].includes(k)&&Number.isFinite(v)&&Math.abs(v)<1e9)),at:Date.now()};
   }
   profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&Date.now()-x.at<7*86400000).slice(0,20));
   if(cfg.production.offlineProfiles&&Date.now()-lastSave>60000){lastSave=Date.now();p.write(key,profiles);}
@@ -47,13 +47,18 @@ export function createGear(bot){
    try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole,old=profile.slots[rule.slot];const score=gearScore(p.call('item_properties',item),role,profile.class),previous=old?gearScore(p.call('item_properties',old),role,profile.class):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
   }
  }return result.slice(0,20);}
- function goals(){if(!cfg.production.gear)return [];return (cfg.production.gearTargets??[]).filter(g=>g.enabled).flatMap(g=>{
+ function targets(){const result=(cfg.production.gearTargets??[]).filter(g=>g.enabled).map(g=>({...g}));
+  if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=cfg.production.autoGearMaxLevel||result.some(g=>g.character===member.name&&g.slot===slot))continue;
+   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:member.catchUp?30:10});
+  }}return result;
+ }
+ function goals(){if(!cfg.production.gear)return [];return targets().flatMap(g=>{
   const profile=g.character===me.name?snapshot():profiles[g.character];if(!profile||!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot))return [];
   const old=profile.slots[g.slot];if(old?.l||old?.b||old?.name===g.item&&old.level>=g.level)return [];
   const member=cfg.characters.find(c=>c.name===g.character),role=member?.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member?.gearRole;
   try{if(old&&gearScore(p.call('item_properties',{name:g.item,level:g.level}),role,profile.class)<gearScore(p.call('item_properties',old),role,profile.class)*(1+cfg.production.minImprovement))return [];}catch{return [];}
   return [{...g,name:'Gear: '+g.name,quantity:1,recipient:g.character===me.name?'':g.character,gearSlot:g.slot}];
  });}
- function status(){const eligible=new Set(goals().map(g=>g.name));return (cfg.production.gearTargets??[]).filter(g=>g.enabled).slice(0,32).map(g=>{const profile=g.character===me.name?snapshot():profiles[g.character],old=profile?.slots?.[g.slot];return {name:g.name,character:g.character,item:g.item,level:g.level,slot:g.slot,offline:g.character!==me.name&&!bot.transport.fresh(g.character),state:!cfg.production.gear?'disabled':!profile?'unknown-profile':!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot)?'incompatible':old?.l||old?.b?'protected':old?.name===g.item&&old.level>=g.level?'equipped':eligible.has('Gear: '+g.name)?'requested':'below-improvement-threshold'};});}
+ function status(){const eligible=new Set(goals().map(g=>g.name));return targets().slice(0,32).map(g=>{const profile=g.character===me.name?snapshot():profiles[g.character],old=profile?.slots?.[g.slot];return {name:g.name,character:g.character,item:g.item,level:g.level,slot:g.slot,offline:g.character!==me.name&&!bot.transport.fresh(g.character),state:!cfg.production.gear?'disabled':!profile?'unknown-profile':!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot)?'incompatible':old?.l||old?.b?'protected':old?.name===g.item&&old.level>=g.level?'equipped':eligible.has('Gear: '+g.name)?'requested':'below-improvement-threshold'};});}
  return {equip,snapshot,refresh,suggestions,goals,status,profile:name=>profiles[name]??null};
 }

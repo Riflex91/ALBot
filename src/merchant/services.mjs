@@ -69,7 +69,10 @@ export function createServices(bot){
  }
  function tick(){
   if(!sliceStarted)sliceStarted=Date.now();if(record&&Date.now()-sliceStarted>=(cfg.merchant.serviceSliceMs??30000)){interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();nextGather=Date.now()+cfg.general.economyTickMs;return restore();}
-  if(cfg.merchant.massBuffs&&cfg.production.enabled){const skill=cfg.production.exchange?'massproduction':'massproductionpp',s=p.G.skills?.[skill];if(s&&!p.c.s?.[skill]&&p.c.level>=(s.level??0)&&p.c.mp>=(s.mp??0)&&!p.call('is_on_cooldown',skill)&&exec.run('service:'+skill,['skill','mana'],()=>bot.running,()=>p.call('use_skill',skill),{delay:10000}))return true;}
+  if(cfg.merchant.massBuffs){const producing=cfg.production.enabled,exchange=bot.production?.status().steps?.[0]?.kind==='exchange',threatened=bot.monsters().some(m=>m.target===p.c.name);
+   const choices=[...(threatened?['mcourage']:[]),...(bot.target?['mfrenzy']:[]),...(producing?(exchange?['massexchangepp','massexchange']:['massproductionpp','massproduction']):[])];
+   for(const skill of choices){const s=p.G.skills?.[skill];if(s&&!p.c.s?.[s.condition??skill]&&p.c.level>=(s.level??0)&&p.c.mp-(s.mp??0)>=p.c.max_mp*.3&&!p.call('is_on_cooldown',skill)&&exec.run('service:'+skill,['skill','mana'],()=>bot.running,()=>p.call('use_skill',skill),{delay:10000})){bot.event?.('service.buff',{skill,reason:threatened?'Eigener Gefahrenzustand':'Aktuelle Produktionsart',exchange});return true;}}
+  }
   if(record&&(!kind||Date.now()<nextGather||(!cfg.merchant.fishing&&!cfg.merchant.mining)))return restore();
   const requested=bot.strategy?.status().manual?.task;
   if((!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;

@@ -1,3 +1,7 @@
+# Ergänzung 0.6.0-full
+
+Aktueller Vertrag: [VOLLBETRIEB.md](VOLLBETRIEB.md), Schema albot.full/v1. Ein integrierter Scheduler, Gold-/Item-/Produktionsreservierungen und begrenzte Diagnoseringspeicher. Neue API ALBot.chooseLogDirectory(); im Browser nur nach Benutzeraktion Ordnerfreigabe, headless über vorhandenes writeTestReport. Keine Hostimports im Bot. Historische Abschnitte unten bleiben Referenz für die ursprüngliche Portgrenze.
+
 # Browser und Headless: verbindlicher Bot-Vertrag
 
 Stand 6. Oktober 2026. Referenz: [Client-Handbuch](../HOW-TO-USE.md), Client 1.2.1, `apiVersion: 1`. Der erste P1/P2-Testkandidat ist implementiert; [Live A](LIVE-A.md) ist noch ausstehend. Die Werkstatt und der [Konfigurations-/Paketvertrag](WORKSHOP-CONTRACT.md) bleiben maßgeblich. Spätere Etappen ergänzen fehlende Fähigkeiten.

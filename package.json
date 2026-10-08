@@ -9,5 +9,10 @@
     "build:editor": "node editor/build.mjs",
     "test:editor": "node --test editor/test/*.test.mjs"
   },
-  "engines": {"node": ">=22.9"}
+  "engines": {
+    "node": ">=22.9"
+  },
+  "devDependencies": {
+    "terser": "^5.51.2"
+  }
 }

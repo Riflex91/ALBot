@@ -1,3 +1,7 @@
+# Ergänzung für Super-Bot 0.6.0-full
+
+Die vorhandene API bleibt kompatibel. Für fortlaufende Vollbetriebs-Testlogs die mitgelieferte `tools/client-test-report.js` in `src/test-report.js` des Clients übernehmen; die persönliche Desktopinstallation ist bereits angepasst. `parent.headless.writeTestReport(content)` akzeptiert zusätzlich `continuousLog:true`, gültigen character/started und sequenzierte events im bekannten Reportformat. Der Client schreibt dann Desktop/ALBot-Testlogs/test-CHARAKTER-UTCSTART-partNNN.jsonl und behält den bisherigen kompakten Bericht. Botcode schreibt keine eigenen Hostdateien. Browser nutzt `ALBot.chooseLogDirectory()` nach Benutzerklick oder `ALBot.exportTestReport()` als Download. Weitere Bot-APIs und Logdetails: [docs/VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Kein Updater.
+
 # Ergänzung: aktueller Super-Bot P3/P4
 
 Der folgende Headless-Client-Vertrag bleibt unverändert maßgeblich. Der neue Bot 0.5.0-p3p4 verwendet keine neue Host-API. Für KI-Arbeit am Bot zusätzlich [P3/P4-Regel-/Produktionsvertrag](docs/P3-P4.md), [RUNTIME-VERTRAG](docs/RUNTIME-VERTRAG.md) und [WORKSHOP-CONTRACT](docs/WORKSHOP-CONTRACT.md) lesen. Eine klassische Datei für Browser/Headless, Autostart true, Browser immer performance_trick. Explizite Item-Regeln gewinnen vor automatischer Zielplanung. Testbericht weiter test-ausgeführtertest.json; gemeinsamer Ablauf [P3-P4-LIVE](docs/P3-P4-LIVE.md).

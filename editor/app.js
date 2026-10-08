@@ -1,9 +1,9 @@
 // No game actions, eval or dynamic script loading in the editor.
 const $=id=>document.getElementById(id);
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
-const STORAGE='albot.workshop.v2';
+const STORAGE='albot.workshop.full.v1';
 const hasItemRules=()=>['item','role','action','keep','targetCount','maxCount','batch'].every(k=>descriptor.schema.properties.items?.items?.properties?.[k]);
-let descriptor=structuredClone(INITIAL_DESCRIPTOR),catalog=structuredClone(INITIAL_CATALOG),config=defaultsFor(descriptor.schema),runtime=null,section='general',history=[],future=[],dirty=false;
+let descriptor=structuredClone(INITIAL_DESCRIPTOR),catalog=structuredClone(INITIAL_CATALOG),config=INITIAL_PROFILE?structuredClone(INITIAL_PROFILE):defaultsFor(descriptor.schema),runtime=structuredClone(INITIAL_RUNTIME),section='general',history=[],future=[],dirty=false;
 let fileMode='',itemSearch='',ruleSearch='',itemPage=0,selected=new Set(),draftTimer;
 const draftMessages=[];
 checkDescriptor(descriptor);
@@ -109,13 +109,13 @@ async function openData(value){
     if(value.format==='albot-package'){await checkPackage(value);nextDescriptor=value.descriptor;nextRuntime=value.runtime;}else nextDescriptor=checkDescriptor(value);
     const additions=[];
     let next=addMissingDefaults(nextDescriptor.schema,config,'',additions);
-    if(nextDescriptor.schemaId==='albot.p3p4/v1'&&!next.general?.autoUpdate){delete next.general.autoUpdate;delete next.general.updateChannel;}
+    if(['albot.p3p4/v1','albot.full/v1'].includes(nextDescriptor.schemaId)&&!next.general?.autoUpdate){delete next.general.autoUpdate;delete next.general.updateChannel;}
     // Only explicit migrations supplied as profile data are accepted. Never
     // silently drop unknown fields or infer changed semantics from equal names.
     const errors=validateProfile(nextDescriptor,next);
     if(nextDescriptor.schemaId!==descriptor.schemaId||errors.length){
       const main=$('content');main.replaceChildren(el('h2','Schemawechsel vorbereiten'),el('p','Das neue Schema passt nicht vollständig zu diesem Profil. Sichere dein bisheriges Profil, bevor du ein neues anlegst. Bestehende Werte werden nicht stillschweigend verworfen.'));
-      if(!errors.length&&nextDescriptor.schemaId==='albot.p3p4/v1'){const migrate=el('button','Bestehende Werte für P3/P4 übernehmen','primary');migrate.onclick=()=>{descriptor=structuredClone(nextDescriptor);runtime=nextRuntime;config=next;history=[];future=[];section=Object.keys(descriptor.schema.properties)[0];dirty=true;render();feedback('P3/P4 geladen. Bestehende Werte erhalten; neue Automatik standardmäßig aus.');};main.append(migrate);}
+      if(!errors.length&&['albot.p3p4/v1','albot.full/v1'].includes(nextDescriptor.schemaId)){const migrate=el('button','Bestehende Werte übernehmen','primary');migrate.onclick=()=>{descriptor=structuredClone(nextDescriptor);runtime=nextRuntime;config=next;history=[];future=[];section=Object.keys(descriptor.schema.properties)[0];dirty=true;render();feedback('Paket geladen. Bestehende Werte erhalten; neue Einstellungen prüfen.');};main.append(migrate);}
       const save=el('button','Bisherigen Entwurf sichern');save.onclick=()=>download('albot-previous-draft.json',JSON.stringify(envelope(descriptor,config),null,2));const accept=el('button','Neues Schema mit Vorgaben öffnen','primary');accept.onclick=()=>{descriptor=structuredClone(nextDescriptor);runtime=nextRuntime;config=defaultsFor(descriptor.schema);history=[];future=[];section=Object.keys(descriptor.schema.properties)[0];dirty=true;render();feedback('Neues Schema geöffnet. Voriges Profil kann mit seinem ursprünglichen Schema erneut geladen werden.');};const cancel=el('button','Abbrechen');cancel.onclick=render;main.append(save,accept,cancel);feedback('Schemawechsel benötigt eine ausdrückliche Auswahl.');return;
     }
     if(additions.length){

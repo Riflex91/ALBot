@@ -1,3 +1,7 @@
+# Aktuelles Paket 0.6.0-full
+
+Schema albot.full/v1 aus src/config/full.mjs erweitert den P3/P4-Vertrag ohne Updater. Die gebaute Standalone-Werkstatt enthält Runtimepaket und Katalog bereits; persönlicher Export bettet zusätzlich INITIAL_PROFILE ein. Der Exportbutton ist bei gültigem Profil sofort verfügbar. Alte A/B/C/P3P4-Profile werden mit erhaltenen Werten migriert; neue Autonomie benötigt passende freigegebene Regeln/Budgets. Der Generator bleibt schemaorientiert; keine zweite Werkstatt. Build npm ci → npm run build → npm run build:editor. [Vollbetriebsvertrag](VOLLBETRIEB.md).
+
 # Fertigen Super-Bot an die vorhandene Werkstatt anbinden
 
 Die Werkstatt implementiert den Konfigurationsvertrag. Der erste Runtime-Teilrelease für [Live A](LIVE-A.md) konsumiert eine ausdrücklich reduzierte Ansicht mit eigener Schema-ID `albot.live-a/v1`; nicht unterstützte Bereiche werden abgelehnt. Neue Runtime-Arbeit muss den gemeinsamen Vertrag erweitern, statt eine abweichende zweite Konfiguration zu erfinden. Kanonische Definition: [editor/lib/schema.mjs](../editor/lib/schema.mjs); generierte Datendatei: [editor/albot.settings.json](../editor/albot.settings.json). Fachprüfungen: [editor/lib/contract.mjs](../editor/lib/contract.mjs).

@@ -1,9 +1,9 @@
 # ALBot: Roadmap zum gemeinsamen Super-Bot
-Stand: 7. Oktober 2026. **Live A grundlegend bestanden. Live B ist mit 0.2.2-live-b in Browser und Windows-Headless vollständig bestanden: 01 Abholung, 02 Bank, 03 Bank→NPC sowie 04 Upgrade und bestätigte Lieferung. Die 0.2.2-Korrekturen für Offer-Retry und Basis-Nachkauf sind live bestätigt. P3/P4 bleiben teilweise implementiert; Linux-Live-Nachweis und die übrigen offenen Funktionsblöcke stehen weiter aus.**
+Stand: 8. Oktober 2026. **Live A grundlegend bestanden. Live B ist mit 0.2.2-live-b in Browser und Windows-Headless vollständig bestanden: 01 Abholung, 02 Bank, 03 Bank→NPC sowie 04 Upgrade und bestätigte Lieferung. Die 0.2.2-Korrekturen für Offer-Retry und Basis-Nachkauf sind live bestätigt. 0.6.0-full ergänzt die verbleibende Integration und bereitet einen gemeinsamen Vollbetriebs-Livetest vor. Linux-Live-Nachweis und gemeinsame Vollbetriebsbestätigung stehen aus.**
 
 **Live C mit `0.3.1-live-c` ist laut Nutzerbestätigung vom 7. Oktober 2026 bestanden.** Der vereinbarte Testpunkt und der Entwicklungsauftrag bis zu diesem Termin sind abgeschlossen. Dies bestätigt den Testablauf, nicht alle ausgeschalteten Welt-/Account-/Teamreiseoptionen oder noch offene Funktionen. Genaue Implementierungszuordnung und verbleibende Lücken: [INTEGRATIONSSTAND.md](docs/INTEGRATIONSSTAND.md). Nachweis und Grenzen: [LIVE-C-ERGEBNIS.md](docs/LIVE-C-ERGEBNIS.md).
 
-Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Das aktuelle Teilrelease verwendet albot.live-c/v1; A/B-Artefakte bleiben verfügbar. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator pro Botversion neu zu programmieren.
+Vorab aus P1/P3 umgesetzt: vollständiges schemaorientiertes Einstellungsmodell, lokale Oberfläche, Item-Katalog/Mehrfachbearbeitung, Regelvorschau, Konfliktprüfung, Profilimport/-export und fertiger Bot-Paket-Exportweg. Das aktuelle Vollbetriebsrelease verwendet albot.full/v1; A/B-Artefakte bleiben verfügbar. Verbindlich: [Werkstatt-Vertrag](docs/WORKSHOP-CONTRACT.md). Das Schema kann neue Einstellungen liefern, ohne den Formulargenerator pro Botversion neu zu programmieren.
 
 ## 1. Ziel und feste Entscheidungen
 
@@ -75,7 +75,7 @@ Fertig, wenn normales Farmen und Teamkommunikation in beiden Umgebungen funktion
 - [x] Lokalen Editor mit Katalog aus den verfügbaren Spieldaten bauen; jedes Item einzeln suchbar, Rollen- und Charakterausnahmen, Kopieren/Mehrfachbearbeitung und erweiterbare Schema-Vorgaben.
 - [x] Getrennte Farmer- und Merchant-Aktionen pro Item, aber ein gemeinsamer Regelsatz. Levelintervalle, Mengen, Eigenschaften, Schutzmerkmale und Reservierungen berücksichtigen. Implementiert in policy/economy/logistics/production; accountweite Gearziele und Reservierungen sind ab 0.5.0 ergänzt.
 - [x] Auflösen von Regelkonflikten mit verständlicher Anzeige „Diese Regel gewinnt, weil …“ in der Werkstatt. Identische Priorität und Filter gelten inzwischen in inventory/acquisition/production. Die Vorschau ist kein Shadow-Testlauf.
-- [x] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze. Regelgebundene Übergabe/Versorgung, Reserven und Platzgrenzen implementiert; A/B bestätigen die dokumentierten Lieferketten. Farmer→Merchant-Goldtransfer ist eine zusätzliche noch fehlende Automatik, kein behaupteter Bestandteil des Bank-Goldausgleichs.
+- [x] Loot-Abholung, Nachschub, Goldreserven, Zustellung an genauen Empfänger, Arbeitsvorrat und freie Inventarplätze. Regelgebundene Übergabe/Versorgung, Reserven und Platzgrenzen implementiert; A/B bestätigen die dokumentierten Lieferketten. 0.6.0 ergänzt Farmer→Merchant-Goldabholung mit Sitzungs-/ID-Handshake und beidseitigem Balanceabgleich.
 - [x] Bank ein-/auslagern, Gold, Packwahl, Zusammenlegen und begrenzte Kapazitätserweiterung nach explizitem Budget. 0.4.0 ergänzt opt-in-Teilentnahme mit temporärem Arbeitsbestand, persistentem Wiederanlauf und Rest-Rücklagerung; dieser neue Teil noch nicht live bestätigt.
 - [x] NPC-Kauf/-Verkauf und Spielerhandel einschließlich Stand, Listings, Wishlist, Preisunter-/obergrenzen, Marktvergleich und Ponty. Regelgebundene Implementierung vorhanden, Marktvergleich einschließlich begrenzter Angebotshistorie und Kosten-/Zeitplanung in 0.5.0; nicht alle Handelswege sind live nachgewiesen.
 - [x] Mluck-Service, Merchant-Buffs und faire Task-Priorisierung. Mluck/Buffs, Haltezeit/Alterung und Vorrang für Logistik sind implementiert. 0.5.0 prüft Logistik in jedem Economy-Tick, unterbricht auch nahe Merrit-Aufgaben und gibt Gathering-Aufträge regelmäßig zurück. Bereits gestartete Serverqueues müssen beobachtet enden; keine feste Netzwerklatenz versprechen.
@@ -105,7 +105,7 @@ Fertig, wenn die lokale Oberfläche ein gültiges, vollständiges Bundle erzeugt
 | Nebenaufgaben/Handel | Fishing/Mining, Werkzeugrückwechsel, Merrit, Giveaways, Wishlist und begrenzter Ponty-Scan | Versorgungslatenz/Unterbrechungsübergänge abschließen; neue 0.4.0-Bank-/Merrit-Pfade live bestätigen. Vorhandene Fähigkeiten benötigen keinen erneuten vollständigen Neubau |
 | Auto-Optimierung | Konfigurierbare Budgets/Ziele, aktueller Angebotsmedian, begrenzte Farmbewertung | Accountweiter gemeinsamer Optimierer, Markt-/Reise-/Gruppenmesswerte und kostenbewusste Zielpriorisierung |
 
-Die offenen P4-Häkchen bedeuten **teilweise implementiert, Zielumfang noch nicht vollständig erreicht**. Sie bedeuten nicht „kein Code vorhanden“. Ein bestandener Live-Test und die Anzahl gezielter Tests ersetzen diese Restarbeiten nicht. Die Priorität bleibt zunächst P3/P4 vervollständigen, danach optionaler Updater und abschließende Integration.
+Die offenen P4-Häkchen bedeuten **teilweise implementiert, Zielumfang noch nicht vollständig erreicht**. Sie bedeuten nicht „kein Code vorhanden“. Ein bestandener Live-Test und die Anzahl gezielter Tests ersetzen diese Restarbeiten nicht. Die Priorität bleibt zunächst P3/P4 vervollständigen, danach abschließende Integration; der Updater entfällt auf Nutzerwunsch.
 
 **Live B – bestanden (Browser + Windows-Headless, 7. Oktober 2026):** Die festgelegte Kette Farmer sammelt → Merchant übernimmt → Bank/NPC → günstige freigegebene Verarbeitung → Lieferung wurde mit `0.2.2-live-b` vollständig live nachgewiesen. Browser und Headless bestätigten Wertaktionen durch beobachtete Inventar-/Bankänderungen; der abschließende Liefer-Handshake lief ohne Timeout bis `done`. Details: [docs/LIVE-B-ERGEBNIS.md](docs/LIVE-B-ERGEBNIS.md).
 
@@ -113,25 +113,25 @@ Der Live-Testpunkt ist bestanden. Das schließt P3/P4 nicht pauschal ab: die obe
 
 ### P5 — Accountstrategie, Welt und adaptive Optimierung
 
-- [ ] Teamwahl nach Aufgabe, realen Klassenfähigkeiten, Gear, Levelentwicklung, Catch-up und Überlebensfähigkeit. Charakterrotation mit stabilen Haltezeiten.
-- [ ] Aktuelle Benutzerkonfiguration setzt Teamgrößen und erlaubte Charaktere; Spielservergrenzen bleiben maßgeblich. Der Headless-Client startet nur konfigurierte Namen.
-- [ ] Event-/Boss-/Quest-Erkennung, Aktivitätswahl, Saisonaktionen, gefährliche Inhalte und Rückkehr zum normalen Farmziel.
-- [ ] Paladin-Aurapolitik aus v3 ergänzen; in ALFinal ausdrücklich ausgelassene situationsabhängige Skills nur mit passender Fachregel integrieren, nicht wahllos auslösen.
-- [ ] Serverwechsel mit Teamabgleich; Transport-/Bewegungsfunktionen wie Magiport nur bei vereinbarter Zuständigkeit und gültigem Ziel.
-- [ ] Dynamische Spawn-/Karten-/Item-/Skilldaten aus `G` und Livezustand, kleine Caches invalidieren bei Änderung.
-- [ ] Lern-/Rankingfunktionen aus den Vorgängern auf begrenzte interne Kennzahlen reduzieren: aktuelle Gruppeneffizienz, Reisezeit, Marktwerte. Deterministischer Rückfall, keine externen Modelle als notwendige Abhängigkeit.
-- [ ] Versionsgebundener optionaler Updater: definierter sauberer Botstop, kein Update mitten in ungeklärter Wertaktion, Rückfall auf bekannten Stand. Kein eigener Prozesswatchdog.
+- [x] Teamwahl nach Aufgabe, realen Klassenfähigkeiten, Gear, Levelentwicklung, Catch-up und Überlebensfähigkeit. Charakterrotation mit stabilen Haltezeiten.
+- [x] Aktuelle Benutzerkonfiguration setzt Teamgrößen und erlaubte Charaktere; Spielservergrenzen bleiben maßgeblich. Der Headless-Client startet nur konfigurierte Namen.
+- [x] Event-/Boss-/Quest-Erkennung, Aktivitätswahl, Saisonaktionen, gefährliche Inhalte und Rückkehr zum normalen Farmziel.
+- [x] Paladin-Aurapolitik aus v3 ergänzen; in ALFinal ausdrücklich ausgelassene situationsabhängige Skills nur mit passender Fachregel integrieren, nicht wahllos auslösen.
+- [x] Serverwechsel mit Teamabgleich; Transport-/Bewegungsfunktionen wie Magiport nur bei vereinbarter Zuständigkeit und gültigem Ziel.
+- [x] Dynamische Spawn-/Karten-/Item-/Skilldaten aus `G` und Livezustand, kleine Caches invalidieren bei Änderung.
+- [x] Lern-/Rankingfunktionen aus den Vorgängern auf begrenzte interne Kennzahlen reduzieren: aktuelle Gruppeneffizienz, Reisezeit, Marktwerte. Deterministischer Rückfall, keine externen Modelle als notwendige Abhängigkeit.
+- Optionaler Updater entfällt ausdrücklich auf Nutzerwunsch. Manueller Paketimport und Reload bleiben verfügbar.
 
 Fertig, wenn diese Fähigkeiten in die bestehenden Planer und Aufträge passen. Kein zweiter Scheduler und kein separater „Autonomie-Bot“. Prüfung gemeinsam mit P6.
 
 ### P6 — Gesamtintegration, Größe und Freigabe — Live-Test C
 
-- [ ] Jede Zeile der Funktionsmatrix ist einem Modul und einer Konfigurationsmöglichkeit zugeordnet. Übrige Lücken ausdrücklich nennen.
-- [ ] Bundle minifizieren und UTF-8-Bytes einschließlich Konfiguration messen. Hartes Limit 1.048.576 Byte; Ziel maximal 921.600 Byte. Alte Gesamtbundles nicht einfach aneinanderhängen.
-- [ ] Editor, Testwerkzeuge, Quellkarten, statische Komplettkopien von `G`, Telemetrie und Hostcode aus dem Runtime-Bundle halten. Funktionsumfang nicht heimlich kürzen, um das Limit zu erreichen.
-- [ ] Ereignisbasierte Aktualisierung und getrennte Tickraten: Kampf häufig, Economy langsamer, Katalog-/Account-Neubewertung nur bei Änderung bzw. größeren Intervallen. Begrenzte Caches und keine offenen Timer nach Stop.
-- [ ] Installation und Build unter Windows und Linux dokumentieren und tatsächlich verfügbare Plattformprüfungen ehrlich ausweisen.
-- [ ] Kurze Benutzeranleitung, Beispielprofile, KI-API-Vertrag und Changelog ergänzen.
+- [x] Jede Zeile der Funktionsmatrix ist einem Modul und einer Konfigurationsmöglichkeit zugeordnet. Übrige Lücken ausdrücklich nennen.
+- [x] Bundle minifizieren und UTF-8-Bytes einschließlich Konfiguration messen. Hartes Limit 1.048.576 Byte; Ziel maximal 921.600 Byte. Alte Gesamtbundles nicht einfach aneinanderhängen.
+- [x] Editor, Testwerkzeuge, Quellkarten, statische Komplettkopien von `G`, Telemetrie und Hostcode aus dem Runtime-Bundle halten. Funktionsumfang nicht heimlich kürzen, um das Limit zu erreichen.
+- [x] Ereignisbasierte Aktualisierung und getrennte Tickraten: Kampf häufig, Economy langsamer, Katalog-/Account-Neubewertung nur bei Änderung bzw. größeren Intervallen. Begrenzte Caches und keine offenen Timer nach Stop.
+- [x] Installation und Build unter Windows und Linux dokumentieren und tatsächlich verfügbare Plattformprüfungen ehrlich ausweisen.
+- [x] Kurze Benutzeranleitung, Beispielprofile, KI-API-Vertrag und Changelog ergänzen.
 
 **Live C, ca. 20–30 Minuten:** normales Zusammenspiel Merchant + Farmer, anschließend ein kontrollierter Aktivitäts-/Konfigurationswechsel, Pause/Resume, Reload und Wiederanlauf. Browser und Headless verwenden denselben Build. Bestehendes Client-Dashboard/PowerShell reichen für die Beobachtung. Windows und Linux prüfen, sobald beide realen Umgebungen verfügbar sind; eine nicht verfügbare Plattform nicht als bestanden markieren.
 
@@ -221,7 +221,7 @@ Am 7. Oktober 2026 bestätigt der Nutzer nach Auslieferung von 0.3.1: alle Tests
 
 Folgeauftrag autorisiert die Weiterentwicklung. 0.4.0-merchant schließt Bank-Teilentnahme und Merrit-Bestätigung über eigene Shell-Events/neue Receipts. Die Bankoption ist ausdrücklich aktivierbar und standardmäßig aus; größere Stapel werden nur vorübergehend entnommen, geteilt und mit bestätigtem Mengenabgleich zurückgelagert. Persistenter Wiederanlauf und Vorrang vor Inventar-/Liefer-/Rotationsarbeit. Schema additiv und alte Profile kompatibel, bestehender Werkstattgenerator unverändert. 70 gezielte Prüfungen unter Windows bestanden; neue Abläufe noch nicht live bestätigt. Persönliche Normal-/Bank-/Merrit-Exporte und ein kurzer Ergänzungsablauf liegen bereit. Keine erneute A/B/C-Gesamtrunde und keine Shadow-Phase. Details: [MERCHANT-ERGAENZUNGEN.md](docs/MERCHANT-ERGAENZUNGEN.md).
 
-Nächste Entwicklungsblöcke: versionsgebundener optionaler Updater, accountweite Gear-/Beschaffungsoptimierung und begrenzte Markt-/Reise-/Teamwerte; anschließend verbleibende Integrationslücken und Gesamtfreigabe. Historische offene Bank-/Shell-Vermerke oben beschreiben den früheren Stand; aktuelle Übernahmematrix ist aktualisiert.
+Historischer Folgeplan vor 0.6.0: accountweite Gear-/Beschaffungsoptimierung und begrenzte Markt-/Reise-/Teamwerte, anschließend Gesamtintegration. Der optionale Updater ist inzwischen ausdrücklich ausgeschlossen. Historische offene Bank-/Shell-Vermerke oben beschreiben den früheren Stand; aktuelle Übernahmematrix ist aktualisiert.
 
 ## P3/P4-Implementierungsabschluss · 0.5.0-p3p4
 
@@ -230,3 +230,11 @@ Der Nutzer beauftragte das vollständige Schließen der P3/P4-Lücken vor einem 
 Die P3/P4-Häkchen bezeichnen den implementierten Umfang, **keinen neuen Live-Erfolg**. Der frühere Reststand in der Tabelle oben ist historische Ausgangslage. Aktueller Vertrag: [P3-P4.md](docs/P3-P4.md); ein gemeinsamer Testtermin mit sieben nacheinander geladenen Abschnitten: [P3-P4-LIVE.md](docs/P3-P4-LIVE.md). Browser und Headless verwenden denselben Code; Autostart true. Keine Shadow-Tests und kein automatischer Login. Optionale fehlende Markt-/Saisonfälle und Linux erst nach tatsächlicher Ausführung bestätigen.
 
 Abschlussprüfung am 7. Oktober 2026: 83 gezielte Prüfungen bestanden, keine übersprungen. Runtime und Werkstatt gebaut; generischer Bot 213208 Bytes bei 1048576 Bytes Limit. Auch der Export mit 1276 Item-Regeln besteht die Größenprüfung. Live-Freigabe bleibt bis zur Auswertung des gemeinsamen Testlaufs offen.
+
+## Vollbetriebsabschluss · 0.6.0-full
+
+P5/P6-Häkchen bezeichnen integrierte Implementierung, keine neue Livefreigabe. Ergänzt: gear-/klassensynergetische Teamwahl, sichere Questzielteilung und Rückkehr, Paladin-Schutz und begründete Mage-Burst-Politik, bestätigte Goldlogistik, Bankkapazitäts-Recovery mit persistentem Verkaufsauftrag, automatische begrenzte Starter-Gearziele, faire Produktion mit temporär zurückgestellten unerfüllbaren Zielen und erhaltenen Zutatenreservierungen. Unbekannte Wertaktionen werden weiterhin angehalten. Keine wahllose Freigabe aller Skill-IDs oder unerlaubter Weltziele.
+
+Minifiziertes klassisches Bundle, eingebautes Paket in derselben Werkstatt, persönliche Profilmigration und fortlaufende Desktop-Testlogs sind fertig. Ein gemeinsames Betriebsprofil aktiviert die Module bei tatsächlichem Bedarf; sieben getrennte P3/P4-Abschnitte werden durch normalen Livebetrieb ersetzt. Anleitung: [VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Der optionale Updater ist ausgeschlossen. Nachweis unter Windows: gezielte Logik-/Vertragsprüfungen, Größen-/Syntaxprüfung und Client-Reportprüfungen. Linux-Installation ist dokumentiert, tatsächlicher Linux-Livebetrieb weiterhin ausstehend.
+
+Abschlussprüfung 8. Oktober 2026: 94 Bot-/Werkstatt-Prüfungen und 31 Client-Prüfungen bestanden; keine Shadow-Tests und kein Login. Persönlicher Vollbetriebs-Build ca. 196 kB, deutlich unter 1.048.576 Bytes. Persönliche Standalone-Werkstatt öffnet ohne Scriptfehler und mit aktivem Exportbutton. Client prüft alle acht Skriptzuordnungen, vier aktive Charaktere. Gemeinsamer Spiel-Livetest noch ausstehend.

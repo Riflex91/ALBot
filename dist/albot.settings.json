@@ -1,10 +1,10 @@
 {
   "format": "albot-settings",
   "formatVersion": 1,
-  "schemaId": "albot.p3p4/v1",
+  "schemaId": "albot.full/v1",
   "schema": {
     "type": "object",
-    "title": "ALBot · P3/P4",
+    "title": "ALBot · Vollbetrieb",
     "description": "",
     "properties": {
       "general": {
@@ -101,6 +101,11 @@
             "type": "boolean",
             "title": "Unklare Wertaktionen anhalten",
             "default": true
+          },
+          "testLogging": {
+            "type": "boolean",
+            "title": "Fortlaufendes Testlog schreiben",
+            "default": true
           }
         },
         "required": [
@@ -115,7 +120,8 @@
           "maxPending",
           "messageTtlMs",
           "ui",
-          "pauseOnUnknown"
+          "pauseOnUnknown",
+          "testLogging"
         ],
         "additionalProperties": false
       },
@@ -592,6 +598,16 @@
             "default": 30000,
             "minimum": 5000,
             "maximum": 600000
+          },
+          "gearSynergy": {
+            "type": "boolean",
+            "title": "Ausrüstung und Klassenkombination bei Teamwahl berücksichtigen",
+            "default": true
+          },
+          "advancedSkills": {
+            "type": "boolean",
+            "title": "Situationsabhängige Paladin-/Mage-Fähigkeiten",
+            "default": true
           }
         },
         "required": [
@@ -612,7 +628,9 @@
           "aoeMaxTargets",
           "rotationCooldownMs",
           "aura",
-          "auraHoldMs"
+          "auraHoldMs",
+          "gearSynergy",
+          "advancedSkills"
         ],
         "additionalProperties": false
       },
@@ -676,7 +694,21 @@
                 "5shot",
                 "cleave",
                 "stomp",
-                "fanofknives"
+                "fanofknives",
+                "burst",
+                "cburst",
+                "mshield",
+                "aether_shield",
+                "cleansing_light",
+                "guardians_oath",
+                "beacon_of_resolve",
+                "mluck",
+                "mcourage",
+                "mfrenzy",
+                "massproduction",
+                "massproductionpp",
+                "massexchange",
+                "massexchangepp"
               ]
             },
             "class": {
@@ -1097,6 +1129,37 @@
             "default": 30000,
             "minimum": 2000,
             "maximum": 600000
+          },
+          "collectGold": {
+            "type": "boolean",
+            "title": "Farmer-Gold oberhalb ihrer Reserven abholen",
+            "default": false
+          },
+          "goldTransferMax": {
+            "type": "integer",
+            "title": "Gold je bestätigter Übergabe",
+            "default": 100000,
+            "minimum": 1,
+            "maximum": 1000000000
+          },
+          "goldCollectBelow": {
+            "type": "integer",
+            "title": "Goldabholung erst ab Überschuss",
+            "default": 10000,
+            "minimum": 1,
+            "maximum": 1000000000
+          },
+          "bankWorkspace": {
+            "type": "integer",
+            "title": "Freie Bankplätze je Pack anstreben",
+            "default": 2,
+            "minimum": 0,
+            "maximum": 42
+          },
+          "bankReclaim": {
+            "type": "boolean",
+            "title": "Bei Bankdruck explizit verkäuflichen Bestand zum NPC freigeben",
+            "default": false
           }
         },
         "required": [
@@ -1132,7 +1195,12 @@
           "toolBudget",
           "marketHistory",
           "marketHistoryTtlMs",
-          "serviceSliceMs"
+          "serviceSliceMs",
+          "collectGold",
+          "goldTransferMax",
+          "goldCollectBelow",
+          "bankWorkspace",
+          "bankReclaim"
         ],
         "additionalProperties": false
       },
@@ -1805,6 +1873,48 @@
             },
             "default": [],
             "maxItems": 500
+          },
+          "autoGear": {
+            "type": "boolean",
+            "title": "Bekannte Ausrüstung bis zum konfigurierten Level verbessern",
+            "default": false
+          },
+          "autoGearMaxLevel": {
+            "type": "integer",
+            "title": "Automatische Gear-Zielgrenze",
+            "default": 3,
+            "minimum": 0,
+            "maximum": 99
+          },
+          "autoGearBudget": {
+            "type": "integer",
+            "title": "Budget je automatischem Gearziel",
+            "default": 100000,
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "autoGearItems": {
+            "type": "array",
+            "title": "Erlaubte Items für automatische Gearziele",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "maxItems": 2000,
+            "uniqueItems": true,
+            "default": [
+              "helmet",
+              "coat",
+              "pants",
+              "shoes",
+              "gloves",
+              "bow",
+              "staff",
+              "sword",
+              "blade",
+              "shield"
+            ]
           }
         },
         "required": [
@@ -1828,7 +1938,11 @@
           "goldPerHour",
           "travelSpeed",
           "helperMaxPrice",
-          "gearTargets"
+          "gearTargets",
+          "autoGear",
+          "autoGearMaxLevel",
+          "autoGearBudget",
+          "autoGearItems"
         ],
         "additionalProperties": false
       },
@@ -1968,6 +2082,11 @@
             "default": 60000,
             "minimum": 1000,
             "maximum": 3600000
+          },
+          "questTargets": {
+            "type": "boolean",
+            "title": "Sichere Monsterhunt-Ziele vorübergehend als Teamziel zulassen",
+            "default": true
           }
         },
         "required": [
@@ -1985,7 +2104,8 @@
           "magiport",
           "learning",
           "learningWeight",
-          "cacheTtlMs"
+          "cacheTtlMs",
+          "questTargets"
         ],
         "additionalProperties": false
       },

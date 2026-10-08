@@ -1,6 +1,10 @@
+# Aktuell: integrierte Autonomie · 0.7.0-full
+
+Die im Vergleich zu 0.6.2 benannten fachlichen Ergänzungen sind jetzt integriert: gemeinsame automatische Spawn-/Materialplanung, Elixiere, wirtschaftliche Gear-/Beutedisposition, Markt-/Mluck-Entscheidungen, globale Priorität und gebundener Wiederanlauf. Vollständige Zuordnung, Konfiguration und Grenzen: [AUTONOMIE-0.7.0](docs/AUTONOMIE-0.7.0.md). Neues Bundle und Werkstatt sind offline geprüft; gemeinsamer Livebetrieb und Linux bleiben unbestätigt. Updater entfällt.
+
 # Aktuell: gemeinsamer Vollbetrieb · 0.6.2-full
 
-Der gesamte vereinbarte Spielumfang ist in einem gemeinsamen Runtime-/Profilvertrag implementiert und als Vollbetriebs-Livetest-Kandidat ausgeliefert. Kein optionaler Updater. Alle Module teilen Scheduler, Ressourcen, Reservierungen und Wertjournale. Die neuen Wege sind noch nicht gemeinsam live bestätigt; frühere A/B/C-Nachweise bleiben auf ihre Szenarien begrenzt. Einstieg: [VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Schema: `albot.full/v1`.
+Dieser historische Abschnitt beschreibt den damaligen Vollbetriebs-Kandidaten. Die später festgestellten Einschränkungen sind im Vergleich zu 0.6.2 dokumentiert; für die aktuellen Ergänzungen gilt die Autonomiematrix oben. Kein optionaler Updater. Alle Module teilen Scheduler, Ressourcen, Reservierungen und Wertjournale. Die neuen Wege sind noch nicht gemeinsam live bestätigt; frühere A/B/C-Nachweise bleiben auf ihre Szenarien begrenzt. Einstieg: [VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Schema: `albot.full/v1`.
 
 # ALBot
 

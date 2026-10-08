@@ -1,3 +1,7 @@
+# Aktueller Folgeauftrag 0.7.0-full
+
+Vor Änderungen docs/AUTONOMIE-0.7.0.md lesen. Integrierte gemeinsame Planung und Economy; autoTargets/elixirs/optimizeGear/autoDisposition/farmConfidence/marketMinSamples/mluckTravel/autoHop sind optionale Ergänzungen zu full/v1. Bestehende Regeln und Budgets schützen. Keine Inventar-/Produktions-/Gearallokationsjournale pauschal löschen. Neue gemeinsame Livebestätigung und Linux fehlen. Keine Shadow-Tests, Updater oder automatischen Logins. Audit von 0.6.2 bleibt als historische Gegenüberstellung; aktuelle Grenzen stehen in der Autonomiematrix.
+
 # Aktuelle Livekorrektur 0.6.2-full
 
 Vor weiteren Änderungen docs/CHANGELOG-0.6.2.md lesen. Risikoprüfung über aktuelle Farmerwerte und konservative Schadens-/Zeitbudgets, persistente begrenzte Ziel-Sperre; keine Wertjournale löschen. Merchant-Economywege bis Ankunft/Timeout halten, sichere Logistik darf vorgehen. Erholung vor Economy. Neue Livebestätigung steht aus.

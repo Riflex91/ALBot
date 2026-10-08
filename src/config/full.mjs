@@ -18,3 +18,9 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{
 Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{questTargets:bool('Sichere Monsterhunt-Ziele vorübergehend als Teamziel zulassen',true)});
 for(const section of ['general','merchant','party','production','world'])FULL_DESCRIPTOR.schema.properties[section].required=Object.keys(FULL_DESCRIPTOR.schema.properties[section].properties);
 FULL_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=FULL_SKILLS;
+
+// Optional additions preserve full/v1 profiles; defaults are applied on import.
+Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{autoTargets:bool('Farmmonster automatisch aus öffentlichen Spawns auswählen',true),elixirs:bool('Klassen-Elixiere beschaffen und erneuern',true),switchImprovement:{type:'number',title:'Mindestverbesserung für Standortwechsel',default:.2,minimum:0,maximum:2},planHoldMs:number('Farmplan mindestens halten (ms)',60000,1000,3600000)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{optimizeGear:bool('Gearalternativen und Ziellevel wirtschaftlich auswählen',true),autoDisposition:bool('Ungeregelte ungeschützte Items wirtschaftlich einordnen',true),autoSellMaxValue:number('Automatischer NPC-Verkauf höchstens Itemwert',100,0,1000000),farmConfidence:{type:'string',title:'Farmzeitbudget',enum:['mean','p90'],default:'p90'}});
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{marketMinSamples:number('Unabhängige Marktanbieter für Preisreferenz',3,1,20),mluckTravel:bool('Für benötigte Mluck-Erneuerung sicher anreisen',true)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{autoHop:bool('Serverwechsel nach geprüftem Standortdruck',true)});

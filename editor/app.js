@@ -7,7 +7,7 @@ let descriptor=structuredClone(INITIAL_DESCRIPTOR),catalog=structuredClone(INITI
 let fileMode='',itemSearch='',ruleSearch='',itemPage=0,selected=new Set(),draftTimer;
 const draftMessages=[];
 checkDescriptor(descriptor);
-try{const raw=localStorage.getItem(STORAGE);if(raw){const d=parseData(raw);checkDescriptor(d.descriptor);if(!d.config||typeof d.config!=='object'||Array.isArray(d.config))throw Error('Entwurf unvollständig.');descriptor=d.descriptor;config=d.config;draftMessages.push('Lokalen Entwurf wiederhergestellt. Bot-Paket bei Bedarf erneut laden.');}}catch(e){draftMessages.push('Lokaler Entwurf nicht geladen: '+e.message);}
+try{const raw=localStorage.getItem(STORAGE);if(raw){const d=parseData(raw);checkDescriptor(d.descriptor);if(!d.config||typeof d.config!=='object'||Array.isArray(d.config))throw Error('Entwurf unvollständig.');if(d.descriptor.schemaId===INITIAL_DESCRIPTOR.schemaId){descriptor=structuredClone(INITIAL_DESCRIPTOR);config=addMissingDefaults(descriptor.schema,d.config);draftMessages.push('Lokalen Entwurf übernommen; aktuelles Schema und Bot-Paket sind geladen.');}else{descriptor=d.descriptor;config=d.config;draftMessages.push('Lokalen Entwurf wiederhergestellt. Passendes Bot-Paket bei Bedarf laden.');}}}catch(e){draftMessages.push('Lokaler Entwurf nicht geladen: '+e.message);}
 function feedback(text){$('feedback').textContent=text;}
 function remember(){history.push(JSON.stringify(config));if(history.length>30)history.shift();future=[];}
 function change(fn,redraw=false){remember();fn();dirty=true;update();if(redraw)render();}
@@ -82,7 +82,7 @@ function drawCatalog(parent){
   search.oninput=()=>{itemSearch=search.value;itemPage=0;draw();};draw();d.append(body);parent.append(d);
 }
 function preview(parent){
-  parent.append(el('h2','Welche Regel greift?'),el('p','Vorschau der Item-Auswahl und Priorität. Es werden keine Spielaktionen oder Shadow-Läufe ausgeführt. Live-Budgets, Erreichbarkeit und Verarbeitung prüft erst die Bot-Laufzeit.'));
+  parent.append(el('h2','Welche Regel greift?'),el('p','Vorschau der Item-Auswahl und Priorität. Es werden keine Spielaktionen oder Shadow-Läufe ausgeführt. Live-Budgets, Erreichbarkeit und Verarbeitung prüft erst die Bot-Laufzeit. Explizite Regeln gewinnen vor automatischem Bedarf und Beutedisposition; deren aktuelle Entscheidung steht mit Begründung im Testlog.'));
   const query={item:'hpot1',role:'farmer',character:'',level:0,quantity:500,phase:'inventory',statType:'',property:'',title:'',map:'',server:'',task:'',locked:false,equipped:false,reserved:false};
   const grid=el('div',undefined,'grid');const result=el('div');
   const labels={item:'Item-ID',role:'Rolle',character:'Charakter',level:'Item-Level',quantity:'Aktueller Bestand',phase:'Arbeitsphase',statType:'Stat-Typ',property:'Eigenschaft p',title:'Titel',map:'Karte',server:'Realm',task:'Aktivität',locked:'Gesperrt',equipped:'Ausgerüstet',reserved:'Reserviert'};

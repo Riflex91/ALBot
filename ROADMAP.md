@@ -1,3 +1,7 @@
+# Aktueller Folgeauftrag · 0.7.0-full
+
+Die 20 fachlichen Auditpunkte und fünf zusätzlichen v5-Vertragsbereiche sind in die gemeinsame Runtime eingebunden. Maßgeblich ist die genaue Implementierungs-/Grenzenmatrix in [AUTONOMIE-0.7.0](docs/AUTONOMIE-0.7.0.md); historische Häkchen sind keine neuen Live-Nachweise. P3/P4-Werkstatt, gemeinsame Regeln/Logistik, Produktion und Autonomie werden gemeinsam getestet. Nächster Schritt: integrierter Livetest mit allen Charakteren, aktuellen Logs und einem Neustart; neue gemeinsame Bestätigung und Linux stehen aus. Keine neuen Shadow- oder Zwischenfreigaben. Updater bleibt ausgeschlossen.
+
 # ALBot: Roadmap zum gemeinsamen Super-Bot
 Stand: 8. Oktober 2026. **Live A grundlegend bestanden. Live B ist mit 0.2.2-live-b in Browser und Windows-Headless vollständig bestanden: 01 Abholung, 02 Bank, 03 Bank→NPC sowie 04 Upgrade und bestätigte Lieferung. Die 0.2.2-Korrekturen für Offer-Retry und Basis-Nachkauf sind live bestätigt. 0.6.0-full ergänzt die verbleibende Integration und bereitet einen gemeinsamen Vollbetriebs-Livetest vor. Linux-Live-Nachweis und gemeinsame Vollbetriebsbestätigung stehen aus.**
 

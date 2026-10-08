@@ -12,6 +12,7 @@ export function selectAccountTeam(members,limit,{boss=false,leader='',current=[]
   }).sort((a,b)=>b.teamScore-a.teamScore||a.index-b.index);if(!candidates.length)break;add(candidates[0]);}
  }else for(const x of ranked)add(x);return chosen;
 }
+export function chooseCombatLeader(members){return members.filter(x=>x.running&&!x.rip&&x.hp>0&&x.stats?.attack>0).map(x=>({...x,leaderScore:(['warrior','paladin'].includes(x.class)?5:0)+Math.log1p(x.stats.attack*(x.stats.frequency??1))+Math.log1p(x.stats.armor??0)/2+(x.hp/Math.max(1,x.max_hp))*3})).sort((a,b)=>b.leaderScore-a.leaderScore||a.name.localeCompare(b.name))[0]?.name??null;}
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
  const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false;
@@ -23,9 +24,11 @@ export function createAccount(bot){
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
  }
  function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal||!!bot.bank?.pending,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,reserved:!!bot.logistics.reserved,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.reserved&&!h.inventoryBlocked&&!h.threats;}
- function receive(from,data){if(cfg.party.selection!=='adaptive'||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
+ function receive(from,data){if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
-  if(cfg.party.selection!=='adaptive'||blocked)return;
+  if(blocked)return;
+  if(cfg.party.selection!=='adaptive'){if(cfg.party.leader)return;if(me.name!==coordinator){const h=bot.transport.fresh(coordinator);if(h?.team)receive(coordinator,h.team);return;}const current=bot.farmers.map(name=>name===me.name?{name,running:bot.running,rip:p.c.rip,class:p.c.ctype,hp:p.c.hp,max_hp:p.c.max_hp,stats:{attack:p.c.attack,frequency:p.c.frequency,armor:p.c.armor}}:{name,...bot.transport.fresh(name)});const leader=chooseCombatLeader(current.filter(h=>!h.journal&&!h.reserved&&!h.threats));if(leader&&leader!==bot.leader&&apply(bot.farmers,leader)){sequence++;bot.movement.stop();bot.event('account.leader',{leader,reason:'Bekannte lebende Fähigkeiten; feste Farmerliste bleibt erhalten'});}return;}
+
   if(me.name!==coordinator){const d=bot.transport.fresh(coordinator);if(d?.team)receive(coordinator,d.team);return;}
   if(transition){
    if(Date.now()>transition.until&&!transition.recovering){transition.recovering=true;bot.report('Charakterwechsel nicht bestätigt; ursprüngliche Gruppe wiederherstellen');}
@@ -42,14 +45,15 @@ export function createAccount(bot){
    if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
   }
   if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
-  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,stats:h?.gear?.stats??g?.stats};});
+  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,hp:h?.hp,max_hp:h?.max_hp,stats:h?.gear?.stats??g?.stats};});
   const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();
   const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:['boss','event'].includes(task),leader:cfg.party.leader,current:bot.farmers,synergy:!!cfg.party.gearSynergy,damageType:p.G.monsters[leaderActivity?.target??bot.target?.mtype]?.damage_type});
   bot.accountChoice={names:target,reason:cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte, Catch-up und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder'};
-  if(JSON.stringify(target)===JSON.stringify(bot.farmers))return;
+  const elected=cfg.party.leader||chooseCombatLeader(members.filter(x=>target.includes(x.name)))||bot.leader;
+  if(JSON.stringify(target)===JSON.stringify(bot.farmers)){if(elected!==bot.leader&&apply(target,elected)){sequence++;bot.event('account.leader',{leader:elected,reason:'Bekannte aktuelle Fähigkeiten, Schutz und Kampfstärke'});}return;}
   const out=bot.farmers.find(n=>!target.includes(n)),into=target.find(n=>!bot.farmers.includes(n));
   if(!out||!into||out===me.name||!p.has('stop_character')||!p.has('start_character')||!p.has('get_active_characters'))return;
-  if(!save({out,in:into,original:[...bot.farmers],originalLeader:bot.leader,names:bot.farmers.filter(n=>n!==out).concat(into),leader:cfg.party.leader||bot.farmers.filter(n=>n!==out).concat(into)[0],until:Date.now()+120000,started:false}))return;
+  if(!save({out,in:into,original:[...bot.farmers],originalLeader:bot.leader,names:bot.farmers.filter(n=>n!==out).concat(into),leader:elected,until:Date.now()+120000,started:false}))return;
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }

@@ -1,3 +1,7 @@
+# Ergänzung 0.7.0-full
+
+[AUTONOMIE-0.7.0](AUTONOMIE-0.7.0.md) ist der aktuelle Vertrag für gemeinsame Autonomie. Leaderplan bindet Realm, Sitzung, Generation, Spawn-/Monsterdefinition und Ablauf; Materialintent bindet Quelle/Teilnehmer/Menge. Quarantäne stoppt geänderte Definitionen vor erneuter Bewertung. Priorität ergänzt, ersetzt aber keine Ressourcen-/Wertguards. Automatische Recovery benötigt Variantenbelege und vollständige Inventardifferenz; ungeklärte Transfers niemals blind wiederholen.
+
 # Ergänzung 0.6.0-full
 
 Aktueller Vertrag: [VOLLBETRIEB.md](VOLLBETRIEB.md), Schema albot.full/v1. Ein integrierter Scheduler, Gold-/Item-/Produktionsreservierungen und begrenzte Diagnoseringspeicher. Neue API ALBot.chooseLogDirectory(); im Browser nur nach Benutzeraktion Ordnerfreigabe, headless über vorhandenes writeTestReport. Keine Hostimports im Bot. Historische Abschnitte unten bleiben Referenz für die ursprüngliche Portgrenze.

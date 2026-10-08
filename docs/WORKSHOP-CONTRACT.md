@@ -1,3 +1,7 @@
+# Aktuelles Paket 0.7.0-full
+
+Neue optionale Felder bleiben im selben albot.full/v1-Vertrag, siehe [AUTONOMIE-0.7.0](AUTONOMIE-0.7.0.md). Standalone-Werkstatt und persönliche Werkstatt enthalten das neue Runtimepaket. Wiederhergestellte Entwürfe mit derselben Schema-ID erhalten das aktuelle Schema und fehlende Vorgaben; vorhandene Einstellungen bleiben erhalten. Runtime und Profil gemeinsam exportieren.
+
 # Aktuelles Paket 0.6.0-full
 
 Schema albot.full/v1 aus src/config/full.mjs erweitert den P3/P4-Vertrag ohne Updater. Die gebaute Standalone-Werkstatt enthält Runtimepaket und Katalog bereits; persönlicher Export bettet zusätzlich INITIAL_PROFILE ein. Der Exportbutton ist bei gültigem Profil sofort verfügbar. Alte A/B/C/P3P4-Profile werden mit erhaltenen Werten migriert; neue Autonomie benötigt passende freigegebene Regeln/Budgets. Der Generator bleibt schemaorientiert; keine zweite Werkstatt. Build npm ci → npm run build → npm run build:editor. [Vollbetriebsvertrag](VOLLBETRIEB.md).

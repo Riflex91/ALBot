@@ -1,3 +1,7 @@
+# Ergänzung für ALBot 0.7.0-full
+
+Für KI-Arbeit am aktuellen Super-Bot zuerst [AUTONOMIE-0.7.0](docs/AUTONOMIE-0.7.0.md) lesen: alle neuen internen Module, Auftrags-/Quoten-/Definitionsbindung, neue optionalen Profilfelder und ihre Grenzen. Der Headless-Client-Vertrag unten und die öffentlichen ALBot-APIs bleiben unverändert. Keine Node-/Hostimports in Botcode, gleiche klassische JS-Datei für beide Umgebungen. Autostart true, Browser performance_trick. Persistente Wertjournale nicht löschen. Neue Abläufe noch nicht gemeinsam live bestätigt.
+
 # Ergänzung für Super-Bot 0.6.0-full
 
 Die vorhandene API bleibt kompatibel. Für fortlaufende Vollbetriebs-Testlogs die mitgelieferte `tools/client-test-report.js` in `src/test-report.js` des Clients übernehmen; die persönliche Desktopinstallation ist bereits angepasst. `parent.headless.writeTestReport(content)` akzeptiert zusätzlich `continuousLog:true`, gültigen character/started und sequenzierte events im bekannten Reportformat. Der Client schreibt dann Desktop/ALBot-Testlogs/test-CHARAKTER-UTCSTART-partNNN.jsonl und behält den bisherigen kompakten Bericht. Botcode schreibt keine eigenen Hostdateien. Browser nutzt `ALBot.chooseLogDirectory()` nach Benutzerklick oder `ALBot.exportTestReport()` als Download. Weitere Bot-APIs und Logdetails: [docs/VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Kein Updater.

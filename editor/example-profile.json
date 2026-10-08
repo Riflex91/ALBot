@@ -42,7 +42,11 @@
       "rangeBuffer": 15,
       "maxAggro": 2,
       "avoidOthers": true,
-      "pvp": false
+      "pvp": false,
+      "autoTargets": true,
+      "elixirs": true,
+      "switchImprovement": 0.2,
+      "planHoldMs": 60000
     },
     "party": {
       "enabled": true,
@@ -110,7 +114,9 @@
       "goldTransferMax": 100000,
       "goldCollectBelow": 10000,
       "bankWorkspace": 2,
-      "bankReclaim": false
+      "bankReclaim": false,
+      "marketMinSamples": 3,
+      "mluckTravel": true
     },
     "items": [],
     "production": {
@@ -155,7 +161,11 @@
         "sword",
         "blade",
         "shield"
-      ]
+      ],
+      "optimizeGear": true,
+      "autoDisposition": true,
+      "autoSellMaxValue": 100,
+      "farmConfidence": "p90"
     },
     "world": {
       "bosses": false,
@@ -173,7 +183,8 @@
       "learning": true,
       "learningWeight": 0.15,
       "cacheTtlMs": 60000,
-      "questTargets": true
+      "questTargets": true,
+      "autoHop": true
     },
     "rules": []
   }

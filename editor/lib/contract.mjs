@@ -141,7 +141,7 @@ export function importProfile(descriptor,value){
     const next=addMissingDefaults(descriptor.schema,config),errors=validateProfile(descriptor,next);if(errors.length)throw Error(errors.join('\n'));return next;
   }
   if(value.schemaId!==descriptor.schemaId)throw Error('Profil benötigt das Schema '+value.schemaId+'. Zuerst passendes Bot-Paket / Schema laden.');
-  const errors=validateProfile(descriptor,value.config);if(errors.length)throw Error(errors.join('\n'));return structuredClone(value.config);
+  const next=descriptor.schemaId==='albot.full/v1'?addMissingDefaults(descriptor.schema,value.config):value.config;const errors=validateProfile(descriptor,next);if(errors.length)throw Error(errors.join('\n'));return structuredClone(next);
 }
 export function exportBundle(descriptor,config,runtime){
   const errors=validateProfile(descriptor,config);if(errors.length)throw Error(errors.join('\n'));

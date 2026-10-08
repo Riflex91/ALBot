@@ -435,6 +435,30 @@
             "type": "boolean",
             "title": "PvP ausdrücklich erlauben",
             "default": false
+          },
+          "autoTargets": {
+            "type": "boolean",
+            "title": "Farmmonster automatisch aus öffentlichen Spawns auswählen",
+            "default": true
+          },
+          "elixirs": {
+            "type": "boolean",
+            "title": "Klassen-Elixiere beschaffen und erneuern",
+            "default": true
+          },
+          "switchImprovement": {
+            "type": "number",
+            "title": "Mindestverbesserung für Standortwechsel",
+            "default": 0.2,
+            "minimum": 0,
+            "maximum": 2
+          },
+          "planHoldMs": {
+            "type": "integer",
+            "title": "Farmplan mindestens halten (ms)",
+            "default": 60000,
+            "minimum": 1000,
+            "maximum": 3600000
           }
         },
         "required": [
@@ -1160,6 +1184,18 @@
             "type": "boolean",
             "title": "Bei Bankdruck explizit verkäuflichen Bestand zum NPC freigeben",
             "default": false
+          },
+          "marketMinSamples": {
+            "type": "integer",
+            "title": "Unabhängige Marktanbieter für Preisreferenz",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 20
+          },
+          "mluckTravel": {
+            "type": "boolean",
+            "title": "Für benötigte Mluck-Erneuerung sicher anreisen",
+            "default": true
           }
         },
         "required": [
@@ -1915,6 +1951,32 @@
               "blade",
               "shield"
             ]
+          },
+          "optimizeGear": {
+            "type": "boolean",
+            "title": "Gearalternativen und Ziellevel wirtschaftlich auswählen",
+            "default": true
+          },
+          "autoDisposition": {
+            "type": "boolean",
+            "title": "Ungeregelte ungeschützte Items wirtschaftlich einordnen",
+            "default": true
+          },
+          "autoSellMaxValue": {
+            "type": "integer",
+            "title": "Automatischer NPC-Verkauf höchstens Itemwert",
+            "default": 100,
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "farmConfidence": {
+            "type": "string",
+            "title": "Farmzeitbudget",
+            "enum": [
+              "mean",
+              "p90"
+            ],
+            "default": "p90"
           }
         },
         "required": [
@@ -2086,6 +2148,11 @@
           "questTargets": {
             "type": "boolean",
             "title": "Sichere Monsterhunt-Ziele vorübergehend als Teamziel zulassen",
+            "default": true
+          },
+          "autoHop": {
+            "type": "boolean",
+            "title": "Serverwechsel nach geprüftem Standortdruck",
             "default": true
           }
         },

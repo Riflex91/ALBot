@@ -18,10 +18,12 @@ export function createSkills(bot){
     if(asArray(s.slot).some(v=>!Array.isArray(v)||c.slots?.[v[0]]?.name!==v[1]))return false;
     if(s.consume&&!bot.canConsumeImplicit(s.consume))return false;
     if(s.condition&&!s.toggle&&(target??c).s?.[s.condition])return false;
+    if(target&&s.hostile&&(target.immune===true||target.invincible||['entangle','stomp'].includes(id)&&Object.keys(target.s??{}).some(k=>p.G.conditions?.[k]?.immune)))return false;
     if(target){if(!samePlace(c,target)||(!target.rip&&target.hp<=0))return false;const range=s.range??((c.range??0)*(s.range_multiplier??1)+(s.range_bonus??0));if(distance(c,target)>range)return false;if(s.no_self&&target.name===c.name)return false;}
     return true;
   }
   function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false){
+    const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro'}[id];if(!explicit&&role&&roles?.[role]&&roles[role]!==p.c.name)return false;
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
     if(id==='energize'&&!cfg.party.energize||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;

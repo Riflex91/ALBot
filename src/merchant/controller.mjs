@@ -5,7 +5,7 @@ export function createMerchant(bot){
  function buff(){
   if(me.role!=='merchant'||!cfg.merchant.mluck||!p.G.skills?.mluck)return;const skill=p.G.skills.mluck;
   if(p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown','mluck'))return;
-  for(const c of cfg.merchant.mluckOthers?Object.values(p.entities).filter(x=>x.type==='character'):bot.allies()){
+  for(const c of (cfg.merchant.mluckOthers?Object.values(p.entities).filter(x=>x.type==='character'):bot.allies()).sort((a,b)=>(a.s?.mluck?.ms??0)-(b.s?.mluck?.ms??0))){
    if(c.rip||distance(p.c,c)>(skill.range??320)||c.s?.mluck?.strong&&c.s.mluck.f!==me.name||c.s?.mluck?.ms>60000)continue;
    if(exec.run('mluck',['skill','mana'],()=>bot.running&&p.c.mp>=(skill.mp??0),()=>p.call('use_skill','mluck',c.id??c.name),{delay:2000}))break;
   }
@@ -32,7 +32,7 @@ export function createMerchant(bot){
     if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
     if(me.role==='merchant'){
      if(r.action==='bank')run=()=>bot.bank.store(slot,r);
-     if(r.action==='list')run=()=>bot.market.listing(slot,r);
+     if(r.action==='list')run=()=>bot.market.sellToBid?.(slot,r)||bot.market.listing(slot,r);
      if(r.action==='exchange')run=()=>bot.production.exchange(slot,r);
      if(['upgrade','compound'].includes(r.action))run=()=>bot.production.mutate(slot,r);
     }
@@ -50,6 +50,7 @@ export function createMerchant(bot){
     }
     if(r.action==='craft'&&e.rules(item,'production')===r&&bot.production.outputCount(r.item,r)<r.targetCount)add('craft:'+cfg.items.indexOf(r),r,()=>bot.production.craft(r.item,r));
    }
+   if(cfg.merchant.mluck&&cfg.merchant.mluckTravel!==false)add('mluck.service',{priority:-200},()=>{const candidate=bot.farmers.map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&!(h.mluck?.strong&&h.mluck.f!==me.name)&&(!h.mluck||Number.isFinite(h.mluck.ms)&&h.mluck.ms<60000)).sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||(a.mluck?.ms??0)-(b.mluck?.ms??0)).find(h=>bot.strategy?.canVisit?.(h)??true);if(!candidate||distance(p.c,candidate)<(p.G.skills.mluck?.range??320))return false;return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);});
    add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>bot.services.tick());

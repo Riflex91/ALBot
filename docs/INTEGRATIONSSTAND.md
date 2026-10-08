@@ -1,3 +1,11 @@
+# Aktueller Integrationsstand 0.7.0-full
+
+Die im Audit von 0.6.2 benannten Ergänzungen wurden umgesetzt. Die exakte fachliche Zuordnung mit Einschränkungen steht in [AUTONOMIE-0.7.0](AUTONOMIE-0.7.0.md). Die folgenden älteren Abschnitte dokumentieren historische Releases. Neuer gemeinsamer Livetest und Linux bleiben ausstehend; Implementierung ist kein Live-Nachweis.
+
+# Korrektur des Integrationsstands · 8. Oktober 2026
+
+Der erneute Quellvergleich mit v3/v4/v5 zeigt, dass die folgende ältere Matrix vorhandene Grundaktionen teilweise zu weitgehend als vollständige Übernahme einordnet. Maßgeblich für die noch fehlende fachliche Tiefe und Integration ist [FUNKTIONSVERGLEICH-0.6.2.md](FUNKTIONSVERGLEICH-0.6.2.md): 20 konkrete Lücken/eingeschränkte Übernahmen, zusätzlich fünf ausdrücklich getrennte v5-Fachmodellunterschiede. ALBot ist noch keine vollständige Funktionsvereinigung. Diese Prüfung ändert keine Runtime und liefert keinen neuen Live-Nachweis.
+
 # Übernahmematrix · Vollbetrieb 0.6.0-full
 
 Zuordnung der Funktionsmatrix aus BOT-ANALYSE.md zum tatsächlichen Code. „Implementiert“ bezeichnet Code mit gezielten Offlineprüfungen. Live A/B/C gelten nur für ihre dokumentierten Szenarien; C wurde nach 0.3.1 vom Nutzer bestätigt. P3/P4 wurden mit 0.5.0 vervollständigt; neue Ergänzungen noch nicht live bestätigt. Vertrag und gemeinsamer Test: P3-P4.md / P3-P4-LIVE.md. 0.6.0 ergänzt Gesamtintegration, Welt-/Team-/Skillpolitik und Diagnosedateien. Updater entfällt. Neue gemeinsame Livebestätigung bleibt ausstehend.

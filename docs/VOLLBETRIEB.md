@@ -1,3 +1,7 @@
+# Aktuelle Ergänzungen · 0.7.0-full
+
+[Autonomievertrag und Auditzuordnung](AUTONOMIE-0.7.0.md) beschreiben die aktuelle integrierte Erweiterung. Gemeinsame Spawn-/Materialplanung, Elixierzyklen, Gearalternativen/physische Allokation, konservative Beutedisposition, Mluck-/Marktprioritäten und Recovery arbeiten im selben Profil. Regeln/Budgets werden beim Aktualisieren erhalten. Neue gemeinsame Livebestätigung steht aus; frühere Testpunkte bestätigen diese Ergänzungen nicht.
+
 # Super-Bot 0.6.2 · gemeinsamer Livebetrieb
 
 Ein vollständiges Betriebsprofil ersetzt die getrennten P3/P4-Testabschnitte. Alle Module arbeiten in derselben Runtime und demselben Scheduler. Der Updater ist auf Nutzerwunsch ausgeschlossen. Implementiert und gezielt geprüft bedeutet noch keinen bestandenen Vollbetriebs-Livetest.

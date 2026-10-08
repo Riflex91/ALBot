@@ -99,8 +99,8 @@
           },
           "pauseOnUnknown": {
             "type": "boolean",
-            "title": "Unklare Wertaktionen anhalten",
-            "default": true
+            "title": "Legacy-Pausenoption (Fehler werden protokolliert; Wertaktionen bleiben gesperrt)",
+            "default": false
           },
           "testLogging": {
             "type": "boolean",

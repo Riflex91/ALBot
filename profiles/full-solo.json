@@ -15,7 +15,7 @@
       "maxPending": 32,
       "messageTtlMs": 10000,
       "ui": true,
-      "pauseOnUnknown": true,
+      "pauseOnUnknown": false,
       "testLogging": true,
       "transferIntervalMs": 250
     },

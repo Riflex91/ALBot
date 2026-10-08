@@ -109,3 +109,6 @@ test('ordinary pickup cannot repeatedly divert merchant from a town restock rout
 
 
 test('gold reservation prevents new item offers, item acceptance and logistics travel',()=>{const {A,B,sends}=pair();A.gold={reserved:true};A.logistics.poll();assert.equal(A.logistics.stats().offersSent,0);assert.equal(B.journal,null);A.transport.peers.set('B',{});A.movement={go(){assert.fail('Gold rendezvous must not travel');}};A.logistics.travel();A.gold.reserved=false;B.gold={reserved:true};A.logistics.poll();assert.equal(A.logistics.stats().offersSent,1);assert.equal(B.journal,null);assert.equal(sends(),0);});
+
+
+test('item transfer timeout tolerates reentrant cleanup without null job access or duplicate send',()=>{const {A,B}=pair();let now=Date.now();A.exec.now=B.exec.now=()=>now;A.p.call=()=>new Promise(()=>{});A.logistics.poll();A.logistics.poll();A.endValue=()=>{A.inventoryBlocked=true;A.logistics.close();};now+=20000;assert.doesNotThrow(()=>A.logistics.poll());assert.equal(A.inventoryBlocked,true);assert.ok(A.journal);assert.equal(A.logistics.handoffActive,false);});

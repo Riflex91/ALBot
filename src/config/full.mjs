@@ -5,6 +5,7 @@ export const FULL_DESCRIPTOR=structuredClone(P3P4_DESCRIPTOR);
 FULL_DESCRIPTOR.schemaId='albot.full/v1';FULL_DESCRIPTOR.schema.title='ALBot · Vollbetrieb';
 const bool=(title,value=false)=>({type:'boolean',title,default:value});
 const number=(title,value,minimum=0,maximum=1000000000)=>({type:'integer',title,default:value,minimum,maximum});
+FULL_DESCRIPTOR.schema.properties.general.properties.pauseOnUnknown={type:'boolean',title:'Legacy-Pausenoption (Fehler werden protokolliert; Wertaktionen bleiben gesperrt)',default:false};
 Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{testLogging:bool('Fortlaufendes Testlog schreiben',true),transferIntervalMs:number('Neue Übergabe frühestens nach (ms)',250,250,10000)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
  collectGold:bool('Farmer-Gold oberhalb ihrer Reserven abholen'),goldTransferMax:number('Gold je bestätigter Übergabe',100000,1),goldCollectBelow:number('Goldabholung erst ab Überschuss',10000,1),

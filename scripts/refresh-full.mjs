@@ -24,5 +24,6 @@ await copyFile(new URL('../docs/PARITAET-0.8.0.md',import.meta.url),join(target,
 await copyFile(new URL('../docs/CHANGELOG-0.8.1.md',import.meta.url),join(target,'docs/CHANGELOG-0.8.1.md'));
 await copyFile(new URL('../docs/CHANGELOG-0.8.2.md',import.meta.url),join(target,'docs/CHANGELOG-0.8.2.md'));
 await copyFile(new URL('../docs/CHANGELOG-0.8.3.md',import.meta.url),join(target,'docs/CHANGELOG-0.8.3.md'));
+await copyFile(new URL('../docs/CHANGELOG-0.8.4.md',import.meta.url),join(target,'docs/CHANGELOG-0.8.4.md'));
 if(clientPath){const client=resolve(clientPath);await mkdir(client,{recursive:true});try{await copyFile(join(client,'bot.js'),join(client,'bot-backup-'+stamp+'.js'));}catch(e){if(e.code!=='ENOENT')throw e;}await copyFile(join(target,'bot.js'),join(client,'bot.js'));}
 console.log(JSON.stringify({...manifest,backup}));

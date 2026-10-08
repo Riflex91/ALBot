@@ -1,7 +1,9 @@
 import {distance} from '../core/policy.mjs';
+import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
+ const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  function buff(){
   if(me.role!=='merchant'||!cfg.merchant.mluck||!p.G.skills?.mluck)return;const skill=p.G.skills.mluck;
   if(p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown','mluck'))return;
@@ -21,7 +23,7 @@ export function createMerchant(bot){
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
   if(me.role==='merchant'&&!bot.movement.order)bot.reason=bot.production.status().blocked??'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
-  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),run,r});
+  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
    for(const [phase,r] of [['inventory',inventory],['production',production]]){
@@ -36,7 +38,7 @@ export function createMerchant(bot){
      if(r.action==='exchange')run=()=>bot.production.exchange(slot,r);
      if(['upgrade','compound'].includes(r.action))run=()=>bot.production.mutate(slot,r);
     }
-    if(run)add(phase+':'+cfg.items.indexOf(r)+':'+slot,r,()=>{
+    if(run)add(phase+':'+JSON.stringify([r.name,r.action,i.name,i.level??0,r.recipient]),r,()=>{
      const done=run();if(done||bot.movement.order||bot.journal)return done;
      if(r.fallback==='bank'&&me.role==='merchant'&&r.action!=='bank')return bot.bank.store(slot,{...r,action:'bank',_originalAction:r.action});
      if(r.fallback==='notify')e.note(r.name+': Voraussetzungen fehlen; Item bleibt erhalten');return false;
@@ -50,7 +52,7 @@ export function createMerchant(bot){
     }
     if(r.action==='craft'&&e.rules(item,'production')===r&&bot.production.outputCount(r.item,r)<r.targetCount)add('craft:'+cfg.items.indexOf(r),r,()=>bot.production.craft(r.item,r));
    }
-   if(cfg.merchant.mluck&&cfg.merchant.mluckTravel!==false)add('mluck.service',{priority:-200},()=>{const candidate=bot.farmers.map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&!(h.mluck?.strong&&h.mluck.f!==me.name)&&(!h.mluck||Number.isFinite(h.mluck.ms)&&h.mluck.ms<60000)).sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||(a.mluck?.ms??0)-(b.mluck?.ms??0)).find(h=>bot.strategy?.canVisit?.(h)??true);if(!candidate||distance(p.c,candidate)<(p.G.skills.mluck?.range??320))return false;return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);});
+   if(cfg.merchant.mluck&&cfg.merchant.mluckTravel!==false)add('mluck.service',{priority:-200},()=>{const candidate=bot.farmers.map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&!(h.mluck?.strong&&h.mluck.f!==me.name)&&(!h.mluck||Number.isFinite(h.mluck.ms)&&h.mluck.ms<60000)).sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||(a.mluck?.ms??0)-(b.mluck?.ms??0)).find(h=>bot.strategy?.canVisit?.(h)??true);if(!candidate||service.claim(candidate.name)===false||distance(p.c,candidate)<(p.G.skills.mluck?.range??320))return false;return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);});
    add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>bot.services.tick());
@@ -59,10 +61,10 @@ export function createMerchant(bot){
   for(const job of tasks.rank(jobs)){
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
-   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();tasks.selected(job.id);bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}
+   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();tasks.selected(job.id);bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
  }
- return {tick,status:tasks.status,close:tasks.clear};
+ return {tick,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status()}),close(){tasks.clear();service.clear();}};
 }

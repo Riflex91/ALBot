@@ -32,6 +32,7 @@ export function createFarmer(bot){
   function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
   function tick(){
     bot.recovering=false;
+    if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();

@@ -7,7 +7,7 @@ import {findRecipe,recipeIngredients} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 export function createProduction(bot){
- const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
+ const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const routeCache=new Map();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
@@ -107,7 +107,7 @@ export function createProduction(bot){
  }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
-  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>b.priority-a.priority||b.utilityPerHour-a.utilityPerHour);for(const g of ranked){
+  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<cfg.merchant.taskHoldMs;return Number(held(b))-Number(held(a))||b.priority-a.priority||b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
    const wait=waiting.get(goalKey(g));if(wait?.until>Date.now())continue;if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;if(qty(g.item,g.level,g)>=needed){if(g.recipient){goal=g;break;}continue;}
@@ -124,7 +124,7 @@ export function createProduction(bot){
   }
   if(!goal&&intent&&!bot.journal){const pending=goals().some(g=>g.recipient?(deliveries[goalKey(g)]?.quantity??0)<g.quantity:qty(g.item,g.level,g)<g.quantity);if(pending)persistIntent({...intent,phase:'waiting'});else{bot.event('production.intent.complete',{objective:intent.objective,reason:'Bedarf erfüllt oder ausdrücklich entfernt'});persistIntent(null);}}
   if(!goal||plan[0]?.kind!=='farm')materials=[];else updateMaterials();
-  if(goal&&!intentBlocked){const objective=knowledgeFingerprint(goalKey(goal)),participants=bot.farmers.map(name=>{const h=bot.transport.fresh(name);return {name,session:h?.session??null,held:h?.materialProgress?.find(x=>x.objective===objective)?.quantity??0};});persistIntent({...intent,objective,goal:goalKey(goal),item:goal.item,level:goal.level,quantity:goal.quantity,recipient:goal.recipient,realm:p.realm(),phase:materials.length?'gathering':plan.length?'planned':'delivery',participants,sources:materials.slice(0,1).map(r=>({monster:r.monster,item:r.item,quantity:r.quantity,sourceFingerprint:r.sourceFingerprint}))});}
+  if(goal&&!intentBlocked){if(heldGoal!==goalKey(goal)){heldGoal=goalKey(goal);heldAt=Date.now();}const objective=knowledgeFingerprint(goalKey(goal)),participants=bot.farmers.map(name=>{const h=bot.transport.fresh(name);return {name,session:h?.session??null,held:h?.materialProgress?.find(x=>x.objective===objective)?.quantity??0};});persistIntent({...intent,objective,goal:goalKey(goal),item:goal.item,level:goal.level,quantity:goal.quantity,recipient:goal.recipient,realm:p.realm(),phase:materials.length?'gathering':plan.length?'planned':'delivery',participants,sources:materials.slice(0,1).map(r=>({monster:r.monster,item:r.item,quantity:r.quantity,sourceFingerprint:r.sourceFingerprint}))});}
 
  }
  function routeScore(step){

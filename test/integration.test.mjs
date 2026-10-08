@@ -4,6 +4,7 @@ import {defaultsFor,validateProfile,exportBundle,checkPackage} from '../editor/l
 import {readFile} from 'node:fs/promises';
 import {Script} from 'node:vm';
 import {INTEGRATION_DESCRIPTOR} from '../src/config/live-c.mjs';
+import {createServicePlan} from '../src/merchant/service-plan.mjs';
 import {createFairTasks} from '../src/core/fair-tasks.mjs';
 import {chooseAura} from '../src/party/aura.mjs';
 import {createStrategy} from '../src/world/strategy.mjs';
@@ -59,3 +60,11 @@ test('monsterhunt uses interact, retains travel ownership, and confirms quest st
 
 
 test('critical inventory space work overrides ordinary held market and production tasks',()=>{let now=1000;const tasks=createFairTasks({now:()=>now}),market={id:'market',priority:100},bank={id:'bank',priority:-400,critical:true};tasks.rank([market]);tasks.selected('market');now+=2000;assert.equal(tasks.rank([market,bank])[0].id,'bank');bank.critical=false;assert.equal(tasks.rank([market,bank])[0].id,'market');});
+
+
+test('merchant service holds target, blocks A-B-A, permits urgent supply and eventually releases history',()=>{let time=10000;const events=[],s=createServicePlan({now:()=>time,holdMs:30000,event:(type,data)=>events.push({type,...data})});assert.equal(s.claim('A'),true);assert.equal(s.claim('B'),false);time+=31000;assert.equal(s.claim('B'),true);time+=1000;assert.equal(s.claim('A'),false);assert.equal(s.claim('A',true),true);assert.ok(events.some(e=>e.type==='merchant.switchBlocked'));time+=61000;assert.equal(s.claim('B'),true);s.clear();assert.equal(s.current(),null);});
+
+test('merchant retries unavailable task only after cooldown while other work remains selectable',()=>{let time=1000;const tasks=createFairTasks({now:()=>time}),market={id:'market',priority:100},bank={id:'bank',priority:0};tasks.rank([market,bank]);tasks.selected('market');tasks.defer('market',30000);assert.equal(tasks.rank([market,bank])[0].id,'bank');time+=30001;assert.equal(tasks.rank([market,bank])[0].id,'market');});
+
+
+test('merchant batches available local cleanup but aged work and critical space can override it',()=>{let time=1000;const tasks=createFairTasks({now:()=>time,starvationMs:120000}),sale={id:'sell',priority:-400,local:true},market={id:'market',priority:0};tasks.rank([sale,market]);tasks.selected('market');assert.equal(tasks.rank([sale,market])[0].id,'sell');time+=120001;tasks.selected('sell');assert.equal(tasks.rank([sale,market])[0].id,'market');sale.critical=true;assert.equal(tasks.rank([sale,market])[0].id,'sell');});

@@ -1,7 +1,7 @@
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 export function createEconomy(bot){
- const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0;const ruleActions=new Map();
+ const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0,npcEpoch=-1;const npcCache=new Map();const ruleActions=new Map();
  const actionKey=r=>JSON.stringify([r.name,r.item,r._originalAction??r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
  const remaining=r=>!r?.maxActions||(ruleActions.get(actionKey(r))??0)<r.maxActions;
  const ledgerKey='albot:economy:'+me.name+':budget';
@@ -52,7 +52,7 @@ export function createEconomy(bot){
  function destination(id){try{return p.call('find_npc',id);}catch{return null;}}
  function at(d,radius=110){return !!d&&samePlace(p.c,d)&&distance(p.c,d)<=radius&&!p.c.moving;}
  function travel(d,label,radius=90){if(!d){note('Kein Arbeitsplatz: '+label);return false;}if(at(d,radius))return true;if(!bot.logistics.reserved){bot.reason='Unterwegs: '+label;bot.movement.go({...d,radius},'economy');}return false;}
- function npcFor(item){const candidates=[];for(const [id,n] of Object.entries(p.G.npcs??{})){if(!Array.isArray(n.items)||!n.items.includes(item))continue;const d=destination(id);if(d&&Number.isFinite(d.x)&&Number.isFinite(d.y)&&d.map&&!p.G.maps?.[d.map]?.ignore)candidates.push(d);}return candidates.sort((a,b)=>(a.map===p.c.map?-1000000:0)+distance(p.c,a)-((b.map===p.c.map?-1000000:0)+distance(p.c,b)))[0]??null;}
+ function npcFor(item){if(Number.isInteger(bot.decisionEpoch)){if(npcEpoch!==bot.decisionEpoch){npcEpoch=bot.decisionEpoch;npcCache.clear();}if(npcCache.has(item))return npcCache.get(item);}const candidates=[];for(const [id,n] of Object.entries(p.G.npcs??{})){if(!Array.isArray(n.items)||!n.items.includes(item))continue;const d=destination(id);if(d&&Number.isFinite(d.x)&&Number.isFinite(d.y)&&d.map&&!p.G.maps?.[d.map]?.ignore)candidates.push(d);}const result=candidates.sort((a,b)=>(a.map===p.c.map?-1000000:0)+distance(p.c,a)-((b.map===p.c.map?-1000000:0)+distance(p.c,b)))[0]??null;if(Number.isInteger(bot.decisionEpoch))npcCache.set(item,result);return result;}
  function npcBuy(item,r,quantity){
   const meta=p.G.items[item.name];if(!meta||item.level||item.p||item.stat_type||item.title)return false;
   const price=meta.g;if(!Number.isFinite(price)||price<=0||price>r.maxPrice)return false;

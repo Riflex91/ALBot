@@ -3,12 +3,13 @@ import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {distance,samePlace,xy} from '../core/policy.mjs';
 import {spawnLocations,knowledgeFingerprint,mapGraph,mapHops} from './knowledge.mjs';
 export function createTeamPlan(bot){
- const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={};
+ const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map();
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function candidates(){const explicit=me.farmTargets?.length?me.farmTargets:cfg.farming.targets;return cfg.farming.autoTargets===false||me.farmTargets?.length?explicit:Object.keys(p.G.monsters??{}).filter(id=>{const m=p.G.monsters[id];return !m.boss&&!(m.respawn<0)&&!m.cooperative&&!m.stationary;});}
  function allowed(id){return candidates().includes(id)&&materialEvent(p.G,id,p.root.S??p.parent.S).active&&bot.strategy.safeTarget(id,undefined,true,true);}
  function materialRequests(){return bot.transport.fresh(cfg.party.merchant)?.materials??[];}
- function valid(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
+ function valid(plan){if(!Number.isInteger(bot.decisionEpoch))return validRaw(plan);if(validEpoch!==bot.decisionEpoch){validEpoch=bot.decisionEpoch;validCache.clear();}if(!validCache.has(plan))validCache.set(plan,validRaw(plan));return validCache.get(plan);}
+ function validRaw(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
   const source=spawnLocations(p.G,[plan.target],cfg.world.excludedMaps,cfg.farming.pvp).find(s=>s.key===plan.key);if(!source||plan.definition!==source.definition||bot.content?.approve('farm:'+plan.map+':'+plan.target,[p.G.monsters[plan.target],p.G.maps[plan.map]?.monsters?.filter(s=>s.type===plan.target)])===false)return false;
   if(!plan.objective)return true;if(plan.kind==='elixir')return bot.elixirs?.objective()?.objective===plan.objective||bot.transport.fresh(plan.leader)?.elixir?.item===plan.item;
   return materialRequests().some(r=>r.objective===plan.objective&&(!r.expires||r.expires>Date.now())&&r.monster===plan.target);

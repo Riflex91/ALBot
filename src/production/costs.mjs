@@ -8,7 +8,7 @@ export function estimateRoutes({G,item,level=0,quantity=1,stock=()=>0,bank=()=>0
  function routes(name,l,q,seen,depth){
   if(++nodes>256||depth>maxDepth||seen.has(name+':'+l))return [];const next=new Set([...seen,name+':'+l]);q=Math.max(0,q-stock(name,l));if(!q)return [{kind:'stock',gold:0,hours:0}];
   const rows=[],add=(kind,gold,hours)=>{if(Number.isFinite(gold)&&gold>=0&&Number.isFinite(hours)&&hours>=0&&permit(name,l,kind))rows.push({kind,gold,hours,score:weight({gold,hours})});};
-  if(allowed.includes('bank')&&bank(name,l)>=q)add('retrieve',0,travelHours('bank',name));
+  if(allowed.includes('bank')&&bank(name,l,q)>=q)add('retrieve',0,travelHours('bank',name));
   if(!l&&allowed.includes('npc'))add('buy',npcPrice(name)*q,travelHours('buy',name));
   if(allowed.includes('market'))add('marketBuy',marketPrice(name,l)*q,travelHours('marketBuy',name));
   if(!l&&allowed.includes('farm'))add('farm',0,farmHours(name,q));

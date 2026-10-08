@@ -7,5 +7,5 @@ export function createPanel(bot,api){
   const title=doc.createElement('strong');title.textContent='ALBot '+VERSION+' · '+bot.me.name;const status=doc.createElement('p');node.append(title,status);
   for(const [label,action] of [['Start',()=>api.start()],['Pause',()=>api.pause()],['STOP',()=>api.stop()],...(bot.cfg.general.testLogging?[['Testordner wählen',()=>api.chooseLogDirectory()]]:[]),['Testlog speichern',()=>api.exportTestReport()]]){const b=doc.createElement('button');b.textContent=label;if(label==='Testordner wählen'&&!api.logCapabilities().directory){b.textContent='Ordnerauswahl nicht verfügbar';b.disabled=true;b.title='Testlog speichern verwenden. Den Desktop als Downloadziel im Browser einstellen.';}else b.onclick=action;node.append(b);}
   if(bot.cfg.general.testLogging&&!api.logCapabilities().directory){const hint=doc.createElement('p');hint.textContent='Logs per „Testlog speichern“ herunterladen. Speicherort in den Browser-Downloads wählen.';node.append(hint);}
-  doc.body.append(node);return {render(){status.textContent=bot.me.role+' · '+(bot.running?'Aktiv':'Angehalten')+' · '+bot.reason;},remove(){node.remove();}};
+  doc.body.append(node);return {render(){const text=bot.me.role+' · '+(bot.running?'Aktiv':'Angehalten')+' · '+bot.reason;if(status.textContent!==text)status.textContent=text;},remove(){node.remove();}};
 }

@@ -12,7 +12,7 @@ export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allo
   const available=Math.max(0,stock(name,l)-(allocated.get(key)??0)),take=Math.min(q,available);allocated.set(key,(allocated.get(key)??0)+take);q-=take;if(q<=0)return;
   visiting.add(key);
   try{
-   const stored=allowed.includes('bank')&&permit(name,l,'retrieve')?Math.min(q,Math.max(0,bank(name,l)-(bankAllocated.get(key)??0))):0;
+   const stored=allowed.includes('bank')&&permit(name,l,'retrieve')?Math.min(q,Math.max(0,bank(name,l,q)-(bankAllocated.get(key)??0))):0;
    if(stored){bankAllocated.set(key,(bankAllocated.get(key)??0)+stored);steps.push({kind:'retrieve',item:name,level:l,quantity:stored});q-=stored;}if(!q)return;
    const found=findRecipe(G,name,recipeFor(name,l)),recipe=found?.recipe;
    const ways=[];if(l===0&&allowed.includes('npc')&&canBuy(name)&&permit(name,l,'buy'))ways.push('buy');

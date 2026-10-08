@@ -21,3 +21,5 @@ test('unsafe Monsterhunt never selects Prat and normal farming remains available
 test('death in ordinary farming also quarantines the last combat target',()=>{const {bot,c}=fixture();bot.target={mtype:'bee'};c.rip=true;createFarmer(bot).tick();assert.equal(bot.strategy.safeTarget('bee'),false);assert.equal(bot.recovering,true);});
 
 test('safe remote Bee activity does not require merchant to count as combat member',()=>{const {bot,c,G}=fixture();c.name='M';G.maps.remote={};assert.equal(bot.strategy.canVisit({map:'remote',x:100,y:100,hp:4000,max_hp:4000,threats:0,activity:{target:'bee'}}),true);assert.equal(bot.strategy.canVisit({map:'remote',x:100,y:100,hp:4000,max_hp:4000,threats:0,activity:{target:'prat'}}),false);});
+
+test('unsafe observed farm target triggers bounded replanning instead of idle at its spawn',()=>{const {bot,c}=fixture();bot.teamPlan={target:()=> 'bee',failed(){},travel:()=>false};bot.monsters=()=>[{id:'elite',type:'monster',mtype:'bee',hp:200000,max_hp:200000,attack:1000,frequency:2,map:'main',x:1,y:0}];createFarmer(bot).tick();assert.equal(bot.strategy.safeTarget('bee'),false);assert.match(bot.reason,/Farmziel neu bewerten/);});

@@ -3,7 +3,7 @@ export function createGoldLogistics(bot){
  const {p,cfg,me,exec,transport}=bot;let job=null,serial=0,next=0;const finished=new Map();
  const reserve=()=>Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
  const surplus=()=>me.role==='farmer'?Math.max(0,Math.floor(p.c.gold-reserve())):0;
- const idle=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.services?.active&&!exec.pending.size&&bot.checkpoint.durable;
+ const idle=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.services?.active&&!exec.busy('inventory')&&!exec.busy('gold')&&!exec.busy('economy')&&bot.checkpoint.durable;
  const near=name=>{const e=bot.entity(name),h=transport.fresh(name);return e&&h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,e)&&samePlace(p.c,h)&&distance(p.c,e)<250&&distance(p.c,h)<250&&h.session;};
  const send=(type,data={})=>{bot.event('gold.'+type,{id:job.id,peer:job.peer,quantity:job.quantity,reason:'Farmerüberschuss oberhalb eigener Goldreserve'});transport.send(job.peer,type,data,job.id);};
  function receive(from,m){
@@ -12,7 +12,7 @@ export function createGoldLogistics(bot){
   if(m.type==='goldOffer'){
    if(job?.id===m.id&&job.peer===from&&job.state==='receiving'){send('goldAccept',{quantity:job.quantity});return;}
    if(me.name!==cfg.party.merchant||!cfg.characters.some(c=>c.enabled&&c.name===from&&c.role==='farmer')||job||finished.has(m.id)||!idle()||!near(from)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>cfg.merchant.goldTransferMax)return;
-   job={id:m.id,peer:from,session:m.session,state:'receiving',quantity:d.quantity,before:p.c.gold,until:Date.now()+cfg.general.messageTtlMs};
+   if(me.role==='merchant')bot.movement?.stop();job={id:m.id,peer:from,session:m.session,state:'receiving',quantity:d.quantity,before:p.c.gold,until:Date.now()+cfg.general.messageTtlMs};
    try{bot.beginValue({kind:'gold.receive',...job});send('goldAccept',{quantity:job.quantity});}catch(e){job=null;throw e;}
   }else if(job&&job.peer===from&&job.id===m.id&&job.session===m.session){
    if(m.type==='goldAccept'&&job.state==='offered'&&d.quantity===job.quantity)job.state='accepted';
@@ -33,7 +33,7 @@ export function createGoldLogistics(bot){
    }return;
   }
   if(!offer||!cfg.merchant.collectGold||!cfg.merchant.enabled||me.role!=='farmer'||now<next||!idle()||surplus()<cfg.merchant.goldCollectBelow||!near(cfg.party.merchant))return;
-  const peer=transport.fresh(cfg.party.merchant);if(peer.journal||peer.pending||peer.inventoryBlocked)return;
+  const peer=transport.fresh(cfg.party.merchant);if(peer.journal||peer.inventoryBlocked)return;
   job={id:bot.session+':gold:'+(++serial),peer:cfg.party.merchant,session:peer.session,state:'offered',quantity:Math.min(surplus(),cfg.merchant.goldTransferMax),before:p.c.gold,until:now+cfg.general.messageTtlMs,lastOffer:now};send('goldOffer',{quantity:job.quantity});
  }
  function travel(){if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;

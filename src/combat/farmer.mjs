@@ -53,7 +53,7 @@ export function createFarmer(bot){
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){waitSafely('Warte auf Gruppe');return;}
-    bot.encounter?.pull();const mobs=bot.monsters().filter(bot.allowed);
+    const planned=bot.teamPlan?.target(),visible=planned?bot.monsters().filter(m=>m.mtype===planned):[];if(me.name===bot.leader&&visible.length&&visible.every(m=>bot.strategy?.safeTarget(planned,m,true)===false)){bot.strategy.failActivity('Sichtbare Gegner stärker als Farmplan; neues sicheres Ziel wählen',planned);bot.reason='Farmziel neu bewerten: sichtbare Gegner zu stark';return;}bot.encounter?.pull();const mobs=bot.monsters().filter(bot.allowed);
     const focus=cfg.party.enabled&&cfg.party.focusFire&&leader?.target&&(!bot.teamPlan||leader.farmPlan?.id===bot.teamPlan.heartbeat()?.id||leader.activity)?mobs.find(e=>e.id===leader.target):null;
     const previous=bot.target&&mobs.find(e=>e.id===bot.target.id);
     bot.target=focus??previous??mobs.sort((a,b)=>(a.target===c.name?-10000:0)+distance(c,a)-((b.target===c.name?-10000:0)+distance(c,b)))[0]??null;

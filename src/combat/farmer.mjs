@@ -35,7 +35,8 @@ export function createFarmer(bot){
     const c=p.c,now=Date.now();
     if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
-    if(bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
+    if(bot.strategy?.busy&&bot.monsters().some(m=>m.target===c.name))bot.strategy.interruptQuest?.();
+    if(bot.strategy?.busy||bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
     if(cfg.farming.loot&&!bot.inventoryBlocked&&!bot.logistics.reserved&&bot.free()>cfg.farming.freeSlots&&now-lastLoot>=cfg.farming.lootEveryMs){lastLoot=now;exec.run('loot',['inventory'],()=>bot.free()>cfg.farming.freeSlots,()=>tolerate('loot','openning',()=>p.call('loot')),{delay:cfg.farming.lootEveryMs});}
     if(!cfg.farming.enabled){bot.reason='Farmen ausgeschaltet';bot.skills.rotation(null);return;}
     if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
@@ -43,8 +44,9 @@ export function createFarmer(bot){
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){
-      if(!leader?.running||leader.realm!==p.realm()||leader.rip){bot.reason='Warte auf Kampf-Leader';bot.target=null;bot.skills.rotation(null);return;}
-      if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){bot.target=null;bot.reason='Folge '+bot.leader;bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
+      if(!leader?.running||leader.realm!==p.realm()||leader.rip){bot.reason='Warte auf Kampf-Leader';bot.target=null;if(['combat','farm','follow','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);return;}
+      if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
+      if(leader.questVisit===true){bot.target=null;bot.reason='Begleite Monsterhunt-Reise des Leaders';if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe';bot.target=null;bot.skills.rotation(null);return;}
     const mobs=bot.monsters().filter(bot.allowed);

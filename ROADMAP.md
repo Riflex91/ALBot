@@ -238,3 +238,7 @@ P5/P6-Häkchen bezeichnen integrierte Implementierung, keine neue Livefreigabe. 
 Minifiziertes klassisches Bundle, eingebautes Paket in derselben Werkstatt, persönliche Profilmigration und fortlaufende Desktop-Testlogs sind fertig. Ein gemeinsames Betriebsprofil aktiviert die Module bei tatsächlichem Bedarf; sieben getrennte P3/P4-Abschnitte werden durch normalen Livebetrieb ersetzt. Anleitung: [VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Der optionale Updater ist ausgeschlossen. Nachweis unter Windows: gezielte Logik-/Vertragsprüfungen, Größen-/Syntaxprüfung und Client-Reportprüfungen. Linux-Installation ist dokumentiert, tatsächlicher Linux-Livebetrieb weiterhin ausstehend.
 
 Abschlussprüfung 8. Oktober 2026: 94 Bot-/Werkstatt-Prüfungen und 31 Client-Prüfungen bestanden; keine Shadow-Tests und kein Login. Persönlicher Vollbetriebs-Build ca. 196 kB, deutlich unter 1.048.576 Bytes. Persönliche Standalone-Werkstatt öffnet ohne Scriptfehler und mit aktivem Exportbutton. Client prüft alle acht Skriptzuordnungen, vier aktive Charaktere. Gemeinsamer Spiel-Livetest noch ausstehend.
+
+## Vollbetrieb-Korrektur · 0.6.1-full
+
+Erster Browserlauf zeigt zwei API-/Auflösungsfehler und konkurrierende Questbewegung. Repariert: interact(monsterhunt), Leader-Questbesitz und beobachteter Status ohne falsches Inventarjournal, gezielte Altzustands-Recovery, Händler ohne Standort überspringen, Browser-Ordnerfähigkeit und Downloadhinweis. 100 gezielte Prüfungen bestanden. Live-Wiederholung ausstehend; Details: [CHANGELOG-0.6.1.md](docs/CHANGELOG-0.6.1.md).

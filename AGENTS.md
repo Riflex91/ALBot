@@ -1,3 +1,7 @@
+# Aktuelle Livekorrektur 0.6.1-full
+
+Vor weiteren Änderungen docs/CHANGELOG-0.6.1.md lesen: Monsterhunt ist interact, kein Skill; Leader-Questbesitz ohne Inventarjournal. Alte genau identifizierte Fehlaufruf-Checkpoints werden gezielt migriert, echte Wertjournale bleiben geschützt. npcFor muss Händler ohne Kartenstandort überspringen. Browser-FSA ist optional, Downloadfallback verbindlich. 100 gezielte Prüfungen bestanden, neue Livebestätigung ausstehend.
+
 # Aktueller Auftrag · Vollbetrieb 0.6.0-full
 
 Der Nutzer beauftragte den gesamten integrierten Bot zum gemeinsamen echten Livetest; optionalen Updater ausdrücklich nicht einbauen. Vor Änderungen docs/VOLLBETRIEB.md lesen. Aktueller Vertrag src/config/full.mjs, albot.full/v1. Ein Betriebsprofil und ein Scheduler; keine getrennten Testabschnitte. Autostart true, Browser performance_trick. Fortlaufende benannte Diagnosedateien mit Grund/Ergebnis sind ausdrücklich autorisiert: Desktopausgabe über vorhandenen Client, Browser nach Ordnerfreigabe. 2048 RAM-Ereignisse, Dateien rotieren bei 16 MiB; keine Logs im localStorage. Historische Grenzen unten beschreiben alte Releases und schränken diesen Auftrag nicht ein. Keine Shadow-Tests oder automatischen Logins. Neue gemeinsame Livebestätigung und Linux bleiben ausstehend.

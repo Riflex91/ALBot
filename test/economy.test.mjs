@@ -154,3 +154,8 @@ test('fulfilled upgrade target suppresses reacquisition of the consumed base ite
  assert.equal(bot.economy.downstreamSatisfied(base,buy),true);
  c.items[0]=null;assert.equal(bot.economy.downstreamSatisfied(base,buy),false);
 });
+
+test('NPC lookup skips unplaced sellers and buys potions from the nearest valid seller',async()=>{
+ const {bot,c,rule}=fixture();c.map=c.in='main';c.x=c.y=0;bot.p.G.npcs={pots:{items:['hpot0']},fancypots:{items:['hpot0']},other:{items:['hpot0']}};const calls=[];bot.p.call=(name,...args)=>{if(name==='find_npc')return args[0]==='pots'?null:{map:args[0]==='other'?'remote':'main',in:args[0]==='other'?'remote':'main',x:0,y:0};if(name==='buy_with_gold'){calls.push(args);c.items[0].q+=args[1];c.gold-=20*args[1];return Promise.resolve();}throw Error(name);};
+ assert.equal(bot.economy.npcFor('hpot0').map,'main');const buy={...rule,action:'buy',maxPrice:20};assert.equal(bot.economy.npcBuy({name:'hpot0'},buy,5),true);await Promise.resolve();bot.exec.poll();assert.deepEqual(calls,[['hpot0',5]]);assert.equal(bot.journal,null);
+});

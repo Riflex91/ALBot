@@ -43,3 +43,13 @@ test('controlled burst uses explicit mana allocation and full burst cannot promi
  const bot={cfg,p:{c,G:{maps:{main:{}},skills:{burst:{class:['mage'],hostile:true,mp:0,target:true,ratio:.5},cburst:{class:['mage'],hostile:true,mp:80,ratio:.5}},items:{}},parent:{},call:(id,...args)=>id==='is_on_cooldown'?false:calls.push(args)},teamNames:['Mage'],monsters:()=>[],entity:()=>target,allowed:()=>true,running:true,exec:{run:(key,resources,guard,call)=>{if(!guard())return false;call();return true;}}};const skills=createSkills(bot);
  assert.equal(skills.use('burst',target,.25),false);assert.equal(skills.use('cburst',target,.4),true);assert.deepEqual(calls[0][1],[['g',400]]);
 });
+
+test('directory capability detects CODE or parent APIs and explains download fallback',async()=>{
+ const messages=[],p={c:{name:'A'},G:{},realm:()=> 'EUII',headless:false,parent:{},root:{},log:s=>messages.push(s)};const report=createTestReport(p,'test');assert.deepEqual(report.capabilities(),{mode:'download',directory:false});assert.equal(await report.chooseDirectory(),false);assert.match(messages[0],/Browser-Downloads/);p.root.showDirectoryPicker=()=>{};assert.equal(report.capabilities().directory,true);
+});
+
+test('followers give leader quest travel priority over stale combat movement and stop when leader pauses',async()=>{
+ const {createFarmer}=await import('../src/combat/farmer.mjs');const cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.farming.loot=false;let leader={running:true,realm:'EUII',map:'main',in:'main',x:500,y:0,questVisit:true},stops=0,moves=0;
+ const bot={cfg,me:{name:'A',role:'farmer'},leader:'L',farmers:['L','A'],journal:null,logistics:{reserved:false},p:{c:{name:'A',map:'main',in:'main',x:0,y:0,hp:100,max_hp:100,mp:100,max_mp:100,items:[]},G:{maps:{main:{}}},parent:{},realm:()=> 'EUII'},exec:{run:()=>assert.fail('Quest escort must not attack')},transport:{fresh:()=>leader},movement:{order:{owner:'combat'},stop(){stops++;this.order=null;},go(d,owner){moves++;this.order={owner};}},skills:{rotation(){}},free:()=>42,monsters:()=>[],strategy:{busy:false,travel:()=>false}};
+ const farmer=createFarmer(bot);farmer.tick();assert.equal(stops,1);assert.equal(moves,1);assert.equal(bot.movement.order.owner,'follow');leader.x=10;bot.movement.order={owner:'combat'};farmer.tick();assert.equal(bot.movement.order,null);assert.match(bot.reason,/Monsterhunt/);leader.running=false;bot.movement.order={owner:'follow'};farmer.tick();assert.equal(bot.movement.order,null);assert.equal(stops,3);
+});

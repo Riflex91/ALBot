@@ -1,4 +1,4 @@
-# Aktuell: gemeinsamer Vollbetrieb · 0.6.0-full
+# Aktuell: gemeinsamer Vollbetrieb · 0.6.1-full
 
 Der gesamte vereinbarte Spielumfang ist in einem gemeinsamen Runtime-/Profilvertrag implementiert und als Vollbetriebs-Livetest-Kandidat ausgeliefert. Kein optionaler Updater. Alle Module teilen Scheduler, Ressourcen, Reservierungen und Wertjournale. Die neuen Wege sind noch nicht gemeinsam live bestätigt; frühere A/B/C-Nachweise bleiben auf ihre Szenarien begrenzt. Einstieg: [VOLLBETRIEB.md](docs/VOLLBETRIEB.md). Schema: `albot.full/v1`.
 

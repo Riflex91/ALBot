@@ -66,7 +66,8 @@ export function install(root){
   report.configure?.({continuous:cfg.general.testLogging===true});
   const team=cfg.characters.filter(c=>c.enabled&&c.group===me.group),farmers=team.filter(c=>c.role==='farmer').map(c=>c.name);if(cfg.general.testLogging===undefined)farmers.sort();
   const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,panel;
-  const checkpoint=createCheckpoint(p,key,report),journal=checkpoint.journal;
+  const checkpoint=createCheckpoint(p,key,report);let journal=checkpoint.journal;
+  if(journal?.kind==='quest.monsterhunt'&&journal.quest==='monsterhunt'&&journal.cost===0&&journal.loss===0&&Array.isArray(journal.slots)&&journal.slots.length===0&&!p.G.skills?.monsterhunt){if(checkpoint.clear(journal)){report.event('checkpoint.repaired',{kind:journal.kind,reason:'Alter ungültiger use_skill(monsterhunt)-Aufruf ohne Inventarwirkung'});journal=null;}}
   const bot={p,cfg,me,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
     checkpoint,
     event(type,data){report.event(type,data);},
@@ -114,7 +115,7 @@ export function install(root){
     if(!bot.running)return;
     if(economyDue){bot.strategy?.plan();bot.strategy?.sample();}
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
-    if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!worldAction)bot.merchant?.tick();bot.aura?.tick();
+    if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!worldAction&&!bot.strategy?.busy)bot.merchant?.tick();bot.aura?.tick();
     if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.production?.planGoals();bot.account?.tick();bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
     publish();
     report.sample({reason:bot.reason,running:bot.running});
@@ -135,7 +136,7 @@ export function install(root){
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
     status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null}),
     testReport:()=>report.text(),exportTestReport:()=>report.flush(),
-    chooseLogDirectory:()=>report.chooseDirectory(),
+    chooseLogDirectory:()=>report.chooseDirectory(),logCapabilities:()=>report.capabilities(),
     acknowledgeInventory(){if(bot.running)throw Error('Zuerst pausieren und tatsächlichen Bestand prüfen');if(!checkpoint.write(null))throw Error('Speichern fehlgeschlagen');bot.journal=null;bot.inventoryBlocked=false;bot.reason='Inventar manuell abgeglichen';publish();},
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };

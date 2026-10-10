@@ -755,3 +755,48 @@ test('U05 failed durable sender stamp cancels before executor and never leaves a
  assert.equal(sent[1].data.notDispatched,true);
  assert.ok(logs>0);
 });
+
+test('U04 mutable bid price cannot silently change the agreed sale at dispatch',()=>{
+ const item={name:'ring',level:1,q:3},c={name:'M',map:'main',in:'main',x:0,y:0,items:[item],gold:500,slots:{}};
+ const bid={name:'ring',level:1,price:150,q:3,b:true,rid:'buyer-bid'};
+ const buyer={id:'B',name:'B',type:'character',stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:bid}};
+ const p={c,entities:{B:buyer},has:()=>true,read:()=>null};
+ let action=null;
+ const economy={safe:()=>true,spare:()=>3,count:()=>c.items[0]?.q??0,rules:()=>({action:'sell'}),perform:(kind,args)=>{assert.equal(kind,'market.sell');action=args;return true;}};
+ const bot={p,me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy,exec:{},entity:()=>buyer};
+ const rule={action:'sell',minPrice:100};
+ assert.equal(createMarket(bot).sellToBid(0,rule),true);
+ assert.equal(action.details.expectedGold,450);
+ assert.equal(action.guard(),true);
+ bid.price=20;assert.equal(action.guard(),false,'A lower live price is not the originally approved bid');
+ bid.price=200;assert.equal(action.guard(),false,'Even a changed higher bid needs a new value decision');
+ bid.price=150;rule.minPrice=160;assert.equal(action.guard(),false,'Raised explicit minimum price invalidates pending sale');
+ rule.minPrice=100;assert.equal(action.guard(),true);
+ bid.q=2;assert.equal(action.guard(),false,'Reduced buyer quantity invalidates original trade');
+ bid.q=3;bid.b=false;assert.equal(action.guard(),false,'Removed buy side cannot execute');
+ bid.b=true;assert.equal(action.guard(),true);
+});
+test('U04 market listing cannot publish an old ask after changed minimum, slot or spare quantity',()=>{
+ const item={name:'ring',q:4,level:0},c={name:'M',stand:true,slots:{},items:[item]};
+ let quantity=4,action=null;
+ const p={c,read:()=>null},economy={count:()=>4,spare:()=>quantity,perform:(kind,args)=>{assert.equal(kind,'market.list');action=args;return true;}};
+ const bot={p,me:{name:'M'},cfg:{merchant:{marketHistory:false},general:{}},economy,exec:{}};
+ const market=createMarket(bot),rule={action:'list',minPrice:100,priceSource:'fixed',slot:'trade1'};
+ assert.equal(market.listing(0,rule),true);
+ assert.equal(action.guard(),true);
+ rule.minPrice=120;assert.equal(action.guard(),false);
+ rule.minPrice=100;rule.slot='trade2';assert.equal(action.guard(),false,'Cannot silently switch to a different trade slot');
+ rule.slot='trade1';quantity=3;assert.equal(action.guard(),false,'No longer have sufficient released inventory');
+ quantity=4;c.slots.trade1={name:'other'};assert.equal(action.guard(),false);
+ delete c.slots.trade1;c.stand=false;assert.equal(action.guard(),false);
+ c.stand=true;assert.equal(action.guard(),true);
+});
+test('U04 sale refuses a live buyer bid whose total payout overflows safe integer money',()=>{
+ const item={name:'ring',level:0,q:3},c={name:'M',map:'main',in:'main',x:0,y:0,items:[item],gold:0};
+ const bid={name:'ring',level:0,price:Number.MAX_SAFE_INTEGER,q:3,b:true,rid:'big-bid'};
+ const buyer={id:'B',name:'B',type:'character',stand:true,map:'main',in:'main',x:5,y:0,slots:{trade1:bid}};
+ let queued=0;
+ const market=createMarket({p:{c,entities:{B:buyer},has:()=>true,read:()=>null},me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy:{safe:()=>true,spare:()=>3,perform:()=>{queued++;return true;}},exec:{},entity:()=>buyer});
+ assert.equal(market.sellToBid(0,{action:'sell',minPrice:1}),false);
+ assert.equal(queued,0);
+});

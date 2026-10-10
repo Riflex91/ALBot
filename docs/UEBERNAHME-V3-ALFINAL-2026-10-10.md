@@ -4,7 +4,7 @@ Stand 10. Oktober 2026. Nutzerauftrag: die geprüften Übernahmeempfehlungen im 
 
 ## Aufgaben und Status
 
-**Arbeitsbranch (noch nicht in main):** U01–U06 sind implementiert und automatisiert getestet, U07 ist als sichere, begrenzte Anbindung der offiziellen Progression-API implementiert. GitHub Actions hat `npm test`, `npm run build`, `npm run build:editor` und Bundle-Integrität unter Linux bestanden; unter Windows hat `scripts/VERIFY-U01-U07.ps1` denselben erfolgreichen Prüfumfang bestätigt. **Je Plattform 210/210 Tests, 284.638 Bytes und identischer SHA-256.** Browser-/eigene Headless-API-Verfügbarkeit und die gemeinsame echte Spiel-Livebestätigung stehen aus. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
+**Arbeitsbranch (noch nicht in main):** U01–U06 sind implementiert und automatisiert getestet, U07 ist als sichere, begrenzte Anbindung der offiziellen Progression-API implementiert. GitHub Actions hat `npm test`, `npm run build`, `npm run build:editor` und Bundle-Integrität unter Linux bestanden; unter Windows hat `scripts/VERIFY-U01-U07.ps1` denselben erfolgreichen Prüfumfang bestätigt. **Je Plattform 213/213 Tests, 284.844 Bytes und identischer SHA-256.** Browser-/eigene Headless-API-Verfügbarkeit und die gemeinsame echte Spiel-Livebestätigung stehen aus. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
 
 | ID | Reihenfolge | Aufgabe | Betroffene ALBot-Module | Stand im Arbeitsbranch |
 |---|---|---|---|
@@ -87,6 +87,13 @@ Der [offizielle CODE-Wrapper `trade_sell`](https://github.com/kaansoral/adventur
 **Korrektur:** `createAccount.risk()` gibt die bestehenden `riskLimit`- und `mode`-Werte unverändert aus, ergänzt aber `memberCount` (alle eindeutig konfigurierten, aktivierten Gruppenmitglieder, auch wenn deren Heartbeats fehlen) und `sessionRiskLimit=Math.floor(riskLimit/memberCount)`. `spendAllowed()` verwendet ausschließlich die eigene Sitzungsteilgrenze für die kumulierte Exposition aus Cost + Loss. Alle früheren Einzel-, Regel-, Stunden- und Zielbudgets im zentralen Economy-Dispatcher bleiben zusätzlich verbindlich. `accountRiskSnapshot()` sperrt bei unsicherer Ganzzahladdition oder Overflow durch einen Risikowert von null. Ein sicherer positiver Nullkostenfall bleibt erlaubt.
 
 **Abnahme:** [GitHub Actions 38080016166](https://github.com/Riflex91/ALBot/actions/runs/38080016166) hat **210/210 Tests je Linux und Windows**, Runtime und Werkstatt, Syntax, Byte-Grenze und identische SHA256-Manifeste erfolgreich geprüft. Bundle **284.638 Bytes**, SHA-256 `c7fba1403c866492d273abc0098e8eff41c9c59aa75c37f2e0f29ab375beea8f`. Drei neue Regressionstests prüfen parallele zwei Sitzungen gegen das gemeinsame Limit, konservative unvollständige Peer-Snapshots sowie unsichere Ganzzahlwerte. Die Garantie der Teilung setzt voraus, dass die beteiligten Sitzungen das gleiche konfigurierte Gruppenroster verwenden; echte Spiel-Livebestätigung steht noch aus.
+
+### U04 – Nachprüfung von Inventarbedarf, Slots und passiven Kauforders
+
+- `src/merchant/market.mjs` akzeptiert beim **Spieler-Marktkauf** ausschließlich `trade1` bis `trade16`, nicht pauschal alle mit `trade` beginnenden Fremdschlüssel.
+- Unmittelbar vor dem `trade_buy` werden **aktueller Inventarbedarf** (`count+q <= min(targetCount,maxCount)`) und **freie Arbeitsplätze** (`free()>minFreeSlots`) erneut geprüft. Damit können Loot oder andere Inventarereignisse zwischen Planung und Dispatch keine nicht mehr benötigten Mengen auslösen.
+- Bei `market.wishlist` prüfen die Guards zusätzlich kurz vor der Veröffentlichung die noch benötigte Itemmenge und das dann aktuelle Preislimit. Alte Kaufabsichten werden bei geänderten Zielen oder Preisregeln verworfen.
+- **Abnahme:** [GitHub Actions 38080294281](https://github.com/Riflex91/ALBot/actions/runs/38080294281) mit **213/213 Node-Tests je Linux und Windows**, Runtime- und Werkstatt-Build, erfolgreicher Bundle-/Manifestprüfung, **284.844 Bytes**, SHA-256 `4444bf804139dae0e1daba809d08c80f29c34665a33d2b481a05a439141c315a` auf beiden Plattformen. Drei neue gezielte Regressionen. Echte Markttransaktionen blieben unangetastet.
 
 ## Arbeitsregeln und Abschlusskriterien
 

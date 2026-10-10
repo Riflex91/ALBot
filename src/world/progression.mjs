@@ -4,10 +4,10 @@ export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false)
  if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||Number.isFinite(advice.at)&&Math.abs(Date.now()-advice.at)>120000)return [];
  const eligible=new Set(allowed),rows=[];
  for(const row of advice.rows.slice(0,32)){
-  const route=row?.action?.kind==='farm'?row.action.route:null;
+  const route=row?.kind==='farm'&&row?.action?.kind==='farm'?row.action.route:null;
   if(!route||typeof route.monster!=='string'||typeof route.map!=='string'||!eligible.has(route.monster)||
     !G.monsters?.[route.monster]||!G.maps?.[route.map]||excluded.includes(route.map)||G.maps[route.map].ignore||
-    (G.maps[route.map].pvp&&!pvp)||route.safe===false||!Number.isFinite(row.priority)||row.priority<0)continue;
+    (G.maps[route.map].pvp&&!pvp)||route.safe!==true||(Array.isArray(route.reasons)&&route.reasons.length>0)||!Number.isFinite(row.priority)||row.priority<0)continue;
   rows.push({kind:'farm',monster:route.monster,map:route.map,priority:Math.min(200,row.priority),source:'official-get_progression'});
   if(rows.length>=5)break;
  }
@@ -37,10 +37,13 @@ export function createProgression(bot){
   try{
    const advice=p.progression(args);
    if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||!Array.isArray(advice.plans)&&advice.plans!==undefined){statusReason='unsupported-advice-shape';return cached=null;}
-   const rows=supportedProgressionRows(advice,p.G,me.farmTargets?.length?me.farmTargets:cfg.farming.targets,cfg.world.excludedMaps??[],false);
+   const allowed=me.farmTargets?.length?me.farmTargets:cfg.farming.autoTargets===true&&bot.teamPlan?.candidates?bot.teamPlan.candidates():cfg.farming.targets;
+   const rows=supportedProgressionRows(advice,p.G,allowed,cfg.world.excludedMaps??[],false).filter(r=>bot.strategy?.safeTarget?.(r.monster,undefined,true,true)!==false);
    const plans=Array.isArray(advice.plans)?advice.plans:[];
    // Plan entries must never directly enqueue an upgrade, purchase or trade.
-   cached={at:now,goal:args.goal,rows,plansCount:plans.length,observation:'Guide combat history is not a measured rate until observed'};
+   const goal=advice.goal?.kind==='item'&&args.goal?.kind==='item'&&advice.goal.name===args.goal.name&&advice.goal.level===args.goal.level?args.goal:null;
+   const itemPlanned=!!goal&&plans.some(plan=>plan?.tree?.name===goal.name&&plan.tree.level===goal.level&&!!plan.tree.next&&!plan.tree.blocked);
+   cached={at:now,goal,rows,plansCount:plans.length,itemPlanned,observation:'Guide combat history is not a measured rate until observed'};
    statusReason=rows.length?'validated-farm-hints':'no-supported-hints';return cached;
   }catch(e){
    cached=null;statusReason='read-error';
@@ -54,7 +57,7 @@ export function createProgression(bot){
  function goalPriority(g){
   // Prefer existing explicit production goals only; no new materials or buying.
   const state=refresh(),goal=state?.goal;
-  return goal?.kind==='item'&&g.item===goal.name&&g.level===goal.level?0.1:0;
+  return state?.itemPlanned&&goal?.kind==='item'&&g.item===goal.name&&g.level===goal.level?0.1:0;
  }
- return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0}),close(){p.closeProgression?.();cached=null;}};
+ return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0}),close(){p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
 }

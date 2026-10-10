@@ -7,7 +7,7 @@ export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false)
   const route=row?.kind==='farm'&&row?.action?.kind==='farm'?row.action.route:null;
   if(!route||typeof route.monster!=='string'||typeof route.map!=='string'||!eligible.has(route.monster)||
     !G.monsters?.[route.monster]||!G.maps?.[route.map]||excluded.includes(route.map)||G.maps[route.map].ignore||
-    (G.maps[route.map].pvp&&!pvp)||route.safe!==true||(Array.isArray(route.reasons)&&route.reasons.length>0)||!Number.isFinite(row.priority)||row.priority<0)continue;
+    (G.maps[route.map].pvp&&!pvp)||route.safe!==true||!Array.isArray(route.reasons)||route.reasons.length!==0||!Number.isFinite(row.priority)||row.priority<0)continue;
   rows.push({kind:'farm',monster:route.monster,map:route.map,priority:Math.min(200,row.priority),source:'official-get_progression'});
   if(rows.length>=5)break;
  }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planProduction} from '../src/production/planner.mjs';
-import {recipeGridIngredients,recipeIngredients} from '../src/production/recipes.mjs';
+import {recipeGridIngredients,recipeIngredients,matchRecipeSlots} from '../src/production/recipes.mjs';
 import {materialSources,exchangeSource} from '../src/production/materials.mjs';
 import {estimateRoutes} from '../src/production/costs.mjs';
 import {createProduction} from '../src/production/production.mjs';
@@ -923,4 +923,48 @@ test('U05 malformed crafting definitions fail closed without throwing from produ
  for(const recipe of recipes){G.craft.result=recipe;assert.doesNotThrow(()=>production.craft('result',rule));assert.equal(production.craft('result',rule),false);}
  assert.equal(queued,0);
  assert.equal(errors,recipes.length*2);
+});
+
+test('U05 positional craft matcher reassigns already chosen slots through augmenting paths',()=>{
+ assert.deepEqual(matchRecipeSlots([[0,1],[1,2],[0,2]]),[1,2,0]);
+ assert.deepEqual(matchRecipeSlots([[0,1],[0]]),[1,0]);
+ assert.equal(matchRecipeSlots([[0],[0]]),null);
+ assert.equal(matchRecipeSlots([[],[1]]),null);
+ assert.equal(matchRecipeSlots(Array.from({length:10},()=>[0])),null);
+});
+test('U05 crafting assigns a small stack to the small recipe row despite inventory order',()=>{
+ const recipe={cost:4,items:[[1,'herb'],[3,'herb']]};
+ const c={name:'M',items:[{name:'herb',q:3},{name:'herb',q:1},...Array(40).fill(null)]};
+ const G={items:{herb:{s:9999},result:{}},craft:{result:recipe}},p={c,G,read:()=>null};
+ const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
+ let action=null;
+ const economy={remaining:()=>true,rules:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(kind,args)=>{assert.equal(kind,'craft');action=args;return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>40};
+ const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),true,'Perfect matching exists, so first-fit must not reject it');
+ assert.deepEqual(action.slots,[1,0],'The second recipe row receives the only three-unit stack');
+ assert.equal(action.guard(),true);
+ c.items[1].l=true;
+ assert.equal(action.guard(),false,'Locked selected stack invalidates authorization');
+ c.items[1].l=false;
+ assert.equal(action.guard(),true);
+});
+test('U05 craft matching restores correct three-position order and never reuses an inventory slot',()=>{
+ const recipe={cost:3,items:[[2,'herb'],[1,'herb'],[3,'herb']]};
+ const c={name:'M',items:[{name:'herb',q:3},{name:'herb',q:2},{name:'herb',q:1},...Array(39).fill(null)]};
+ const p={c,G:{items:{herb:{s:9999},result:{}},craft:{result:recipe}},read:()=>null};
+ const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
+ let action=null;
+ const economy={remaining:()=>true,rules:()=>null,safe:i=>!!i,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(kind,args)=>{action=args;return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>40};
+ const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),true);
+ assert.deepEqual(action.slots,[1,2,0]);
+ assert.equal(new Set(action.slots).size,3);
+ c.items[2]=null;
+ assert.equal(action.guard(),false,'Losing a required grid stack blocks delayed craft');
 });

@@ -578,3 +578,57 @@ test('U05 craft dispatch rejects reselected alias and recipe-output drift',()=>{
  assert.equal(guard(),true);
  rule.recipe='other';assert.equal(guard(),false,'A changed explicit recipe selection invalidates authorization');
 });
+
+test('U05 upgrade preview cannot dispatch after changed chance limits, goals or game definitions',async()=>{
+ const c={items:[{name:'helmet',level:0},{name:'scroll0',q:2},...Array(40).fill(null)]};
+ const G={items:{helmet:{upgrade:true},scroll0:{g:5}},craft:{}},p={c,G,read:()=>null,call:(name,...args)=>{
+  if(name==='item_grade')return 0;
+  if(name==='upgrade'&&args.at(-1)===true)return Promise.resolve({chance:.9,cost:5});
+  throw Error('Unexpected game call: '+name);
+ }};
+ const cfg={production:{enabled:true,upgrade:true,autonomy:false,goals:[],minChance:.5},merchant:{minFreeSlots:0},general:{}};
+ const rule={action:'upgrade',item:'helmet',targetLevel:1,minChance:.5,keep:0,teamReserve:0};
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0);
+ let guard=null;
+ const econ={remaining:()=>true,safe:i=>!!i&&!i.l,count,rules:()=>({action:'upgrade',keep:0,teamReserve:0}),value:()=>2,
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(kind,opts)=>{guard=opts.guard;return true;}};
+ const exec={busy:()=>false,run:(name,locks,canRun,call)=>{assert.equal(name,'production.preview');void call();return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},running:true,economy:econ,exec,free:()=>40};
+ const production=createProduction(bot);
+ assert.equal(production.mutate(0,rule),true);await Promise.resolve();
+ assert.equal(production.mutate(0,rule),true);
+ assert.equal(guard(),true);
+ cfg.production.upgrade=false;assert.equal(guard(),false);cfg.production.upgrade=true;
+ rule.targetLevel=0;assert.equal(guard(),false);rule.targetLevel=1;
+ rule.minChance=.95;assert.equal(guard(),false);rule.minChance=.5;
+ cfg.production.minChance=.95;assert.equal(guard(),false);cfg.production.minChance=.5;
+ rule.keep=1;assert.equal(guard(),false);rule.keep=0;
+ G.items.helmet.upgrade=false;assert.equal(guard(),false);G.items.helmet.upgrade=true;
+ G.items.scroll0.g=500;assert.equal(guard(),false);G.items.scroll0.g=5;
+ c.items[1].l=true;assert.equal(guard(),false);c.items[1].l=false;
+ assert.equal(guard(),true);
+});
+test('U05 compound preview rejects a changed input group or newly reserved scroll',async()=>{
+ const c={items:[{name:'ring',level:0},{name:'ring',level:0},{name:'ring',level:0},{name:'cscroll0',q:2},...Array(38).fill(null)]};
+ const G={items:{ring:{compound:true},cscroll0:{g:5}},craft:{}},p={c,G,read:()=>null,call:(name,...args)=>{
+  if(name==='item_grade')return 0;
+  if(name==='compound'&&args.at(-1)===true)return Promise.resolve({chance:1,cost:5});
+  throw Error('Unexpected game call: '+name);
+ }};
+ const cfg={production:{enabled:true,compound:true,autonomy:false,goals:[],minChance:.5},merchant:{minFreeSlots:0},general:{}};
+ const rule={action:'compound',item:'ring',targetLevel:1,minChance:.5,keep:0,teamReserve:0};
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0);
+ let guard=null,scrollKeep=0;
+ const econ={remaining:()=>true,safe:i=>!!i&&!i.l,count,rules:i=>({action:'compound',keep:i.name==='cscroll0'?scrollKeep:0,teamReserve:0}),value:()=>2,
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(kind,opts)=>{guard=opts.guard;return true;}};
+ const exec={busy:()=>false,run:(name,locks,canRun,call)=>{assert.equal(name,'production.preview');void call();return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},running:true,economy:econ,exec,free:()=>40};
+ const production=createProduction(bot);
+ assert.equal(production.mutate(0,rule),true);await Promise.resolve();
+ assert.equal(production.mutate(0,rule),true);assert.equal(guard(),true);
+ c.items[2]={name:'different',level:0};assert.equal(guard(),false);
+ c.items[2]={name:'ring',level:0};scrollKeep=2;assert.equal(guard(),false);
+ scrollKeep=0;assert.equal(guard(),true);
+});

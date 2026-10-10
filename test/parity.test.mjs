@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planProduction} from '../src/production/planner.mjs';
+import {materialSources,exchangeSource} from '../src/production/materials.mjs';
+import {estimateRoutes} from '../src/production/costs.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -39,3 +41,44 @@ test('channel travel holds movement until observed arrival rather than immediate
 
 import {createBank} from '../src/merchant/bank.mjs';
 test('bank route availability respects full stacks until partial retrieval is enabled',()=>{const cfg={merchant:{partialBank:false}},bot={cfg,me:{name:'M'},p:{c:{bank:{items0:[{name:'elixir',q:12}]}},read:()=>null},economy:{safe:i=>!!i,explicit:()=>null}};const bank=createBank(bot);assert.equal(bank.stock('elixir',0,1),0);cfg.merchant.partialBank=true;assert.equal(bank.stock('elixir',0,1),12);});
+
+test('U01 P90 ranks reliable material source ahead of lower mean and exposes selected route hours',()=>{
+ const G={monsters:{uncertain:{},steady:{}},drops:{monsters:{uncertain:[[.1,'material',1]],steady:[[1,'material',1]]}}};
+ const rate=id=>({value:id==='uncertain'?10:.8,source:'observed-team'});
+ const mean=materialSources(G,'material',1,['uncertain','steady'],10,rate,{confidence:'mean'});
+ const p90=materialSources(G,'material',1,['uncertain','steady'],10,rate,{confidence:'p90'});
+ assert.equal(mean[0].monster,'uncertain');assert.equal(p90[0].monster,'steady');
+ assert.equal(p90[0].selectedHours,p90[0].p90Hours);
+ const routes=estimateRoutes({G,item:'material',allowed:['farm'],npcPrice:()=>Infinity,marketPrice:()=>Infinity,farmHours:(name,q)=>materialSources(G,name,q,['uncertain','steady'],10,rate,{confidence:'p90'})[0].selectedHours,confidence:'p90'});
+ assert.equal(routes[0].hours,p90[0].p90Hours);
+ assert.ok(routes[0].hours>mean[0].estimatedHours);
+});
+test('U02 quest exchange requires authoritative NPC location and preserves source proof',()=>{
+ const G={items:{ticket:{e:2,quest:'quest1'},prize:{}},drops:{ticket:[[1,'prize']]}};
+ const args={G,item:'prize',stock:()=>0,bank:()=>0,canBuy:()=>false,allowed:['exchange']};
+ assert.equal(exchangeSource(G,'ticket').ready,false);
+ assert.equal(exchangeSource(G,'ticket').reason,'QUEST_SOURCE_DESTINATION_UNVERIFIED');
+ assert.throws(()=>planProduction(args),/Kein freigegebener Beschaffungsweg/);
+ G.npcs={quest_npc:{quest:'quest1'}};G.maps={main:{npcs:[['quest_npc',100,200]]}};
+ assert.deepEqual(exchangeSource(G,'ticket').destination,{map:'main',x:100,y:200});
+ const plan=planProduction({...args,allowed:['exchange','farm']});
+ assert.equal(plan.at(-1).kind,'exchange');
+ assert.deepEqual(plan.at(-1).sourceProof,{quest:'quest1',npc:'quest_npc',destination:{map:'main',x:100,y:200},event:null});
+ G.maps.main.npcs=[];
+ assert.equal(exchangeSource(G,'ticket').ready,false);
+});
+test('U02 ordinary exchange remains available; inactive, unverifiable and expiring event exchanges are refused',()=>{
+ const G={items:{token:{e:2},prize:{}},drops:{token:[[1,'prize']]}};
+ assert.equal(exchangeSource(G,'token').ready,true);
+ assert.equal(planProduction({G,item:'prize',stock:()=>0,bank:()=>0,canBuy:()=>false,allowed:['exchange','farm']}).at(-1).kind,'exchange');
+ G.items.token.event='seasonal';G.events={seasonal:{}};
+ assert.equal(exchangeSource(G,'token',{}).reason,'EVENT_SOURCE_INACTIVE');
+ assert.equal(exchangeSource(G,'token',{seasonal:{active:true}}).ready,true);
+ const expired={seasonal:{live:true,expires:Date.now()-2000}};
+ assert.equal(exchangeSource(G,'token',expired).ready,false);
+ const almostOver={seasonal:{live:true,expires:Date.now()+100}};
+ const rows=estimateRoutes({G,item:'prize',allowed:['exchange','farm'],stock:()=>0,npcPrice:()=>Infinity,marketPrice:()=>Infinity,farmHours:()=>10,travelHours:()=>0,state:almostOver});
+ assert.ok(!rows.some(row=>row.kind==='exchange'));
+ G.items.token.event=true;
+ assert.equal(exchangeSource(G,'token',{seasonal:{active:true}}).reason,'EVENT_SOURCE_UNVERIFIED');
+});

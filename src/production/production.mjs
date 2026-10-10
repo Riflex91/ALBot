@@ -70,7 +70,11 @@ export function createProduction(bot){
   if(scroll<0||(r.offering&&offering<0)){e.note('Produktion benötigt '+scrollName+(r.offering?' / '+r.offering:''));return false;}
   const slots=[...inputs,scroll,...(offering===null?[]:[offering])];if(new Set(slots).size!==slots.length)return false;
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.travel(d,kind))return false;
-  const key=kind+':'+slots.map(n=>fingerprint(p.c.items[n])).join('|');
+  // Bind the preview to the current mutation definitions and user's rule.
+  // Slot fingerprints alone do not capture changed minimum chance or scroll policy.
+  const policyProof=()=>JSON.stringify([p.G.items[i.name],p.G.items[scrollName],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production.minChance]);
+  const initialPolicyProof=policyProof();
+  const key=kind+':'+slots.map(n=>fingerprint(p.c.items[n])).join('|')+':'+initialPolicyProof;
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
   if(preview?.key!==key||Date.now()-preview.time>5000){
    if(exec.busy('economy'))return false;preview={key,time:Date.now(),chance:null,cost:null};const token=preview;
@@ -79,7 +83,19 @@ export function createProduction(bot){
   const chance=preview.chance,cost=preview.cost;
   if(!Number.isFinite(chance)||chance>1||chance<Math.max(r.minChance,cfg.production.minChance)||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
   const loss=slots.reduce((sum,n)=>sum+e.value(p.c.items[n]),0),before=e.count(i),next={...i,level:(i.level??0)+1},after=e.count(next),scrollBefore=p.c.items[scroll].q??1;
-  return e.perform(kind,{slots,cost,loss,rule:r,guard:()=>e.at(d)&&preview?.key===key&&Date.now()-preview.time<5000,
+  const mutationReady=()=>{
+   if(!cfg.production.enabled||!cfg.production[kind]||!p.G.items[i.name]?.[kind]||!e.remaining(r)||
+      (i.level??0)>=r.targetLevel||policyProof()!==initialPolicyProof||
+      preview?.key!==key||Date.now()-preview.time>=5000||
+      !Number.isFinite(preview.chance)||preview.chance<Math.max(r.minChance,cfg.production.minChance)||
+      !Number.isFinite(preview.cost)||preview.cost!==cost||
+      e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+   if(!inputs.every(n=>e.safe(p.c.items[n])&&identity(p.c.items[n])===identity(i)))return false;
+   if(p.c.items[scroll]?.name!==scrollName||!usable(p.c.items[scroll]))return false;
+   if(offering!==null&&(p.c.items[offering]?.name!==r.offering||!usable(p.c.items[offering])))return false;
+   return e.at(d);
+  };
+  return e.perform(kind,{slots,cost,loss,rule:r,guard:mutationReady,
    call:()=>p.call(kind,...args),observe:()=>{
     const consumed=p.c.items[scroll]?.name!==scrollName||(p.c.items[scroll]?.q??1)<scrollBefore;
     return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length);

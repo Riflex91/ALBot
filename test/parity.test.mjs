@@ -133,7 +133,7 @@ test('U04 live buyer bids require reachability, exact variant, current price and
  const bid=(name,level,price,q,extra={})=>({name,level,price,q,b:true,rid:'bid-'+price,...extra});
  const seller=(name,x,slots)=>({name,id:name,type:'character',stand:true,map:'main',in:'main',x,y:0,slots});
  const p={c,entities:{A:seller('A',100,{trade1:bid('ring',2,100,3)}),B:seller('B',100,{trade1:bid('ring',2,50,2)}),C:seller('C',100,{trade1:bid('ring',2,1000,10,{stat_type:'str'})}),D:seller('D',1000,{trade1:bid('ring',2,1000,10)})},read:()=>null};
- const market=createMarket({p,cfg:{merchant:{marketHistory:false},production:{goldPerHour:3600}},economy:{value:()=>10},exec:{}});
+ const market=createMarket({p,me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{goldPerHour:3600}},economy:{value:()=>10},exec:{}});
  const item={name:'ring',level:2},result=market.bidValuation(item,10,10,{future:true});
  assert.equal(result.covered,5);
  assert.ok(result.unitValue>10&&result.unitValue<20); // 25% bid-premium haircut and travel cost
@@ -148,7 +148,7 @@ test('U04 market sell guard refuses a changed variant or disappearing bid',()=>{
  let guarded=null;
  const p={c,entities:{buyer},has:()=>true,read:()=>null};
  const e={safe:()=>true,spare:()=>4,count:()=>4,perform:(kind,args)=>{guarded=args.guard;return true;}};
- const bot={p,cfg:{merchant:{marketHistory:false},production:{}},economy:e,exec:{},entity:()=>buyer};
+ const bot={p,me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy:e,exec:{},entity:()=>buyer};
  const market=createMarket(bot);
  assert.equal(market.sellToBid(0,{minPrice:10}),true);
  assert.equal(guarded(),true);

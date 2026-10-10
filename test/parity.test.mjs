@@ -279,3 +279,21 @@ test('U05 cumulative automatic risk limit cannot be bypassed by multiple spends'
  assert.equal(economy.budget(4,0,{...auto,_autoProduction:false}),true);
  assert.deepEqual(checked,[[23,2],[24,2]]);
 });
+
+test('U05 valuable auto-mutation is banked rather than risked beyond configured loss budget',()=>{
+ const cfg={production:{autoGearMaxLevel:1,lossBudget:100,minChance:.65,minImprovement:0,helperMaxPrice:1000,autoDisposition:true},merchant:{}};
+ const p={G:{version:1,items:{rare:{upgrade:true},scroll0:{g:1}},upgrade:[[null,1]]},c:{items:[]},call:()=>0};
+ const bot={p,cfg,me:{role:'merchant'},economy:{value:()=>200}};
+ const row=createEconomicIntelligence(bot).mutationEconomics({name:'rare',level:0});
+ assert.equal(row.action,'bank');assert.equal(row.reason,'auto-mutation-exposure');
+});
+test('U06 critical magical danger bypasses hold even from physical defensive aura',()=>{
+ let now=100000;const original=Date.now;Date.now=()=>now;
+ try{
+  const c={name:'A',ctype:'paladin',level:80,hp:100,max_hp:100,mp:100,max_mp:100,p:{paladin_aura:'bulwark'},s:{}};
+  const bot={running:true,journal:null,p:{c,G:{skills:{paladin_aura:{level:60,states:{bulwark:{},sanctuary:{}}}},monsters:{m:{attack:30,frequency:1,damage_type:'magical'}}},call:name=>name==='is_on_cooldown'?false:null},cfg:{party:{buffs:true,aura:'auto',auraHoldMs:60000}},allies:()=>[],monsters:()=>[{target:'A',mtype:'m',hp:100}],exec:{run:(key,res,guard)=>guard()}};
+  const aura=createAura(bot);
+  assert.equal(aura.tick(),true);
+  assert.equal(aura.status().proposal.aura,'sanctuary');
+ }finally{Date.now=original;}
+});

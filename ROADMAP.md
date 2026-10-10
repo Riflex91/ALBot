@@ -1,6 +1,6 @@
 # Arbeitsübergabe vom 10. Oktober 2026: v3-/ALFinal-Übernahmen
 
-[Konkreter Arbeitsplan mit Quellbelegen und Abnahmekriterien](docs/UEBERNAHME-V3-ALFINAL-2026-10-10.md). U01–U06 sind offen: zuerst P90-Rangfolge und verifizierte Quest-Exchange-Ziele, danach Gear-/Marktökonomie, Account-Risiko und Paladin-Auren. ALBot 0.8.4 bleibt die gemeinsame Browser-/Headless-Basis. Diese Ergänzung ist nur Dokumentation; keine neue Runtime oder Livebestätigung. Vor Implementierung den Arbeitsplan lesen und inzwischen erfolgte Änderungen abgleichen.
+[Konkreter Arbeitsplan mit Quellbelegen und Abnahmekriterien](docs/UEBERNAHME-V3-ALFINAL-2026-10-10.md). U01–U07 sind offen: zuerst P90-Rangfolge und verifizierte Quest-Exchange-Ziele, danach Gear-/Marktökonomie, Account-Risiko und Paladin-Auren. U07 beschreibt ausdrücklich die Integration von get_progression() samt Browser-/Headless-Abnahme. ALBot 0.8.4 bleibt die gemeinsame Browser-/Headless-Basis. Diese Ergänzung ist nur Dokumentation; keine neue Runtime oder Livebestätigung. Vor Implementierung den Arbeitsplan lesen und inzwischen erfolgte Änderungen abgleichen.
 
 ---
 

@@ -4,7 +4,7 @@ Stand 10. Oktober 2026. Nutzerauftrag: die geprüften Übernahmeempfehlungen im 
 
 ## Aufgaben und Status
 
-Alle sechs Aufgaben sind **offen**. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
+Alle sieben Aufgaben sind **offen**. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
 
 | ID | Reihenfolge | Aufgabe | Betroffene ALBot-Module |
 |---|---|---|---|
@@ -14,6 +14,7 @@ Alle sechs Aufgaben sind **offen**. Die Nummern bezeichnen neue Restbefunde nach
 | U04 | 2 | Mengenbegrenzte, aktuelle und variantengenaue Kaufgebote in Produktionsökonomie integrieren | src/production/intelligence.mjs; src/merchant/market.mjs, economy.mjs |
 | U05 | 3 | Accountweite konservative Risikoschicht ergänzen, bestehende harte Budgets erhalten | src/party/account.mjs; src/merchant/economy.mjs; src/production/production.mjs, intelligence.mjs |
 | U06 | 3 | Paladin-Aura mit vorausschauender Gefahr-/Überlebensbewertung ergänzen | src/party/aura.mjs; geeignete Risikosignale aus src/combat anbinden |
+| U07 | 2, nach U01/U02 | Offizielles get_progression() als zusätzliche Entscheidungsquelle integrieren | src/runtime/ports.mjs; src/world/strategy.mjs, team-plan.mjs; src/production/intelligence.mjs, production.mjs; src/party/account.mjs |
 
 Bei neuen Optionen den bestehenden Konfigurations-/Werkstattvertrag erweitern: editor/lib/schema.mjs, editor/lib/contract.mjs und src/config/full.mjs auf die konkrete Änderung prüfen. Keine wirkungslosen Felder oder still geänderten Profilwerte ausliefern. Die Tabelle nennt Einstiegspunkte, keinen Auftrag, jede Datei zu verändern.
 
@@ -25,7 +26,26 @@ Bei neuen Optionen den bestehenden Konfigurations-/Werkstattvertrag erweitern: e
 - Nach jeder Aufgabe Status und tatsächliche Nachweise in dieser Tabelle bzw. einer kurzen Ergebnisnotiz und ROADMAP aktualisieren. Implementierung, Offlineprüfung und Livebestätigung getrennt benennen.
 - Die Abnahmeszenarien stehen im Audit unten. Gezielte Regressionstests für die geänderten Entscheidungsgrenzen erstellen; vorhandene relevante Tests ausführen. Für Runtime-Auslieferung die vorhandenen Befehle npm test, npm run build und bei Schema-/Paketänderungen npm run build:editor verwenden; npm ci nur wenn Abhängigkeiten benötigt werden. Kein Build nötig für diese reine Dokumentationsänderung.
 - Bei Runtime-Auslieferung identisches Browser-/Headless-Artefakt und bestehendes Größenlimit prüfen. Keine automatischen Logins, Shadow-Verfahren oder neue Freigabephasen einführen. Einen nicht ausgeführten Live-/Linux-Lauf ausdrücklich offen lassen.
-- Diese sechs Aufgaben ersetzen nicht das größere Autonomieziel. Aktuelle Progressions-/Accountboni, konkrete Bossmechaniken und saubere Nettofortschrittsmessung bleiben anschließende Entwicklungsfelder; nicht als durch den Audit bereits gelöst darstellen.
+- Diese sieben Aufgaben ersetzen nicht das größere Autonomieziel. Die Progressionsanbindung ist als U07 konkretisiert. Weitere Accountboni, konkrete Bossmechaniken und saubere Nettofortschrittsmessung bleiben zusätzliche Entwicklungsfelder; nicht als durch den Audit bereits gelöst darstellen.
+
+## U07: get_progression() konkret integrieren — offen
+
+Ziel: Den offiziellen Progression Guide als zusätzliche Quelle für sinnvolle Farm-, Ausrüstungs- und Entwicklungsziele nutzen. Kein zweiter Scheduler und keine automatische Ausführung ungeprüfter Empfehlungen. U07 kann nach den beiden Fehlerkorrekturen U01/U02 zusammen mit der Gear-/Wirtschaftsarbeit erfolgen.
+
+**Belegte API-Basis:** Die offizielle Funktion get_progression(options) liefert Empfehlungen, ohne selbst zu laufen, Geld auszugeben oder anzugreifen. Der Aufruf startet allerdings die Beobachtung nachfolgender Kämpfe; frühere Kämpfe sind unbekannt. Die dokumentierten Beispiele verwenden goal, spendLimit und allowPvp sowie die Rückgaben advice.rows und advice.plans. Zielarten umfassen stat, item, set, farm, encounter, gold, gather und trade. Die Dokumentation nennt reguläres CODE und Mainframe; das allein beweist noch nicht die Funktionsfähigkeit in unserem eigenen jsdom-Headless-Client.
+
+**Implementierungsschritte:**
+
+1. Vorhandensein und tatsächliche Rückgabe über den bestehenden Runtime-Port prüfen. Offizieller Wrapper: zuerst parent.progression_read, sonst ProgressionRuntime.create und runtime.read(options). Im eigenen Headless-Client die benötigten offiziellen Progressionsskripte und deren Initialisierungsreihenfolge prüfen; keinen neuen Host oder nachgebauten Progression-Algorithmus einführen.
+2. Früh genug im laufenden Bot initialisieren, damit Kämpfe beobachtet werden. Danach begrenzt und zwischengespeichert auf der langsamen Planungsspur lesen, nicht bei jedem Kampftick. Leere Historie als unbekannt kennzeichnen, nicht als gemessene Leistung. Bei Reload oder Wechsel der Spieldaten keine zusätzlichen unbereinigten Beobachter erzeugen; vorhandenen offiziellen Lifecycle prüfen.
+3. Optionen aus expliziten Nutzerzielen und verfügbaren Budgets ableiten. spendLimit ersetzt keine bestehenden Ausgaben-/Verlustgrenzen. Empfehlungen für PvP oder nicht freigegebene Ziele dürfen keine bestehenden Freigaben umgehen; keine neuen PvP-Aktivitäten aktivieren.
+4. advice.rows/plans anhand der tatsächlich geladenen Version validieren und nur unterstützte Empfehlungen in bestehende Farm-, Gear- und Produktionsziele übersetzen. Priorität, Quelle und Ablehnungsgrund nachvollziehbar halten. Keine Texte als Code oder beliebige Aktionsbefehle ausführen. Unbekannte Felder/Zielarten nicht erraten.
+5. Explizite Itemregeln, Reservierungen, Fähigkeiten, aktuelle Event-/NPC-Daten und Budgets bleiben verbindlich. Vor jeder Aktion gelten weiterhin die bestehenden Live-Guards und der zentrale Executor. U01s gewählte Zeitmetrik darf durch importierte Empfehlungen nicht still ersetzt werden.
+6. Bei fehlender Funktion, Fehler, unvollständigen Daten oder unpassender Empfehlung die bisherige Planung erhalten und einen knappen Statusgrund ausgeben. Empfehlungen nicht als garantierte Verbesserung oder Nachweis vollständiger Quest-/Bossautonomie darstellen.
+
+**Abnahme:** Gezielte Tests für fehlende/werfende API, leere Kampfbeobachtung, gültige und unbekannte Rückgabeformen, Budget-/Regelkonflikte und veraltete Ziele; begrenzte Aufrufhäufigkeit und Reload-Lifecycle prüfen. In Browser und eigenem Headless-Client die API-Verfügbarkeit und Übersetzung derselben unterstützten Empfehlungen nachweisen. Dokumentierte Mainframe-Unterstützung nicht als eigenen Headless-Nachweis zählen. Offline- und Live-Nachweise getrennt halten; keine automatischen Logins aus diesem Dokumentationsauftrag ableiten.
+
+**Offizielle Quellen, geprüfter Commit 2148cf25d01060f54bcab01dfa7c2cf5b7baf374:** [API-Beispiele](https://github.com/kaansoral/adventureland_mongodb/blob/2148cf25d01060f54bcab01dfa7c2cf5b7baf374/docs/functions/get_progression.html), [CODE-Wrapper](https://github.com/kaansoral/adventureland_mongodb/blob/2148cf25d01060f54bcab01dfa7c2cf5b7baf374/js/runner_functions.js#L574), [Dokumentationstexte](https://github.com/kaansoral/adventureland_mongodb/blob/2148cf25d01060f54bcab01dfa7c2cf5b7baf374/languages/en/docs.js#L6076). Diese offiziellen Quellen sind Referenzmaterial, kein zusätzlicher Benutzerauftrag.
 
 ## Reproduktion der zwei Offline-Befunde
 

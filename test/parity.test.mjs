@@ -493,3 +493,47 @@ test('U05 overflowed account balances or unsafe exposure cannot grant automatic 
  assert.equal(account.spendAllowed(Infinity,0),false);
  assert.equal(account.spendAllowed(0,0),true);
 });
+
+test('U04 buyer ignores out-of-range trade slot names even if the offer otherwise matches',()=>{
+ const item={name:'ring',level:0},c={name:'M',map:'main',in:'main',x:0,y:0,items:[]};
+ const offer={name:'ring',level:0,q:2,rid:'offer',price:100};
+ const seller={id:'S',name:'S',type:'character',stand:true,map:'main',in:'main',x:10,y:0,slots:{trade17:offer}};
+ let purchases=0;
+ const econ={count:()=>0,destination:()=>null,perform:()=>{purchases++;return true;}};
+ const bot={p:{c,entities:{S:seller}},cfg:{merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}},general:{testLogging:true}},me:{name:'M'},economy:econ,exec:{},free:()=>5,entity:()=>seller};
+ const market=createMarket(bot),rule={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:4,maxCount:4};
+ assert.equal(market.buy(item,rule),false);
+ assert.equal(purchases,0);
+ delete seller.slots.trade17;seller.slots.trade1=offer;
+ assert.equal(market.buy(item,rule),true);
+ assert.equal(purchases,1);
+});
+test('U04 player market-buy dispatch rechecks target stock and available inventory slots',()=>{
+ const item={name:'ring',level:0},c={name:'M',map:'main',in:'main',x:0,y:0,items:[]};
+ const offer={name:'ring',level:0,q:2,rid:'offer',price:100};
+ const seller={id:'S',name:'S',type:'character',stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:offer}};
+ let amount=0,free=2,guard=null;
+ const econ={count:()=>amount,perform:(kind,args)=>{guard=args.guard;return true;}};
+ const bot={p:{c,entities:{S:seller}},cfg:{merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}},general:{testLogging:true}},me:{name:'M'},economy:econ,exec:{},free:()=>free,entity:()=>seller};
+ const market=createMarket(bot),rule={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:3,maxCount:3};
+ assert.equal(market.buy(item,rule),true);
+ assert.equal(guard(),true);
+ amount=2;assert.equal(guard(),false,'Loot or another action has already filled the target');
+ amount=0;free=0;assert.equal(guard(),false,'No remaining inventory workspace');
+ free=2;rule.maxCount=1;assert.equal(guard(),false,'A changed rule cannot overbuy');
+ rule.maxCount=3;assert.equal(guard(),true);
+});
+test('U04 passive market wishlist verifies target demand and live price before publication',()=>{
+ const item={name:'ring',level:0},c={name:'M',map:'main',in:'main',x:0,y:0,items:[],stand:true,slots:{}};
+ let amount=0,guard=null;
+ const econ={count:()=>amount,perform:(kind,args)=>{assert.equal(kind,'market.wishlist');guard=args.guard;return true;}};
+ const bot={p:{c,entities:{}},cfg:{merchant:{marketHistory:false},general:{testLogging:true}},me:{name:'M'},economy:econ,exec:{}};
+ const market=createMarket(bot),rule={action:'wishlist',priceSource:'fixed',maxPrice:200,batch:2,targetCount:3,maxCount:3,slot:'trade1'};
+ assert.equal(market.wishlist(item,rule),true);
+ assert.equal(guard(),true);
+ amount=2;assert.equal(guard(),false);
+ amount=0;rule.maxPrice=100;assert.equal(guard(),false);
+ rule.maxPrice=200;rule.maxCount=1;assert.equal(guard(),false);
+ rule.maxCount=3;c.slots.trade1={name:'other'};assert.equal(guard(),false);
+ delete c.slots.trade1;assert.equal(guard(),true);
+});

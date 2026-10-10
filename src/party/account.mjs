@@ -13,12 +13,46 @@ export function selectAccountTeam(members,limit,{boss=false,leader='',current=[]
  }else for(const x of ranked)add(x);return chosen;
 }
 export function chooseCombatLeader(members){return members.filter(x=>x.running&&!x.rip&&x.hp>0&&x.stats?.attack>0).map(x=>({...x,leaderScore:(['warrior','paladin'].includes(x.class)?5:0)+Math.log1p(x.stats.attack*(x.stats.frequency??1))+Math.log1p(x.stats.armor??0)/2+(x.hp/Math.max(1,x.max_hp))*3})).sort((a,b)=>b.leaderScore-a.leaderScore||a.name.localeCompare(b.name))[0]?.name??null;}
+// Wealth snapshots contain monetary balances only; inventories and transferred
+// gold are never added as estimates. Missing/future/stale peers fail conservative.
+export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conservative'){
+ const complete=Array.isArray(balances)&&balances.length>0&&balances.every(x=>Number.isSafeInteger(x)&&x>=0)&&Number.isSafeInteger(bankGold)&&bankGold>=0;
+ const wealth=complete?balances.reduce((n,x)=>n+x,bankGold):null;
+ const bound=Number.isFinite(lossBudget)&&lossBudget>=0?lossBudget:0;
+ const normal=complete&&wealth>=(previous==='normal'?bound*7:bound*10);
+ const mode=normal?'normal':'conservative';
+ const riskLimit=complete?Math.min(bound,Math.floor(wealth*(normal?.03:.01))):0;
+ return {mode,wealth,complete,riskLimit,reason:complete?'account-liquid-gold':'account-wealth-unverified'};
+}
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
- const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false;
+ const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative';
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
  const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
  const save=next=>{if(!p.write(storageKey,next)){blocked=true;bot.report('Charakterwechsel konnte nicht gespeichert werden; Rotation gesperrt');return false;}transition=next;return true;};
+ function risk(){
+  const peers=cfg.characters.filter(c=>c.enabled&&c.group===me.group),names=new Set();
+  const balances=[];let bankGold=null,complete=true;
+  for(const member of peers){
+   if(names.has(member.name))continue;names.add(member.name);
+   const local=member.name===me.name,h=local?null:bot.transport.fresh(member.name);
+   if(!local&&(!h?.running||h.realm!==p.realm())){complete=false;continue;}
+   const gold=local?p.c.gold:h.goldBalance;
+   if(!Number.isSafeInteger(gold)||gold<0){complete=false;continue;}balances.push(gold);
+   if(member.name===cfg.party.merchant){
+    const stored=local?p.c.bank?.gold:h.bankGoldBalance;
+    if(!Number.isSafeInteger(stored)||stored<0)complete=false;
+    else bankGold=stored;
+   }
+  }
+  const snap=accountRiskSnapshot(complete?balances:[],bankGold,cfg.production.lossBudget,riskMode);
+  riskMode=snap.mode;return snap;
+ }
+ function spendAllowed(cost,loss=0){
+  if(cost===0&&loss===0)return true;
+  if(!Number.isFinite(cost)||cost<0||!Number.isFinite(loss)||loss<0)return false;
+  const snap=risk();return snap.complete&&cost+loss<=snap.riskLimit;
+ }
  function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence};}
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
@@ -57,5 +91,5 @@ export function createAccount(bot){
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }
- return {tick,heartbeat,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
+ return {tick,heartbeat,risk,spendAllowed,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
 }

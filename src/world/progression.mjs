@@ -1,7 +1,7 @@
 // The official Guide observes fights but does not execute its advice.
 // Only small, validated hints enter the existing scheduler; all action guards stay.
 export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false){
- if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows))return [];
+ if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||Number.isFinite(advice.at)&&Math.abs(Date.now()-advice.at)>120000)return [];
  const eligible=new Set(allowed),rows=[];
  for(const row of advice.rows.slice(0,32)){
   const route=row?.action?.kind==='farm'?row.action.route:null;
@@ -17,7 +17,7 @@ export function createProgression(bot){
  const {p,cfg,me}=bot;let cached=null,last=0,definitions=null,statusReason='not-read',lastError=0;
  const enabled=()=>cfg.production?.progressionAdvice===true;
  const options=()=>{
-  const g=cfg.production?.goals?.find(x=>x.enabled&&typeof x.item==='string'&&x.quantity>0);
+  const g=cfg.production?.goals?.find(x=>x.enabled&&typeof x.item==='string'&&p.G.items?.[x.item]&&Number.isSafeInteger(x.quantity)&&x.quantity>0);
   const allowed=me.farmTargets?.length?me.farmTargets:cfg.farming.targets;
   const farm=allowed.find(id=>p.G.monsters?.[id]);
   const goal=me.role==='merchant'&&g?{kind:'item',name:g.item,level:g.level,quantity:g.quantity}:

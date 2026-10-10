@@ -159,7 +159,7 @@ test('U07 full runtime reads official safe farm advice only after start in brows
   if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
   const reads=[];a.root.parent.progression_read=opts=>{
    reads.push(opts);return {version:1,ready:true,at:Date.now(),realm:'EU II',goal:{kind:'farm',monster:'goo'},rows:[
-    {kind:'farm',priority:100,action:{kind:'farm',route:{monster:'goo',map:'main',safe:true}}},
+    {kind:'farm',priority:100,action:{kind:'farm',route:{monster:'goo',map:'main',safe:true,reasons:[]}}},
     {kind:'buy',priority:2000,action:{kind:'buy',name:'expensive'}}],plans:[]};
   };
   a.load();assert.equal(reads.length,0,'Disabled autostart must not initialize observer');

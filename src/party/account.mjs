@@ -91,5 +91,5 @@ export function createAccount(bot){
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }
- return {tick,heartbeat,risk,spendAllowed,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
+ return {tick,heartbeat,risk,spendAllowed,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,progression:bot.progression?.status()??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
 }

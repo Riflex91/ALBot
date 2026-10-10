@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planProduction} from '../src/production/planner.mjs';
+import {recipeGridIngredients,recipeIngredients} from '../src/production/recipes.mjs';
 import {materialSources,exchangeSource} from '../src/production/materials.mjs';
 import {estimateRoutes} from '../src/production/costs.mjs';
 import {createProduction} from '../src/production/production.mjs';
@@ -815,4 +816,60 @@ test('U04 passive wishlist refuses an unsafe maximum escrow value',()=>{
  r.maxPrice=150;
  assert.equal(createMarket(bot).wishlist(item,r),true);
  assert.equal(queued,1);
+});
+
+test('U05 official craft grid preserves duplicate recipe positions while material planning totals them',()=>{
+ const recipe={items:[[2,'herb'],[1,'stone'],[3,'herb']]};
+ assert.deepEqual(recipeGridIngredients(recipe),[
+  {quantity:2,item:'herb',level:0},{quantity:1,item:'stone',level:0},{quantity:3,item:'herb',level:0}
+ ]);
+ assert.deepEqual(recipeIngredients(recipe),[
+  {quantity:5,item:'herb',level:0},{quantity:1,item:'stone',level:0}
+ ]);
+ assert.throws(()=>recipeIngredients({items:[[Number.MAX_SAFE_INTEGER,'herb'],[1,'herb']]}),/sichere Ganzzahl/);
+ assert.throws(()=>recipeGridIngredients({items:Array.from({length:10},()=>[1,'herb'])}),/Rezeptgitter/);
+ assert.throws(()=>recipeGridIngredients({items:[[1,'herb',-1]]}),/Rezeptzutat/);
+});
+test('U05 craft uses three correctly ordered grid positions and confirms total repeated input loss',()=>{
+ const recipe={cost:10,output:{name:'result'},items:[[2,'herb'],[1,'stone'],[3,'herb']]};
+ const c={name:'M',items:[{name:'herb',q:2},null,{name:'herb',q:3},null,null,{name:'stone',q:1},...Array(36).fill(null)]};
+ const G={items:{herb:{s:9999},stone:{s:9999},result:{}},craft:{alias:recipe}};
+ const p={c,G,read:()=>null,call:(name,...args)=>{assert.equal(name,'craft');assert.deepEqual(args,[0,5,2]);return Promise.resolve();}};
+ const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
+ let action=null;
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0);
+ const economy={remaining:()=>true,rules:()=>null,safe:i=>!!i&&!i.l&&!i.b,count,explicit:()=>null,
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(kind,args)=>{assert.equal(kind,'craft');action=args;return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>c.items.filter(i=>!i).length};
+ const production=createProduction(bot);
+ const rule={item:'result',action:'craft',recipe:'alias',targetCount:2,maxCount:2};
+ assert.equal(production.craft('result',rule),true);
+ assert.deepEqual(action.slots,[0,5,2]);
+ assert.equal(action.guard(),true);
+ action.call();
+ c.items[0]=null;c.items[5]=null;c.items[1]={name:'result',q:1};
+ assert.equal(action.observe(),false,'One of two herb stacks was not consumed');
+ c.items[2]=null;
+ assert.equal(action.observe(),true,'Total consumption of five herbs is confirmed');
+});
+test('U05 craft duplicate inputs never consume protected aggregate reserves or silently collapse grid positions',()=>{
+ const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};
+ const p={c,G:{items:{herb:{s:9999},result:{}},craft:{result:{cost:1,items:[[2,'herb'],[3,'herb']]} }},read:()=>null};
+ const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
+ let attempted=0,keep=1;
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0);
+ const economy={remaining:()=>true,rules:()=>({action:'craft',keep,teamReserve:0}),safe:i=>!!i,count,explicit:()=>null,
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:()=>{attempted++;return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>40};
+ const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),false,'5 total needed, 1 must remain protected');
+ assert.equal(attempted,0,'No invalid merge or craft was dispatched');
+ keep=0;
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(attempted,1);
+ c.items[1]=null;c.items[0].q=5;
+ assert.equal(production.craft('result',rule),false,'One merged stack cannot fill two recipe grid positions');
+ assert.equal(attempted,1);
 });

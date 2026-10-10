@@ -4,6 +4,7 @@ import {planProduction} from '../src/production/planner.mjs';
 import {materialSources,exchangeSource} from '../src/production/materials.mjs';
 import {estimateRoutes} from '../src/production/costs.mjs';
 import {createProduction} from '../src/production/production.mjs';
+import {gearScore,gearSuitability,createGear} from '../src/production/gear.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -94,4 +95,33 @@ test('U02 execution guard rechecks event and NPC mapping after planning, without
  p.root.S.season={active:false};assert.equal(guard(),false);
  p.root.S.season={live:true};G.maps.main.npcs=[];assert.equal(guard(),false);
  guard=null;assert.equal(production.exchange(0,rule),false);assert.equal(guard,null);assert.match(notes.at(-1),/nicht verifiziert/);
+});
+
+test('U03 merchant mobility gate beats luck-weighted score and stationary policy is opt-in',()=>{
+ const fast={speed:10,luck:0,armor:5},lucky={speed:0,luck:3,armor:5};
+ assert.ok(gearScore(lucky,'economy')>gearScore(fast,'economy'));
+ assert.equal(gearSuitability(fast,lucky,'economy','merchant','mobile').reason,'merchant-speed-loss');
+ assert.equal(gearSuitability(fast,lucky,'economy','merchant','stationary').ok,true);
+ assert.equal(gearSuitability(fast,{...lucky,speed:10},'economy','merchant').ok,true);
+ assert.equal(gearSuitability(fast,null,'economy','merchant').ok,false);
+});
+test('U03 survival minimum applies before scoring to tank, healer and merchant',()=>{
+ for(const role of ['tank','healer','economy']){
+  assert.equal(gearSuitability({armor:100,hp:400},{armor:0,hp:0,luck:200},role,role==='economy'?'merchant':'paladin','stationary').reason,'survival-loss');
+  assert.equal(gearSuitability({armor:100,hp:400},{armor:95,hp:400,attack:500},role,'paladin').ok,true);
+ }
+ assert.equal(gearSuitability(null,{attack:20},'dps','ranger').ok,true);
+});
+test('U03 merchant equip rechecks mobility when dispatch guard is evaluated',()=>{
+ const slots={shoes:{name:'fast',level:0}},items=[{name:'lucky',level:0}],G={items:{fast:{type:'shoes'},lucky:{type:'shoes'}},classes:{merchant:{}}},stats={fast:{speed:10},lucky:{speed:0,luck:3}};
+ let pending=null;
+ const bot={cfg:{production:{gear:true,minImprovement:0},party:{}},me:{name:'M',gearRole:'economy',merchantMobility:'mobile'},
+  p:{c:{name:'M',ctype:'merchant',level:50,slots,items},G,read:()=>null,call:(name,item)=>name==='item_properties'?stats[item.name]:null},
+  teamNames:['M'],economy:{safe:()=>true,perform:(kind,opts)=>{pending=opts;return opts.guard();},note:()=>{}},allocation:{equipGuard:()=>true}};
+ const gear=createGear(bot);
+ assert.equal(gear.equip(0,{slot:'shoes'}),false);
+ bot.me.merchantMobility='stationary';
+ assert.equal(gear.equip(0,{slot:'shoes'}),true);
+ assert.equal(pending.guard(),true);
+ bot.me.merchantMobility='mobile';assert.equal(pending.guard(),false);
 });

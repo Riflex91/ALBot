@@ -25,7 +25,7 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
   const npc=bot.economy.value(item);const bid=bot.market?.bidValuation?.(item,quantity,npc,{future});
   return Number.isFinite(bid?.unitValue)&&bid.unitValue>=npc?bid.unitValue:npc;
  }
- function mutationEconomics(i){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoGearMaxLevel;let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
+ function mutationEconomics(i){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoGearMaxLevel;if(!Number.isFinite(current)||current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
   for(let l=max-1;l>=(i.level??0);l--){const c=mutationChance(i.name,l,kind),grade=p.call('item_grade',{...i,level:l}),scrollCost=p.G.items[(kind==='compound'?'cscroll':'scroll')+grade]?.g,immediate=resaleValue({...i,level:l},1,l>(i.level??0));if(!(c>=cfg.production.minChance)||!Number.isFinite(scrollCost)||!Number.isFinite(immediate)){value=immediate;continue;}const ev=(c*value-scrollCost)/factor;if(ev>immediate*(1+cfg.production.minImprovement)&&scrollCost<=cfg.production.helperMaxPrice){value=ev;if(l===(i.level??0))best={level:l+1,ev,action:kind};}else value=immediate;}
   return best;
  }

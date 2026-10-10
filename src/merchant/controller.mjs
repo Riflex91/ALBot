@@ -30,7 +30,7 @@ export function createMerchant(bot){
     if(!r||!e.remaining(r)||['keep','send','consume'].includes(r.action))continue;
     if(['sell','bank','list','exchange'].includes(r.action)&&e.spare(slot,r)<1)continue;
     if(['upgrade','compound'].includes(r.action)&&(i.level??0)>=r.targetLevel)continue;
-    let run;if(r.action==='sell')run=()=>e.npcSell(slot,r);
+    let run;if(r.action==='sell')run=()=>r._autoDisposition===true&&(bot.market?.sellToBid?.(slot,r)??false)||e.npcSell(slot,r);
     if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
     if(me.role==='merchant'){
      if(r.action==='bank')run=()=>bot.bank.store(slot,r);

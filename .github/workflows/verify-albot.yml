@@ -1,0 +1,70 @@
+name: ALBot offline verification
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Build shared browser/headless runtime
+        run: npm run build
+      - name: Full offline tests
+        run: npm test
+      - name: Build editor package
+        run: npm run build:editor
+      - name: Syntax, size, and manifest integrity
+        shell: bash
+        run: |
+          node --check dist/albot.js
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const code=fs.readFileSync('dist/albot.js');
+          const m=JSON.parse(fs.readFileSync('dist/manifest.json','utf8'));
+          const h=crypto.createHash('sha256').update(code).digest('hex');
+          if(code.length>1048576)throw new Error('Shared bundle exceeds 1 MiB');
+          if(m.bytes!==code.length||m.sha256!==h)throw new Error('Manifest differs from shared bundle');
+          console.log(JSON.stringify({bytes:code.length,sha256:h,version:m.version}));
+          EOF
+      - name: Archive generated offline-review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: albot-u01-u07-offline-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            dist/albot.js
+            dist/albot.runtime.js
+            dist/albot.package.json
+            dist/albot.settings.json
+            dist/manifest.json
+            editor/Bot-Werkstatt.html
+            editor/albot.settings.json
+            profiles/full-solo.json
+            profiles/full-team.json
+  windows-verification:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Run the exact Windows verification script
+        shell: pwsh
+        run: ./scripts/VERIFY-U01-U07.ps1

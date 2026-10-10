@@ -13,9 +13,15 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
 });
 Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{gearSynergy:bool('Ausrüstung und Klassenkombination bei Teamwahl berücksichtigen',true),advancedSkills:bool('Situationsabhängige Paladin-/Mage-Fähigkeiten',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{
- autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',3,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
+ progressionAdvice:bool('Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen',true),autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',3,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
  autoGearItems:{type:'array',title:'Erlaubte Items für automatische Gearziele',items:{type:'string',minLength:1,maxLength:160},maxItems:2000,uniqueItems:true,default:['helmet','coat','pants','shoes','gloves','bow','staff','sword','blade','shield']}
 });
+// Opt-in exception for a deliberately stationary trading merchant.
+// Mobile is the protective default; existing character settings retain their values.
+Object.assign(FULL_DESCRIPTOR.schema.properties.characters.items.properties,{
+ merchantMobility:{type:'string',title:'Merchant-Bewegungsprofil',enum:['mobile','stationary'],default:'mobile','x-labels':{mobile:'Mobiler Versorger: Geschwindigkeitsverlust sperren',stationary:'Stationärer Händler: Speed gegen Luck abwägen'}}
+});
+FULL_DESCRIPTOR.schema.properties.characters.items.required=Object.keys(FULL_DESCRIPTOR.schema.properties.characters.items.properties);
 Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{questTargets:bool('Sichere Monsterhunt-Ziele vorübergehend als Teamziel zulassen',true)});
 for(const section of ['general','merchant','party','production','world'])FULL_DESCRIPTOR.schema.properties[section].required=Object.keys(FULL_DESCRIPTOR.schema.properties[section].properties);
 FULL_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=FULL_SKILLS;

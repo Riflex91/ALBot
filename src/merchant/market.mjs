@@ -1,4 +1,4 @@
-import {identity,fingerprint,distance} from '../core/policy.mjs';
+import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
 export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
@@ -19,24 +19,38 @@ export function createMarket(bot){
   return Number.isFinite(result)&&result>0?Math.floor(sell?Math.max(r.minPrice,result):Math.min(r.maxPrice,result)):null;
  }
  function listing(slot,r){
-  const item=p.c.items[slot],q=e.spare(slot,r),before=e.count(item),unitPrice=price(item,r,true);if(!q||!unitPrice||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(r.slot)||p.c.slots[r.slot])return false;
-  return e.perform('market.list',{slots:[slot],rule:r,guard:()=>!!p.c.stand&&!p.c.slots[r.slot]&&e.spare(slot,r)>=q,call:()=>p.call('trade',slot,r.slot,unitPrice,q),observe:()=>{const x=p.c.slots[r.slot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},details:{item:item.name,variant:identity(item),quantity:q,before}});
+  const item=p.c.items[slot],q=e.spare(slot,r),before=e.count(item),unitPrice=price(item,r,true),tradeSlot=r.slot;
+  if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(unitPrice)||unitPrice<1||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  // A listing can remain advertised after rules/market references have changed.
+  // Never publish an old ask below the currently permitted minimum price.
+  return e.perform('market.list',{slots:[slot],rule:r,guard:()=>{
+   const currentFloor=price(item,r,true);
+   return !!p.c.stand&&r.slot===tradeSlot&&!p.c.slots[tradeSlot]&&e.spare(slot,r)>=q&&
+    Number.isSafeInteger(currentFloor)&&unitPrice>=currentFloor;
+  },call:()=>p.call('trade',slot,tradeSlot,unitPrice,q),observe:()=>{const x=p.c.slots[tradeSlot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
  function buy(item,r){
   for(const player of Object.values(p.entities)){
-   if(player.name===p.c.name||player.type!=='character'||!player.stand||distance(p.c,player)>300)continue;
+   if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
    for(const [slot,offer] of Object.entries(player.slots??{})){
-    const ceiling=price(item,r);if(!slot.startsWith('trade')||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!variant(offer,item)||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
+    const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!variant(offer,item)||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
     const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
-    if(q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
-    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];return live&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway;},call:()=>p.call('trade_buy',bot.entity(player.id??player.name),slot,q),observe:()=>e.count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
+    if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
+    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>p.call('trade_buy',bot.entity(player.id??player.name),slot,q),observe:()=>e.count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
    }
   }const d=cfg.merchant.position.enabled?{...cfg.merchant.position,in:cfg.merchant.position.map}:e.destination('citizen22');if(d&&!e.at(d)){e.travel(d,'Marktsuche');return true;}return false;
  }
  function wishlist(item,r){
-  const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice;if(!unitPrice||q<=0||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(r.slot)||p.c.slots[r.slot])return false;
-  // Reserve full maximum exposure when publishing a passive purchase order.
-  return e.perform('market.wishlist',{cost,rule:r,guard:()=>!!p.c.stand&&!p.c.slots[r.slot],call:()=>p.call('wishlist',r.slot,item.name,unitPrice,item.level??0,q),observe:()=>{const x=p.c.slots[r.slot];return x?.name===item.name&&x.b&&x.price===unitPrice;},details:{item:item.name,quantity:q}});
+  const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice,tradeSlot=r.slot;
+  if(!Number.isSafeInteger(unitPrice)||unitPrice<1||!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(cost)||
+    !p.c.stand||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  // A passive buy order reserves real gold. Pin both its posting slot and
+  // maximum exposure to the original authorized decision.
+  return e.perform('market.wishlist',{cost,rule:r,guard:()=>{
+   const liveCeiling=price(item,r);
+   return !!p.c.stand&&r.slot===tradeSlot&&!p.c.slots[tradeSlot]&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&
+    Number.isSafeInteger(liveCeiling)&&unitPrice<=liveCeiling;
+  },call:()=>p.call('wishlist',tradeSlot,item.name,unitPrice,item.level??0,q),observe:()=>{const x=p.c.slots[tradeSlot];return x?.name===item.name&&x.b&&x.price===unitPrice;},details:{item:item.name,quantity:q}});
  }
  function background(){
   observe();
@@ -57,11 +71,56 @@ export function createMarket(bot){
   }return false;
  }
  function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}
- function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!tradeSlot.startsWith('trade')||!bid?.b||!bid.rid||!variant(bid,item)||!(bid.price>=r.minPrice)||bid.price<=0)continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(q<=0)continue;
- // trade_sell chooses inputs server-side: reject mixed/protected variants it could select.
- if(p.c.items.some(i=>i?.name===item.name&&(i.level??0)===(item.level??0)&&(!e.safe(i)||!variant(i,item))))continue;
- return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&b.price===bid.price&&e.spare(slot,r)>=q;},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
+ // The official trade_sell API selects an inventory slot server-side. Every
+ // same-name/level stack must therefore be safe to consume, not just the slot
+ // proposed by the scheduler. Recheck this at dispatch after any inventory drift.
+ function saleInventorySafe(slot,rule,quantity){
+  const chosen=p.c.items?.[slot];
+  if(!chosen||!Number.isSafeInteger(quantity)||quantity<1)return false;
+  const same=p.c.items.map((item,n)=>({item,n})).filter(({item})=>item?.name===chosen.name&&(item.level??0)===(chosen.level??0));
+  if(!same.length)return false;
+  return same.every(({item,n})=>e.safe(item)&&variant(item,chosen)&&
+   (item.acc??'')===(chosen.acc??'')&&JSON.stringify(item.data)===JSON.stringify(chosen.data)&&
+   e.spare(n,rule)>=quantity&&(!e.rules||e.rules(item,'inventory')?.action===rule.action));
+ }
+ function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||!bid?.b||!bid.rid||!variant(bid,item)||(bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1||!Number.isFinite(bid.price)||bid.price<=0||!(bid.price>=r.minPrice))continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid,unitPrice=bid.price,expectedGold=q*unitPrice;
+  if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(expectedGold)||expectedGold<1||!saleInventorySafe(slot,r,q))continue;
+  // Visible entity and its bid may be the SAME mutable object. Comparing
+  // b.price to bid.price would always succeed after an in-place price change.
+  // Capture the agreed price before scheduling the sale.
+  return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h?.type==='character'&&!!h.stand&&samePlace(p.c,h)&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&
+   Number.isFinite(b.price)&&b.price===unitPrice&&Number.isFinite(r.minPrice)&&unitPrice>=r.minPrice&&variant(b,item)&&
+   (b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&
+   Number.isSafeInteger(b.q??1)&&(b.q??1)>=q&&saleInventorySafe(slot,r,q);},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+expectedGold,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold}});
  }}return false;}
+ // Never use historical ask prices as bids. Only offers from visible, reachable
+ // characters, with matching variant, valid rid, remaining quantity and live price.
+ function liveBids(item){
+  const rows=[];for(const player of Object.values(p.entities??{})){
+   if(!player||player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||!(distance(p.c,player)<=300)||(typeof bot.entity==='function'&&!bot.entity(player.id??player.name)))continue;
+   for(const [slot,bid] of Object.entries(player.slots??{})){
+    if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid?.b||!bid.rid||!variant(bid,item)||
+       (bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||
+       !Number.isFinite(bid.price)||bid.price<=0||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1)continue;
+    rows.push({buyer:player.name??player.id,id:player.id??player.name,slot,rid:bid.rid,price:bid.price,quantity:bid.q??1,distance:distance(p.c,player)});
+   }
+  }return rows.sort((a,b)=>b.price-a.price||a.distance-b.distance);
+ }
+ function bidValuation(item,quantity=1,npcUnit=null,{future=true}={}){
+  const base=Number.isFinite(npcUnit)&&npcUnit>=0?npcUnit:e.value(item);
+  if(!Number.isFinite(base)||base<0||!Number.isSafeInteger(quantity)||quantity<1)return {unitValue:base,covered:0,reason:'unpriced'};
+  let remaining=quantity,increment=0,covered=0,travelGold=0;
+  for(const bid of liveBids(item)){
+   if(remaining<=0)break;if(bid.price<=base)continue;
+   const take=Math.min(remaining,bid.quantity);remaining-=take;covered+=take;increment+=take*(bid.price-base);
+   // Deliberately conservative opportunity cost for collecting reachable offers.
+   travelGold+=Math.max(0,bid.distance-80)/Math.max(1,p.c.speed??40)/3600*Math.max(0,cfg.production.goldPerHour??0);
+  }
+  // Future mutation output has no guaranteed purchaser. Retain only a quarter
+  // of the observed uplift; immediate decisions still discount the live offer.
+  const uplift=Math.max(0,increment*(future?.25:.8)-travelGold);
+  return {unitValue:base+uplift/quantity,covered,npcUnit:base,future,reason:covered?'visible-bid-discounted':'npc-only'};
+ }
  function analysis(item){observe();const rows=history.filter(x=>variant(x.item,item)&&Date.now()-x.at<cfg.merchant.marketHistoryTtlMs),asks=rows.filter(x=>!x.side||x.side==='SELL').map(x=>x.price),bids=rows.filter(x=>x.side==='BUY').map(x=>x.price);const ask=asks.length?Math.min(...asks):null,bid=bids.length?Math.max(...bids):null;return {askingOnly:true,providers:new Set(rows.map(x=>x.seller)).size,ask,bid,spread:ask&&bid?(ask-bid)/ask:null,reference:quote(item),reason:'Beobachtete Angebote, keine bestätigten Handelsumsätze'};}
- return {listing,sellToBid,buy,wishlist,background,quote,analysis,status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000}),close(){scanGeneration++;secondhand=[];}};
+ return {listing,sellToBid,buy,wishlist,background,quote,analysis,liveBids,bidValuation,status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000}),close(){scanGeneration++;secondhand=[];}};
 }

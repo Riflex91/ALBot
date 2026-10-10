@@ -4,6 +4,26 @@ export function gearScore(stats,role,ctype=''){
  if(role==='dps'&&ctype){delete weights.str;delete weights.dex;delete weights.int;weights[['ranger','rogue'].includes(ctype)?'dex':['mage','priest'].includes(ctype)?'int':'str']=2;}
  return Object.entries(weights).reduce((n,[key,w])=>n+(Number(stats?.[key])||0)*w,0);
 }
+
+/** Hard suitability checks before a weighted Gear score can approve a change.
+ * Stats are the live item_properties values, never a static item-level formula. */
+export function gearSuitability(previous,next,role,ctype,mobility='mobile'){
+ if(!next||typeof next!=='object'||(previous&&typeof previous!=='object'))return {ok:false,reason:'stats-unavailable'};
+ const stat=(v,key)=>{const n=v?.[key];return Number.isFinite(n)?n:0;};
+ if(ctype==='merchant'&&mobility!=='stationary'&&stat(next,'speed')+1e-6<stat(previous,'speed'))
+  return {ok:false,reason:'merchant-speed-loss'};
+ // Measure survival contribution from the replaced equipment, not total character
+ // HP: the latter includes class/level bonuses and would conceal slot losses.
+ const survival=x=>Math.max(0,stat(x,'hp'))*.01+Math.max(0,stat(x,'max_hp'))*.01+
+  Math.max(0,stat(x,'armor'))*.4+Math.max(0,stat(x,'resistance'))*.4+
+  Math.max(0,stat(x,'vit'))*2+Math.max(0,stat(x,'vitality'))*2+
+  Math.max(0,stat(x,'evasion'))*.25;
+ const oldSurvival=survival(previous),nextSurvival=survival(next);
+ const floor=['tank','healer','economy'].includes(role)||ctype==='merchant'?.9:.75;
+ if(previous&&oldSurvival>0&&nextSurvival+1e-6<oldSurvival*floor)
+  return {ok:false,reason:'survival-loss',oldSurvival,nextSurvival};
+ return {ok:true,reason:'suitable',oldSurvival,nextSurvival};
+}
 export function gearCompatible(G,profile,item,target){
  const meta=G.items?.[item.name],cls=G.classes?.[profile.class]??{},type=meta?.type,w=meta?.wtype??type;
  if(!meta||(meta.level??0)>profile.level||meta.class&&!meta.class.includes(profile.class))return false;
@@ -36,15 +56,19 @@ export function createGear(bot){
   else if(!['ring','earring'].includes(type)&&target!==type)return false;
   const current=p.c.slots[target];if(current?.l||current?.b||bot.allocation?.equipGuard(item,target)===false)return false;
   const role=me.gearRole==='auto'?(p.c.ctype==='priest'?'healer':p.c.ctype==='merchant'?'economy':'dps'):me.gearRole;
-  let nextScore,oldScore;try{nextScore=gearScore(p.call('item_properties',item),role,p.c.ctype);oldScore=current?gearScore(p.call('item_properties',current),role,p.c.ctype):0;}catch{return false;}
+  let nextScore,oldScore;try{const next=p.call('item_properties',item),previous=current?p.call('item_properties',current):null;
+   const assessment=gearSuitability(previous,next,role,p.c.ctype,me.merchantMobility);
+   if(!assessment.ok){e.note('Gear abgelehnt: '+assessment.reason+' / '+target);return false;}
+   nextScore=gearScore(next,role,p.c.ctype);oldScore=previous?gearScore(previous,role,p.c.ctype):0;}catch{return false;}
   if(current&&nextScore<oldScore*(1+cfg.production.minImprovement))return false;
   const oldId=identity(current);
-  return e.perform('gear.equip',{slots:[slot],rule:r,guard:()=>identity(p.c.slots[target])===oldId&&bot.allocation?.equipGuard(item,target)!==false,call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===identity(item),details:{item:item.name,slot:target}});
+  return e.perform('gear.equip',{slots:[slot],rule:r,guard:()=>identity(p.c.slots[target])===oldId&&bot.allocation?.equipGuard(item,target)!==false&&
+    gearSuitability(p.c.slots[target]?p.call('item_properties',p.c.slots[target]):null,p.call('item_properties',p.c.items[slot]),role,p.c.ctype,me.merchantMobility).ok,call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===identity(item),details:{item:item.name,slot:target}});
  }
  function suggestions(){const result=[];if(!cfg.production.gear)return result;for(const [name,profile] of Object.entries(profiles)){
   const member=cfg.characters.find(c=>c.name===name);if(!member)continue;
   for(const rule of cfg.items.filter(r=>r.enabled&&r.action==='equip'&&(!r.character||r.character===name))){const item=p.c.items.find(i=>i?.name===rule.item&&e.safe(i)&&(i.level??0)>=rule.minLevel&&(i.level??0)<=rule.maxLevel);if(!item)continue;const meta=p.G.items[item.name];if(!gearCompatible(p.G,profile,item,rule.slot))continue;
-   try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole,old=profile.slots[rule.slot];const score=gearScore(p.call('item_properties',item),role,profile.class),previous=old?gearScore(p.call('item_properties',old),role,profile.class):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
+   try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole,old=profile.slots[rule.slot];const nextStats=p.call('item_properties',item),oldStats=old?p.call('item_properties',old):null;if(!gearSuitability(oldStats,nextStats,role,profile.class,member.merchantMobility).ok)continue;const score=gearScore(nextStats,role,profile.class),previous=oldStats?gearScore(oldStats,role,profile.class):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
   }
  }return result.slice(0,20);}
  function targets(){const result=[...(bot.intelligence?.targets()??[]),...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
@@ -56,7 +80,9 @@ export function createGear(bot){
   const profile=g.character===me.name?snapshot():profiles[g.character];if(!profile||!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot))return [];
   const old=profile.slots[g.slot];if(old?.l||old?.b||old?.name===g.item&&old.level>=g.level)return [];
   const member=cfg.characters.find(c=>c.name===g.character),role=member?.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member?.gearRole;
-  try{if(old&&gearScore(p.call('item_properties',{name:g.item,level:g.level}),role,profile.class)<gearScore(p.call('item_properties',old),role,profile.class)*(1+cfg.production.minImprovement))return [];}catch{return [];}
+  try{const nextStats=p.call('item_properties',{name:g.item,level:g.level}),oldStats=old?p.call('item_properties',old):null;
+   if(!gearSuitability(oldStats,nextStats,role,profile.class,member?.merchantMobility).ok)return [];
+   if(old&&gearScore(nextStats,role,profile.class)<gearScore(oldStats,role,profile.class)*(1+cfg.production.minImprovement))return [];}catch{return [];}
   return [{...g,name:'Gear: '+g.name,quantity:1,recipient:g.character===me.name?'':g.character,gearSlot:g.slot}];
  });}
  function status(){const eligible=new Set(goals().map(g=>g.name));return targets().slice(0,32).map(g=>{const profile=g.character===me.name?snapshot():profiles[g.character],old=profile?.slots?.[g.slot];return {name:g.name,character:g.character,item:g.item,level:g.level,slot:g.slot,offline:g.character!==me.name&&!bot.transport.fresh(g.character),state:!cfg.production.gear?'disabled':!profile?'unknown-profile':!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot)?'incompatible':old?.l||old?.b?'protected':old?.name===g.item&&old.level>=g.level?'equipped':eligible.has('Gear: '+g.name)?'requested':'below-improvement-threshold'};});}

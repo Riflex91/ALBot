@@ -19,8 +19,14 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
   }return evaluated;
  }
  function futureGear(i){return targets().some(g=>g.item===i.name&&g.level>=(i.level??0));}
- function mutationEconomics(i){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=bot.economy.value(i),max=cfg.production.autoGearMaxLevel;let best={level:i.level??0,ev:current,action:'sell'},value=bot.economy.value({...i,level:max});if(!Number.isFinite(value))return best;
-  for(let l=max-1;l>=(i.level??0);l--){const c=mutationChance(i.name,l,kind),grade=p.call('item_grade',{...i,level:l}),scrollCost=p.G.items[(kind==='compound'?'cscroll':'scroll')+grade]?.g,immediate=bot.economy.value({...i,level:l});if(!(c>=cfg.production.minChance)||!Number.isFinite(scrollCost)||!Number.isFinite(immediate)){value=immediate;continue;}const ev=(c*value-scrollCost)/factor;if(ev>immediate*(1+cfg.production.minImprovement)&&scrollCost<=cfg.production.helperMaxPrice){value=ev;if(l===(i.level??0))best={level:l+1,ev,action:kind};}else value=immediate;}
+ // Discounted, quantity-bounded bids supplement the NPC baseline only when a
+ // verified buyer is currently reachable; a future upgrade gets a larger haircut.
+ function resaleValue(item,quantity=1,future=true){
+  const npc=bot.economy.value(item);const bid=bot.market?.bidValuation?.(item,quantity,npc,{future});
+  return Number.isFinite(bid?.unitValue)&&bid.unitValue>=npc?bid.unitValue:npc;
+ }
+ function mutationEconomics(i){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoGearMaxLevel;let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
+  for(let l=max-1;l>=(i.level??0);l--){const c=mutationChance(i.name,l,kind),grade=p.call('item_grade',{...i,level:l}),scrollCost=p.G.items[(kind==='compound'?'cscroll':'scroll')+grade]?.g,immediate=resaleValue({...i,level:l},1,l>(i.level??0));if(!(c>=cfg.production.minChance)||!Number.isFinite(scrollCost)||!Number.isFinite(immediate)){value=immediate;continue;}const ev=(c*value-scrollCost)/factor;if(ev>immediate*(1+cfg.production.minImprovement)&&scrollCost<=cfg.production.helperMaxPrice){value=ev;if(l===(i.level??0))best={level:l+1,ev,action:kind};}else value=immediate;}
   return best;
  }
  function disposition(i){if(cfg.production.autoDisposition!==true||!bot.economy.safe(i)||bot.production.reservedQuantity(i)>0)return null;const m=p.G.items[i.name];if(!m||m.cash||m.quest||m.event||['pot','elixir','scroll','uscroll','cscroll','offering','stand','tool','booster'].includes(m.type))return null;

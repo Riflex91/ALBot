@@ -246,7 +246,7 @@ test('U07 only safe explicitly allowed official farm route influences existing p
  assert.deepEqual(supportedProgressionRows({version:2,ready:true,rows:advice.rows},G,['bee']),[]);
 });
 test('U07 bounded official advice cache never dispatches instructions or overrides user goals',()=>{
- const G={monsters:{bee:{},goo:{}},maps:{main:{}}},p={G,c:{gold:2000},hasProgression:()=>true},calls=[];
+ const G={monsters:{bee:{},goo:{}},maps:{main:{}},items:{sword:{type:'weapon'}}},p={G,c:{gold:2000},hasProgression:()=>true},calls=[];
  p.progression=options=>{calls.push(options);return {version:1,ready:true,rows:[{action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}},priority:50}],plans:[{tree:{next:{kind:'buy',name:'unsafe'}}}]};};
  const cfg={general:{planningTickMs:20000},production:{progressionAdvice:true,goals:[{enabled:true,item:'sword',quantity:1,level:1,budget:100}],lossBudget:1000},merchant:{goldReserve:200,maxSpendPerHour:1000},farming:{targets:['bee']},world:{excludedMaps:[]}};
  const bot={p,cfg,me:{name:'A',role:'farmer',farmTargets:[],goldReserve:10},event:()=>{}};

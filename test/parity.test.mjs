@@ -796,7 +796,7 @@ test('U04 sale refuses a live buyer bid whose total payout overflows safe intege
  const bid={name:'ring',level:0,price:Number.MAX_SAFE_INTEGER,q:3,b:true,rid:'big-bid'};
  const buyer={id:'B',name:'B',type:'character',stand:true,map:'main',in:'main',x:5,y:0,slots:{trade1:bid}};
  let queued=0;
- const market=createMarket({p:{c,entities:{B:buyer},has:()=>true,read:()=>null},me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy:{safe:()=>true,spare:()=>3,perform:()=>{queued++;return true;}},exec:{},entity:()=>buyer});
+ const market=createMarket({p:{c,entities:{B:buyer},has:()=>true,read:()=>null},me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy:{safe:()=>true,spare:()=>3,count:()=>3,perform:()=>{queued++;return true;}},exec:{},entity:()=>buyer});
  assert.equal(market.sellToBid(0,{action:'sell',minPrice:1}),false);
  assert.equal(queued,0);
 });

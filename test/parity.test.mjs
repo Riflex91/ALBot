@@ -9,6 +9,8 @@ import {createMarket} from '../src/merchant/market.mjs';
 import {createEconomicIntelligence} from '../src/production/intelligence.mjs';
 import {accountRiskSnapshot,createAccount} from '../src/party/account.mjs';
 import {chooseAura,auraRisk,createAura} from '../src/party/aura.mjs';
+import {createProgression,supportedProgressionRows} from '../src/world/progression.mjs';
+import {createPorts} from '../src/runtime/ports.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -176,7 +178,7 @@ test('U04 production resale forecast conservatively uses only supported live-bid
 
 test('U05 account risk uses each fresh balance once and refuses missing bank/peer evidence',()=>{
  const unknown=accountRiskSnapshot([1000,null],null,100,'normal');
- assert.equal(unknown.complete,false);assert.equal(unknown.mode,'conservative');assert.equal(unknown.riskLimit,0);
+ assert.equal(unknown.complete,false);assert.equal(unknown.mode,'conservative');assert.equal(unknown.riskLimit,10);assert.equal(unknown.liquidFloor,1000);
  const full=accountRiskSnapshot([2000,1000],2000,100,'conservative');
  assert.equal(full.wealth,5000);assert.equal(full.riskLimit,100);
  assert.equal(full.mode,'normal');
@@ -192,7 +194,7 @@ test('U05 account guard is additive and cannot erase a preexisting budget',()=>{
  assert.equal(account.spendAllowed(50,0),true);
  assert.equal(account.spendAllowed(101,0),false);
  delete peers.A.goldBalance;
- assert.equal(account.spendAllowed(1,0),false);
+ assert.equal(account.risk().complete,false);assert.equal(account.spendAllowed(1,0),true);assert.equal(account.spendAllowed(41,0),false);
 });
 test('U06 aura anticipates severe damage, magical danger and missing threat stats',()=>{
  assert.equal(chooseAura({hpRatio:1,mpRatio:1}),'zeal');
@@ -218,4 +220,50 @@ test('U06 defensive aura can bypass hold; recovered team remains held and stale 
   threats=[];assert.equal(guard(),false);
   assert.equal(a.tick(),false);
  }finally{Date.now=real;}
+});
+
+test('U07 unavailable or throwing official API leaves farm planner unchanged',()=>{
+ const root={character:{name:'A'},G:{monsters:{bee:{}},maps:{main:{}}},parent:{server_region:'EU',server_identifier:'1'}};
+ const ports=createPorts(root);
+ assert.equal(ports.hasProgression(),false);
+ const cfg={production:{progressionAdvice:true,goals:[],lossBudget:1000},merchant:{goldReserve:0,maxSpendPerHour:1000},general:{planningTickMs:1},farming:{targets:['bee']},world:{excludedMaps:[]}};
+ const bot={p:{...ports,c:{name:'A',gold:1000},G:root.G},cfg,me:{role:'farmer',goldReserve:0,farmTargets:[]},event:()=>{}};
+ const guide=createProgression(bot);
+ assert.equal(guide.bonus('bee','main'),0);assert.equal(guide.status().reason,'official-api-unavailable');
+ bot.p.hasProgression=()=>true;bot.p.progression=()=>{throw Error('headless scripts missing');};
+ guide.refresh(true);assert.equal(guide.status().reason,'read-error');assert.equal(guide.bonus('bee','main'),0);
+});
+test('U07 only safe explicitly allowed official farm route influences existing priorities',()=>{
+ const G={monsters:{bee:{},goo:{}},maps:{main:{},pvp:{pvp:true}}};
+ const advice={version:1,ready:true,rows:[
+  {action:{kind:'farm',route:{monster:'goo',map:'main',safe:true}},priority:100},
+  {action:{kind:'farm',route:{monster:'bee',map:'pvp',safe:true}},priority:99},
+  {action:{kind:'buy',name:'sword'},priority:999},
+  {action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}},priority:10}]};
+ assert.deepEqual(supportedProgressionRows(advice,G,['bee'],[],false).map(x=>x.monster),['bee']);
+ assert.deepEqual(supportedProgressionRows({...advice,ready:false},G,['bee']),[]);
+ assert.deepEqual(supportedProgressionRows({version:2,ready:true,rows:advice.rows},G,['bee']),[]);
+});
+test('U07 bounded official advice cache never dispatches instructions or overrides user goals',()=>{
+ const G={monsters:{bee:{},goo:{}},maps:{main:{}}},p={G,c:{gold:2000},hasProgression:()=>true},calls=[];
+ p.progression=options=>{calls.push(options);return {version:1,ready:true,rows:[{action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}},priority:50}],plans:[{tree:{next:{kind:'buy',name:'unsafe'}}}]};};
+ const cfg={general:{planningTickMs:20000},production:{progressionAdvice:true,goals:[{enabled:true,item:'sword',quantity:1,level:1,budget:100}],lossBudget:1000},merchant:{goldReserve:200,maxSpendPerHour:1000},farming:{targets:['bee']},world:{excludedMaps:[]}};
+ const bot={p,cfg,me:{name:'A',role:'farmer',farmTargets:[],goldReserve:10},event:()=>{}};
+ const guide=createProgression(bot);
+ assert.equal(guide.bonus('bee','main'),.06);assert.equal(guide.bonus('goo','main'),0);
+ assert.equal(guide.goalPriority({item:'sword',level:1}),0);
+ assert.equal(calls.length,1);assert.equal(calls[0].spendLimit,100);
+ assert.equal(calls[0].allowPvp,false);
+ assert.equal(guide.status().plansCount,1);
+ p.progression=()=>({version:1,ready:true,rows:[{action:{kind:'buy',name:'unsafe'},priority:999}],plans:[]});
+ guide.refresh(true);assert.equal(guide.bonus('bee','main'),0);
+});
+test('U07 official port reuses one runtime, detaches on changed game definitions and shutdown',()=>{
+ const roots=[],factory={create:env=>{const state={reads:0,detached:false,read:()=>({version:1,ready:true,rows:[],plans:[]}),detach(){this.detached=true;}};roots.push(state);return state;}};
+ const root={character:{name:'A'},G:{monsters:{}},parent:{ProgressionRuntime:factory,server_region:'EU',server_identifier:'1'}};
+ const p=createPorts(root);
+ assert.equal(p.hasProgression(),true);
+ p.progression({});p.progression({});assert.equal(roots.length,1);
+ root.G={monsters:{bee:{}}};p.progression({});assert.equal(roots[0].detached,true);assert.equal(roots.length,2);
+ p.closeProgression();assert.equal(roots[1].detached,true);
 });

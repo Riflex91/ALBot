@@ -154,7 +154,8 @@ test('U04 market sell guard refuses a changed variant or disappearing bid',()=>{
  assert.equal(guarded(),true);
  buyer.slots.trade1.q=1;assert.equal(guarded(),false);
  buyer.slots.trade1.q=3;buyer.slots.trade1.stat_type='int';assert.equal(guarded(),false);
- delete buyer.slots.trade1;assert.equal(guarded(),false);
+ buyer.slots.trade1.stat_type=undefined;buyer.map='other';assert.equal(guarded(),false);
+ buyer.map='main';delete buyer.slots.trade1;assert.equal(guarded(),false);
 });
 test('U04 production resale forecast conservatively uses only supported live-bid value',()=>{
  const p={G:{version:1,items:{ring:{upgrade:true},scroll0:{g:1}},upgrade:[[null,1]]},c:{items:[]},call:()=>0};

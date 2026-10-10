@@ -11,6 +11,7 @@ import {accountRiskSnapshot,createAccount} from '../src/party/account.mjs';
 import {chooseAura,auraRisk,createAura} from '../src/party/aura.mjs';
 import {createProgression,supportedProgressionRows} from '../src/world/progression.mjs';
 import {createPorts} from '../src/runtime/ports.mjs';
+import {createEconomy} from '../src/merchant/economy.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -266,4 +267,15 @@ test('U07 official port reuses one runtime, detaches on changed game definitions
  p.progression({});p.progression({});assert.equal(roots.length,1);
  root.G={monsters:{bee:{}}};p.progression({});assert.equal(roots[0].detached,true);assert.equal(roots.length,2);
  p.closeProgression();assert.equal(roots[1].detached,true);
+});
+
+test('U05 cumulative automatic risk limit cannot be bypassed by multiple spends',()=>{
+ const ledger={hour:Date.now(),spent:20,loss:2,goals:{}},checked=[];
+ const p={c:{gold:100000,slots:{}},read:()=>ledger};
+ const bot={p,me:{name:'M',role:'merchant',goldReserve:0},cfg:{merchant:{goldReserve:0,maxSpendPerHour:1000},production:{lossBudget:1000,goals:[]}},account:{spendAllowed:(cost,loss)=>{checked.push([cost,loss]);return cost+loss<=25;}}};
+ const economy=createEconomy(bot),auto={_autoProduction:true,goldBudget:1000,lossBudget:1000};
+ assert.equal(economy.budget(3,0,auto),true);
+ assert.equal(economy.budget(4,0,auto),false);
+ assert.equal(economy.budget(4,0,{...auto,_autoProduction:false}),true);
+ assert.deepEqual(checked,[[23,2],[24,2]]);
 });

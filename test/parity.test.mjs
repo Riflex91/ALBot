@@ -270,6 +270,48 @@ test('U07 official port reuses one runtime, detaches on changed game definitions
  p.closeProgression();assert.equal(roots[1].detached,true);
 });
 
+test('U07 closing a guide port cannot detach the official wrapper singleton',()=>{
+ let reads=0,detaches=0,changes=0;
+ const shared={read:()=>({version:1,ready:true,at:Date.now(),rows:[],plans:[]}),detach(){detaches++;}};
+ function get_progression(options){reads++;return get_progression.runtime.read(options);}
+ get_progression.runtime=shared;
+ const root={character:{name:'A'},G:{monsters:{}},get_progression,parent:{server_region:'EU',server_identifier:'1'}};
+ const p=createPorts(root);
+ assert.equal(p.hasProgression(),true);
+ assert.equal(p.progression({}).ready,true);
+ p.closeProgression();p.closeProgression();
+ assert.equal(detaches,0,'Official wrapper is not owned by this bot');
+ assert.equal(get_progression.runtime,shared);
+ assert.equal(p.progression({}).ready,true,'Official wrapper remains reusable after bot restart');
+ assert.equal(reads,2);
+ assert.equal(detaches,0);
+ root.G={monsters:{goo:{}}};
+ assert.equal(p.progression({}).ready,true);
+ assert.equal(detaches,0,'G changes belong to the official wrapper');
+ assert.equal(changes,0);
+});
+test('U07 closing the optional parent progression_read adapter has no external side effects',()=>{
+ let reads=0,detaches=0,factoryCalls=0;
+ const shared={detach(){detaches++;}};
+ const root={G:{},parent:{progression_read:()=>{reads++;return {ready:true};},ProgressionRuntime:{create:()=>{factoryCalls++;return shared;}}}};
+ const p=createPorts(root);
+ assert.equal(p.progression().ready,true);
+ p.closeProgression();
+ assert.equal(reads,1);
+ assert.equal(detaches,0);
+ assert.equal(factoryCalls,0);
+});
+test('U07 owned fallback runtime detaches only its own listeners, even on repeated close',()=>{
+ let factoryCalls=0,detaches=0;
+ const root={G:{},character:{name:'A'},parent:{ProgressionRuntime:{create:()=>{factoryCalls++;return {read:()=>({ready:true}),detach(){detaches++;}};}}}};
+ const p=createPorts(root);
+ assert.equal(p.progression().ready,true);
+ p.closeProgression();p.closeProgression();
+ assert.equal(detaches,1);
+ assert.equal(p.progression().ready,true);
+ assert.equal(factoryCalls,2);
+ p.closeProgression();assert.equal(detaches,2);
+});
 test('U05 cumulative automatic risk limit cannot be bypassed by multiple spends',()=>{
  const ledger={hour:Date.now(),spent:20,loss:2,goals:{}},checked=[];
  const p={c:{gold:100000,slots:{}},read:()=>ledger};

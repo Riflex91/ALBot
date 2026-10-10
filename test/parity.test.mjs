@@ -445,3 +445,51 @@ test('U04 market buy dispatch rechecks live stand, instance, offer flags and pri
  offer.rid='swapped';assert.equal(guard(),false);offer.rid='offer-1';
  assert.equal(guard(),true);
 });
+
+test('U05 independent sessions cannot each exhaust the same account risk ceiling',()=>{
+ const meMerchant={name:'M',role:'merchant',enabled:true,group:'team'};
+ const meFarmer={name:'F',role:'farmer',enabled:true,group:'team'};
+ const cfg={general:{messageTtlMs:30000},party:{merchant:'M',leader:'F',selection:'fixed'},characters:[meMerchant,meFarmer],production:{lossBudget:100}};
+ const mk=(me,gold,bankGold,peerGold)=>{
+  const bot={me,cfg,p:{c:{gold,...(bankGold===null?{}:{bank:{gold:bankGold}})},realm:()=> 'EUII',read:()=>null},
+   transport:{fresh:()=>({running:true,realm:'EUII',goldBalance:peerGold,...(me.role==='farmer'?{bankGoldBalance:5000}:{})})},
+   farmers:['F'],leader:'F',exec:{pending:new Map()},running:true,report(){}};
+  return createAccount(bot);
+ };
+ const merchant=mk(meMerchant,5000,5000,5000),farmer=mk(meFarmer,5000,null,5000);
+ for(const account of [merchant,farmer]){
+  assert.equal(account.risk().riskLimit,100);
+  assert.equal(account.risk().memberCount,2);
+  assert.equal(account.risk().sessionRiskLimit,50);
+  assert.equal(account.spendAllowed(50,0),true);
+  assert.equal(account.spendAllowed(51,0),false);
+ }
+ assert.equal(merchant.risk().sessionRiskLimit+farmer.risk().sessionRiskLimit,100);
+});
+test('U05 partial account evidence still partitions the known liquid floor across configured members',()=>{
+ const me={name:'M',role:'merchant',enabled:true,group:'team'};
+ const cfg={party:{merchant:'M',leader:'F',selection:'fixed'},characters:[me,{name:'F',enabled:true,role:'farmer',group:'team'},{name:'B',enabled:true,role:'farmer',group:'team'}],production:{lossBudget:1000}};
+ const account=createAccount({me,cfg,p:{c:{gold:1000,bank:{gold:0}},realm:()=> 'EUII',read:()=>null},transport:{fresh:()=>null},farmers:['F'],leader:'F',exec:{pending:new Map()},running:true,report(){}});
+ const snap=account.risk();
+ assert.equal(snap.complete,false);assert.equal(snap.liquidFloor,1000);
+ assert.equal(snap.riskLimit,10);assert.equal(snap.memberCount,3);
+ assert.equal(snap.sessionRiskLimit,3);
+ assert.equal(account.spendAllowed(3,0),true);
+ assert.equal(account.spendAllowed(4,0),false);
+ assert.equal(account.spendAllowed(2.5,0),false);
+});
+test('U05 overflowed account balances or unsafe exposure cannot grant automatic budget',()=>{
+ const max=Number.MAX_SAFE_INTEGER;
+ const overflowing=accountRiskSnapshot([max,1],0,1000);
+ assert.equal(overflowing.complete,false);
+ assert.equal(overflowing.wealth,null);
+ assert.equal(overflowing.liquidFloor,0);
+ assert.equal(overflowing.riskLimit,0);
+ assert.equal(accountRiskSnapshot([max],1,1000).riskLimit,0);
+ const me={name:'M',role:'merchant',enabled:true,group:'team'};
+ const cfg={party:{merchant:'M',leader:'M',selection:'fixed'},characters:[me],production:{lossBudget:1000}};
+ const account=createAccount({me,cfg,p:{c:{gold:10000,bank:{gold:10000}},realm:()=> 'EUII',read:()=>null},transport:{fresh:()=>null},farmers:[],leader:'M',exec:{pending:new Map()},running:true,report(){}});
+ assert.equal(account.spendAllowed(Number.MAX_SAFE_INTEGER,1),false);
+ assert.equal(account.spendAllowed(Infinity,0),false);
+ assert.equal(account.spendAllowed(0,0),true);
+});

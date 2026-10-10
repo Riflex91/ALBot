@@ -12,6 +12,7 @@ import {chooseAura,auraRisk,createAura} from '../src/party/aura.mjs';
 import {createProgression,supportedProgressionRows} from '../src/world/progression.mjs';
 import {createPorts} from '../src/runtime/ports.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
+import {createGoldLogistics} from '../src/items/gold.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -682,4 +683,47 @@ test('U05 compound preview rejects a changed input group or newly reserved scrol
  c.items[2]={name:'different',level:0};assert.equal(guard(),false);
  c.items[2]={name:'ring',level:0};scrollKeep=2;assert.equal(guard(),false);
  scrollKeep=0;assert.equal(guard(),true);
+});
+
+test('U05 merchant gold-transfer cooldown survives a module restart and excludes its new balance',()=>{
+ const store=new Map(),now=Date.now();
+ const me={name:'M',role:'merchant',group:'g',goldReserve:0};
+ const cfg={merchant:{collectGold:true,enabled:true,goldTransferMax:5000,goldReserve:0},general:{messageTtlMs:15000},party:{merchant:'M',leader:'F',selection:'fixed'},characters:[{name:'M',enabled:true,group:'g',role:'merchant'},{name:'F',enabled:true,group:'g',role:'farmer'}],production:{lossBudget:1000}};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,gold:20000,bank:{gold:0}},h={name:'F',map:'main',in:'main',x:0,y:0,running:true,realm:'EUII',session:'sender-session',goldBalance:10000};
+ let accepted=0;
+ const p={c,realm:()=> 'EUII',read:k=>store.get(k)??null,write:(k,v)=>{store.set(k,v);return true;}};
+ const bot={p,cfg,me,running:true,journal:null,inventoryBlocked:false,checkpoint:{durable:true},logistics:{reserved:false},exec:{busy:()=>false,pending:new Map()},transport:{fresh:()=>h,send:()=>{accepted++;return Promise.resolve(true);}},entity:()=>h,report(){},event(){},movement:{stop(){}},farmers:['F'],leader:'F',beginValue(v){this.journal=v;},endValue(){this.journal=null;}};
+ bot.gold=createGoldLogistics(bot);
+ assert.equal(bot.gold.transferAt,0);
+ bot.gold.receive('F',{type:'goldOffer',id:'offer1',session:h.session,data:{quantity:1000}});
+ assert.equal(accepted,1);assert.equal(bot.gold.reserved,true);
+ const stamp=store.get('albot:gold:M:recent-transfer');
+ assert.ok(Number.isSafeInteger(stamp)&&stamp>=now);
+ bot.gold=createGoldLogistics(bot);
+ assert.equal(bot.gold.reserved,false,'New module has no in-memory active transfer');
+ assert.equal(bot.gold.transferAt,stamp,'Persisted transfer grace period is restored');
+ const account=createAccount(bot),snapshot=account.risk();
+ assert.equal(snapshot.liquidFloor,10000,'Do not count the receiver while the sender heartbeat can be stale');
+ assert.equal(snapshot.complete,false);
+});
+test('U05 a receiver never accepts a gold handoff without durable cooldown protection',()=>{
+ const me={name:'M',role:'merchant',group:'g'};
+ const cfg={merchant:{collectGold:true,enabled:true,goldTransferMax:5000,goldReserve:0},general:{messageTtlMs:15000},party:{merchant:'M'},characters:[{name:'F',enabled:true,role:'farmer',group:'g'}]};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,gold:2000};
+ const peer={name:'F',map:'main',in:'main',x:1,y:0,realm:'EUII',running:true,session:'f1'};
+ let accepted=0,journal=0;
+ const bot={p:{c,read:()=>null,write:()=>false,realm:()=> 'EUII'},cfg,me,running:true,journal:null,inventoryBlocked:false,checkpoint:{durable:true},logistics:{reserved:false},exec:{busy:()=>false},transport:{fresh:()=>peer,send:()=>{accepted++;return Promise.resolve(true);}},entity:()=>peer,movement:{stop(){}},report(){},event(){},beginValue(){journal++;}};
+ const gold=createGoldLogistics(bot);
+ gold.receive('F',{type:'goldOffer',id:'offer2',session:'f1',data:{quantity:500}});
+ assert.equal(gold.reserved,false);
+ assert.equal(accepted,0,'No goldAccept was emitted');
+ assert.equal(journal,0,'No value intent was entered');
+});
+test('U05 gold-transfer timestamps reject stale or invalid saved values on new sessions',()=>{
+ const now=Date.now(),key='albot:gold:F:recent-transfer';
+ const me={name:'F',role:'farmer'},cfg={general:{messageTtlMs:15000},merchant:{goldReserve:0}},store=new Map();
+ const bot={p:{read:k=>store.get(k),write:(k,v)=>{store.set(k,v);return true;}},me,cfg};
+ store.set(key,now-200000);assert.equal(createGoldLogistics(bot).transferAt,0);
+ store.set(key,'nonsense');assert.equal(createGoldLogistics(bot).transferAt,0);
+ store.set(key,now-1000);assert.ok(createGoldLogistics(bot).transferAt>=now-1000);
 });

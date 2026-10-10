@@ -1,7 +1,7 @@
 // The official Guide observes fights but does not execute its advice.
 // Only small, validated hints enter the existing scheduler; all action guards stay.
 export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false){
- if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||Number.isFinite(advice.at)&&Math.abs(Date.now()-advice.at)>120000)return [];
+ if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||!Number.isFinite(advice.at)||Math.abs(Date.now()-advice.at)>120000)return [];
  const eligible=new Set(allowed),rows=[];
  for(const row of advice.rows.slice(0,32)){
   const route=row?.kind==='farm'&&row?.action?.kind==='farm'?row.action.route:null;
@@ -36,7 +36,9 @@ export function createProgression(bot){
   const args=options();
   try{
    const advice=p.progression(args);
-   if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||!Array.isArray(advice.plans)&&advice.plans!==undefined){statusReason='unsupported-advice-shape';return cached=null;}
+   if(!advice||advice.version!==1||advice.ready!==true||!Array.isArray(advice.rows)||!Number.isFinite(advice.at)||Math.abs(now-advice.at)>120000||!Array.isArray(advice.plans)&&advice.plans!==undefined){statusReason='unsupported-advice-shape';return cached=null;}
+   // Official output carries the realm with a space, whereas ALBot's local ID is compact.
+   if(typeof p.realm==='function'&&String(advice.realm??'').replace(/\s+/g,'')!==String(p.realm()).replace(/\s+/g,'')){statusReason='realm-mismatch';return cached=null;}
    const allowed=me.farmTargets?.length?me.farmTargets:cfg.farming.autoTargets===true&&bot.teamPlan?.candidates?bot.teamPlan.candidates():cfg.farming.targets;
    const rows=supportedProgressionRows(advice,p.G,allowed,cfg.world.excludedMaps??[],false).filter(r=>bot.strategy?.safeTarget?.(r.monster,undefined,true,true)!==false);
    const plans=Array.isArray(advice.plans)?advice.plans:[];

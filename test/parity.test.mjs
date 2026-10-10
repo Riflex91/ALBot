@@ -236,18 +236,19 @@ test('U07 unavailable or throwing official API leaves farm planner unchanged',()
 });
 test('U07 only safe explicitly allowed official farm route influences existing priorities',()=>{
  const G={monsters:{bee:{},goo:{}},maps:{main:{},pvp:{pvp:true}}};
- const advice={version:1,ready:true,rows:[
+ const advice={version:1,ready:true,at:Date.now(),rows:[
   {kind:'farm',action:{kind:'farm',route:{monster:'goo',map:'main',safe:true}},priority:100},
   {kind:'farm',action:{kind:'farm',route:{monster:'bee',map:'pvp',safe:true}},priority:99},
   {action:{kind:'buy',name:'sword'},priority:999},
   {kind:'farm',action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}},priority:10}]};
  assert.deepEqual(supportedProgressionRows(advice,G,['bee'],[],false).map(x=>x.monster),['bee']);
  assert.deepEqual(supportedProgressionRows({...advice,ready:false},G,['bee']),[]);
+ assert.deepEqual(supportedProgressionRows({...advice,at:undefined},G,['bee']),[]);
  assert.deepEqual(supportedProgressionRows({version:2,ready:true,rows:advice.rows},G,['bee']),[]);
 });
 test('U07 bounded official advice cache never dispatches instructions or overrides user goals',()=>{
  const G={monsters:{bee:{},goo:{}},maps:{main:{}},items:{sword:{type:'weapon'}}},p={G,c:{gold:2000},hasProgression:()=>true},calls=[];
- p.progression=options=>{calls.push(options);return {version:1,ready:true,rows:[{kind:'farm',action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}},priority:50}],plans:[{tree:{next:{kind:'buy',name:'unsafe'}}}]};};
+ p.progression=options=>{calls.push(options);return {version:1,ready:true,at:Date.now(),rows:[{kind:'farm',action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}},priority:50}],plans:[{tree:{next:{kind:'buy',name:'unsafe'}}}]};};
  const cfg={general:{planningTickMs:20000},production:{progressionAdvice:true,goals:[{enabled:true,item:'sword',quantity:1,level:1,budget:100}],lossBudget:1000},merchant:{goldReserve:200,maxSpendPerHour:1000},farming:{targets:['bee']},world:{excludedMaps:[]}};
  const bot={p,cfg,me:{name:'A',role:'farmer',farmTargets:[],goldReserve:10},event:()=>{}};
  const guide=createProgression(bot);
@@ -256,11 +257,11 @@ test('U07 bounded official advice cache never dispatches instructions or overrid
  assert.equal(calls.length,1);assert.equal(calls[0].spendLimit,100);
  assert.equal(calls[0].allowPvp,false);
  assert.equal(guide.status().plansCount,1);
- p.progression=()=>({version:1,ready:true,rows:[{action:{kind:'buy',name:'unsafe'},priority:999}],plans:[]});
+ p.progression=()=>({version:1,ready:true,at:Date.now(),rows:[{action:{kind:'buy',name:'unsafe'},priority:999}],plans:[]});
  guide.refresh(true);assert.equal(guide.bonus('bee','main'),0);
 });
 test('U07 official port reuses one runtime, detaches on changed game definitions and shutdown',()=>{
- const roots=[],factory={create:env=>{const state={reads:0,detached:false,read:()=>({version:1,ready:true,rows:[],plans:[]}),detach(){this.detached=true;}};roots.push(state);return state;}};
+ const roots=[],factory={create:env=>{const state={reads:0,detached:false,read:()=>({version:1,ready:true,at:Date.now(),rows:[],plans:[]}),detach(){this.detached=true;}};roots.push(state);return state;}};
  const root={character:{name:'A'},G:{monsters:{}},parent:{ProgressionRuntime:factory,server_region:'EU',server_identifier:'1'}};
  const p=createPorts(root);
  assert.equal(p.hasProgression(),true);
@@ -308,7 +309,7 @@ test('U07 refuses unproven, blocked and stale official advice, even if a route i
 });
 test('U07 auto-target hints remain bounded by actual safe targets and restart rereads after close',()=>{
  const G={monsters:{goo:{},bee:{}},maps:{main:{}},items:{}},calls=[];
- const p={G,c:{gold:1000},hasProgression:()=>true,progression:options=>{calls.push(options);return {version:1,ready:true,goal:{kind:'farm',monster:'goo'},rows:[{kind:'farm',priority:90,action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}}}],plans:[]};},closeProgression:()=>{}};
+ const p={G,c:{gold:1000},hasProgression:()=>true,progression:options=>{calls.push(options);return {version:1,ready:true,at:Date.now(),goal:{kind:'farm',monster:'goo'},rows:[{kind:'farm',priority:90,action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}}}],plans:[]};},closeProgression:()=>{}};
  const bot={p,cfg:{production:{progressionAdvice:true,goals:[],lossBudget:100},merchant:{goldReserve:0,maxSpendPerHour:100},general:{planningTickMs:20000},farming:{targets:['goo'],autoTargets:true},world:{excludedMaps:[]}},me:{role:'farmer',farmTargets:[]},teamPlan:{candidates:()=>['goo','bee']},strategy:{safeTarget:id=>id!=='goo'},event(){}};
  const guide=createProgression(bot);
  assert.equal(guide.bonus('bee','main'),.06);
@@ -321,12 +322,26 @@ test('U07 auto-target hints remain bounded by actual safe targets and restart re
 });
 test('U07 item-goal priority requires an actual matching official acquisition plan',()=>{
  const G={monsters:{},maps:{},items:{helmet:{}}};
- const p={G,c:{gold:10000},hasProgression:()=>true,progression:()=>({version:1,ready:true,goal:{kind:'item',name:'helmet',level:1,quantity:1},rows:[],plans:[{tree:{name:'helmet',level:1,next:{kind:'upgrade',name:'helmet'}}}]})};
+ const p={G,c:{gold:10000},hasProgression:()=>true,progression:()=>({version:1,ready:true,at:Date.now(),goal:{kind:'item',name:'helmet',level:1,quantity:1},rows:[],plans:[{tree:{name:'helmet',level:1,next:{kind:'upgrade',name:'helmet'}}}]})};
  const cfg={production:{progressionAdvice:true,lossBudget:10000,goals:[{enabled:true,item:'helmet',level:1,quantity:1,budget:1000}]},merchant:{goldReserve:0,maxSpendPerHour:10000},general:{planningTickMs:20000},farming:{targets:[]},world:{excludedMaps:[]}};
  const guide=createProgression({p,cfg,me:{role:'merchant',goldReserve:0,farmTargets:[]},event(){}});
  assert.equal(guide.goalPriority({item:'helmet',level:1}),.1);
  assert.equal(guide.goalPriority({item:'helmet',level:2}),0);
- p.progression=()=>({version:1,ready:true,goal:{kind:'item',name:'helmet',level:1},rows:[],plans:[{tree:{name:'other',level:1,next:{kind:'upgrade'}}}]});
+ p.progression=()=>({version:1,ready:true,at:Date.now(),goal:{kind:'item',name:'helmet',level:1},rows:[],plans:[{tree:{name:'other',level:1,next:{kind:'upgrade'}}}]});
  guide.refresh(true);
  assert.equal(guide.goalPriority({item:'helmet',level:1}),0);
+});
+
+test('U07 rejects official advice from a different realm or missing timestamp before plan bonus',()=>{
+ const G={monsters:{bee:{}},maps:{main:{}},items:{}},calls=[];
+ let response={version:1,ready:true,at:Date.now(),realm:'US I',rows:[{kind:'farm',priority:80,action:{kind:'farm',route:{monster:'bee',map:'main',safe:true}}}],plans:[]};
+ const p={G,c:{gold:1200},realm:()=> 'EUII',hasProgression:()=>true,progression:()=>{calls.push(response);return response;}};
+ const cfg={production:{progressionAdvice:true,goals:[],lossBudget:100},merchant:{goldReserve:0,maxSpendPerHour:100},general:{planningTickMs:15000},farming:{targets:['bee']},world:{excludedMaps:[]}};
+ const guide=createProgression({p,cfg,me:{role:'farmer',farmTargets:[]},event(){}});
+ assert.equal(guide.bonus('bee','main'),0);assert.equal(guide.status().reason,'realm-mismatch');
+ response={...response,realm:'EU II',at:null};
+ guide.refresh(true);assert.equal(guide.bonus('bee','main'),0);assert.equal(guide.status().reason,'unsupported-advice-shape');
+ response={...response,at:Date.now()};
+ guide.refresh(true);assert.equal(guide.bonus('bee','main'),.06);
+ assert.equal(calls.length,3);
 });

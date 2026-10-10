@@ -21,10 +21,10 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
-      - name: Full offline tests
-        run: npm test
       - name: Build shared browser/headless runtime
         run: npm run build
+      - name: Full offline tests
+        run: npm test
       - name: Build editor package
         run: npm run build:editor
       - name: Syntax, size, and manifest integrity

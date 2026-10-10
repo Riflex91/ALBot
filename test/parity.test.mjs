@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {planProduction} from '../src/production/planner.mjs';
 import {materialSources,exchangeSource} from '../src/production/materials.mjs';
 import {estimateRoutes} from '../src/production/costs.mjs';
+import {createProduction} from '../src/production/production.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -81,4 +82,16 @@ test('U02 ordinary exchange remains available; inactive, unverifiable and expiri
  assert.ok(!rows.some(row=>row.kind==='exchange'));
  G.items.token.event=true;
  assert.equal(exchangeSource(G,'token',{seasonal:{active:true}}).reason,'EVENT_SOURCE_UNVERIFIED');
+});
+
+test('U02 execution guard rechecks event and NPC mapping after planning, without dispatch',()=>{
+ const G={items:{ticket:{e:2,quest:'quest1',event:'season'},prize:{}},drops:{ticket:[[1,'prize']]},events:{season:{}},npcs:{quest_npc:{quest:'quest1'}},maps:{main:{npcs:[['quest_npc',10,20]]}}};
+ let guard=null,notes=[];const p={G,c:{items:[{name:'ticket',q:4}],slots:{},s:{}},root:{S:{season:{live:true}}},parent:{},read:()=>null};
+ const e={remaining:()=>true,spare:()=>4,count:()=>4,explicit:()=>null,at:()=>true,destination:()=>({map:'main',x:10,y:20}),travel:()=>true,value:()=>2,note:x=>notes.push(x),perform:(kind,args)=>{guard=args.guard;return true;}};
+ const bot={p,me:{name:'M',role:'merchant'},economy:e,cfg:{general:{testLogging:1},production:{enabled:true,exchange:true,goals:[]},merchant:{minFreeSlots:0},party:{}},exec:{pending:new Set()},free:()=>6,transport:{fresh:()=>null}};
+ const production=createProduction(bot),rule={keep:0,teamReserve:0,targetCount:100,maxCount:100,recipe:''};
+ assert.equal(production.exchange(0,rule),true);assert.equal(guard(),true);
+ p.root.S.season={active:false};assert.equal(guard(),false);
+ p.root.S.season={live:true};G.maps.main.npcs=[];assert.equal(guard(),false);
+ guard=null;assert.equal(production.exchange(0,rule),false);assert.equal(guard,null);assert.match(notes.at(-1),/nicht verifiziert/);
 });

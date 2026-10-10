@@ -118,7 +118,8 @@ export function createProduction(bot){
     // Duplicate recipe rows need different grid positions; merging stacks
     // would reduce available positions, not satisfy the missing position.
     if(slots.some(n=>p.c.items[n]?.name===id&&(p.c.items[n]?.level??0)===level))return false;
-    const candidate=p.c.items.find(i=>i?.name===id&&(i.level??0)===level&&e.safe(i));
+    const candidate=p.c.items.find(i=>i?.name===id&&(i.level??0)===level&&e.safe(i)),policy=candidate&&e.rules(candidate);
+    if(candidate&&e.count(candidate)-total<(policy?policy.keep+policy.teamReserve:0)+reserveOther(id,level))return false;
     return candidate?mergeFor(candidate,q,r):false;
    }
    slots.push(slot);requirements.push({item:{...p.c.items[slot]},before:e.count(p.c.items[slot]),q});

@@ -1,8 +1,5 @@
 name: ALBot offline verification
 on:
-  push:
-    branches:
-      - work/u01-u02-source-verification-20261010
   pull_request:
     branches:
       - main
@@ -41,3 +38,19 @@ jobs:
           if(m.bytes!==code.length||m.sha256!==h)throw new Error('Manifest differs from shared bundle');
           console.log(JSON.stringify({bytes:code.length,sha256:h,version:m.version}));
           EOF
+      - name: Archive generated offline-review artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: albot-u01-u07-offline-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            dist/albot.js
+            dist/albot.runtime.js
+            dist/albot.package.json
+            dist/albot.settings.json
+            dist/manifest.json
+            editor/Bot-Werkstatt.html
+            editor/albot.settings.json
+            profiles/full-solo.json
+            profiles/full-team.json

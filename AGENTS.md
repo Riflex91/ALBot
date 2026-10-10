@@ -1,6 +1,6 @@
 # Arbeitsübergabe vom 10. Oktober 2026: v3-/ALFinal-Übernahmen
 
-[Konkreter Arbeitsplan mit Quellbelegen und Abnahmekriterien](docs/UEBERNAHME-V3-ALFINAL-2026-10-10.md). U01–U07 sind offen: zuerst P90-Rangfolge und verifizierte Quest-Exchange-Ziele, danach Gear-/Marktökonomie, Account-Risiko und Paladin-Auren. U07 beschreibt ausdrücklich die Integration von get_progression() samt Browser-/Headless-Abnahme. ALBot 0.8.4 bleibt die gemeinsame Browser-/Headless-Basis. Diese Ergänzung ist nur Dokumentation; keine neue Runtime oder Livebestätigung. Vor Implementierung den Arbeitsplan lesen und inzwischen erfolgte Änderungen abgleichen.
+[Konkreter Arbeitsplan mit Quellbelegen und Abnahmekriterien](docs/UEBERNAHME-V3-ALFINAL-2026-10-10.md). **U01–U07 sind auf dem Draft-PR-Arbeitsbranch implementiert, nicht in main.** Stand der tatsächlichen Offlineabnahme 10. Oktober 2026: GitHub Actions unter Linux und Windows jeweils 194/194 Tests bestanden; gemeinsames Browser-/Headless-Bundle und Werkstatt gebaut, Bundle 282.885 UTF-8-Bytes, SHA-256 `e1b77e2991aabc1ffd835b2b0066f6371c373544dd27a95985e44229eac5cca0`. Referenz: [CI-Lauf](https://github.com/Riflex91/ALBot/actions/runs/38076516660). U07 benutzt den offiziellen Progression Guide nur als zusätzliche, begrenzte Entscheidungsquelle; echter Browser-/Headless-Spiel-Livetest und Verfügbarkeit der offiziellen Headless-API sind offen. Kein Merge oder Deployment. Vor weiteren Änderungen den Arbeitsplan, den aktuellen PR und neue Main-Änderungen prüfen.
 
 ---
 

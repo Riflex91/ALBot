@@ -19,8 +19,15 @@ export function createMarket(bot){
   return Number.isFinite(result)&&result>0?Math.floor(sell?Math.max(r.minPrice,result):Math.min(r.maxPrice,result)):null;
  }
  function listing(slot,r){
-  const item=p.c.items[slot],q=e.spare(slot,r),before=e.count(item),unitPrice=price(item,r,true);if(!q||!unitPrice||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(r.slot)||p.c.slots[r.slot])return false;
-  return e.perform('market.list',{slots:[slot],rule:r,guard:()=>!!p.c.stand&&!p.c.slots[r.slot]&&e.spare(slot,r)>=q,call:()=>p.call('trade',slot,r.slot,unitPrice,q),observe:()=>{const x=p.c.slots[r.slot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},details:{item:item.name,variant:identity(item),quantity:q,before}});
+  const item=p.c.items[slot],q=e.spare(slot,r),before=e.count(item),unitPrice=price(item,r,true),tradeSlot=r.slot;
+  if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(unitPrice)||unitPrice<1||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  // A listing can remain advertised after rules/market references have changed.
+  // Never publish an old ask below the currently permitted minimum price.
+  return e.perform('market.list',{slots:[slot],rule:r,guard:()=>{
+   const currentFloor=price(item,r,true);
+   return !!p.c.stand&&r.slot===tradeSlot&&!p.c.slots[tradeSlot]&&e.spare(slot,r)>=q&&
+    Number.isSafeInteger(currentFloor)&&unitPrice>=currentFloor;
+  },call:()=>p.call('trade',slot,tradeSlot,unitPrice,q),observe:()=>{const x=p.c.slots[tradeSlot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
  function buy(item,r){
   for(const player of Object.values(p.entities)){
@@ -69,8 +76,15 @@ export function createMarket(bot){
    (item.acc??'')===(chosen.acc??'')&&JSON.stringify(item.data)===JSON.stringify(chosen.data)&&
    e.spare(n,rule)>=quantity&&(!e.rules||e.rules(item,'inventory')?.action===rule.action));
  }
- function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||!bid?.b||!bid.rid||!variant(bid,item)||(bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1||!Number.isFinite(bid.price)||bid.price<=0||!(bid.price>=r.minPrice))continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(!saleInventorySafe(slot,r,q))continue;
- return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&h.stand&&samePlace(p.c,h)&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&Number.isFinite(b.price)&&b.price===bid.price&&variant(b,item)&&(b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&(b.q??1)>=q&&saleInventorySafe(slot,r,q);},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
+ function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||!bid?.b||!bid.rid||!variant(bid,item)||(bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1||!Number.isFinite(bid.price)||bid.price<=0||!(bid.price>=r.minPrice))continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid,unitPrice=bid.price,expectedGold=q*unitPrice;
+  if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(expectedGold)||expectedGold<1||!saleInventorySafe(slot,r,q))continue;
+  // Visible entity and its bid may be the SAME mutable object. Comparing
+  // b.price to bid.price would always succeed after an in-place price change.
+  // Capture the agreed price before scheduling the sale.
+  return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h?.type==='character'&&!!h.stand&&samePlace(p.c,h)&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&
+   Number.isFinite(b.price)&&b.price===unitPrice&&Number.isFinite(r.minPrice)&&unitPrice>=r.minPrice&&variant(b,item)&&
+   (b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&
+   Number.isSafeInteger(b.q??1)&&(b.q??1)>=q&&saleInventorySafe(slot,r,q);},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+expectedGold,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold}});
  }}return false;}
  // Never use historical ask prices as bids. Only offers from visible, reachable
  // characters, with matching variant, valid rid, remaining quantity and live price.

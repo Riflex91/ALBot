@@ -40,7 +40,7 @@ export function createAccount(bot){
   for(const member of peers){
    if(names.has(member.name))continue;names.add(member.name);
    const local=member.name===me.name,h=local?null:bot.transport.fresh(member.name);
-   if(!local&&(!h?.running||h.realm!==p.realm())){complete=false;continue;}
+   if(!local&&(!h?.running||h.realm!==p.realm()||h.journal||h.reserved||h.inventoryBlocked)){complete=false;continue;}
    const gold=local?p.c.gold:h.goldBalance;
    if(!Number.isSafeInteger(gold)||gold<0){complete=false;continue;}balances.push(gold);
    if(member.name===cfg.party.merchant){

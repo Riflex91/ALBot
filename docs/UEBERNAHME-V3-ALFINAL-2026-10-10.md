@@ -4,19 +4,27 @@ Stand 10. Oktober 2026. Nutzerauftrag: die geprüften Übernahmeempfehlungen im 
 
 ## Aufgaben und Status
 
-Alle sieben Aufgaben sind **offen**. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
+**Arbeitsbranch (noch nicht in main):** U01 und U02 sind implementiert und gezielt offline geprüft; npm test, npm run build, npm run build:editor sowie Browser-/Headless-Livebestätigung sind noch nicht ausgeführt. U03–U07 sind offen. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
 
-| ID | Reihenfolge | Aufgabe | Betroffene ALBot-Module |
+| ID | Reihenfolge | Aufgabe | Betroffene ALBot-Module | Stand im Arbeitsbranch |
 |---|---|---|---|
-| U01 | 1 | Gewählte Farmzeitmetrik durchgehend für Filter, Rangfolge, Routenkosten und Ziele verwenden | src/production/materials.mjs, production.mjs, planner.mjs; Aufrufer in src/world/team-plan.mjs prüfen |
-| U02 | 1 | Quest-/Event-Exchange an verifizierte Quelle und NPC binden; bei fehlendem Ziel warten | src/production/production.mjs, planner.mjs, materials.mjs; src/merchant/economy.mjs |
-| U03 | 2 | Merchant-Speed und Survival-/Rollenbedingungen vor Gear-Score berücksichtigen | src/production/gear.mjs, intelligence.mjs, allocation.mjs |
-| U04 | 2 | Mengenbegrenzte, aktuelle und variantengenaue Kaufgebote in Produktionsökonomie integrieren | src/production/intelligence.mjs; src/merchant/market.mjs, economy.mjs |
-| U05 | 3 | Accountweite konservative Risikoschicht ergänzen, bestehende harte Budgets erhalten | src/party/account.mjs; src/merchant/economy.mjs; src/production/production.mjs, intelligence.mjs |
-| U06 | 3 | Paladin-Aura mit vorausschauender Gefahr-/Überlebensbewertung ergänzen | src/party/aura.mjs; geeignete Risikosignale aus src/combat anbinden |
-| U07 | 2, nach U01/U02 | Offizielles get_progression() als zusätzliche Entscheidungsquelle integrieren | src/runtime/ports.mjs; src/world/strategy.mjs, team-plan.mjs; src/production/intelligence.mjs, production.mjs; src/party/account.mjs |
+| U01 | 1 | Gewählte Farmzeitmetrik durchgehend für Filter, Rangfolge, Routenkosten und Ziele verwenden | src/production/materials.mjs, production.mjs, planner.mjs; Aufrufer in src/world/team-plan.mjs prüfen | Implementiert; gezielter Offline-Nachweis, vollständiger Build und Live ausstehend |
+| U02 | 1 | Quest-/Event-Exchange an verifizierte Quelle und NPC binden; bei fehlendem Ziel warten | src/production/production.mjs, planner.mjs, materials.mjs; src/merchant/economy.mjs | Implementiert; gezielter Offline-Nachweis, vollständiger Build und Live ausstehend |
+| U03 | 2 | Merchant-Speed und Survival-/Rollenbedingungen vor Gear-Score berücksichtigen | src/production/gear.mjs, intelligence.mjs, allocation.mjs | Offen |
+| U04 | 2 | Mengenbegrenzte, aktuelle und variantengenaue Kaufgebote in Produktionsökonomie integrieren | src/production/intelligence.mjs; src/merchant/market.mjs, economy.mjs | Offen |
+| U05 | 3 | Accountweite konservative Risikoschicht ergänzen, bestehende harte Budgets erhalten | src/party/account.mjs; src/merchant/economy.mjs; src/production/production.mjs, intelligence.mjs | Offen |
+| U06 | 3 | Paladin-Aura mit vorausschauender Gefahr-/Überlebensbewertung ergänzen | src/party/aura.mjs; geeignete Risikosignale aus src/combat anbinden | Offen |
+| U07 | 2, nach U01/U02 | Offizielles get_progression() als zusätzliche Entscheidungsquelle integrieren | src/runtime/ports.mjs; src/world/strategy.mjs, team-plan.mjs; src/production/intelligence.mjs, production.mjs; src/party/account.mjs | Offen |
 
 Bei neuen Optionen den bestehenden Konfigurations-/Werkstattvertrag erweitern: editor/lib/schema.mjs, editor/lib/contract.mjs und src/config/full.mjs auf die konkrete Änderung prüfen. Keine wirkungslosen Felder oder still geänderten Profilwerte ausliefern. Die Tabelle nennt Einstiegspunkte, keinen Auftrag, jede Datei zu verändern.
+
+## Stand U01/U02 im Arbeitsbranch (10. Oktober 2026)
+
+- **U01 implementiert:** `materialSources` liefert `selectedHours` und sortiert nach der gewählten Mean-/P90-Metrik. `production.routeScore` nutzt denselben Wert für Beschaffungskosten, statt P90 nach dem Filter durch den Mittelwert zu ersetzen. Beobachtetes Testbeispiel: Mean bevorzugt `uncertain`, P90 bevorzugt `steady`.
+- **U02 implementiert:** `exchangeSource` verlangt für questgebundene Tauschmaterialien belegbare `G.quests`-Koordinaten oder eine passende NPC-/Map-Zuordnung. Eventquellen brauchen einen eindeutigen Eventschlüssel und aktiven `S`-Status. Planner und Routenbewertung schließen unbestätigte Quellen aus; die Ausführung prüft dieselbe Quellenidentität, NPC-Koordinaten und Eventaktivität erneut vor dem Dispatch. Gewöhnliche Exchanges bleiben erlaubt.
+- **Gezielt offline geprüft (ohne Spielkontakt):** 11 direkte Quellmodulprüfungen über den aktuellen Branchcode (Metrik, Route, Quest-/Event-Zuordnung und Ablauf) bestanden; zusätzlicher Aufruf der echten `createProduction.exchange`-Funktion mit kontrolliertem Runtime-Port bestätigte das Abweisen eines nachträglich inaktiven Events oder entfernten NPCs. Syntaxkompilierung der fünf geänderten Module/Tests über V8 bestanden. Vier Regressionstests wurden in `test/parity.test.mjs` ergänzt, aber **nicht** mit `node --test` ausgeführt.
+- **Nicht ausgeführt:** `npm test`, `npm run build`, `npm run build:editor`, Größenprüfung des neu gebauten Artefakts, Windows-/Linux- und Browser-/Headless-Livetest. `main` und verteilte Dist-/Persönlich-Artefakte unverändert. Keine Nutzerprofile, Reservierungen, Journale oder Budgets gelöscht oder geändert.
+- **Offen:** U03, U04, U05, U06, U07; vor Auslieferung vollständige vorgeschriebene Prüfungen auf dem Branch ausführen.
 
 ## Arbeitsregeln und Abschlusskriterien
 

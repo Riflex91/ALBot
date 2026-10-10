@@ -44,7 +44,11 @@ export function createGoldLogistics(bot){
    if(j.state==='offered'&&now-j.lastOffer>1500){j.lastOffer=now;send('goldOffer',{quantity:j.quantity});}
    if(j.state==='accepted'){
     const guard=()=>bot.running&&!bot.journal&&!bot.inventoryBlocked&&!(bot.logistics.itemReserved??bot.logistics.reserved)&&!bot.bank?.pending&&!!near(j.peer)&&transport.fresh(j.peer)?.session===j.session&&Number.isSafeInteger(p.c.gold)&&surplus()>=j.quantity;
-    exec.run('gold.send',['inventory','gold'],guard,()=>{if(!markTransfer())throw Error('Goldtransfer-Sperrfrist nicht dauerhaft gespeichert');j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
+    if(!guard())return;
+    // Persist before scheduling a value action, not inside the dispatch
+    // callback. A failed write means no send and no ambiguous value journal.
+    if(!markTransfer()){sendCancelled(j);job=null;next=now+15000;return;}
+    exec.run('gold.send',['inventory','gold'],guard,()=>{j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
    }return;
   }
   if(!offer||!cfg.merchant.collectGold||!cfg.merchant.enabled||me.role!=='farmer'||now<next||!idle()||surplus()<cfg.merchant.goldCollectBelow||!near(cfg.party.merchant))return;

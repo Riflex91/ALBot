@@ -968,3 +968,53 @@ test('U05 craft matching restores correct three-position order and never reuses 
  c.items[2]=null;
  assert.equal(action.guard(),false,'Losing a required grid stack blocks delayed craft');
 });
+
+test('U05 craft preparation refuses merging a stack protected by an effective keep rule',()=>{
+ const c={name:'M',items:[{name:'herb',q:2,protectedByGoal:true},{name:'herb',q:3},...Array(40).fill(null)]};
+ const G={items:{herb:{s:9999},result:{}},craft:{result:{cost:1,items:[[5,'herb']]}}};
+ let calls=0;
+ const e={remaining:()=>true,rules:i=>i.protectedByGoal?{action:'keep',keep:0,teamReserve:0}:{action:'craft',keep:0,teamReserve:0},
+  explicit:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  perform:()=>{calls++;return true;}};
+ const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>40};
+ const production=createProduction(bot),r={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',r),false);
+ assert.equal(calls,0,'A derived keep rule prevents inventory merges');
+ delete c.items[0].protectedByGoal;
+ assert.equal(production.craft('result',r),true);
+ assert.equal(calls,1,'An unprotected pair can still be merged to satisfy the recipe');
+});
+test('U05 deferred crafting merges recheck effective rules, production, limits and reserves',()=>{
+ const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};
+ const G={items:{herb:{s:9999},result:{}},craft:{result:{cost:1,items:[[5,'herb']]}}};
+ const cfg={production:{enabled:true,craft:true},general:{}};
+ let dispatch=null,materialKeep=0,active=true;
+ const e={remaining:()=>active,rules:()=>({action:'craft',keep:materialKeep,teamReserve:0}),explicit:()=>null,
+  safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  perform:(kind,opts)=>{assert.equal(kind,'inventory.merge');dispatch=opts;return true;}};
+ const bot={p:{c,G,read:()=>null},cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>40};
+ const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),true);
+ assert.deepEqual(dispatch.slots,[0,1]);
+ assert.equal(dispatch.guard(),true);
+ materialKeep=1;assert.equal(dispatch.guard(),false,'A newly reserved ingredient blocks pending merge');
+ materialKeep=0;cfg.production.craft=false;assert.equal(dispatch.guard(),false,'Disabled crafting rejects pending preparation');
+ cfg.production.craft=true;G.items.herb.s=4;assert.equal(dispatch.guard(),false,'A changed stack capacity rejects unsafe merge');
+ G.items.herb.s=9999;active=false;assert.equal(dispatch.guard(),false,'Exhausted production rule invalidates preparation');
+ active=true;c.items[0].l=true;assert.equal(dispatch.guard(),false,'Locked material rejects deferred merge');
+ c.items[0].l=false;assert.equal(dispatch.guard(),true);
+});
+test('U05 crafting merge selects only safe integer stacks within live stack capacity',()=>{
+ const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};
+ const G={items:{herb:{s:4},result:{}},craft:{result:{cost:1,items:[[5,'herb']]}}};
+ let queued=0;
+ const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i,
+  count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),perform:()=>{queued++;return true;}};
+ const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>40};
+ const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),false);
+ assert.equal(queued,0);
+ G.items.herb.s=5;
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(queued,1);
+});

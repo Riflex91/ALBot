@@ -41,6 +41,12 @@ export function createAccount(bot){
    if(names.has(member.name))continue;names.add(member.name);
    const local=member.name===me.name,h=local?null:bot.transport.fresh(member.name);
    if(!local&&(!h?.running||h.realm!==p.realm()||h.journal||h.reserved||h.inventoryBlocked)){complete=false;continue;}
+   // Gold transfers are asynchronous: a new receiver balance can overlap a stale
+   // sender heartbeat. Temporarily exclude both sides rather than double-count.
+   const transferAt=local?bot.gold?.transferAt:h.goldTransferAt;
+   const pendingTransfer=local?bot.gold?.reserved:h.goldTransferPending;
+   const holdMs=2*Math.max(15000,cfg.general?.messageTtlMs??15000);
+   if(pendingTransfer||(Number.isFinite(transferAt)&&transferAt>0&&Date.now()-transferAt<holdMs)){complete=false;continue;}
    const gold=local?p.c.gold:h.goldBalance;
    if(!Number.isSafeInteger(gold)||gold<0){complete=false;continue;}balances.push(gold);
    if(member.name===cfg.party.merchant){

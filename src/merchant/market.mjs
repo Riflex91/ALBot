@@ -57,10 +57,20 @@ export function createMarket(bot){
   }return false;
  }
  function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}
- function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!tradeSlot.startsWith('trade')||!bid?.b||!bid.rid||!variant(bid,item)||(bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1||!(bid.price>=r.minPrice)||bid.price<=0)continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(q<=0)continue;
- // trade_sell chooses inputs server-side: reject mixed/protected variants it could select.
- if(p.c.items.some(i=>i?.name===item.name&&(i.level??0)===(item.level??0)&&(!e.safe(i)||!variant(i,item)||(i.acc??'')!==(item.acc??'')||JSON.stringify(i.data)!==JSON.stringify(item.data))))continue;
- return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&h.stand&&samePlace(p.c,h)&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&b.price===bid.price&&variant(b,item)&&(b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&(b.q??1)>=q&&e.spare(slot,r)>=q;},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
+ // The official trade_sell API selects an inventory slot server-side. Every
+ // same-name/level stack must therefore be safe to consume, not just the slot
+ // proposed by the scheduler. Recheck this at dispatch after any inventory drift.
+ function saleInventorySafe(slot,rule,quantity){
+  const chosen=p.c.items?.[slot];
+  if(!chosen||!Number.isSafeInteger(quantity)||quantity<1)return false;
+  const same=p.c.items.map((item,n)=>({item,n})).filter(({item})=>item?.name===chosen.name&&(item.level??0)===(chosen.level??0));
+  if(!same.length)return false;
+  return same.every(({item,n})=>e.safe(item)&&variant(item,chosen)&&
+   (item.acc??'')===(chosen.acc??'')&&JSON.stringify(item.data)===JSON.stringify(chosen.data)&&
+   e.spare(n,rule)>=quantity&&(!e.rules||e.rules(item,'inventory')?.action===rule.action));
+ }
+ function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||!bid?.b||!bid.rid||!variant(bid,item)||(bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1||!Number.isFinite(bid.price)||bid.price<=0||!(bid.price>=r.minPrice))continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(!saleInventorySafe(slot,r,q))continue;
+ return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&h.stand&&samePlace(p.c,h)&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&Number.isFinite(b.price)&&b.price===bid.price&&variant(b,item)&&(b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&(b.q??1)>=q&&saleInventorySafe(slot,r,q);},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
  }}return false;}
  // Never use historical ask prices as bids. Only offers from visible, reachable
  // characters, with matching variant, valid rid, remaining quantity and live price.

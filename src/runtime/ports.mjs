@@ -21,7 +21,10 @@ export function createPorts(root){
        nextSkill:id=>parent.next_skill?.[id]??0});
      }return progressionRuntime.read(options);
     },
-    closeProgression(){try{progressionRuntime?.detach?.();const f=find('get_progression');f?.[1]?.runtime?.detach?.();}catch{}progressionRuntime=null;progressionDefinitions=null;},
+    // Only detach a runtime created by this port. The official get_progression
+    // wrapper owns a shared singleton; stopping ALBot must not detach listeners
+    // still in use by the game or another code client.
+    closeProgression(){try{progressionRuntime?.detach?.();}catch{}progressionRuntime=null;progressionDefinitions=null;},
     call(name,...args){const f=find(name);if(!f)throw Error('Spiel-API fehlt: '+name);return f[1].apply(f[0],args);},
     get c(){return root.character;},get G(){return root.G??parent.G;},get entities(){return parent.entities??{};},
     realm(){return String(parent.server_region??root.server_region??'')+String(parent.server_identifier??root.server_identifier??'');},

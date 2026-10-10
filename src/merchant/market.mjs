@@ -1,4 +1,4 @@
-import {identity,fingerprint,distance} from '../core/policy.mjs';
+import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
 export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
@@ -57,16 +57,16 @@ export function createMarket(bot){
   }return false;
  }
  function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}
- function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!tradeSlot.startsWith('trade')||!bid?.b||!bid.rid||!variant(bid,item)||!(bid.price>=r.minPrice)||bid.price<=0)continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(q<=0)continue;
+ function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!tradeSlot.startsWith('trade')||!bid?.b||!bid.rid||!variant(bid,item)||(bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||!(bid.price>=r.minPrice)||bid.price<=0)continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(q<=0)continue;
  // trade_sell chooses inputs server-side: reject mixed/protected variants it could select.
  if(p.c.items.some(i=>i?.name===item.name&&(i.level??0)===(item.level??0)&&(!e.safe(i)||!variant(i,item))))continue;
- return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&b.price===bid.price&&variant(b,item)&&(b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&(b.q??1)>=q&&e.spare(slot,r)>=q;},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
+ return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&h.stand&&samePlace(p.c,h)&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&b.price===bid.price&&variant(b,item)&&(b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&(b.q??1)>=q&&e.spare(slot,r)>=q;},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
  }}return false;}
  // Never use historical ask prices as bids. Only offers from visible, reachable
  // characters, with matching variant, valid rid, remaining quantity and live price.
  function liveBids(item){
   const rows=[];for(const player of Object.values(p.entities??{})){
-   if(!player||player.name===p.c.name||player.type!=='character'||!player.stand||player.map!==p.c.map||String(player.in??player.map)!==String(p.c.in??p.c.map)||!(distance(p.c,player)<=300))continue;
+   if(!player||player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||!(distance(p.c,player)<=300)||(typeof bot.entity==='function'&&!bot.entity(player.id??player.name)))continue;
    for(const [slot,bid] of Object.entries(player.slots??{})){
     if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid?.b||!bid.rid||!variant(bid,item)||
        (bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||

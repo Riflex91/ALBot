@@ -60,8 +60,36 @@ export function createMarket(bot){
  function sellToBid(slot,r){const item=p.c.items[slot];if(!e.safe(item)||!p.has('trade_sell'))return false;for(const player of Object.values(p.entities)){if(player.name===p.c.name||player.type!=='character'||distance(p.c,player)>300)continue;for(const [tradeSlot,bid] of Object.entries(player.slots??{})){if(!tradeSlot.startsWith('trade')||!bid?.b||!bid.rid||!variant(bid,item)||!(bid.price>=r.minPrice)||bid.price<=0)continue;const q=Math.min(e.spare(slot,r),bid.q??1),before=e.count(item),gold=p.c.gold,rid=bid.rid;if(q<=0)continue;
  // trade_sell chooses inputs server-side: reject mixed/protected variants it could select.
  if(p.c.items.some(i=>i?.name===item.name&&(i.level??0)===(item.level??0)&&(!e.safe(i)||!variant(i,item))))continue;
- return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&b.price===bid.price&&e.spare(slot,r)>=q;},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
+ return e.perform('market.sell',{slots:[slot],rule:r,guard:()=>{const h=bot.entity(player.id??player.name),b=h?.slots?.[tradeSlot];return h&&distance(p.c,h)<=300&&b?.rid===rid&&b.b&&b.price===bid.price&&variant(b,item)&&(b.acc??'')===(item.acc??'')&&JSON.stringify(b.data)===JSON.stringify(item.data)&&(b.q??1)>=q&&e.spare(slot,r)>=q;},call:()=>p.call('trade_sell',bot.entity(player.id??player.name),tradeSlot,q),observe:()=>e.count(item)===before-q&&p.c.gold>=gold+q*bid.price,details:{item:item.name,variant:identity(item),quantity:q,before,expectedGold:q*bid.price}});
  }}return false;}
+ // Never use historical ask prices as bids. Only offers from visible, reachable
+ // characters, with matching variant, valid rid, remaining quantity and live price.
+ function liveBids(item){
+  const rows=[];for(const player of Object.values(p.entities??{})){
+   if(!player||player.name===p.c.name||player.type!=='character'||!player.stand||player.map!==p.c.map||String(player.in??player.map)!==String(p.c.in??p.c.map)||!(distance(p.c,player)<=300))continue;
+   for(const [slot,bid] of Object.entries(player.slots??{})){
+    if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid?.b||!bid.rid||!variant(bid,item)||
+       (bid.acc??'')!==(item.acc??'')||JSON.stringify(bid.data)!==JSON.stringify(item.data)||
+       !Number.isFinite(bid.price)||bid.price<=0||!Number.isSafeInteger(bid.q??1)||(bid.q??1)<1)continue;
+    rows.push({buyer:player.name??player.id,id:player.id??player.name,slot,rid:bid.rid,price:bid.price,quantity:bid.q??1,distance:distance(p.c,player)});
+   }
+  }return rows.sort((a,b)=>b.price-a.price||a.distance-b.distance);
+ }
+ function bidValuation(item,quantity=1,npcUnit=null,{future=true}={}){
+  const base=Number.isFinite(npcUnit)&&npcUnit>=0?npcUnit:e.value(item);
+  if(!Number.isFinite(base)||base<0||!Number.isSafeInteger(quantity)||quantity<1)return {unitValue:base,covered:0,reason:'unpriced'};
+  let remaining=quantity,increment=0,covered=0,travelGold=0;
+  for(const bid of liveBids(item)){
+   if(remaining<=0)break;if(bid.price<=base)continue;
+   const take=Math.min(remaining,bid.quantity);remaining-=take;covered+=take;increment+=take*(bid.price-base);
+   // Deliberately conservative opportunity cost for collecting reachable offers.
+   travelGold+=Math.max(0,bid.distance-80)/Math.max(1,p.c.speed??40)/3600*Math.max(0,cfg.production.goldPerHour??0);
+  }
+  // Future mutation output has no guaranteed purchaser. Retain only a quarter
+  // of the observed uplift; immediate decisions still discount the live offer.
+  const uplift=Math.max(0,increment*(future?.25:.8)-travelGold);
+  return {unitValue:base+uplift/quantity,covered,npcUnit:base,future,reason:covered?'visible-bid-discounted':'npc-only'};
+ }
  function analysis(item){observe();const rows=history.filter(x=>variant(x.item,item)&&Date.now()-x.at<cfg.merchant.marketHistoryTtlMs),asks=rows.filter(x=>!x.side||x.side==='SELL').map(x=>x.price),bids=rows.filter(x=>x.side==='BUY').map(x=>x.price);const ask=asks.length?Math.min(...asks):null,bid=bids.length?Math.max(...bids):null;return {askingOnly:true,providers:new Set(rows.map(x=>x.seller)).size,ask,bid,spread:ask&&bid?(ask-bid)/ask:null,reference:quote(item),reason:'Beobachtete Angebote, keine bestätigten Handelsumsätze'};}
- return {listing,sellToBid,buy,wishlist,background,quote,analysis,status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000}),close(){scanGeneration++;secondhand=[];}};
+ return {listing,sellToBid,buy,wishlist,background,quote,analysis,liveBids,bidValuation,status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000}),close(){scanGeneration++;secondhand=[];}};
 }

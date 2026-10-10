@@ -537,3 +537,44 @@ test('U04 passive market wishlist verifies target demand and live price before p
  rule.maxCount=3;c.slots.trade1={name:'other'};assert.equal(guard(),false);
  delete c.slots.trade1;assert.equal(guard(),true);
 });
+
+test('U05 craft dispatch rejects changed recipe, ingredient quantity, and protected stock',()=>{
+ const recipe={cost:5,q:1,items:[[2,'ore']]};
+ const c={name:'M',items:[{name:'ore',q:4},...Array(41).fill(null)]};
+ const p={c,G:{items:{ore:{s:9999},ingot:{}},craft:{ingot:recipe}},read:()=>null};
+ const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{testLogging:undefined}};
+ let guard=null,policy={action:'craft',keep:0,teamReserve:0};
+ const e={remaining:()=>true,rules:()=>policy,explicit:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  perform:(kind,opts)=>{assert.equal(kind,'craft');guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>c.items.filter(x=>!x).length};
+ const production=createProduction(bot),rule={item:'ingot',action:'craft',recipe:'ingot',targetCount:2,maxCount:2};
+ assert.equal(production.craft('ingot',rule),true);
+ assert.equal(guard(),true);
+ recipe.cost=200;assert.equal(guard(),false,'Recipe price changed before dispatch');recipe.cost=5;
+ recipe.items[0][0]=3;assert.equal(guard(),false,'Live ingredients changed');recipe.items[0][0]=2;
+ c.items[0].q=1;assert.equal(guard(),false,'Ingredient amount no longer sufficient');c.items[0].q=4;
+ policy={action:'keep',keep:0,teamReserve:0};assert.equal(guard(),false,'Explicit keep protects ingredients');
+ policy={action:'craft',keep:3,teamReserve:0};assert.equal(guard(),false,'New stock reserve protects materials');
+ policy={action:'craft',keep:0,teamReserve:0};
+ cfg.production.craft=false;assert.equal(guard(),false,'Production disabled before dispatch');cfg.production.craft=true;
+ rule.targetCount=0;assert.equal(guard(),false,'Output cap decreased');rule.targetCount=2;
+ c.items[1]={name:'ingot',level:0,q:2};assert.equal(guard(),false,'Goal was fulfilled by another action');c.items[1]=null;
+ assert.equal(guard(),true);
+});
+test('U05 craft dispatch rejects reselected alias and recipe-output drift',()=>{
+ const original={cost:1,items:[[1,'ore']],output:{name:'ingot'}};
+ const c={items:[{name:'ore',q:3},...Array(41).fill(null)]};
+ const G={items:{ore:{s:99},ingot:{}},craft:{alias:original}};
+ const p={c,G,read:()=>null},cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
+ let guard=null;
+ const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  perform:(kind,opts)=>{guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>40},rule={item:'ingot',action:'craft',recipe:'alias',targetCount:3,maxCount:3};
+ const production=createProduction(bot);
+ assert.equal(production.craft('ingot',rule),true);assert.equal(guard(),true);
+ G.craft.alias={cost:1,items:[[1,'ore']],output:{name:'other'}};
+ assert.equal(guard(),false,'A replaced recipe must not be dispatched');
+ G.craft.alias={...original};
+ assert.equal(guard(),true);
+ rule.recipe='other';assert.equal(guard(),false,'A changed explicit recipe selection invalidates authorization');
+});

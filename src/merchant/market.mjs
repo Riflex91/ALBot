@@ -41,9 +41,16 @@ export function createMarket(bot){
   }const d=cfg.merchant.position.enabled?{...cfg.merchant.position,in:cfg.merchant.position.map}:e.destination('citizen22');if(d&&!e.at(d)){e.travel(d,'Marktsuche');return true;}return false;
  }
  function wishlist(item,r){
-  const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice;if(!unitPrice||q<=0||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(r.slot)||p.c.slots[r.slot])return false;
-  // Reserve full maximum exposure when publishing a passive purchase order.
-  return e.perform('market.wishlist',{cost,rule:r,guard:()=>!!p.c.stand&&!p.c.slots[r.slot]&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&Number.isFinite(price(item,r))&&unitPrice<=price(item,r),call:()=>p.call('wishlist',r.slot,item.name,unitPrice,item.level??0,q),observe:()=>{const x=p.c.slots[r.slot];return x?.name===item.name&&x.b&&x.price===unitPrice;},details:{item:item.name,quantity:q}});
+  const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice,tradeSlot=r.slot;
+  if(!Number.isSafeInteger(unitPrice)||unitPrice<1||!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(cost)||
+    !p.c.stand||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  // A passive buy order reserves real gold. Pin both its posting slot and
+  // maximum exposure to the original authorized decision.
+  return e.perform('market.wishlist',{cost,rule:r,guard:()=>{
+   const liveCeiling=price(item,r);
+   return !!p.c.stand&&r.slot===tradeSlot&&!p.c.slots[tradeSlot]&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&
+    Number.isSafeInteger(liveCeiling)&&unitPrice<=liveCeiling;
+  },call:()=>p.call('wishlist',tradeSlot,item.name,unitPrice,item.level??0,q),observe:()=>{const x=p.c.slots[tradeSlot];return x?.name===item.name&&x.b&&x.price===unitPrice;},details:{item:item.name,quantity:q}});
  }
  function background(){
   observe();

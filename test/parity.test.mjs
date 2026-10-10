@@ -588,6 +588,8 @@ test('U04 passive market wishlist verifies target demand and live price before p
  rule.maxPrice=200;rule.maxCount=1;assert.equal(guard(),false);
  rule.maxCount=3;c.slots.trade1={name:'other'};assert.equal(guard(),false);
  delete c.slots.trade1;assert.equal(guard(),true);
+ rule.slot='trade2';assert.equal(guard(),false,'Changed trade slot cannot redirect an existing order');
+ rule.slot='trade1';assert.equal(guard(),true);
 });
 
 test('U05 craft dispatch rejects changed recipe, ingredient quantity, and protected stock',()=>{
@@ -799,4 +801,18 @@ test('U04 sale refuses a live buyer bid whose total payout overflows safe intege
  const market=createMarket({p:{c,entities:{B:buyer},has:()=>true,read:()=>null},me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy:{safe:()=>true,spare:()=>3,count:()=>3,perform:()=>{queued++;return true;}},exec:{},entity:()=>buyer});
  assert.equal(market.sellToBid(0,{action:'sell',minPrice:1}),false);
  assert.equal(queued,0);
+});
+
+test('U04 passive wishlist refuses an unsafe maximum escrow value',()=>{
+ const item={name:'ring',level:0};
+ const c={name:'M',items:[],stand:true,slots:{}};
+ let queued=0;
+ const bot={p:{c,entities:{}},cfg:{merchant:{marketHistory:false},general:{}},me:{name:'M'},
+  economy:{count:()=>0,perform:()=>{queued++;return true;}},exec:{}};
+ const r={action:'wishlist',priceSource:'fixed',maxPrice:Number.MAX_SAFE_INTEGER,batch:2,targetCount:2,maxCount:2,slot:'trade1'};
+ assert.equal(createMarket(bot).wishlist(item,r),false);
+ assert.equal(queued,0,'No buy-order escrow can be reserved with unsafe money arithmetic');
+ r.maxPrice=150;
+ assert.equal(createMarket(bot).wishlist(item,r),true);
+ assert.equal(queued,1);
 });

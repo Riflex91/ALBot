@@ -17,8 +17,14 @@ export function chooseCombatLeader(members){return members.filter(x=>x.running&&
 // gold are never added as estimates. Missing/future/stale peers fail conservative.
 export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conservative'){
  const observed=Array.isArray(balances)?balances.filter(x=>Number.isSafeInteger(x)&&x>=0):[];
- const complete=observed.length>0&&observed.length===balances?.length&&Number.isSafeInteger(bankGold)&&bankGold>=0;
- const liquidFloor=observed.reduce((n,x)=>n+x,0)+(Number.isSafeInteger(bankGold)&&bankGold>=0?bankGold:0);
+ const bankValid=Number.isSafeInteger(bankGold)&&bankGold>=0;
+ // JS numbers cannot represent arbitrary account totals exactly. Never promote
+ // overflowed balances to a "complete" wealthy account with spending authority.
+ let liquidFloor=0,overflow=false;
+ for(const amount of observed){if(!Number.isSafeInteger(liquidFloor+amount)){overflow=true;break;}liquidFloor+=amount;}
+ if(!overflow&&bankValid){if(Number.isSafeInteger(liquidFloor+bankGold))liquidFloor+=bankGold;else overflow=true;}
+ if(overflow)liquidFloor=0;
+ const complete=!overflow&&observed.length>0&&observed.length===balances?.length&&bankValid;
  const wealth=complete?liquidFloor:null;
  const bound=Number.isFinite(lossBudget)&&lossBudget>=0?lossBudget:0;
  const normal=complete&&wealth>=(previous==='normal'?bound*7:bound*10);
@@ -56,12 +62,17 @@ export function createAccount(bot){
    }
   }
   const snap=accountRiskSnapshot(complete?balances:[...balances,null],bankGold,cfg.production.lossBudget,riskMode);
-  riskMode=snap.mode;return snap;
+  // Transport messages and local storage do not provide atomic account-wide
+  // reservations. Allocate each configured team member a deterministic share
+  // instead of letting every character independently exhaust the same cap.
+  const memberCount=Math.max(1,names.size);
+  const sessionRiskLimit=Math.floor(snap.riskLimit/memberCount);
+  riskMode=snap.mode;return {...snap,memberCount,sessionRiskLimit};
  }
  function spendAllowed(cost,loss=0){
   if(cost===0&&loss===0)return true;
-  if(!Number.isFinite(cost)||cost<0||!Number.isFinite(loss)||loss<0)return false;
-  const snap=risk();return cost+loss<=snap.riskLimit;
+  if(!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(loss)||loss<0||!Number.isSafeInteger(cost+loss))return false;
+  const snap=risk();return cost+loss<=snap.sessionRiskLimit;
  }
  function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence};}
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;

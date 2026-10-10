@@ -4,7 +4,7 @@ Stand 10. Oktober 2026. Nutzerauftrag: die geprüften Übernahmeempfehlungen im 
 
 ## Aufgaben und Status
 
-**Arbeitsbranch (noch nicht in main):** U01–U06 sind implementiert und automatisiert getestet, U07 ist als sichere, begrenzte Anbindung der offiziellen Progression-API implementiert. GitHub Actions hat `npm test`, `npm run build`, `npm run build:editor` und Bundle-Integrität unter Linux bestanden; unter Windows hat `scripts/VERIFY-U01-U07.ps1` denselben erfolgreichen Prüfumfang bestätigt. **Je Plattform 205/205 Tests, 284.297 Bytes und identischer SHA-256.** Browser-/eigene Headless-API-Verfügbarkeit und die gemeinsame echte Spiel-Livebestätigung stehen aus. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
+**Arbeitsbranch (noch nicht in main):** U01–U06 sind implementiert und automatisiert getestet, U07 ist als sichere, begrenzte Anbindung der offiziellen Progression-API implementiert. GitHub Actions hat `npm test`, `npm run build`, `npm run build:editor` und Bundle-Integrität unter Linux bestanden; unter Windows hat `scripts/VERIFY-U01-U07.ps1` denselben erfolgreichen Prüfumfang bestätigt. **Je Plattform 207/207 Tests, 284.400 Bytes und identischer SHA-256.** Browser-/eigene Headless-API-Verfügbarkeit und die gemeinsame echte Spiel-Livebestätigung stehen aus. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
 
 | ID | Reihenfolge | Aufgabe | Betroffene ALBot-Module | Stand im Arbeitsbranch |
 |---|---|---|---|
@@ -73,6 +73,12 @@ Der Anschluss an die tatsächliche klassische Bundle-Ladefolge wurde mit sechs z
 Der [offizielle CODE-Wrapper `trade_sell`](https://github.com/kaansoral/adventureland_mongodb/blob/2148cf25d01060f54bcab01dfa7c2cf5b7baf374/js/runner_functions.js#L1258-L1263) bestätigt ausdrücklich, dass der Spielserver das verkaufte Item selbst aus dem Inventar wählt. Deshalb prüft `src/merchant/market.mjs` alle Inventarstapel mit dem passenden Itemnamen und Level. Jeder potenziell auswählbare Stapel muss dieselbe Variante einschließlich `acc`/`data` haben, ungesperrt und durch die zugehörigen Inventarregeln freigegeben sein und die komplette geplante Verkaufsmenge tragen können. Der Guard prüft dies erneut vor dem Dispatch; gesplittete oder geschützte Stapel blockieren den Verkauf. Nicht endliche Preise und Slots außerhalb `trade1` bis `trade16` werden ebenfalls abgewiesen.
 
 **Abnahme:** Die zwei neuen U04-Regressionstests und alle bisherigen Tests ergeben **205/205 erfolgreich unter Linux und Windows**, einschließlich des klassischen Runtime- und Editor-Builds. [GitHub Actions](https://github.com/Riflex91/ALBot/actions/runs/38078612687): Shared Bundle **284.297 Bytes**, SHA-256 `129e57235ca11bfc41bb92d2767708c3e376458a1dd07687fc3fb44f47c5b7c2` auf beiden Plattformen. Die Prüfungen simulieren Verkaufsguards; kein realer Kauf/Verkauf oder Deployment wurde ausgeführt.
+
+### U04 – Market-Buy gegen Instanzwechsel und veraltete Angebote
+
+`src/merchant/market.mjs` prüft nun bereits bei der Auswahl eines Spielermarkthändlers `samePlace()` mit **Karte und Instanz**; reine XY-Distanz reicht nicht. Unmittelbar vor `trade_buy` werden aktiver Stand und Charaktertyp, `samePlace()`, Distanz, identische `rid`, Menge, nicht veränderte Preise, Verkaufsangebot statt Buy-Order/Giveaway und die erneut ermittelte gültige Preisobergrenze kontrolliert. Das verhindert eine Wertaktion auf Basis einer inzwischen veränderten Marktansicht. Die bestehende Budget-/Checkpointabsicherung bleibt unverändert.
+
+**Abnahme:** Zwei zusätzliche U04-Market-Buy-Regressionstests, insgesamt **207/207 Tests auf Linux und Windows**. [GitHub Actions 38079028713](https://github.com/Riflex91/ALBot/actions/runs/38079028713); klassisches Runtime-Bundle **284.400 Bytes**, SHA-256 `3da165e6047883fb2b9ab44a7af0905ec3416c3122f470429e485ff18fbb9e79` auf beiden Plattformen; Werkstatt, Syntax, Limit und Manifestintegrität bestanden. Offline-Simulationen, kein echter Markt-Kauf.
 
 ## Arbeitsregeln und Abschlusskriterien
 

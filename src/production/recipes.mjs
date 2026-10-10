@@ -35,3 +35,29 @@ export function recipeIngredients(recipe){
  }
  return result;
 }
+
+// Find a one-to-one inventory assignment for positional craft recipes.
+// A first-fit scan can reserve the only large stack for a small ingredient
+// and reject an otherwise valid craft. Augmenting paths find a complete
+// matching without changing the canonical recipe argument order.
+export function matchRecipeSlots(candidates){
+ if(!Array.isArray(candidates)||candidates.length<1||candidates.length>9||
+    candidates.some(row=>!Array.isArray(row)||row.length===0))return null;
+ const slotOwner=new Map();
+ function claim(row,seen){
+  for(const slot of candidates[row]){
+   if(!Number.isSafeInteger(slot)||slot<0||seen.has(slot))continue;
+   seen.add(slot);
+   const previous=slotOwner.get(slot);
+   if(previous===undefined||claim(previous,seen)){slotOwner.set(slot,row);return true;}
+  }
+  return false;
+ }
+ // Tackle the most restricted recipe positions first, while keeping the
+ // returned vector indexed by the original official craft grid positions.
+ const order=candidates.map((_,i)=>i).sort((a,b)=>candidates[a].length-candidates[b].length||a-b);
+ for(const row of order)if(!claim(row,new Set()))return null;
+ const result=Array(candidates.length);
+ for(const [slot,row] of slotOwner)result[row]=slot;
+ return result;
+}

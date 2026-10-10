@@ -873,3 +873,54 @@ test('U05 craft duplicate inputs never consume protected aggregate reserves or s
  assert.equal(production.craft('result',rule),false,'One merged stack cannot fill two recipe grid positions');
  assert.equal(attempted,1);
 });
+
+test('U05 recipe material totals preserve separate levels of the same ingredient',()=>{
+ const recipe={cost:7,items:[[1,'ring',0],[1,'ring',2],[2,'ring',0]]};
+ assert.deepEqual(recipeGridIngredients(recipe),[
+  {item:'ring',level:0,quantity:1},{item:'ring',level:2,quantity:1},{item:'ring',level:0,quantity:2}
+ ]);
+ assert.deepEqual(recipeIngredients(recipe),[
+  {item:'ring',level:0,quantity:3},{item:'ring',level:2,quantity:1}
+ ]);
+ const G={items:{ring:{upgrade:true},bundle:{}},craft:{bundle:recipe}};
+ const steps=planProduction({G,item:'bundle',stock:(name,level)=>name==='ring'?(level===0?3:level===2?1:0):0,bank:()=>0,canBuy:()=>false,allowed:['craft']});
+ assert.deepEqual(steps.map(x=>x.kind),['craft']);
+ assert.deepEqual(steps.reservations,[{item:'ring',level:0,quantity:3},{item:'ring',level:2,quantity:1}]);
+});
+test('U05 crafting selects mixed upgrade levels in original recipe order and keeps level-specific reserves',()=>{
+ const recipe={cost:7,items:[[1,'ring',0],[1,'ring',2],[2,'ring',0]]};
+ const c={name:'M',items:[{name:'ring',level:0,q:1},{name:'ring',level:2},{name:'ring',level:0,q:2},...Array(38).fill(null)]};
+ const G={items:{ring:{s:9999},bundle:{}},craft:{bundle:recipe}},p={c,G,read:()=>null,call:()=>{}};
+ const cfg={production:{enabled:true,craft:true,goals:[],autonomy:false},merchant:{minFreeSlots:0},general:{}};
+ let posted=null,level2Keep=0;
+ const economy={remaining:()=>true,rules:i=>({action:'craft',keep:(i?.level??0)===2?level2Keep:0,teamReserve:0}),safe:i=>!!i&&!i.l,
+  count:i=>c.items.reduce((sum,x)=>sum+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0),
+  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(kind,details)=>{assert.equal(kind,'craft');posted=details;return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>38},production=createProduction(bot);
+ const rule={item:'bundle',action:'craft',targetCount:1,maxCount:1,recipe:'bundle'};
+ level2Keep=1;assert.equal(production.craft('bundle',rule),false,'The upgraded ring is protected');
+ level2Keep=0;assert.equal(production.craft('bundle',rule),true);
+ assert.deepEqual(posted.slots,[0,1,2]);
+ assert.equal(posted.guard(),true);
+ level2Keep=1;assert.equal(posted.guard(),false,'Level-specific reserve changed before dispatch');
+ level2Keep=0;assert.equal(posted.guard(),true);
+});
+test('U05 malformed crafting definitions fail closed without throwing from production tick',()=>{
+ const recipes=[
+  {cost:1,items:Array.from({length:10},()=>[1,'ore'])},
+  {cost:1,items:[[0,'ore']]},
+  {cost:1,items:[[2,'ore',-1]]},
+  {cost:1,items:[[Number.MAX_SAFE_INTEGER,'ore'],[1,'ore']]}
+ ];
+ const c={name:'M',items:[{name:'ore',q:5},...Array(40).fill(null)]};
+ const G={items:{ore:{},result:{}},craft:{result:recipes[0]}};
+ let queued=0,errors=0;
+ const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true},general:{}},
+  me:{name:'M',role:'merchant'},event:(name)=>{if(name==='production.craft-unavailable')errors++;},
+  economy:{remaining:()=>true,perform:()=>{queued++;return true;}},free:()=>40};
+ const production=createProduction(bot),rule={action:'craft',item:'result',recipe:'result',targetCount:1,maxCount:1};
+ for(const recipe of recipes){G.craft.result=recipe;assert.doesNotThrow(()=>production.craft('result',rule));assert.equal(production.craft('result',rule),false);}
+ assert.equal(queued,0);
+ assert.equal(errors,recipes.length*2);
+});

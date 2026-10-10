@@ -147,3 +147,57 @@ test('full classic artifact applies automatic shared spawn ranking to actual att
 
 
 test('tick error logs a warning and retains one live scheduler instead of automatic STOP',()=>{const a=harness();a.load();a.root.ALBot.start();a.root.parent.entities={goo:{id:'goo',type:'monster',mtype:'goo',hp:100,x:1,y:1}};a.root.can_attack=()=>{throw Error('Injected API failure');};const [id,tick]=[...a.timers.entries()][0];a.timers.delete(id);tick();assert.equal(a.root.ALBot.status().running,true);assert.equal(a.timers.size,1);const report=JSON.parse(a.root.ALBot.testReport());assert.ok(report.events.some(e=>e.type==='runtime.warning'&&e.continued));assert.equal(report.events.some(e=>e.type==='stop'),false);a.root.ALBot.dispose();});
+
+test('U07 full runtime reads official safe farm advice only after start in browser and headless',()=>{
+ for(const browser of [false,true]){
+  const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+  cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];
+  cfg.general.autostart=false;cfg.party.enabled=false;cfg.general.ui=false;cfg.world.quests=false;
+  cfg.farming.loot=false;cfg.farming.autoTravel=false;cfg.farming.autoTargets=false;cfg.farming.targets=['goo'];
+  a.root.ALBotConfig=cfg;Object.assign(a.c,{frequency:1,attack:30,hp:100,max_hp:100,gold:500});
+  a.root.G.monsters.goo={hp:100,attack:1,frequency:.5,xp:10,respawn:1};
+  if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
+  const reads=[];a.root.parent.progression_read=opts=>{
+   reads.push(opts);return {version:1,ready:true,at:Date.now(),goal:{kind:'farm',monster:'goo'},rows:[
+    {kind:'farm',priority:100,action:{kind:'farm',route:{monster:'goo',map:'main',safe:true}}},
+    {kind:'buy',priority:2000,action:{kind:'buy',name:'expensive'}}],plans:[]};
+  };
+  a.load();assert.equal(reads.length,0,'Disabled autostart must not initialize observer');
+  assert.equal(a.root.ALBot.start(),true);assert.equal(reads.length,1);
+  const state=JSON.parse(a.root.ALBot.testReport()).account.progression;
+  assert.equal(state.reason,'validated-farm-hints',JSON.stringify(state));
+  assert.deepEqual(state.rows.map(r=>r.monster),['goo']);
+  assert.equal(reads[0].allowPvp,false);
+  a.root.ALBot.pause();assert.equal(a.timers.size,0);
+  a.root.ALBot.start();assert.equal(reads.length,2,'Resume must reread official Guide after shutdown');
+  a.root.ALBot.dispose();assert.equal(a.timers.size,0);
+ }
+});
+test('U07 full runtime without official API stays active in both modes',()=>{
+ for(const browser of [false,true]){
+  const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+  cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];
+  cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.autoTravel=false;
+  a.root.ALBotConfig=cfg;
+  if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
+  a.load();assert.equal(a.root.ALBot.status().running,true);
+  const guide=JSON.parse(a.root.ALBot.testReport()).account.progression;
+  assert.equal(guide.reason,'official-api-unavailable');assert.equal(guide.rows.length,0);
+  a.root.ALBot.dispose();
+ }
+});
+test('U07 full runtime manages official factory observers across pause/reload',()=>{
+ const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema),states=[];
+ cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];
+ cfg.general.autostart=false;cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;
+ a.root.ALBotConfig=cfg;a.root.parent.ProgressionRuntime={create:env=>{
+  const instance={reads:0,detached:false,read:()=>{instance.reads++;return {version:1,ready:true,at:Date.now(),rows:[],plans:[]};},detach:()=>{instance.detached=true;}};
+  states.push(instance);return instance;
+ }};
+ a.load();assert.equal(states.length,0);a.root.ALBot.start();
+ assert.equal(states.length,1);assert.equal(states[0].reads,1);
+ a.root.ALBot.pause();assert.equal(states[0].detached,true);
+ a.root.ALBot.start();assert.equal(states.length,2);
+ a.load();assert.equal(states[1].detached,true);
+ a.root.ALBot.dispose();
+});

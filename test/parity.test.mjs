@@ -545,7 +545,7 @@ test('U05 craft dispatch rejects changed recipe, ingredient quantity, and protec
  const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{testLogging:undefined}};
  let guard=null,policy={action:'craft',keep:0,teamReserve:0};
  const e={remaining:()=>true,rules:()=>policy,explicit:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
-  perform:(kind,opts)=>{assert.equal(kind,'craft');guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
+  destination:()=>({map:'main',in:'main',x:0,y:0}),perform:(kind,opts)=>{assert.equal(kind,'craft');guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>c.items.filter(x=>!x).length};
  const production=createProduction(bot),rule={item:'ingot',action:'craft',recipe:'ingot',targetCount:2,maxCount:2};
  assert.equal(production.craft('ingot',rule),true);
@@ -568,7 +568,7 @@ test('U05 craft dispatch rejects reselected alias and recipe-output drift',()=>{
  const p={c,G,read:()=>null},cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
  let guard=null;
  const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
-  perform:(kind,opts)=>{guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
+  destination:()=>({map:'main',in:'main',x:0,y:0}),perform:(kind,opts)=>{guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>40},rule={item:'ingot',action:'craft',recipe:'alias',targetCount:3,maxCount:3};
  const production=createProduction(bot);
  assert.equal(production.craft('ingot',rule),true);assert.equal(guard(),true);

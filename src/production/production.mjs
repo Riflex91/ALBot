@@ -1,6 +1,6 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
 import {estimateRoutes} from './costs.mjs';
-import {materialSources,materialDrops} from './materials.mjs';
+import {materialSources,materialDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients} from './recipes.mjs';
@@ -96,15 +96,19 @@ export function createProduction(bot){
   if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item)||!e.travel(d,'Craft '+name))return false;
   return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.at(d),call:()=>p.call('craft',...slots),observe:()=>total()>before&&requirements.every(x=>e.count(x.item)<=x.before-x.q),details:{item:name,recipe:found.key,before},timeout:45000});
  }
- function exchange(slot,r){
-  const i={...p.c.items[slot]},q=p.G.items[i.name]?.e;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.exchange||!Number.isSafeInteger(q)||q<1||e.spare(slot,r)<q)return false;
-  if(e.count(i)-q<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
-  if(r.recipe){if(!materialDrops(p.G,p.G.drops?.[i.name]).some(x=>x.item===r.recipe)){e.note('Exchange-Ziel nicht in Spieldaten: '+r.recipe);return false;}if(qty(r.recipe,0)>=Math.min(r.targetCount,r.maxCount))return false;}
-  if(!capacity([{slot,quantity:q}]))return false;
-  const quest=p.G.items[i.name]?.quest,npc=quest&&Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===quest)?.[0];
-  const d=e.destination(npc||'exchange');if(!e.travel(d,'Exchange'))return false;const before=e.count(i);
-  return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>e.at(d)&&e.spare(slot,r)>=q,call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before},timeout:45000});
- }
+ function exchange(slot,r,step=null){
+   const existing=p.c.items[slot];if(!existing)return false;
+   const i={...existing},q=p.G.items[i.name]?.e;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.exchange||!Number.isSafeInteger(q)||q<1||e.spare(slot,r)<q)return false;
+   if(e.count(i)-q<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+   if(r.recipe){if(!materialDrops(p.G,p.G.drops?.[i.name]).some(x=>x.item===r.recipe)){e.note('Exchange-Ziel nicht in Spieldaten: '+r.recipe);return false;}if(qty(r.recipe,0)>=Math.min(r.targetCount,r.maxCount))return false;}
+   if(!capacity([{slot,quantity:q}]))return false;
+   const source=()=>exchangeSource(p.G,i.name,p.root.S??p.parent.S??{});
+   const verified=source(),proof=x=>JSON.stringify({quest:x.quest,npc:x.npc,destination:x.destination,event:x.event});
+   if(!verified.ready||step?.sourceProof&&proof(verified)!==JSON.stringify(step.sourceProof)){e.note('Exchange-Quelle nicht verifiziert: '+i.name+' / '+(verified.reason??'Quellenwechsel'));return false;}
+   const d=verified.quest?verified.destination:e.destination('exchange');
+   if(!e.travel(d,'Exchange '+i.name))return false;const before=e.count(i),initialProof=proof(verified);
+   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.at(d)&&e.spare(slot,r)>=q;},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},timeout:45000});
+  }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
   const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<cfg.merchant.taskHoldMs;return Number(held(b))-Number(held(a))||b.priority-a.priority||b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
@@ -119,7 +123,7 @@ export function createProduction(bot){
      const r=e.explicit({name,level},'production'),grade=p.call('item_grade',{name,level}),scroll=r?.scroll||((kind==='compound'?'cscroll':'scroll')+grade);
      return [{item:scroll,quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];
     },score:step=>routeScore(step,new Set(),0)}:{};
-    plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,...options});
+    plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,state:p.root.S??p.parent.S??{},...options});
    }catch(err){plan=[];goal=null;planningReason=err.message;e.note(err.message);continue;}planningReason=null;const objective=knowledgeFingerprint(goalKey(g));const previous=intent?.objective;if(previous&&previous!==objective)bot.event('production.cancel',{objective:previous,reason:'Bedarf/Ziel geändert'});persistIntent({objective,goal:goalKey(g),item:g.item,level:g.level,quantity:needed,recipient:g.recipient,realm:p.realm(),phase:'planned',at:Date.now(),definition:knowledgeFingerprint([p.G.items[g.item],p.G.craft]),steps:plan.slice(0,32),reservations:plan.reservations??[]});break;
   }
   if(!goal&&intent&&!bot.journal){const pending=goals().some(g=>g.recipient?(deliveries[goalKey(g)]?.quantity??0)<g.quantity:qty(g.item,g.level,g)<g.quantity);if(pending)persistIntent({...intent,phase:'waiting'});else{bot.event('production.intent.complete',{objective:intent.objective,reason:'Bedarf erfüllt oder ausdrücklich entfernt'});persistIntent(null);}}
@@ -132,10 +136,10 @@ export function createProduction(bot){
   const capped=(name,level,price)=>{const r=e.explicit({name,level},'acquisition');return Number.isFinite(price)&&price>0&&price<=(r?.maxPrice??cfg.production.helperMaxPrice)?price:Infinity;};
   const rows=estimateRoutes({G:p.G,item:step.item,level:step.level,quantity:step.quantity,stock:(name,level)=>name+':'+level===key?0:qty(name,level),bank:(name,level,wanted)=>name+':'+level===key?0:bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((v,i)=>v+(i?.name===name&&(i.level??0)===level&&e.safe(i)&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),allowed:cfg.production.acquireBy,permit,
    npcPrice:name=>e.npcFor(name)?capped(name,0,p.G.items[name]?.g):Infinity,marketPrice:(name,level)=>capped(name,level,bot.market.quote?.({name,level})??e.explicit({name,level},'acquisition')?.maxPrice??cfg.production.helperMaxPrice),
-   farmHours:(name,q)=>materialSources(p.G,name,q,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root.S??p.parent.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]})[0]?.estimatedHours??Infinity,
-   travelHours:(kind,name)=>(bot.observations?.travelMs(kind==='buy'?e.npcFor(name):kind==='craft'?e.destination('craftsman'):kind==='retrieve'?{map:'bank',x:0,y:-100}:e.destination(kind==='marketBuy'?'citizen22':kind==='exchange'?'exchange':'newupgrade'))??60000)/3600000,
+   farmHours:(name,q)=>materialSources(p.G,name,q,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root.S??p.parent.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]})[0]?.selectedHours??Infinity,
+   travelHours:(kind,name)=>{const d=kind==='buy'?e.npcFor(name):kind==='craft'?e.destination('craftsman'):kind==='retrieve'?{map:'bank',x:0,y:-100}:kind==='exchange'?(exchangeSource(p.G,name,p.root.S??p.parent.S??{}).destination??e.destination('exchange')):e.destination(kind==='marketBuy'?'citizen22':'newupgrade');return (bot.observations?.travelMs(d)??60000)/3600000;},
    helpers:(name,level,kind)=>{const r=e.explicit({name,level},'production');return [{item:r?.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',{name,level})),quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];},
-   chance:(name,level,kind)=>bot.intelligence?(bot.intelligence.chance(name,level,kind)??0):Math.max(cfg.production.minChance,e.explicit({name,level},'production')?.minChance??0),recipeFor:(name,level)=>e.explicit({name,level},'production')?.recipe??'',confidence:cfg.production.farmConfidence??'mean',strategy:cfg.production.strategy,goldPerHour:cfg.production.goldPerHour,maxDepth:cfg.production.maxChainDepth});
+   chance:(name,level,kind)=>bot.intelligence?(bot.intelligence.chance(name,level,kind)??0):Math.max(cfg.production.minChance,e.explicit({name,level},'production')?.minChance??0),recipeFor:(name,level)=>e.explicit({name,level},'production')?.recipe??'',confidence:cfg.production.farmConfidence??'mean',strategy:cfg.production.strategy,goldPerHour:cfg.production.goldPerHour,maxDepth:cfg.production.maxChainDepth,state:p.root.S??p.parent.S??{}});
   routeCache.set(cacheKey,rows);return rows.find(r=>r.kind===step.kind)?.score??Infinity;
  }
  const allowedMonsters=()=>bot.teamPlan?bot.teamPlan.candidates().filter(id=>bot.strategy.safeTarget(id,undefined,true,true)):[...new Set(cfg.characters.filter(c=>c.enabled&&c.role==='farmer'&&(!bot.farmers||bot.farmers.includes(c.name))).flatMap(c=>c.farmTargets.length?c.farmTargets:cfg.farming.targets))];
@@ -149,7 +153,7 @@ export function createProduction(bot){
   const attempt=fn=>{const accepted=fn();if(cfg.general.testLogging!==undefined&&!accepted&&!bot.movement.order&&!bot.journal&&!exec.pending.size){const entry={goal:goal.name,item:step.item,kind:step.kind,reservations:structuredClone(plan.reservations??[]),reason:bot.reason||'Voraussetzungen/Angebot fehlen',until:Date.now()+30000};waiting.set(goalKey(goal),entry);if(waiting.size>64)waiting.delete(waiting.keys().next().value);bot.event('production.wait',entry);}return accepted;};
   if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));
   if(step.kind==='retrieve')return attempt(()=>bot.bank.retrieve(item,r,step.quantity));
-  if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));return attempt(()=>slot>=0&&exchange(slot,r));}
+  if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));return attempt(()=>slot>=0&&exchange(slot,r,step));}
   if(['upgrade','compound'].includes(step.kind)){const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));return attempt(()=>slot>=0&&mutate(slot,r));}
   if(step.kind==='farm'){
    updateMaterials();

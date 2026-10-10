@@ -27,7 +27,7 @@ export function createAura(bot){
  return {tick(){
   const s=p.G.skills?.paladin_aura;if(p.c.ctype!=='paladin'||!cfg.party.buffs||cfg.party.aura==='off'||!s||p.c.level<(s.level??60)||p.c.rip||p.c.s?.stunned||p.c.s?.silenced||bot.journal||p.call('is_on_cooldown','paladin_aura'))return false;
   const decision=desired(),aura=decision.aura;proposed=decision;
-  const current=p.c.p?.paladin_aura,emergency=cfg.party.aura==='auto'&&decision.urgent&&['bulwark','sanctuary'].includes(aura)&&!['bulwark','sanctuary'].includes(current);
+  const current=p.c.p?.paladin_aura,emergency=cfg.party.aura==='auto'&&decision.urgent&&['bulwark','sanctuary'].includes(aura)&&current!==aura&&(!['bulwark','sanctuary'].includes(current)||decision.risk.dangerRatio>=.7);
   if(!emergency&&Date.now()-last<cfg.party.auraHoldMs)return false;
   if(!s.states?.[aura]||current===aura)return false;
   const accepted=exec.run('paladin.aura',['skill'],()=>{const live=desired();return bot.running&&!bot.journal&&!p.c.rip&&!p.c.s?.stunned&&!p.c.s?.silenced&&!!p.G.skills?.paladin_aura?.states?.[aura]&&live.aura===aura;},()=>p.call('use_skill','paladin_aura',aura),{delay:cfg.party.auraHoldMs});

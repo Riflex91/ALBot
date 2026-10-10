@@ -1,6 +1,6 @@
 import {distance,samePlace} from '../core/policy.mjs';
 export function createGoldLogistics(bot){
- const {p,cfg,me,exec,transport}=bot;let job=null,serial=0,next=0;const finished=new Map();
+ const {p,cfg,me,exec,transport}=bot;let job=null,serial=0,next=0,lastTransferAt=0;const finished=new Map();
  const reserve=()=>Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
  const surplus=()=>me.role==='farmer'?Math.max(0,Math.floor(p.c.gold-reserve())):0;
  const idle=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.services?.active&&!exec.busy('inventory')&&!exec.busy('gold')&&!exec.busy('economy')&&bot.checkpoint.durable;
@@ -12,13 +12,13 @@ export function createGoldLogistics(bot){
   if(m.type==='goldOffer'){
    if(job?.id===m.id&&job.peer===from&&job.state==='receiving'){send('goldAccept',{quantity:job.quantity});return;}
    if(me.name!==cfg.party.merchant||!cfg.characters.some(c=>c.enabled&&c.name===from&&c.role==='farmer')||job||finished.has(m.id)||!idle()||!near(from)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>cfg.merchant.goldTransferMax)return;
-   if(me.role==='merchant')bot.movement?.stop();job={id:m.id,peer:from,session:m.session,state:'receiving',quantity:d.quantity,before:p.c.gold,until:Date.now()+cfg.general.messageTtlMs};
+   if(me.role==='merchant')bot.movement?.stop();job={id:m.id,peer:from,session:m.session,state:'receiving',quantity:d.quantity,before:p.c.gold,until:Date.now()+cfg.general.messageTtlMs};lastTransferAt=Date.now();
    try{bot.beginValue({kind:'gold.receive',...job});send('goldAccept',{quantity:job.quantity});}catch(e){job=null;throw e;}
   }else if(job&&job.peer===from&&job.id===m.id&&job.session===m.session){
    if(m.type==='goldAccept'&&job.state==='offered'&&d.quantity===job.quantity)job.state='accepted';
    if(m.type==='goldCancel'&&job.state==='receiving'&&!job.observed&&p.c.gold===job.before&&d.quantity===job.quantity&&d.notDispatched===true){bot.event('gold.cancelled',{id:job.id,peer:from,reason:'Sender hat Auftrag ohne Dispatch beendet; Empfängerbestand unverändert'});finished.set(job.id,Date.now());job=null;bot.endValue('confirmed');return;}
    if(m.type==='goldReceipt'&&job.state==='sent'&&d.quantity===job.quantity)job.receipt=true;
-   if(m.type==='goldDone'&&job.state==='receiving'&&job.observed){finished.set(job.id,Date.now());job=null;bot.endValue('confirmed');}
+   if(m.type==='goldDone'&&job.state==='receiving'&&job.observed){lastTransferAt=Date.now();finished.set(job.id,Date.now());job=null;bot.endValue('confirmed');}
   }
  }
  function sendCancelled(j){transport.send(j.peer,'goldCancel',{quantity:j.quantity,notDispatched:true},j.id);bot.event('gold.cancelled',{id:j.id,state:j.state,reason:'Kein Goldversand ausgeführt'});}
@@ -26,12 +26,12 @@ export function createGoldLogistics(bot){
   const now=Date.now();for(const [id,at] of finished)if(now-at>120000)finished.delete(id);
   if(job){const j=job;
    if(j.state==='receiving'&&p.c.gold===j.before+j.quantity){j.observed=true;if(!j.lastReceipt||now-j.lastReceipt>1500){j.lastReceipt=now;send('goldReceipt',{quantity:j.quantity});}}
-   if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+15000;return;}
-   if(now>j.until){job=null;next=now+15000;if(j.state==='offered'||j.state==='accepted')sendCancelled(j);else bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
+   if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){lastTransferAt=now;send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+15000;return;}
+   if(now>j.until){if(['receiving','sent'].includes(j.state))lastTransferAt=now;job=null;next=now+15000;if(j.state==='offered'||j.state==='accepted')sendCancelled(j);else bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
    if(j.state==='offered'&&now-j.lastOffer>1500){j.lastOffer=now;send('goldOffer',{quantity:j.quantity});}
    if(j.state==='accepted'){
     const guard=()=>bot.running&&!bot.journal&&!bot.inventoryBlocked&&!(bot.logistics.itemReserved??bot.logistics.reserved)&&!bot.bank?.pending&&!!near(j.peer)&&transport.fresh(j.peer)?.session===j.session&&Number.isSafeInteger(p.c.gold)&&surplus()>=j.quantity;
-    exec.run('gold.send',['inventory','gold'],guard,()=>{j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
+    exec.run('gold.send',['inventory','gold'],guard,()=>{j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';lastTransferAt=Date.now();bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
    }return;
   }
   if(!offer||!cfg.merchant.collectGold||!cfg.merchant.enabled||me.role!=='farmer'||now<next||!idle()||surplus()<cfg.merchant.goldCollectBelow||!near(cfg.party.merchant))return;
@@ -45,5 +45,5 @@ export function createGoldLogistics(bot){
    if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Goldüberschuss abholen: '+name;bot.movement.go({...h,radius:120},'gold');return true;
   }return false;
  }
- return {receive,poll,travel,surplus,get reserved(){return !!job;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
+ return {receive,poll,travel,surplus,get reserved(){return !!job;},get transferAt(){return lastTransferAt;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
 }

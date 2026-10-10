@@ -7,6 +7,8 @@ import {createProduction} from '../src/production/production.mjs';
 import {gearScore,gearSuitability,createGear} from '../src/production/gear.mjs';
 import {createMarket} from '../src/merchant/market.mjs';
 import {createEconomicIntelligence} from '../src/production/intelligence.mjs';
+import {accountRiskSnapshot,createAccount} from '../src/party/account.mjs';
+import {chooseAura,auraRisk,createAura} from '../src/party/aura.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -170,4 +172,50 @@ test('U04 production resale forecast conservatively uses only supported live-bid
  assert.ok(offered.ev>npc.ev);
  bot.market.bidValuation=()=>({unitValue:5});
  assert.equal(createEconomicIntelligence(bot).mutationEconomics(item).ev,npc.ev);
+});
+
+test('U05 account risk uses each fresh balance once and refuses missing bank/peer evidence',()=>{
+ const unknown=accountRiskSnapshot([1000,null],null,100,'normal');
+ assert.equal(unknown.complete,false);assert.equal(unknown.mode,'conservative');assert.equal(unknown.riskLimit,0);
+ const full=accountRiskSnapshot([2000,1000],2000,100,'conservative');
+ assert.equal(full.wealth,5000);assert.equal(full.riskLimit,100);
+ assert.equal(full.mode,'normal');
+ assert.equal(accountRiskSnapshot([400,200],300,100,'normal').mode,'normal');
+ assert.equal(accountRiskSnapshot([300,100],200,100,'normal').mode,'conservative');
+ assert.equal(accountRiskSnapshot([300,100],200,100,'conservative').riskLimit,6);
+});
+test('U05 account guard is additive and cannot erase a preexisting budget',()=>{
+ const me={name:'M',role:'merchant',goldReserve:10,group:'team'},cfg={party:{merchant:'M',leader:'A',selection:'fixed'},characters:[{name:'A',role:'farmer',enabled:true,group:'team'},{...me,enabled:true}],production:{lossBudget:100}},peers={A:{running:true,realm:'EU1',goldBalance:1000}};
+ const bot={me,cfg,p:{c:{gold:2000,bank:{gold:2000}},realm:()=> 'EU1',read:()=>null},transport:{fresh:n=>peers[n]},farmers:['A'],leader:'A',exec:{pending:new Map()},running:true,report(){}};
+ const account=createAccount(bot);
+ assert.equal(account.risk().wealth,5000);
+ assert.equal(account.spendAllowed(50,0),true);
+ assert.equal(account.spendAllowed(101,0),false);
+ delete peers.A.goldBalance;
+ assert.equal(account.spendAllowed(1,0),false);
+});
+test('U06 aura anticipates severe damage, magical danger and missing threat stats',()=>{
+ assert.equal(chooseAura({hpRatio:1,mpRatio:1}),'zeal');
+ assert.equal(chooseAura({hpRatio:1,mpRatio:1,dangerRatio:.5}),'bulwark');
+ assert.equal(chooseAura({hpRatio:1,mpRatio:1,dangerRatio:.5,damageType:'magical'}),'sanctuary');
+ assert.equal(chooseAura({hpRatio:1,unknownThreat:true}),'bulwark');
+ const allies=[{name:'A',hp:100,max_hp:100}];
+ const threat=auraRisk([{target:'A',mtype:'mage',hp:100}],allies,{monsters:{mage:{attack:20,frequency:1,damage_type:'magical'}}});
+ assert.equal(threat.damageType,'magical');assert.equal(threat.dangerRatio,.6);
+ assert.equal(auraRisk([{target:'A',mtype:'mystery',hp:100}],allies,{monsters:{}}).unknownThreat,true);
+ assert.equal(auraRisk([],allies,{monsters:{}}).unknownThreat,false);
+});
+test('U06 defensive aura can bypass hold; recovered team remains held and stale combat proposal is rejected',()=>{
+ let now=100000,threats=[],guard=null,casts=[];
+ const real=Date.now;Date.now=()=>now;
+ try{
+  const c={name:'A',ctype:'paladin',level:80,hp:100,max_hp:100,mp:100,max_mp:100,p:{paladin_aura:'zeal'},s:{}};
+  const bot={running:true,journal:null,p:{c,G:{skills:{paladin_aura:{level:60,states:{zeal:{},bulwark:{},sanctuary:{},warding:{}}}},monsters:{ogre:{attack:30,frequency:1}}},call:(name,...args)=>{if(name==='is_on_cooldown')return false;if(name==='use_skill')casts.push(args);}},cfg:{party:{buffs:true,aura:'auto',auraHoldMs:60000}},allies:()=>[],monsters:()=>threats,exec:{run:(key,res,valid,fn)=>{guard=valid;return valid();}}};
+  const a=createAura(bot);
+  assert.equal(a.tick(),true);
+  threats=[{mtype:'ogre',target:'A',hp:100}];now+=100;
+  assert.equal(a.tick(),true);assert.equal(guard(),true);
+  threats=[];assert.equal(guard(),false);
+  assert.equal(a.tick(),false);
+ }finally{Date.now=real;}
 });

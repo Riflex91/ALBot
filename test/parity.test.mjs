@@ -345,3 +345,34 @@ test('U07 rejects official advice from a different realm or missing timestamp be
  guide.refresh(true);assert.equal(guide.bonus('bee','main'),.06);
  assert.equal(calls.length,3);
 });
+
+test('U05 account guard never double counts unsettled or recent gold handoffs',()=>{
+ const t=Date.now(),me={name:'M',role:'merchant',goldReserve:10,group:'g'};
+ const cfg={general:{messageTtlMs:30000},party:{merchant:'M',leader:'A',selection:'fixed'},characters:[{name:'A',role:'farmer',enabled:true,group:'g'},{...me,enabled:true}],production:{lossBudget:100}};
+ const peer={running:true,realm:'EU1',goldBalance:2000,goldTransferPending:false,goldTransferAt:0};
+ const gold={reserved:false,transferAt:0};
+ const bot={me,cfg,gold,p:{c:{gold:3000,bank:{gold:1000}},realm:()=> 'EU1',read:()=>null},transport:{fresh:()=>peer},farmers:['A'],leader:'A',exec:{pending:new Map()},running:true,report(){}};
+ const account=createAccount(bot);
+ assert.equal(account.risk().wealth,6000);
+ peer.goldTransferPending=true;
+ assert.equal(account.risk().complete,false);assert.equal(account.risk().liquidFloor,4000);
+ peer.goldTransferPending=false;peer.goldTransferAt=t;
+ assert.equal(account.risk().complete,false);assert.equal(account.risk().liquidFloor,4000);
+ peer.goldTransferAt=t-61000;
+ assert.equal(account.risk().complete,true);
+ gold.reserved=true;
+ assert.equal(account.risk().complete,false);assert.equal(account.risk().liquidFloor,2000);
+ gold.reserved=false;gold.transferAt=t;
+ assert.equal(account.risk().complete,false);assert.equal(account.risk().liquidFloor,2000);
+ gold.transferAt=t-61000;
+ assert.equal(account.risk().complete,true);
+});
+test('U05 account risk rejects both sides of a recently settled transfer during heartbeat skew',()=>{
+ const t=Date.now(),cfg={general:{messageTtlMs:20000},party:{merchant:'M',leader:'A',selection:'fixed'},characters:[{name:'A',role:'farmer',enabled:true,group:'g'},{name:'M',role:'merchant',enabled:true,group:'g'}],production:{lossBudget:1000}};
+ const h={running:true,realm:'EU1',goldBalance:5000,goldTransferPending:false,goldTransferAt:t};
+ const bot={me:{name:'M',role:'merchant',group:'g'},cfg,p:{c:{gold:5000,bank:{gold:1000}},realm:()=> 'EU1',read:()=>null},gold:{reserved:false,transferAt:t},transport:{fresh:()=>h},farmers:['A'],leader:'A',exec:{pending:new Map()},running:true,report(){}};
+ const account=createAccount(bot);
+ assert.equal(account.risk().complete,false);
+ assert.equal(account.risk().liquidFloor,0);
+ assert.equal(account.spendAllowed(1,0),false);
+});

@@ -158,7 +158,7 @@ test('U07 full runtime reads official safe farm advice only after start in brows
   a.root.G.monsters.goo={hp:100,attack:1,frequency:.5,xp:10,respawn:1};
   if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
   const reads=[];a.root.parent.progression_read=opts=>{
-   reads.push(opts);return {version:1,ready:true,at:Date.now(),goal:{kind:'farm',monster:'goo'},rows:[
+   reads.push(opts);return {version:1,ready:true,at:Date.now(),realm:'EU II',goal:{kind:'farm',monster:'goo'},rows:[
     {kind:'farm',priority:100,action:{kind:'farm',route:{monster:'goo',map:'main',safe:true}}},
     {kind:'buy',priority:2000,action:{kind:'buy',name:'expensive'}}],plans:[]};
   };
@@ -191,7 +191,7 @@ test('U07 full runtime manages official factory observers across pause/reload',(
  cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];
  cfg.general.autostart=false;cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;
  a.root.ALBotConfig=cfg;a.root.parent.ProgressionRuntime={create:env=>{
-  const instance={reads:0,detached:false,read:()=>{instance.reads++;return {version:1,ready:true,at:Date.now(),rows:[],plans:[]};},detach:()=>{instance.detached=true;}};
+  const instance={reads:0,detached:false,read:()=>{instance.reads++;return {version:1,ready:true,at:Date.now(),realm:'EU II',rows:[],plans:[]};},detach:()=>{instance.detached=true;}};
   states.push(instance);return instance;
  }};
  a.load();assert.equal(states.length,0);a.root.ALBot.start();

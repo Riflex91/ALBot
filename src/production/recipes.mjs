@@ -25,9 +25,10 @@ export function recipeIngredients(recipe){
  // so its existing dependency and 256-node bounds can reject them. Only the
  // actual craft(i0,...,i8) dispatch is limited to nine grid positions.
  for(const row of parsedRecipeRows(recipe)){
-  const previous=result.find(x=>x.item===row.item);
+  // Equal item names at different upgrade levels are distinct ingredients
+  // in G.craft and in the official positional crafting grid.
+  const previous=result.find(x=>x.item===row.item&&x.level===row.level);
   if(previous){
-   if(previous.level!==row.level)throw Error('Rezept mit mehreren Leveln derselben Zutat nicht ausführbar');
    if(!Number.isSafeInteger(previous.quantity+row.quantity))throw Error('Rezeptmenge überschreitet sichere Ganzzahl');
    previous.quantity+=row.quantity;
   }else result.push({...row});

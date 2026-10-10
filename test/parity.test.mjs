@@ -5,6 +5,8 @@ import {materialSources,exchangeSource} from '../src/production/materials.mjs';
 import {estimateRoutes} from '../src/production/costs.mjs';
 import {createProduction} from '../src/production/production.mjs';
 import {gearScore,gearSuitability,createGear} from '../src/production/gear.mjs';
+import {createMarket} from '../src/merchant/market.mjs';
+import {createEconomicIntelligence} from '../src/production/intelligence.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -124,4 +126,47 @@ test('U03 merchant equip rechecks mobility when dispatch guard is evaluated',()=
  assert.equal(gear.equip(0,{slot:'shoes'}),true);
  assert.equal(pending.guard(),true);
  bot.me.merchantMobility='mobile';assert.equal(pending.guard(),false);
+});
+
+test('U04 live buyer bids require reachability, exact variant, current price and limited quantity',()=>{
+ const c={name:'M',map:'main',in:'main',x:0,y:0,speed:50};
+ const bid=(name,level,price,q,extra={})=>({name,level,price,q,b:true,rid:'bid-'+price,...extra});
+ const seller=(name,x,slots)=>({name,id:name,type:'character',stand:true,map:'main',in:'main',x,y:0,slots});
+ const p={c,entities:{A:seller('A',100,{trade1:bid('ring',2,100,3)}),B:seller('B',100,{trade1:bid('ring',2,50,2)}),C:seller('C',100,{trade1:bid('ring',2,1000,10,{stat_type:'str'})}),D:seller('D',1000,{trade1:bid('ring',2,1000,10)})},read:()=>null};
+ const market=createMarket({p,cfg:{merchant:{marketHistory:false},production:{goldPerHour:3600}},economy:{value:()=>10},exec:{}});
+ const item={name:'ring',level:2},result=market.bidValuation(item,10,10,{future:true});
+ assert.equal(result.covered,5);
+ assert.ok(result.unitValue>10&&result.unitValue<20); // 25% bid-premium haircut and travel cost
+ assert.ok(market.bidValuation(item,10,10,{future:false}).unitValue>result.unitValue);
+ assert.equal(market.bidValuation({...item,stat_type:'str'},1,10,{future:true}).covered,1);
+ delete p.entities.A;delete p.entities.B;
+ assert.equal(market.bidValuation(item,10,10,{future:true}).unitValue,10);
+});
+test('U04 market sell guard refuses a changed variant or disappearing bid',()=>{
+ const item={name:'ring',level:2,q:4},c={name:'M',map:'main',in:'main',x:0,y:0,items:[item],gold:0,slots:{}};
+ const buyer={id:'buyer',name:'Buyer',type:'character',stand:true,map:'main',in:'main',x:20,y:0,slots:{trade1:{name:'ring',level:2,price:100,q:3,b:true,rid:'offer'}}};
+ let guarded=null;
+ const p={c,entities:{buyer},has:()=>true,read:()=>null};
+ const e={safe:()=>true,spare:()=>4,count:()=>4,perform:(kind,args)=>{guarded=args.guard;return true;}};
+ const bot={p,cfg:{merchant:{marketHistory:false},production:{}},economy:e,exec:{},entity:()=>buyer};
+ const market=createMarket(bot);
+ assert.equal(market.sellToBid(0,{minPrice:10}),true);
+ assert.equal(guarded(),true);
+ buyer.slots.trade1.q=1;assert.equal(guarded(),false);
+ buyer.slots.trade1.q=3;buyer.slots.trade1.stat_type='int';assert.equal(guarded(),false);
+ delete buyer.slots.trade1;assert.equal(guarded(),false);
+});
+test('U04 production resale forecast conservatively uses only supported live-bid value',()=>{
+ const p={G:{version:1,items:{ring:{upgrade:true},scroll0:{g:1}},upgrade:[[null,1]]},c:{items:[]},call:()=>0};
+ const cfg={production:{autoGearMaxLevel:1,minChance:.65,minImprovement:0,helperMaxPrice:100,autoDisposition:true},merchant:{}};
+ const economy={value:i=>i.level===1?20:10},bot={p,cfg,me:{role:'merchant'},economy,market:{bidValuation:()=>null}};
+ const item={name:'ring',level:0};
+ const npc=createEconomicIntelligence(bot).mutationEconomics(item);
+ bot.market.bidValuation=(i,q,npcUnit,{future})=>({unitValue:future?40:npcUnit});
+ const offered=createEconomicIntelligence(bot).mutationEconomics(item);
+ assert.equal(npc.action,'upgrade');
+ assert.equal(offered.action,'upgrade');
+ assert.ok(offered.ev>npc.ev);
+ bot.market.bidValuation=()=>({unitValue:5});
+ assert.equal(createEconomicIntelligence(bot).mutationEconomics(item).ev,npc.ev);
 });

@@ -212,7 +212,7 @@ test('U06 defensive aura can bypass hold; recovered team remains held and stale 
  let now=100000,threats=[],guard=null,casts=[];
  const real=Date.now;Date.now=()=>now;
  try{
-  const c={name:'A',ctype:'paladin',level:80,hp:100,max_hp:100,mp:100,max_mp:100,p:{paladin_aura:'zeal'},s:{}};
+  const c={name:'A',ctype:'paladin',level:80,hp:100,max_hp:100,mp:100,max_mp:100,p:{paladin_aura:'warding'},s:{}};
   const bot={running:true,journal:null,p:{c,G:{skills:{paladin_aura:{level:60,states:{zeal:{},bulwark:{},sanctuary:{},warding:{}}}},monsters:{ogre:{attack:30,frequency:1}}},call:(name,...args)=>{if(name==='is_on_cooldown')return false;if(name==='use_skill')casts.push(args);}},cfg:{party:{buffs:true,aura:'auto',auraHoldMs:60000}},allies:()=>[],monsters:()=>threats,exec:{run:(key,res,valid,fn)=>{guard=valid;return valid();}}};
   const a=createAura(bot);
   assert.equal(a.tick(),true);

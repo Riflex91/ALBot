@@ -3,7 +3,7 @@ import {estimateRoutes} from './costs.mjs';
 import {materialSources,materialDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
-import {findRecipe,recipeIngredients,recipeGridIngredients} from './recipes.mjs';
+import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 export function createProduction(bot){
@@ -112,24 +112,34 @@ export function createProduction(bot){
    return false;
   }
   const totalFor=(id,level)=>totals.find(x=>x.item===id&&x.level===level)?.quantity??0;
-  const slots=[],requirements=[];
-  for(const {quantity:q,item:id,level} of grid){
-   const total=totalFor(id,level);
-   const slot=p.c.items.findIndex((i,n)=>{
-    const keep=i&&e.rules(i);
-    return i?.name===id&&(i.level??0)===level&&e.safe(i)&&!slots.includes(n)&&(i.q??1)>=q&&
-     keep?.action!=='keep'&&e.count(i)-total>=(keep?keep.keep+keep.teamReserve:0)+reserveOther(id,level);
-   });
-   if(slot<0){
-    // Duplicate recipe rows need different grid positions; merging stacks
-    // would reduce available positions, not satisfy the missing position.
-    if(slots.some(n=>p.c.items[n]?.name===id&&(p.c.items[n]?.level??0)===level))return false;
-    const candidate=p.c.items.find(i=>i?.name===id&&(i.level??0)===level&&e.safe(i)),policy=candidate&&e.rules(candidate);
-    if(candidate&&e.count(candidate)-total<(policy?policy.keep+policy.teamReserve:0)+reserveOther(id,level))return false;
-    return candidate?mergeFor(candidate,q,r):false;
+  // Each official craft grid position needs a different inventory slot.
+  // Build candidate sets before assigning any slot: first-fit can consume
+  // the only sufficiently large stack on an earlier, smaller recipe row.
+  const candidates=grid.map(({quantity:q,item:id,level})=>{
+   const total=totalFor(id,level),eligible=[];
+   for(let n=0;n<p.c.items.length;n++){
+    const i=p.c.items[n],policy=i&&e.rules(i);
+    if(i?.name===id&&(i.level??0)===level&&e.safe(i)&&(i.q??1)>=q&&
+       policy?.action!=='keep'&&
+       e.count(i)-total>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(id,level))eligible.push(n);
    }
-   slots.push(slot);requirements.push({item:{...p.c.items[slot]},before:e.count(p.c.items[slot]),q});
+   return eligible;
+  });
+  const slots=matchRecipeSlots(candidates);
+  if(!slots){
+   // Merging can prepare a single grid position, but it must not pretend
+   // one merged stack can occupy multiple positions of the same ingredient.
+   const missing=grid.find((_,index)=>candidates[index].length===0);
+   if(!missing)return false;
+   const {item:id,level,quantity:q}=missing,total=totalFor(id,level);
+   if(grid.filter(req=>req.item===id&&req.level===level).length!==1)return false;
+   const candidate=p.c.items.find(i=>i?.name===id&&(i.level??0)===level&&e.safe(i)&&e.rules(i)?.action!=='keep');
+   if(!candidate)return false;
+   const policy=e.rules(candidate);
+   if(e.count(candidate)-total<(policy?policy.keep+policy.teamReserve:0)+reserveOther(id,level))return false;
+   return mergeFor(candidate,q,r);
   }
+  const requirements=slots.map((slot,n)=>({item:{...p.c.items[slot]},before:e.count(p.c.items[slot]),q:grid[n].quantity}));
   if(!Number.isFinite(recipe.cost)||recipe.cost<0)return false;
   const questNpc=recipe.quest&&(p.G.npcs?.[recipe.quest]?recipe.quest:Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===recipe.quest)?.[0]),d=e.destination(questNpc||'craftsman');if(recipe.quest&&!questNpc){e.note('Rezept-Arbeitsplatz fehlt: '+recipe.quest);return false;}
   const item={name,level:0,data:recipe.output?.data},total=()=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===(item.level??0)&&(item.data===undefined||JSON.stringify(i.data)===JSON.stringify(item.data))?i.q??1:0),0),before=total();

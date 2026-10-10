@@ -58,7 +58,7 @@ export function createProduction(bot){
    const a=p.c.items[x],b=p.c.items[y],sum=(a?.q??1)+(b?.q??1),policy=a&&e.rules(a,'inventory');
    return x!==y&&eligible(a)&&eligible(b)&&Number.isSafeInteger(sum)&&Number.isSafeInteger(limit())&&
     sum<=limit()&&cfg.production.enabled&&cfg.production.craft&&e.remaining(r)&&
-    e.count(a)-required>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(item.name,level);
+    e.count(a)-required>=(policy?.keep??0)+(policy?.teamReserve??0)+reserveOther(item.name,level);
   };
   const slots=p.c.items.map((i,n)=>({i,n})).filter(({i})=>eligible(i));
   const pair=slots.flatMap(a=>slots.filter(b=>b.n>a.n&&livePair(a.n,b.n)).map(b=>[a,b]))

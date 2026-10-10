@@ -16,13 +16,17 @@ export function chooseCombatLeader(members){return members.filter(x=>x.running&&
 // Wealth snapshots contain monetary balances only; inventories and transferred
 // gold are never added as estimates. Missing/future/stale peers fail conservative.
 export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conservative'){
- const complete=Array.isArray(balances)&&balances.length>0&&balances.every(x=>Number.isSafeInteger(x)&&x>=0)&&Number.isSafeInteger(bankGold)&&bankGold>=0;
- const wealth=complete?balances.reduce((n,x)=>n+x,bankGold):null;
+ const observed=Array.isArray(balances)?balances.filter(x=>Number.isSafeInteger(x)&&x>=0):[];
+ const complete=observed.length>0&&observed.length===balances?.length&&Number.isSafeInteger(bankGold)&&bankGold>=0;
+ const liquidFloor=observed.reduce((n,x)=>n+x,0)+(Number.isSafeInteger(bankGold)&&bankGold>=0?bankGold:0);
+ const wealth=complete?liquidFloor:null;
  const bound=Number.isFinite(lossBudget)&&lossBudget>=0?lossBudget:0;
  const normal=complete&&wealth>=(previous==='normal'?bound*7:bound*10);
  const mode=normal?'normal':'conservative';
- const riskLimit=complete?Math.min(bound,Math.floor(wealth*(normal?.03:.01))):0;
- return {mode,wealth,complete,riskLimit,reason:complete?'account-liquid-gold':'account-wealth-unverified'};
+ // Unknown balances are not guessed. The known liquid lower bound still permits
+ // tightly capped autonomous work instead of deadlocking away from the bank.
+ const riskLimit=Math.min(bound,Math.floor(liquidFloor*(normal?.03:.01)));
+ return {mode,wealth,liquidFloor,complete,riskLimit,reason:complete?'account-liquid-gold':'account-wealth-partial'};
 }
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
@@ -45,13 +49,13 @@ export function createAccount(bot){
     else bankGold=stored;
    }
   }
-  const snap=accountRiskSnapshot(complete?balances:[],bankGold,cfg.production.lossBudget,riskMode);
+  const snap=accountRiskSnapshot(complete?balances:[...balances,null],bankGold,cfg.production.lossBudget,riskMode);
   riskMode=snap.mode;return snap;
  }
  function spendAllowed(cost,loss=0){
   if(cost===0&&loss===0)return true;
   if(!Number.isFinite(cost)||cost<0||!Number.isFinite(loss)||loss<0)return false;
-  const snap=risk();return snap.complete&&cost+loss<=snap.riskLimit;
+  const snap=risk();return cost+loss<=snap.riskLimit;
  }
  function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence};}
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;

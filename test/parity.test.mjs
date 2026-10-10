@@ -1002,7 +1002,7 @@ test('U05 deferred crafting merges recheck effective rules, production, limits a
  cfg.production.craft=true;G.items.herb.s=4;assert.equal(dispatch.guard(),false,'A changed stack capacity rejects unsafe merge');
  G.items.herb.s=9999;active=false;assert.equal(dispatch.guard(),false,'Exhausted production rule invalidates preparation');
  active=true;c.items[0].l=true;assert.equal(dispatch.guard(),false,'Locked material rejects deferred merge');
- c.items[0].l=false;assert.equal(dispatch.guard(),true);
+ delete c.items[0].l;assert.equal(dispatch.guard(),true);
 });
 test('U05 crafting merge selects only safe integer stacks within live stack capacity',()=>{
  const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};

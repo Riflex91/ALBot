@@ -104,7 +104,13 @@ export function createProduction(bot){
  function craft(name,r){
   const found=findRecipe(p.G,name,r.recipe),recipe=found?.recipe;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.craft||!recipe)return false;
   const yieldCount=recipe.q??recipe.quantity??1;if(!Number.isSafeInteger(yieldCount)||yieldCount<1||outputCount(name,r)+yieldCount>Math.min(r.targetCount,r.maxCount))return false;
-  const grid=recipeGridIngredients(recipe),totals=recipeIngredients(recipe);
+  // Game definitions may change or contain malformed recipes. A bad grid
+  // must reject only this action, not throw out of the autonomous bot tick.
+  let grid,totals;
+  try{grid=recipeGridIngredients(recipe);totals=recipeIngredients(recipe);}catch(e){
+   e?.message&&bot.event?.('production.craft-unavailable',{recipe:found.key,reason:String(e.message).slice(0,120)});
+   return false;
+  }
   const totalFor=(id,level)=>totals.find(x=>x.item===id&&x.level===level)?.quantity??0;
   const slots=[],requirements=[];
   for(const {quantity:q,item:id,level} of grid){

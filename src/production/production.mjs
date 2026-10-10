@@ -48,10 +48,27 @@ export function createProduction(bot){
  }
  const qtyRaw=item=>p.c.items.reduce((n,i)=>n+(i?.name===item.name&&(i.level??0)===(item.level??0)&&!i.l&&!i.b?(i.q??1):0),0);
  function mergeFor(item,required,r){
-  const slots=p.c.items.map((i,n)=>({i,n})).filter(({i})=>i&&identity(i)===identity(item)&&e.safe(i)&&e.explicit(i)?.action!=='keep');
-  const pair=slots.flatMap(a=>slots.filter(b=>b.n!==a.n&&(a.i.q??1)+(b.i.q??1)<=(p.G.items[item.name]?.s??1)).map(b=>[a,b])).sort((a,b)=>(b[0].i.q+b[1].i.q)-(a[0].i.q+a[1].i.q))[0];
-  if(!pair)return false;const [a,b]=pair,sum=(a.i.q??1)+(b.i.q??1),before=e.count(item);
-  return e.perform('inventory.merge',{slots:[a.n,b.n],rule:r,call:()=>p.call('swap',a.n,b.n),observe:()=>e.count(item)===before&&((p.c.items[a.n]?.q===sum&&!p.c.items[b.n])||(p.c.items[b.n]?.q===sum&&!p.c.items[a.n])),details:{item:item.name,quantity:sum,required}});
+  const key=identity(item),level=item.level??0;
+  // Merges rearrange inventory. Do not select an ingredient protected by
+  // either an explicit or an effective (derived) inventory keep rule.
+  const eligible=i=>!!i&&identity(i)===key&&e.safe(i)&&e.rules(i,'inventory')?.action!=='keep'&&e.explicit(i)?.action!=='keep'&&
+   Number.isSafeInteger(i.q??1)&&(i.q??1)>0;
+  const limit=()=>p.G.items[item.name]?.s??1;
+  const livePair=(x,y)=>{
+   const a=p.c.items[x],b=p.c.items[y],sum=(a?.q??1)+(b?.q??1),policy=a&&e.rules(a,'inventory');
+   return x!==y&&eligible(a)&&eligible(b)&&Number.isSafeInteger(sum)&&Number.isSafeInteger(limit())&&
+    sum<=limit()&&cfg.production.enabled&&cfg.production.craft&&e.remaining(r)&&
+    e.count(a)-required>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(item.name,level);
+  };
+  const slots=p.c.items.map((i,n)=>({i,n})).filter(({i})=>eligible(i));
+  const pair=slots.flatMap(a=>slots.filter(b=>b.n>a.n&&livePair(a.n,b.n)).map(b=>[a,b]))
+   .sort((a,b)=>((b[0].i.q??1)+(b[1].i.q??1))-((a[0].i.q??1)+(a[1].i.q??1)))[0];
+  if(!pair)return false;
+  const [a,b]=pair,sum=(a.i.q??1)+(b.i.q??1),before=e.count(item);
+  return e.perform('inventory.merge',{slots:[a.n,b.n],rule:r,guard:()=>livePair(a.n,b.n)&&e.count(item)===before,
+   call:()=>p.call('swap',a.n,b.n),
+   observe:()=>e.count(item)===before&&((p.c.items[a.n]?.q===sum&&!p.c.items[b.n])||(p.c.items[b.n]?.q===sum&&!p.c.items[a.n])),
+   details:{item:item.name,quantity:sum,required}});
  }
  function capacity(consumed=[],output=null){
   if(bot.free()>cfg.merchant.minFreeSlots||consumed.some(({slot,quantity})=>(p.c.items[slot]?.q??1)===quantity))return true;

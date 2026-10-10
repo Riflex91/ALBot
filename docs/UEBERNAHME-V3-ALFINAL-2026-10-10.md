@@ -4,7 +4,7 @@ Stand 10. Oktober 2026. Nutzerauftrag: die geprüften Übernahmeempfehlungen im 
 
 ## Aufgaben und Status
 
-**Arbeitsbranch (noch nicht in main):** U01–U06 sind implementiert und automatisiert getestet, U07 ist als sichere, begrenzte Anbindung der offiziellen Progression-API implementiert. GitHub Actions hat `npm test`, `npm run build`, `npm run build:editor` und Bundle-Integrität unter Linux bestanden; unter Windows hat `scripts/VERIFY-U01-U07.ps1` denselben erfolgreichen Prüfumfang bestätigt. **Je Plattform 213/213 Tests, 284.844 Bytes und identischer SHA-256.** Browser-/eigene Headless-API-Verfügbarkeit und die gemeinsame echte Spiel-Livebestätigung stehen aus. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
+**Arbeitsbranch (noch nicht in main):** U01–U06 sind implementiert und automatisiert getestet, U07 ist als sichere, begrenzte Anbindung der offiziellen Progression-API implementiert. GitHub Actions hat `npm test`, `npm run build`, `npm run build:editor` und Bundle-Integrität unter Linux bestanden; unter Windows hat `scripts/VERIFY-U01-U07.ps1` denselben erfolgreichen Prüfumfang bestätigt. **Je Plattform 217/217 Tests, 286.257 Bytes und identischer SHA-256.** Browser-/eigene Headless-API-Verfügbarkeit und die gemeinsame echte Spiel-Livebestätigung stehen aus. Die Nummern bezeichnen neue Restbefunde nach 0.8.4, nicht eine Wiedereröffnung sämtlicher alter Paritätsaufgaben. Vor Beginn aktuellen Branch/Commit und zwischenzeitliche Änderungen prüfen; Audit-Commitstände unten sind die Vergleichsbasis.
 
 | ID | Reihenfolge | Aufgabe | Betroffene ALBot-Module | Stand im Arbeitsbranch |
 |---|---|---|---|
@@ -94,6 +94,15 @@ Der [offizielle CODE-Wrapper `trade_sell`](https://github.com/kaansoral/adventur
 - Unmittelbar vor dem `trade_buy` werden **aktueller Inventarbedarf** (`count+q <= min(targetCount,maxCount)`) und **freie Arbeitsplätze** (`free()>minFreeSlots`) erneut geprüft. Damit können Loot oder andere Inventarereignisse zwischen Planung und Dispatch keine nicht mehr benötigten Mengen auslösen.
 - Bei `market.wishlist` prüfen die Guards zusätzlich kurz vor der Veröffentlichung die noch benötigte Itemmenge und das dann aktuelle Preislimit. Alte Kaufabsichten werden bei geänderten Zielen oder Preisregeln verworfen.
 - **Abnahme:** [GitHub Actions 38080294281](https://github.com/Riflex91/ALBot/actions/runs/38080294281) mit **213/213 Node-Tests je Linux und Windows**, Runtime- und Werkstatt-Build, erfolgreicher Bundle-/Manifestprüfung, **284.844 Bytes**, SHA-256 `4444bf804139dae0e1daba809d08c80f29c34665a33d2b481a05a439141c315a` auf beiden Plattformen. Drei neue gezielte Regressionen. Echte Markttransaktionen blieben unangetastet.
+
+### U05 – Craft-/Upgrade-/Compound-Dispatch gegen veraltete Planung
+
+**Befund:** Der frühere Craft-Guard prüfte vor dem tatsächlichen Aufruf im Wesentlichen nur den Standort. Eine zwischen Planung und Dispatch geänderte Rezeptdefinition, Zielmenge oder `keep`-Regel wurde nicht neu validiert. Beim Upgrade/Compound war die Chance-Vorschau primär an die Fingerprints der ausgewählten Inventarslots gebunden; der Dispatch-Guard kontrollierte Änderungen von Produktionsfreigabe, Mindestchance, Ziellevel, Scroll-Schutz oder Spieldaten nicht vollständig.
+
+**Korrektur:**
+- `src/production/production.mjs` vergleicht vor `craft` den aktuellen Recipe-Alias, die JSON-Rezeptdefinition samt Kosten/Ausgabe, erforderliche Mengen, alle ausgewählten Live-Zutaten, deren individuelle `keep`-/Reserve-Regeln, aktuelle Ausgabemenge und Kapazität. Der bestehende zentrale Executor prüft weiterhin Slot-Fingerprints, Wertjournale und Budgets.
+- `mutate` bindet die zeitbegrenzte Vorschau zusätzlich an aktuelle Item-/Scroll-Definitionen und Regeln. Vor dem echten `upgrade` oder `compound` werden aktivierte Produktionsfunktion, Mindestchance, Ziellevel, die drei Compound-Eingaben bzw. der Upgrade-Eingang, ein ausreichender freigegebener Scroll und optionale Opfermaterialien erneut bestätigt. Jede Abweichung verwirft den Dispatch.
+- **Nachweise:** Zwei neue Craft-Regressionstests und zwei Upgrade-/Compound-Regressionstests. [GitHub Actions 38080763586](https://github.com/Riflex91/ALBot/actions/runs/38080763586) bestätigt **217/217 Tests auf Linux und Windows**, Runtime- und Werkstatt-Build, Byte-/Manifestintegrität, gemeinsames **286.257-Byte-Bundle**, SHA-256 `dcd9aa5e898566f3f74096b865b1a407bacca401ad487bf15e25c17344ee3ffa`. Reale Ingame-Mutation und Browser-/Headless-Liveverhalten bleiben unbestätigt.
 
 ## Arbeitsregeln und Abschlusskriterien
 

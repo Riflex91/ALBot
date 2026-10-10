@@ -376,3 +376,37 @@ test('U05 account risk rejects both sides of a recently settled transfer during 
  assert.equal(account.risk().liquidFloor,0);
  assert.equal(account.spendAllowed(1,0),false);
 });
+
+test('U04 trade_sell rejects a server-selectable stack with smaller quantity or an explicit keep rule',()=>{
+ const first={name:'ring',level:2,q:3},second={name:'ring',level:2,q:1};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,items:[first,second],gold:0,slots:{}};
+ const buyer={id:'buyer',name:'Buyer',type:'character',stand:true,map:'main',in:'main',x:20,y:0,slots:{trade1:{name:'ring',level:2,price:100,q:3,b:true,rid:'offer'}}};
+ let guard=null,performed=0;
+ const p={c,entities:{buyer},has:()=>true,read:()=>null};
+ const e={safe:i=>!!i&&!i.l,spare:(slot,r)=>c.items[slot]?.q??0,count:()=>c.items.reduce((sum,i)=>sum+(i?.q??0),0),rules:i=>({action:i?.keep?'keep':'sell'}),perform:(kind,args)=>{performed++;guard=args.guard;return true;}};
+ const market=createMarket({p,me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy:e,exec:{},entity:()=>buyer});
+ assert.equal(market.sellToBid(0,{action:'sell',minPrice:10}),false);
+ assert.equal(performed,0);
+ second.q=3;second.keep=true;
+ assert.equal(market.sellToBid(0,{action:'sell',minPrice:10}),false);
+ second.keep=false;
+ assert.equal(market.sellToBid(0,{action:'sell',minPrice:10}),true);
+ assert.equal(guard(),true);
+ second.l=true;
+ assert.equal(guard(),false,'Reevaluate every server-pickable stack before dispatch');
+ second.l=false;second.q=1;
+ assert.equal(guard(),false,'New inventory split cannot use an old bid authorization');
+});
+test('U04 live bid sale rejects non-finite prices and nonstandard trade slots',()=>{
+ const i={name:'ring',level:0,q:3},c={name:'M',map:'main',in:'main',x:0,y:0,items:[i],gold:0,slots:{}};
+ const offer={name:'ring',level:0,b:true,q:3,rid:'id',price:Infinity};
+ const buyer={id:'B',name:'B',type:'character',stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:offer}};
+ let performed=0;
+ const p={c,entities:{B:buyer},has:()=>true,read:()=>null};
+ const economy={safe:()=>true,spare:()=>3,count:()=>3,perform:()=>{performed++;return true;}};
+ const market=createMarket({p,me:{name:'M'},cfg:{merchant:{marketHistory:false},production:{}},economy,exec:{},entity:()=>buyer});
+ assert.equal(market.sellToBid(0,{minPrice:1}),false);
+ offer.price=100;buyer.slots.trade17=offer;delete buyer.slots.trade1;
+ assert.equal(market.sellToBid(0,{minPrice:1}),false);
+ assert.equal(performed,0);
+});

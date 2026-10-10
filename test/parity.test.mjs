@@ -727,3 +727,31 @@ test('U05 gold-transfer timestamps reject stale or invalid saved values on new s
  store.set(key,'nonsense');assert.equal(createGoldLogistics(bot).transferAt,0);
  store.set(key,now-1000);assert.ok(createGoldLogistics(bot).transferAt>=now-1000);
 });
+
+test('U05 failed durable sender stamp cancels before executor and never leaves a value journal',()=>{
+ const me={name:'F',role:'farmer',group:'team',goldReserve:0};
+ const cfg={merchant:{collectGold:true,enabled:true,goldTransferMax:500,goldCollectBelow:100,goldReserve:0},party:{merchant:'M'},general:{messageTtlMs:15000}};
+ const c={name:'F',map:'main',in:'main',x:0,y:0,gold:1000};
+ const peer={name:'M',map:'main',in:'main',x:1,y:0,session:'merchant-1',realm:'EUII',running:true};
+ const sent=[];let queued=0,logs=0;
+ const bot={me,cfg,p:{c,read:()=>null,write:()=>false,realm:()=> 'EUII'},running:true,journal:null,inventoryBlocked:false,
+  checkpoint:{durable:true},logistics:{reserved:false,itemReserved:false},bank:{pending:false},exec:{busy:()=>false,run:()=>{queued++;return true;}},
+  transport:{fresh:()=>peer,send:(to,type,data,id)=>{sent.push({to,type,data,id});return Promise.resolve(true);}},
+  entity:()=>peer,session:'f1',event(){},report(){logs++;},beginValue(){assert.fail('Failed stamp cannot create value journal');},endValue(){assert.fail('No value action dispatched');}};
+ const gold=createGoldLogistics(bot);bot.gold=gold;
+ gold.poll(true);
+ assert.equal(gold.status().state,'offered');
+ assert.deepEqual(sent.map(x=>x.type),['goldOffer']);
+ const offer=sent[0];
+ gold.receive('M',{type:'goldAccept',id:offer.id,session:peer.session,data:{quantity:500}});
+ assert.equal(gold.status().state,'accepted');
+ gold.poll();
+ assert.equal(queued,0,'Executor never sees a non-durable gold send');
+ assert.equal(gold.reserved,false);
+ assert.equal(bot.journal,null);
+ assert.equal(bot.inventoryBlocked,false);
+ assert.equal(c.gold,1000);
+ assert.deepEqual(sent.map(x=>x.type),['goldOffer','goldCancel']);
+ assert.equal(sent[1].data.notDispatched,true);
+ assert.ok(logs>0);
+});

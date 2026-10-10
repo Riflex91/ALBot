@@ -976,7 +976,7 @@ test('U05 craft preparation refuses merging a stack protected by an effective ke
  const e={remaining:()=>true,rules:i=>i.protectedByGoal?{action:'keep',keep:0,teamReserve:0}:{action:'craft',keep:0,teamReserve:0},
   explicit:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
   perform:()=>{calls++;return true;}};
- const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>40};
+ const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true,goals:[],autonomy:false},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>40};
  const production=createProduction(bot),r={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
  assert.equal(production.craft('result',r),false);
  assert.equal(calls,0,'A derived keep rule prevents inventory merges');
@@ -987,7 +987,7 @@ test('U05 craft preparation refuses merging a stack protected by an effective ke
 test('U05 deferred crafting merges recheck effective rules, production, limits and reserves',()=>{
  const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};
  const G={items:{herb:{s:9999},result:{}},craft:{result:{cost:1,items:[[5,'herb']]}}};
- const cfg={production:{enabled:true,craft:true},general:{}};
+ const cfg={production:{enabled:true,craft:true,goals:[],autonomy:false},general:{}};
  let dispatch=null,materialKeep=0,active=true;
  const e={remaining:()=>active,rules:()=>({action:'craft',keep:materialKeep,teamReserve:0}),explicit:()=>null,
   safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
@@ -1010,7 +1010,7 @@ test('U05 crafting merge selects only safe integer stacks within live stack capa
  let queued=0;
  const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i,
   count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),perform:()=>{queued++;return true;}};
- const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>40};
+ const bot={p:{c,G,read:()=>null},cfg:{production:{enabled:true,craft:true,goals:[],autonomy:false},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>40};
  const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
  assert.equal(production.craft('result',rule),false);
  assert.equal(queued,0);

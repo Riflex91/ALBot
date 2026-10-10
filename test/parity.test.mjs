@@ -416,8 +416,8 @@ test('U04 market purchase requires same map and instance even for a nearby visib
  const offer={name:'ring',level:0,price:100,q:2,rid:'offer-1'},seller={id:'S',name:'S',type:'character',stand:true,map:'main',in:'main.2',x:20,y:0,slots:{trade1:offer}};
  let orders=0;
  const p={c,entities:{S:seller},read:()=>null};
- const econ={count:()=>0,perform:()=>{orders++;return true;}};
- const bot={p,me:{name:'M'},cfg:{general:{testLogging:true},merchant:{minFreeSlots:0,marketHistory:false}},economy:econ,exec:{},free:()=>5,entity:()=>seller};
+ const econ={count:()=>0,destination:()=>null,perform:()=>{orders++;return true;}};
+ const bot={p,me:{name:'M'},cfg:{general:{testLogging:true},merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}}},economy:econ,exec:{},free:()=>5,entity:()=>seller};
  const market=createMarket(bot),r={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:5,maxCount:5};
  assert.equal(market.buy(item,r),false);
  assert.equal(orders,0);
@@ -430,7 +430,7 @@ test('U04 market buy dispatch rechecks live stand, instance, offer flags and pri
  let guard=null;
  const p={c,entities:{S:seller},read:()=>null};
  const econ={count:()=>0,perform:(kind,opts)=>{assert.equal(kind,'market.buy');guard=opts.guard;return true;}};
- const bot={p,me:{name:'M'},cfg:{general:{testLogging:true},merchant:{minFreeSlots:0,marketHistory:false}},economy:econ,exec:{},free:()=>5,entity:()=>p.entities.S};
+ const bot={p,me:{name:'M'},cfg:{general:{testLogging:true},merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}}},economy:econ,exec:{},free:()=>5,entity:()=>p.entities.S};
  const market=createMarket(bot),r={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:5,maxCount:5};
  assert.equal(market.buy(item,r),true);
  assert.equal(guard(),true);

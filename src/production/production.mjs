@@ -3,7 +3,7 @@ import {estimateRoutes} from './costs.mjs';
 import {materialSources,materialDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
-import {findRecipe,recipeIngredients} from './recipes.mjs';
+import {findRecipe,recipeIngredients,recipeGridIngredients} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 export function createProduction(bot){
@@ -104,9 +104,26 @@ export function createProduction(bot){
  function craft(name,r){
   const found=findRecipe(p.G,name,r.recipe),recipe=found?.recipe;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.craft||!recipe)return false;
   const yieldCount=recipe.q??recipe.quantity??1;if(!Number.isSafeInteger(yieldCount)||yieldCount<1||outputCount(name,r)+yieldCount>Math.min(r.targetCount,r.maxCount))return false;
+  const grid=recipeGridIngredients(recipe),totals=recipeIngredients(recipe);
+  const totalFor=(id,level)=>totals.find(x=>x.item===id&&x.level===level)?.quantity??0;
   const slots=[],requirements=[];
-  for(const {quantity:q,item:id,level} of recipeIngredients(recipe)){const slot=p.c.items.findIndex((i,n)=>{const keep=i&&e.rules(i);return i?.name===id&&(i.level??0)===level&&e.safe(i)&&!slots.includes(n)&&(i.q??1)>=q&&keep?.action!=='keep'&&e.count(i)-q>=(keep?keep.keep+keep.teamReserve:0)+reserveOther(id,level);});if(slot<0){const candidate=p.c.items.find(i=>i?.name===id&&(i.level??0)===level&&e.safe(i));return candidate?mergeFor(candidate,q,r):false;}slots.push(slot);requirements.push({item:{...p.c.items[slot]},before:e.count(p.c.items[slot]),q});}
-  if(!slots.length||slots.length>9||!Number.isFinite(recipe.cost))return false;
+  for(const {quantity:q,item:id,level} of grid){
+   const total=totalFor(id,level);
+   const slot=p.c.items.findIndex((i,n)=>{
+    const keep=i&&e.rules(i);
+    return i?.name===id&&(i.level??0)===level&&e.safe(i)&&!slots.includes(n)&&(i.q??1)>=q&&
+     keep?.action!=='keep'&&e.count(i)-total>=(keep?keep.keep+keep.teamReserve:0)+reserveOther(id,level);
+   });
+   if(slot<0){
+    // Duplicate recipe rows need different grid positions; merging stacks
+    // would reduce available positions, not satisfy the missing position.
+    if(slots.some(n=>p.c.items[n]?.name===id&&(p.c.items[n]?.level??0)===level))return false;
+    const candidate=p.c.items.find(i=>i?.name===id&&(i.level??0)===level&&e.safe(i));
+    return candidate?mergeFor(candidate,q,r):false;
+   }
+   slots.push(slot);requirements.push({item:{...p.c.items[slot]},before:e.count(p.c.items[slot]),q});
+  }
+  if(!Number.isFinite(recipe.cost)||recipe.cost<0)return false;
   const questNpc=recipe.quest&&(p.G.npcs?.[recipe.quest]?recipe.quest:Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===recipe.quest)?.[0]),d=e.destination(questNpc||'craftsman');if(recipe.quest&&!questNpc){e.note('Rezept-Arbeitsplatz fehlt: '+recipe.quest);return false;}
   const item={name,level:0,data:recipe.output?.data},total=()=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===(item.level??0)&&(item.data===undefined||JSON.stringify(i.data)===JSON.stringify(item.data))?i.q??1:0),0),before=total();
   if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item)||!e.travel(d,'Craft '+name))return false;
@@ -120,15 +137,18 @@ export function createProduction(bot){
    if(!live||JSON.stringify([live.key,live.recipe])!==recipeProof)return false;
    const produced=live.recipe.q??live.recipe.quantity??1;
    if(!Number.isSafeInteger(produced)||produced<1||outputCount(name,r)+produced>Math.min(r.targetCount,r.maxCount))return false;
-   let ingredients;try{ingredients=recipeIngredients(live.recipe);}catch{return false;}
+   let ingredients,materialTotals;try{ingredients=recipeGridIngredients(live.recipe);materialTotals=recipeIngredients(live.recipe);}catch{return false;}
    if(ingredients.length!==slots.length)return false;
    return ingredients.every((req,n)=>{
-    const i=p.c.items[slots[n]],policy=i&&e.rules(i);
+    const i=p.c.items[slots[n]],policy=i&&e.rules(i),aggregate=materialTotals.find(x=>x.item===req.item&&x.level===req.level);
     return i?.name===req.item&&(i.level??0)===req.level&&e.safe(i)&&(i.q??1)>=req.quantity&&
-     policy?.action!=='keep'&&e.count(i)-req.quantity>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(req.item,req.level);
+     policy?.action!=='keep'&&e.count(i)-aggregate.quantity>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(req.item,req.level);
    })&&capacity(slots.map((slot,n)=>({slot,quantity:ingredients[n].quantity})),item);
   };
-  return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.at(d)&&craftReady(),call:()=>p.call('craft',...slots),observe:()=>total()>before&&requirements.every(x=>e.count(x.item)<=x.before-x.q),details:{item:name,recipe:found.key,before},timeout:45000});
+  // Observe the *aggregate* consumption. Looking at each repeated row alone
+  // would falsely confirm a two-position recipe after consuming only one.
+  const consumption=totals.map(req=>({...req,before:e.count({name:req.item,level:req.level})}));
+  return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.at(d)&&craftReady(),call:()=>p.call('craft',...slots),observe:()=>total()>before&&consumption.every(x=>e.count({name:x.item,level:x.level})<=x.before-x.quantity),details:{item:name,recipe:found.key,before},timeout:45000});
  }
  function exchange(slot,r,step=null){
    const existing=p.c.items[slot];if(!existing)return false;

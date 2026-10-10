@@ -94,7 +94,25 @@ export function createProduction(bot){
   const questNpc=recipe.quest&&(p.G.npcs?.[recipe.quest]?recipe.quest:Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===recipe.quest)?.[0]),d=e.destination(questNpc||'craftsman');if(recipe.quest&&!questNpc){e.note('Rezept-Arbeitsplatz fehlt: '+recipe.quest);return false;}
   const item={name,level:0,data:recipe.output?.data},total=()=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===(item.level??0)&&(item.data===undefined||JSON.stringify(i.data)===JSON.stringify(item.data))?i.q??1:0),0),before=total();
   if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item)||!e.travel(d,'Craft '+name))return false;
-  return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.at(d),call:()=>p.call('craft',...slots),observe:()=>total()>before&&requirements.every(x=>e.count(x.item)<=x.before-x.q),details:{item:name,recipe:found.key,before},timeout:45000});
+  // The game chooses the craft outcome from the live recipe/ingredients. Recheck
+  // that contract at dispatch: an inventory fingerprint alone cannot detect a
+  // changed recipe, keep rule, reserve, output cap or crafting permission.
+  const recipeProof=JSON.stringify([found.key,recipe]);
+  const craftReady=()=>{
+   if(!cfg.production.enabled||!cfg.production.craft||!e.remaining(r))return false;
+   const live=findRecipe(p.G,name,r.recipe);
+   if(!live||JSON.stringify([live.key,live.recipe])!==recipeProof)return false;
+   const produced=live.recipe.q??live.recipe.quantity??1;
+   if(!Number.isSafeInteger(produced)||produced<1||outputCount(name,r)+produced>Math.min(r.targetCount,r.maxCount))return false;
+   let ingredients;try{ingredients=recipeIngredients(live.recipe);}catch{return false;}
+   if(ingredients.length!==slots.length)return false;
+   return ingredients.every((req,n)=>{
+    const i=p.c.items[slots[n]],policy=i&&e.rules(i);
+    return i?.name===req.item&&(i.level??0)===req.level&&e.safe(i)&&(i.q??1)>=req.quantity&&
+     policy?.action!=='keep'&&e.count(i)-req.quantity>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(req.item,req.level);
+   })&&capacity(slots.map((slot,n)=>({slot,quantity:ingredients[n].quantity})),item);
+  };
+  return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.at(d)&&craftReady(),call:()=>p.call('craft',...slots),observe:()=>total()>before&&requirements.every(x=>e.count(x.item)<=x.before-x.q),details:{item:name,recipe:found.key,before},timeout:45000});
  }
  function exchange(slot,r,step=null){
    const existing=p.c.items[slot];if(!existing)return false;

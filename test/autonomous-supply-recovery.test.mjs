@@ -84,3 +84,12 @@ test('explicit keep rule blocks automatic supply, even if the farmer needs MP',(
  M.logistics.poll();M.logistics.poll();
  assert.equal(sent.length,0);
 });
+
+test('merchant acquisition-only potion rule does not suppress automatic MP delivery',()=>{
+ const {M,R,cfg,sent}=pair();
+ const rule=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ cfg.items=[{...rule,item:'mpot0',name:'Merchant-Nachkauf mpot0',action:'buy',role:'merchant',targetCount:5000}];
+ assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,3000);
+ M.logistics.poll();M.logistics.poll();
+ assert.deepEqual(sent,[{to:'R',quantity:1500}], 'automatically resupply while keeping the merchant buy rule');
+});

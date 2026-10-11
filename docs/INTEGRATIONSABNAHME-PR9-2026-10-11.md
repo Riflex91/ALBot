@@ -1,3 +1,22 @@
+## Bankkonsolidierung und geringstwertiger Notverkauf: korrekt aus Adventure-Land-v3 (11.10.2026)
+
+Der v3-Referenzbot befindet sich **unter `Riflex91/Riflex91-Repo/v3`**, nicht im Screeps-Repository `Riflex91/boringstuff`. Direkter Vergleich:
+- [`v3/src/economy/bank-capacity-manager.js`](https://github.com/Riflex91/Riflex91-Repo/blob/main/v3/src/economy/bank-capacity-manager.js): `planSpace` priorisiert vorhandene Stacktargets, freie Plätze, sichere Konsolidierung, budgetierte Erweiterung und erst dann `EMERGENCY_RECLAIM`; `_reclaimBlockers` verlangt positiv freigegebene `SELL`-Disposition, Metadaten, Reservenschutz; `_lossScore` berücksichtigt Wert, Seltenheit und Beschaffungsschwierigkeit.
+- [`v3/src/economy/controlled-bank-consolidation-executor.js`](https://github.com/Riflex91/Riflex91-Repo/blob/main/v3/src/economy/controlled-bank-consolidation-executor.js): beobachtete Vor-/Nachbestände, kontrollierte Wiederherstellung.
+- [`v3/src/economy/sell-safety.js`](https://github.com/Riflex91/Riflex91-Repo/blob/main/v3/src/economy/sell-safety.js): speziell geschützte und nicht eindeutig harmlose Gegenstände niemals notverkaufen.
+- Die offiziellen Adventure-Land-Funktionen `swap(a,b)` (`imove`) sowie `bank_swap(pack,a,b)` (`bank move`) konsolidieren bei passenden Varianten und Mengenlimits direkt.
+
+In ALBot implementiert:
+1. `bank.consolidateInventory()` verbindet passende, ungesperrte, gewöhnliche Stapel im **Inventar**, mit zentralem Executor, Wertjournal und Bestätigung von Quelle und Ziel.
+2. `bank.consolidate()` vereinigt kompatible, gewöhnliche Stapel innerhalb desselben Bankpacks; Zielvariante und Menge werden exakt bestätigt. Übergreifende Packverschiebungen werden nicht automatisch behauptet.
+3. Die Recovery-Rangfolge ist Konsolidierung → erlaubte Bankerweiterung → minimaler risikoangepasster Notverkauf. Verkäufe dürfen nur Gegenstände mit positiv gültiger `sell`-Regel betreffen; automatische Regeln werden ausschließlich für einen einzelnen, harmlosen, stapelbaren Materialgegenstand toleriert. Quest-, seltene, Event- und spezialattribuierte Gegenstände, Gear- und Produktionsreserven bleiben ausgeschlossen. Bei fehlendem sicheren Kandidaten bleibt der Bankplatz blockiert: **Es findet kein Notverkauf statt**.
+4. Auswahl unter allen auf der aktuellen Bankkarte zugänglichen Kandidaten erfolgt nach `lossScore` (NPC-Wert, Seltenheit und Beschaffungsschwierigkeit), nicht nach Bankfeld-Reihenfolge.
+5. Neuer Standard `party.aoeMaxTargets:5`; für das persönliche Testprofil zusätzlich `farming.autoTargets:true` und `party.aoe:true`. Die unabhängige bisherige Aggro- und Gefahrenbegrenzung bleibt erhalten; 5 AoE-Ziele bedeuten nicht, dass fünf neue Gegner angezogen werden dürfen.
+
+[CI 38149787387](https://github.com/Riflex91/ALBot/actions/runs/38149787387): **314/314 Tests** auf Linux und Windows, darunter Inventar-/Bank-Stapeltests, Full-Bank-Kandidatenauswahl und Schutz für den speziellen `cxjar`. Erst nach kontrollierter Game-Livebeobachtung ist die tatsächliche Wirksamkeit bestätigt. Ein bestehendes offenes Bank-Wertjournal wird durch diese Änderung **nicht** automatisch gelöscht. Kein Merge.
+
+---
+
 ## Bank-Livestillstand, AOE-Standard und Spawn-Suche (11.10.2026)
 
 Neue Logs `test-My_Merchant-2026-10-11T14-34-25-024Z-part001.json` sowie Ranger1/Ranger2/Rogue, ca. 14:34–14:38 UTC:

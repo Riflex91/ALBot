@@ -15,7 +15,7 @@ export function createCombatNavigation(bot){
  function rangePosition(t){
   const c=bot.p.c;
   if(!bot.cfg.farming.kiting||!['ranger','mage','priest'].includes(c.ctype)||
-     !t||t.dead||t.hp<=0||!samePlace(c,t)||!Number.isFinite(c.range)||c.range<80||
+     !t||!isNaturallyAggressive(bot.p.G,t)||t.dead||t.hp<=0||!samePlace(c,t)||!Number.isFinite(c.range)||c.range<80||
      t.target&&t.target!==c.name)return false;
   const now=Date.now();
   if(now-lastRangeMove<650||bot.movement.order&&!['kite','combat'].includes(bot.movement.order.owner))return false;

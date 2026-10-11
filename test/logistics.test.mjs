@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLogistics} from '../src/items/logistics.mjs';
+import {createLogistics,deliveryRouteDecision} from '../src/items/logistics.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {chooseRule} from '../src/core/policy.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
@@ -142,4 +142,51 @@ test('merchant never sends unsolicited goods when neither demand nor validated g
  const {A,B}=pair();B.p.c.items[0].q=10;
  A.logistics.poll();
  assert.equal(A.logistics.stats().offersSent,0);
+});
+
+test('authenticated farmer elixir request is actionable supply even with no item-demand row',()=>{
+ const {A,B,sends}=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ A.cfg.items=[{...r,name:'Deliver dex elixir',item:'elixirdex0',role:'merchant',action:'send',
+  recipient:'B',keep:0,teamReserve:0,batch:1,maxCount:100,enabled:true}];
+ A.p.c.items[0]={name:'elixirdex0',level:0};
+ B.p.c.items[0]=null;
+ B.elixirs={request:()=>({item:'elixirdex0',quantity:1})};
+ const fresh=A.transport.fresh;
+ A.transport.fresh=n=>({...fresh(n),elixir:{item:'elixirdex0',quantity:1}});
+ assert.equal(B.logistics.summary().length,0);
+ A.logistics.poll();
+ assert.equal(A.logistics.stats().offersSent,1);
+ assert.equal(B.journal?.kind,'receive');
+ A.logistics.poll();
+ assert.equal(sends(),1);
+ assert.equal(B.p.c.items.some(i=>i?.name==='elixirdex0'),true);
+ B.logistics.poll();A.logistics.poll();
+ assert.equal(B.inventoryBlocked,false);
+});
+test('courier replaces obsolete map and kite coordinates using fresh recipient heartbeat',()=>{
+ const prior={owner:'logistics',dest:{name:'B',map:'main',in:'main',x:20,y:20}};
+ const here={map:'main',in:'main',x:1000,y:0};
+ const fresh={name:'B',running:true,rip:false,realm:'EUII',map:'main',in:'main',x:500,y:100};
+ assert.equal(deliveryRouteDecision(prior,fresh,here),'retarget');
+ assert.equal(deliveryRouteDecision(prior,{...fresh,x:23,y:21},here),'keep');
+ assert.equal(deliveryRouteDecision(prior,{...fresh,map:'forest',in:'forest'},here),'retarget');
+ assert.equal(deliveryRouteDecision(prior,{...fresh,map:'main',x:1002,y:4},here),'arrived');
+ assert.equal(deliveryRouteDecision(prior,null,here),'cancel');
+});
+test('merchant actually stops old smart route and heads to recipient new map',()=>{
+ const {A,B}=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ A.cfg.items=[{...r,name:'Deliver',item:'elixirdex0',role:'merchant',action:'send',recipient:'B',keep:0,teamReserve:0,batch:1,maxCount:100,enabled:true}];
+ A.p.c.items[0]={name:'elixirdex0',level:0};A.p.c.x=900;
+ A.transport.peers.set('B',{});
+ const fresh=A.transport.fresh;
+ A.transport.fresh=n=>({...fresh(n),name:n,map:'forest',in:'forest',x:250,y:400,elixir:{item:'elixirdex0',quantity:1}});
+ let stops=0,rerouted=null;
+ A.strategy={canVisit:()=>true};
+ A.movement={order:{owner:'logistics',dest:{name:'B',map:'main',in:'main',x:0,y:0}},stop(){stops++;this.order=null;},
+  go(dest,owner){rerouted={dest,owner};this.order={owner,dest};return true;}};
+ A.logistics.travel();
+ assert.equal(stops,1);
+ assert.equal(rerouted?.owner,'logistics');
+ assert.equal(rerouted.dest.map,'forest');
+ assert.equal(rerouted.dest.x,250);
 });

@@ -60,7 +60,7 @@ function positioning({blocked=false,ctype='ranger',owner='Ranger'}={}){
  const c={name:'Ranger',ctype,map:'main',in:'main',x:0,y:0,range:150,speed:40};
  const t={id:'mob',type:'monster',mtype:'bee',map:'main',in:'main',x:50,y:0,hp:100,target:owner};
  const moves=[];
- const bot={p:{c,G:{monsters:{bee:{range:25}}},call:(name,x,y)=>name==='can_move_to'?!blocked||x>=-1:true},
+ const bot={p:{c,G:{monsters:{bee:{range:25,aggro:1}}},call:(name,x,y)=>name==='can_move_to'?!blocked||x>=-1:true},
   cfg:{farming:{kiting:true}},teamNames:['Ranger','Ally'],me:{name:'Ranger'},
   monsters:()=>[t],teamPlan:null,event:()=>{},
   movement:{order:null,stop(){this.order=null;},local(x,y,who){moves.push({x,y,who});this.order={owner:who};}}};

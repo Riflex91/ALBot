@@ -33,7 +33,7 @@ export function createBank(bot){
  }
  let observed=false,stockRows=[],packEpoch=-1,packCache=null,stockObservedAt=0,stockObservedMap=null;
  const catalogKey='albot:bank-catalog:v1:'+me.name;
- const stored=p.read(catalogKey),realm=p.realm();
+ const stored=p.read(catalogKey),realm=p.realm?.()??'';
  let catalog=stored?.version===1&&stored.owner===me.name&&stored.realm===realm&&
    Number.isSafeInteger(stored.observedAt)&&stored.observedAt>0&&
    stored.observedAt<=Date.now()&&Array.isArray(stored.rows)&&stored.rows.length<=512?
@@ -42,7 +42,7 @@ export function createBank(bot){
  // Reloaded stock is planning evidence only. Never authorize a bank mutation
  // against this catalog: retrieve/store still demand a live pack/slot.
  function catalogStock(maxAge=120000){
-  if(catalog.realm!==p.realm()||Date.now()-catalog.observedAt>maxAge||
+  if(catalog.realm!==(p.realm?.()??'')||Date.now()-catalog.observedAt>maxAge||
      catalog.observedAt<=0||bot.inventoryBlocked)return [];
   return catalog.rows.filter(x=>x&&typeof x.pack==='string'&&Number.isSafeInteger(x.slot)&&
    x.slot>=0&&x.item&&e.safe(x.item)).map(x=>({...x,owner:me.name,
@@ -83,9 +83,9 @@ export function createBank(bot){
     .map(([pack,items])=>[pack,items.map(item=>item?fingerprint(item):null)]));
    if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint){
     // New verified visit or a server-observable bank state revision.
-    const next={version:1,owner:me.name,realm:p.realm(),observedAt:Date.now(),
+    const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),
      revision:(catalog.revision??0)+1,rows:current};
-    if(p.write(catalogKey,next)===true){catalog=next;observed=true;
+    if(p.write?.(catalogKey,next)===true){catalog=next;observed=true;
      stockObservedAt=next.observedAt;stockObservedMap=p.c.map;
      stockRows=current.filter(x=>e.explicit(x.item)?.action!=='keep');
     }

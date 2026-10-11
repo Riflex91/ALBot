@@ -1,4 +1,5 @@
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
+import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
 export function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
@@ -25,10 +26,10 @@ export function createFarmer(bot){
     }
     if(c.hp/c.max_hp<cfg.farming.restBelow)rest=true;
     if(rest&&c.hp/c.max_hp>=cfg.farming.resumeAbove)rest=false;
-    if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>e.target===c.name).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
+    if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>isOwnAggressiveThreat(p.G,e,c.name)).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
-  function retreat(t){if(bot.navigation?.orbit(t))return;const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>m.target===c.name);if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
+  function retreat(t){if(!isNaturallyAggressive(p.G,t))return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function helpEngagedTeamFight(leader){
   // Soft follow distance must not suppress safe, reachable assistance to an
   // EXISTING team fight. This path never pulls an unattached monster.
@@ -78,18 +79,18 @@ function recoverCohesion(now){
   bot.event?.('party.cohesion-recovery',{peer:target.name,gap:Math.round(target.distance),reason:'45 Sekunden ohne Annäherung'});
   return true;
 }
-function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
+function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
   function tick(){
     bot.recovering=false;
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
-    const threat=bot.monsters().filter(m=>m.target===c.name).sort((a,b)=>distance(c,a)-distance(c,b))[0];
+    const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
     // Retreat before an overpowered nearby roaming enemy locks onto us.
     const danger=me.role==='farmer'?bot.monsters().filter(m=>m.hp>0&&!m.dead&&
-      (m.aggro||p.G.monsters?.[m.mtype]?.aggro||p.G.monsters?.[m.mtype]?.boss)&&
-      distance(c,m)<Math.max(170,(m.range??p.G.monsters?.[m.mtype]?.range??30)+110)&&
+      isNaturallyAggressive(p.G,m)&&(!m.target||m.target===c.name)&&
+      distance(c,m)<Math.max(70,(m.range??p.G.monsters?.[m.mtype]?.range??30)+45)&&
       bot.strategy?.safeTarget?.(m.mtype,m,true)===false
     ).sort((a,b)=>distance(c,a)-distance(c,b))[0]:null;
     if(danger){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährlicher Monsterkontakt im Farmgebiet',danger.mtype);bot.target=null;bot.reason='Gefahrenrückzug: '+danger.mtype;retreat(danger);bot.skills.rotation(null);return;}
@@ -109,7 +110,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){if(helpEngagedTeamFight(leader))return;bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
-    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
+    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
     const planned=bot.teamPlan?.target(),visible=planned?bot.monsters().filter(m=>m.mtype===planned):[];if(me.name===bot.leader&&visible.length&&visible.every(m=>bot.strategy?.safeTarget(planned,m,true)===false)){bot.strategy.failActivity('Sichtbare Gegner stärker als Farmplan; neues sicheres Ziel wählen',planned);bot.reason='Farmziel neu bewerten: sichtbare Gegner zu stark';return;}bot.encounter?.pull();const mobs=bot.monsters().filter(bot.allowed);
     const focus=cfg.party.enabled&&cfg.party.focusFire&&leader?.target&&(!bot.teamPlan||leader.farmPlan?.id===bot.teamPlan.heartbeat()?.id||leader.activity)?mobs.find(e=>e.id===leader.target):null;
     const previous=bot.target&&mobs.find(e=>e.id===bot.target.id);
@@ -120,10 +121,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     bot.reason='Kampf: '+target.mtype;
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);
-    if(cfg.farming.kiting&&target.target===c.name&&c.range>(target.range??20)+25&&d<Math.min(range,(target.range??20)+35))retreat(target);
+    if(cfg.farming.kiting&&isNaturallyAggressive(p.G,target)&&target.target===c.name&&c.range>(target.range??20)+25&&d<Math.min(range,(target.range??20)+35))retreat(target);
     else if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }
-  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
+  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
 }

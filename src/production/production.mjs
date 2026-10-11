@@ -3,7 +3,7 @@ import {estimateRoutes} from './costs.mjs';
 import {materialSources,materialDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
-import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots} from './recipes.mjs';
+import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 export function createProduction(bot){
@@ -60,11 +60,19 @@ export function createProduction(bot){
     sum<=limit()&&cfg.production.enabled&&cfg.production.craft&&e.remaining(r)&&
     e.count(a)-required>=(policy?.keep??0)+(policy?.teamReserve??0)+reserveOther(item.name,level);
   };
-  const slots=p.c.items.map((i,n)=>({i,n})).filter(({i})=>eligible(i));
-  const pair=slots.flatMap(a=>slots.filter(b=>b.n>a.n&&livePair(a.n,b.n)).map(b=>[a,b]))
-   .sort((a,b)=>((b[0].i.q??1)+(b[1].i.q??1))-((a[0].i.q??1)+(a[1].i.q??1)))[0];
-  if(!pair)return false;
-  const [a,b]=pair,sum=(a.i.q??1)+(b.i.q??1),before=e.count(item);
+  const slots=p.c.items.map((i,n)=>({i,n})).filter(({i})=>{
+   if(!eligible(i))return false;
+   const policy=e.rules(i,'inventory');
+   return e.count(i)-required>=(policy?.keep??0)+(policy?.teamReserve??0)+reserveOther(item.name,level);
+  });
+  const complete=planCraftStackMerge(slots.map(({i,n})=>({slot:n,quantity:i.q??1})),required,limit());
+  if(!complete)return false;
+  // Every staged merge must belong to a complete feasible stack; the next
+  // invocation replans using the newly merged inventory.
+  const [first,second]=complete.slots;
+  if(!livePair(first,second))return false;
+  const a={n:first,i:p.c.items[first]},b={n:second,i:p.c.items[second]};
+  const sum=(a.i.q??1)+(b.i.q??1),before=e.count(item);
   return e.perform('inventory.merge',{slots:[a.n,b.n],rule:r,guard:()=>livePair(a.n,b.n)&&e.count(item)===before,
    call:()=>p.call('swap',a.n,b.n),
    observe:()=>e.count(item)===before&&((p.c.items[a.n]?.q===sum&&!p.c.items[b.n])||(p.c.items[b.n]?.q===sum&&!p.c.items[a.n])),

@@ -1,6 +1,7 @@
 import {distance} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
+import {planPickupCapacity,pickupCleanupCandidates} from './pickup-capacity.mjs';
 // A stand may only open while idle. Native smart_move pathfinding can leave
 // character.moving false for several seconds; inspect the movement owner too.
 export function canOpenMerchantStand(bot){
@@ -13,7 +14,41 @@ export function canOpenMerchantStand(bot){
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
- let standIdleSince=null;
+ let standIdleSince=null,lastPickupWarning=0,pickupStatus=null;
+ function preparePickup(peer){
+  if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.pickup)return true;
+  const reserve=cfg.merchant.minFreeSlots??4;
+  const plan=planPickupCapacity(peer?.items,{merchant:me.name,free:bot.free(),reserve,
+    known:i=>!!p.G?.items?.[i.name]});
+  pickupStatus={peer:peer.name,...plan};
+  if(!plan.offers||plan.ready)return true;
+  bot.reason='Abholung vorbereiten: '+plan.missing+' freie Inventarplätze fehlen für '+peer.name;
+  if(bot.journal||bot.inventoryBlocked||bot.gold?.reserved||bot.bank.pending||
+     bot.logistics?.reserved||exec.busy('inventory'))return false;
+  if(bot.services?.active||bot.services?.waiting){
+   bot.services.interrupt();
+   if(bot.services.restore())return false;
+  }
+  // Stack merging is safe before any destructive cleanup. Every other
+  // action reuses economy.perform and durable per-slot value journals.
+  if(bot.bank.consolidateInventory?.())return false;
+  const options=pickupCleanupCandidates(p.c.items,i=>e.rules(i),
+    (slot,rule)=>e.spare(slot,rule),i=>e.safe(i));
+  for(const x of options.bank){
+   if(bot.bank.store(x.slot,x.rule))return false;
+   if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory'))return false;
+  }
+  for(const x of options.sell){
+   if(e.npcSell(x.slot,x.rule))return false;
+   if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory'))return false;
+  }
+  if(Date.now()-lastPickupWarning>10000){
+   lastPickupWarning=Date.now();
+   bot.event?.('merchant.pickupCapacity',{peer:peer.name,...plan,
+      state:'blocked',reason:'Nur sichere, vollständig freigebbare Bank-/Verkaufsstapel geeignet; keine weiteren Aufgaben starten'});
+  }
+  return false;
+ }
  function openStandWhenIdle(){
   if(!canOpenMerchantStand(bot)){standIdleSince=null;return false;}
   if(standIdleSince===null){standIdleSince=Date.now();return false;}
@@ -95,5 +130,5 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   openStandWhenIdle();
  }
- return {tick,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status()}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status(),pickup:pickupStatus}),close(){tasks.clear();service.clear();}};
 }

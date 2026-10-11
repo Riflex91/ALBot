@@ -24,3 +24,11 @@ test('fulfilled local inventory is dispatched separately and must not pin produc
  assert.equal(needsProductionStock(3,2),false);
  assert.equal(needsProductionStock(0,1),true);
 });
+
+test('limited inventory is allocated to the highest-priority recipient and reassigned after receipt',()=>{
+ const goals=[{name:'first',recipient:'My_Ranger1',item:'elixirdex0',level:0,quantity:1},
+  {name:'second',recipient:'My_Ranger2',item:'elixirdex0',level:0,quantity:1}];
+ const available=()=>1;
+ assert.deepEqual(pendingDeliveryRuleNeeds(goals,()=>0,'My_Merchant',available).map(g=>g.recipient),['My_Ranger1']);
+ assert.deepEqual(pendingDeliveryRuleNeeds(goals,g=>g.recipient==='My_Ranger1'?1:0,'My_Merchant',available).map(g=>g.recipient),['My_Ranger2']);
+});

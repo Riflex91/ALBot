@@ -42,22 +42,29 @@ export function createSkills(bot){
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
     const aimed=['3shot','5shot'].includes(id);
     const visible=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
-    // Aimed shots select exact recipients. Neutral mobs may be pulled ONLY
-    // while the encounter planner is explicitly building a validated multi-pull,
-    // with at least one already engaged team enemy and spare aggro capacity.
-    // Other-party mobs never enter the target list. Untargeted AoE stays strict.
+    // Targeted skills can initiate a controlled encounter: a neutral mob is
+    // allowed only if the team plan, danger checks and planner all approve it.
+    // Untargeted AoE must account for EVERY visible mob inside its effect area.
     const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&bot.allowed(e));
-    const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets);
+    const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets,cfg.farming.maxAggro??Infinity);
     const engaged=visible.filter(eligible);
-    const canPull=e=>!e.target&&!!bot.teamPlan?.target()&&e.mtype===bot.teamPlan.target()&&bot.allowed(e);
+    const canPull=e=>!!(e&&!e.target&&bot.teamPlan?.target()&&e.mtype===bot.teamPlan.target()&&
+      bot.teamPlan.wantsCombat?.()!==false&&bot.allowed(e)&&bot.strategy?.safeTarget?.(e.mtype,e)!==false);
     function extraAllowance(){
       const phase=bot.encounter?.status?.(),allEngaged=bot.monsters().filter(e=>e.target&&bot.teamNames.includes(e.target)).length;
-      return engaged.length&&phase?.phase==='BUILD'?Math.max(0,Math.min(limit-engaged.length,phase.capacity-allEngaged,cfg.farming.maxAggro-allEngaged)):0;
+      if(phase?.phase!=='BUILD')return 0;
+      return Math.max(0,Math.min(limit-engaged.length,phase.capacity-allEngaged,
+        (cfg.farming.maxAggro??1)-allEngaged));
     }
-    const additional=aimed?Math.floor(extraAllowance()):0;
+    const additional=Math.floor(extraAllowance());
     const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
     const selected=multi?candidates.slice(0,limit):[];
-    if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??2)||(!aimed&&(visible.length>limit||visible.some(e=>!eligible(e)))))return false;argsTarget=['cleave','stomp'].includes(id)?null:selected;target=selected[0];}
+    const neutralCount=selected.filter(e=>!e.target).length;
+    if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??1)||
+      (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):
+        (visible.length>limit||visible.some(e=>!eligible(e)&&!canPull(e))))||
+      neutralCount>additional)return false;
+      argsTarget=aimed?selected:null;target=selected[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}
     let burstMana=0;if(id==='cburst'){const budget=Math.floor(Math.min(p.c.mp-p.c.max_mp*reserve-(s.mp??0),p.c.max_mp*(control?.manaBudget??1)));burstMana=Math.min(budget,Math.ceil((target?.hp??0)/Math.max(.001,s.ratio??.5)));if(!target||burstMana<=0)return false;argsTarget=[[target.id,burstMana]];}
     const consume=s.consume,prior=consume?bot.count(consume):0;
@@ -105,7 +112,15 @@ export function createSkills(bot){
     // weapon, legal targets, mana cost and approved encounter capacity.
     if(t&&cfg.party.aoe){
       const shotRange=(p.G.skills['5shot']?.range??c.range)-5;
-      const safeCount=Math.min(cfg.party.aoeMaxTargets,bot.monsters().filter(m=>distance(c,m)<shotRange&&m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m)).length);
+      const phase=bot.encounter?.status?.();
+      const engaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target)).length;
+      const remaining=phase?.phase==='BUILD'?Math.max(0,Math.min(
+        (phase.capacity??1)-engaged,(cfg.farming.maxAggro??1)-engaged)):0;
+      const safe=bot.monsters().filter(m=>distance(c,m)<shotRange&&
+        ((m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m))||
+        (!m.target&&remaining>0&&m.mtype===bot.teamPlan?.target()&&bot.allowed(m)&&
+         bot.strategy?.safeTarget?.(m.mtype,m)!==false)));
+      const safeCount=Math.min(cfg.party.aoeMaxTargets,engaged+Math.min(remaining,safe.filter(m=>!m.target).length));
       const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
       for(const id of ids)if(use(id,t,0,600))return;
     }

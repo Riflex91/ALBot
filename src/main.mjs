@@ -42,6 +42,7 @@ import {createSkills} from './combat/skills.mjs';
 import {createFarmer} from './combat/farmer.mjs';
 import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
+import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint} from './core/checkpoint.mjs';
 export function install(root){
   root.ALBot?.dispose?.();
@@ -169,6 +170,8 @@ export function install(root){
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
     status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
+    teamCheck:()=>createTeamCheck(bot,report.document()),
+    exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},
     testReport:()=>report.text(),exportTestReport:()=>report.flush(),
     chooseLogDirectory:()=>report.chooseDirectory(),logCapabilities:()=>report.capabilities(),
     acknowledgeInventory(){if(bot.running)throw Error('Zuerst pausieren und tatsächlichen Bestand prüfen');if(!checkpoint.write(null))throw Error('Speichern fehlgeschlagen');bot.journal=null;bot.inventoryBlocked=false;bot.reason='Inventar manuell abgeglichen';publish();},

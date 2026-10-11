@@ -1,6 +1,20 @@
 import {identity,distance,xy,protectedItem} from '../core/policy.mjs';
 export function insidePolygon(point,polygon){let inside=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const [ax,ay]=polygon[i],[bx,by]=polygon[j];if((ay>point.y)!==(by>point.y)&&point.x<(bx-ax)*(point.y-ay)/(by-ay)+ax)inside=!inside;}return inside;}
 export const nearGatherZone=(point,polygon)=>[[0,-24],[-24,0],[24,0],[0,24]].some(([x,y])=>insidePolygon({x:point.x+x,y:point.y+y},polygon));
+// Prefer reachable shoreline positions, but rotate away from a waypoint whose
+// native smart_move was rejected. Do not reject its entire map or polygon.
+export function chooseGatherWorksite(regions,character,{failedRecently=()=>false,canMoveTo=()=>false}={}){
+ const current=xy(character),ordered=[...regions].sort((a,b)=>Number(b.map===character.map)-Number(a.map===character.map));
+ for(const region of ordered){
+  if(region.map===character.map&&nearGatherZone(current,region.polygon))return {...region,...current};
+  const candidates=(region.points??[]).filter(pt=>!failedRecently({...region,x:pt.x,y:pt.y},'economy'));
+  candidates.sort((a,b)=>region.map===character.map?distance(character,a)-distance(character,b):0);
+  if(!candidates.length)continue;
+  const direct=region.map===character.map?candidates.find(pt=>canMoveTo(pt.x,pt.y)):null;
+  return {...region,...(direct??candidates[0])};
+ }
+ return null;
+}
 export function createServices(bot){
  const {p,cfg,exec,me}=bot,e=bot.economy,key='albot:tools:'+me.name;
  let record=p.read(key),kind=null,cache=null,version=null,lastKind='mining',nextGather=0,approaching=null;
@@ -31,19 +45,20 @@ export function createServices(bot){
  }
  function gather(activity){
   const skill=p.G.skills?.[activity];if(!skill||p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown',activity))return false;
-  const tool=activity==='fishing'?'rod':'pickaxe',allRegions=zones().filter(z=>z.kind===activity),
-   regions=allRegions.filter(z=>!bot.movement?.failedRecently?.(z,'economy')),
-   here=regions.find(z=>z.map===p.c.map&&nearGatherZone(xy(p.c),z.polygon));let zone=here?{...here,...xy(p.c)}:regions.find(z=>z.map===p.c.map)??regions[0];
-  // can_move_to tests direct movement, not smart_move pathfinding. A distant
-   // fishing shore may have no direct line while remaining routeable by smart_move.
-   if(zone&&!here&&zone.map===p.c.map){const candidates=zone.points.slice().sort((a,b)=>distance(p.c,a)-distance(p.c,b));
-    const direct=p.has?.('can_move_to')?candidates.find(point=>p.call('can_move_to',point.x,point.y)):null;
-    zone={...zone,...(direct??candidates[0])};}
-  if(!zone){approaching=null;e.note(allRegions.length?'Gathering-Zone nach fehlgeschlagenem smart_move vorübergehend ausgesetzt: '+activity:'Keine öffentliche '+activity+'-Zone bekannt');return false;}
+  const tool=activity==='fishing'?'rod':'pickaxe',allRegions=zones().filter(z=>z.kind===activity);
+  if(p.c.ctype&&p.c.ctype!=='merchant')return false;
+  if((bot.free?.()??p.c.items?.filter(i=>!i).length??0)<1){e.note('Gathering benötigt einen freien Inventarplatz');return false;}
+  if(p.c.q?.fishing||p.c.q?.mining)return true;
+  const zone=chooseGatherWorksite(allRegions,p.c,{
+   failedRecently:(point,owner)=>bot.movement?.failedRecently?.(point,owner)??false,
+   canMoveTo:(x,y)=>!!p.has?.('can_move_to')&&!!p.call('can_move_to',x,y)
+  });
+  if(!zone){approaching=null;e.note(allRegions.length?'Gathering-Arbeitsplätze nach fehlgeschlagenem smart_move vorübergehend ausgesetzt: '+activity:'Keine öffentliche '+activity+'-Zone bekannt');return false;}
   if(bot.monsters().some(m=>m.target===p.c.name)){approaching=null;return restore();}
    if(p.c.slots?.mainhand?.name!==tool&&!p.c.items.some(i=>i?.name===tool&&e.safe(i))){approaching=null;e.note('Werkzeug fehlt: '+tool);return false;}
    if(!e.travel(zone,activity,5)){if(!approaching||approaching.activity!==activity)approaching={activity,at:Date.now()};return true;}
    approaching=null;
+   if(p.c.stand){exec.run?.('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return true;}
   if(!record&&(p.c.slots?.mainhand&&protectedItem(p.c.slots.mainhand)&&p.c.slots.mainhand.name!==tool||p.c.slots?.offhand&&protectedItem(p.c.slots.offhand))){e.note('Geschützte Ausrüstung verhindert Werkzeugwechsel');return false;}
   if(!record){if(!save({mainhand:identity(p.c.slots?.mainhand),offhand:identity(p.c.slots?.offhand)}))return false;sliceStarted=Date.now();}kind=activity;
   if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=cfg.merchant.minFreeSlots){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
@@ -54,7 +69,8 @@ export function createServices(bot){
    if(p.c.slots.mainhand&&protectedItem(p.c.slots.mainhand))return restore();
    return e.perform('gather.equip',{slots:[slot],guard:()=>!p.c.slots.offhand&&bot.free()>cfg.merchant.minFreeSlots,call:()=>p.call('equip',slot,'mainhand'),observe:()=>p.c.slots.mainhand?.name===tool,details:{item:tool}});
   }
-  const accepted=e.perform('gather.'+activity,{guard:()=>p.c.slots.mainhand?.name===tool&&!p.c.slots.offhand&&!p.c.moving&&!p.call('is_on_cooldown',activity)&&nearGatherZone(xy(p.c),zone.polygon),call:()=>p.call('use_skill',activity),observe:()=>!!p.c.q?.[activity]||p.call('is_on_cooldown',activity),details:{item:tool},timeout:60000});
+  const ready=()=>{const main=p.c.slots?.mainhand,definition=main&&p.G.items?.[main.name];return main?.name===tool&&(definition?.wtype??main.name)===tool&&!p.c.slots.offhand&&!p.c.stand&&!p.c.moving&&(bot.free?.()??p.c.items?.filter(i=>!i).length??0)>0&&p.c.level>=(skill.level??16)&&p.c.mp>=(skill.mp??120)&&!p.c.q?.[activity]&&!p.call('is_on_cooldown',activity)&&nearGatherZone(xy(p.c),zone.polygon);};
+   const accepted=e.perform('gather.'+activity,{guard:ready,call:()=>p.call('use_skill',activity),observe:()=>!!p.c.q?.[activity]||p.call('is_on_cooldown',activity),details:{item:tool},timeout:60000});
   if(accepted){lastKind=activity;nextGather=Date.now()+20000;}return accepted;
  }
  function merrit(){

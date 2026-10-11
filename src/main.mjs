@@ -44,7 +44,7 @@ import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
 import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
-import {createCheckpoint} from './core/checkpoint.mjs';
+import {createCheckpoint,isPotionConsumption} from './core/checkpoint.mjs';
 export function selectedPartyMember(bot,name){
   return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
     (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
@@ -89,6 +89,16 @@ export function install(root){
   const team=cfg.characters.filter(c=>c.enabled&&c.group===me.group),farmers=team.filter(c=>c.role==='farmer').map(c=>c.name);if(cfg.general.testLogging===undefined)farmers.sort();
   const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastTransfer=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,lastPublished='',panel;const schedulerTiming={ticks:0,totalMs:0,maxMs:0,lastMs:0};let lastSlow=0;
   const checkpoint=createCheckpoint(p,key,report);let journal=checkpoint.journal;
+   // Old releases journaled potion equips. A delayed/unknown potion outcome
+   // is not a bank, transfer, gold, or item-upgrade ambiguity. Remove ONLY
+   // positively identified potion journals. On storage failure value actions
+   // remain guarded by checkpoint.durable; ordinary combat need not lock.
+   if(isPotionConsumption(journal,p.G)){
+     const previous=journal;
+     const persisted=checkpoint.clear(previous);
+     report.event('checkpoint.potionReleased',{kind:previous.kind,item:previous.item,persisted,reason:'Potion outcome can remain unknown; no inventory lock'});
+     journal=null;
+   }
   if(journal?.kind==='quest.monsterhunt'&&journal.quest==='monsterhunt'&&journal.cost===0&&journal.loss===0&&Array.isArray(journal.slots)&&journal.slots.length===0&&!p.G.skills?.monsterhunt){if(checkpoint.clear(journal)){report.event('checkpoint.repaired',{kind:journal.kind,reason:'Alter ungültiger use_skill(monsterhunt)-Aufruf ohne Inventarwirkung'});journal=null;}}
   const bot={p,cfg,me,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
     checkpoint,
@@ -139,7 +149,7 @@ export function install(root){
     exec.run('party.request',['party'],()=>bot.running&&!p.c.party&&bot.account?.active()!==false&&!!bot.transport.fresh(bot.leader)?.running,()=>p.call('send_party_request',bot.leader),{delay:30000});
   }
   function publish(){try{const text=(bot.running?'ALBot ':'PAUSE ')+bot.reason.slice(0,50);if(text!==lastPublished){lastPublished=text;p.call('set_message',text);}}catch{}panel?.render();}
-  function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason});report.flush(true);}
+  function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason}); /* Export only on explicit user command. */}
   bot.pause=(reason='Pause')=>halt(reason);
   const warningTimes=new Map();let retryAfter=0;function runtimeWarning(where,e){bot.reason='Hinweis: '+(e?.message??e);retryAfter=now()+3000;const key=where+':'+bot.reason;if(now()-(warningTimes.get(key)??0)>30000){if(warningTimes.size>=64)warningTimes.clear();warningTimes.set(key,now());report.error(where,e);report.event('runtime.warning',{where,reason:bot.reason,continued:true,retryMs:3000,valueActionsBlocked:bot.inventoryBlocked});bot.report(bot.reason);}}
   function tick(gen){if(disposed||!bot.running||gen!==generation)return;const tickStarted=now();try{

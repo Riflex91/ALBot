@@ -50,3 +50,34 @@ test('smart_move is attempted when no direct can_move_to path exists to a fishin
  assert.ok(calls.some(x=>x[0]==='travel'&&x[1]==='fishing'));
  assert.equal(calls.some(x=>x[0]==='note'&&x[1].includes('Kein erreichbarer fishing-Arbeitsplatz')),false);
 });
+
+test('fishing retries an alternate shoreline waypoint after one smart_move rejection',async()=>{
+ const {chooseGatherWorksite}=await import('../src/merchant/services.mjs');
+ const polygon=[[0,0],[100,0],[100,100],[0,100]];
+ const points=[{x:-16,y:25},{x:-16,y:75},{x:50,y:-16}];
+ const zones=[{map:'main',in:'main',kind:'fishing',polygon,points}];
+ const merchant={map:'main',x:-800,y:0},failed=new Set();
+ const options={failedRecently:point=>failed.has(point.x+','+point.y),canMoveTo:()=>false};
+ const first=chooseGatherWorksite(zones,merchant,options);
+ assert.deepEqual([first.x,first.y],[-16,25]);
+ failed.add('-16,25');
+ const second=chooseGatherWorksite(zones,merchant,options);
+ assert.deepEqual([second.x,second.y],[-16,75]);
+ failed.add('-16,75');failed.add('50,-16');
+ assert.equal(chooseGatherWorksite(zones,merchant,options),null);
+});
+test('directly reachable gathering spot is preferred to a closer route requiring smart_move',async()=>{
+ const {chooseGatherWorksite}=await import('../src/merchant/services.mjs');
+ const polygon=[[0,0],[100,0],[100,100],[0,100]],points=[{x:-16,y:25},{x:-16,y:75}];
+ const choice=chooseGatherWorksite([{map:'main',in:'main',kind:'fishing',polygon,points}],{map:'main',x:-100,y:25},
+  {canMoveTo:(x,y)=>y===75});
+ assert.equal(choice.y,75);
+});
+test('fishing does not initiate a route without a free inventory slot',()=>{
+ const {bot,calls}=fixture({item:'rod',free:0});
+ bot.cfg.merchant.mining=false;bot.free=()=>0;
+ const service=createServices(bot);
+ assert.equal(service.tick(),false);
+ assert.ok(calls.some(x=>x[0]==='note'&&x[1].includes('freien Inventarplatz')));
+ assert.equal(calls.some(x=>x[0]==='travel'),false);
+});

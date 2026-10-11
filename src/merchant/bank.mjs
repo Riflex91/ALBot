@@ -19,14 +19,14 @@ export function createBank(bot){
   if(inventory===r.before+r.take&&bank===r.bankBefore-r.take){if(savePending(null))bot.event('bank.partial.complete',{item:r.item.name,quantity:r.take,returned:rest});return true;}
   const matches=(i,q)=>e.safe(i)&&identity(i)===identity(r.item)&&(i.q??1)===q;
   if(inventory===r.before&&bank===r.bankBefore&&matches(row?.[r.bankSlot],r.total)&&!p.c.items[r.dest]&&!p.c.items[r.splitSlot]){
-   e.perform('bank.partial.retrieve',{guard:()=>matches(p.c.bank?.[r.pack]?.[r.bankSlot],r.total)&&!p.c.items[r.dest]&&!p.c.items[r.splitSlot],call:()=>p.call('bank_retrieve',r.pack,r.bankSlot,r.dest),observe:()=>e.count(r.item)===r.before+r.total&&variantCount(p.c.bank?.[r.pack]??[],r.item)===r.bankBefore-r.total,details:{item:r.item.name,quantity:r.total,pack:r.pack,before:r.before}});return true;
+   e.perform('bank.partial.retrieve',{guard:()=>matches(p.c.bank?.[r.pack]?.[r.bankSlot],r.total)&&!p.c.items[r.dest]&&!p.c.items[r.splitSlot],call:()=>p.call('bank_retrieve',r.pack,r.bankSlot,r.dest),observe:()=>!p.c.bank?.[r.pack]?.[r.bankSlot]&&identity(p.c.items[r.dest])===identity(r.item)&&p.c.items[r.dest]?.q===r.total,details:{item:r.item.name,quantity:r.total,pack:r.pack,before:r.before}});return true;
   }
   if(inventory===r.before+r.total&&bank===r.bankBefore-r.total&&!row?.[r.bankSlot]){
    if(matches(p.c.items[r.dest],r.total)&&!p.c.items[r.splitSlot]&&p.c.items.findIndex(i=>!i)===r.splitSlot){
     e.perform('bank.partial.split',{slots:[r.dest],guard:()=>!p.c.items[r.splitSlot]&&p.c.items.findIndex(i=>!i)===r.splitSlot,call:()=>p.call('split',r.dest,r.take),observe:()=>matches(p.c.items[r.dest],rest)&&matches(p.c.items[r.splitSlot],r.take),details:{item:r.item.name,quantity:r.take}});return true;
    }
    if(matches(p.c.items[r.dest],rest)&&matches(p.c.items[r.splitSlot],r.take)){
-    e.perform('bank.partial.return',{slots:[r.dest],guard:()=>!p.c.bank?.[r.pack]?.[r.bankSlot]&&matches(p.c.items[r.splitSlot],r.take),call:()=>p.call('bank_store',r.dest,r.pack,r.bankSlot),observe:()=>e.count(r.item)===r.before+r.take&&variantCount(p.c.bank?.[r.pack]??[],r.item)===r.bankBefore-r.take,details:{item:r.item.name,quantity:rest,pack:r.pack}});return true;
+    e.perform('bank.partial.return',{slots:[r.dest],guard:()=>!p.c.bank?.[r.pack]?.[r.bankSlot]&&matches(p.c.items[r.splitSlot],r.take),call:()=>p.call('bank_store',r.dest,r.pack,r.bankSlot),observe:()=>!p.c.items[r.dest]&&identity(p.c.items[r.splitSlot])===identity(r.item)&&p.c.items[r.splitSlot]?.q===r.take&&identity(p.c.bank?.[r.pack]?.[r.bankSlot])===identity(r.item)&&p.c.bank[r.pack][r.bankSlot]?.q===rest,details:{item:r.item.name,quantity:rest,pack:r.pack}});return true;
    }
   }
   bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: Bestand weicht vom Checkpoint ab; manuell prüfen');return true;
@@ -89,7 +89,7 @@ export function createBank(bot){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
    if(slot<0)continue;const actual=items[slot],q=actual.q??1,fp=fingerprint(actual),dest=p.c.items.findIndex(i=>!i),before=e.count(actual),bankBefore=variantCount(items,actual);
-   return e.perform('bank.retrieve',{rule:r,guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>e.count(actual)===before+q&&variantCount(p.c.bank?.[pack]??[],actual)===bankBefore-q,details:{item:actual.name,quantity:q,pack,before}});
+   return e.perform('bank.retrieve',{rule:r,guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(actual)&&(p.c.items[dest]?.q??1)===q,details:{item:actual.name,quantity:q,pack,before}});
   }
   if(!cfg.merchant.partialBank)return false;
   const take=Math.floor(Math.min(wanted,r.batch,r.maxCount-e.count(item)));if(take<1||!e.remaining(r)||bot.journal||bot.logistics.reserved||bot.inventoryBlocked||bot.exec.busy('inventory')||bot.free()<cfg.merchant.minFreeSlots+2)return false;
@@ -98,7 +98,7 @@ export function createBank(bot){
    const bankSlot=items.findIndex(i=>e.safe(i)&&identity(i)===identity(item)&&Number.isSafeInteger(i.q)&&i.q>take&&i.q<=(cfg.merchant.partialBankMaxStack??9999));if(bankSlot<0)continue;
    const actual=structuredClone(items[bankSlot]),empty=p.c.items.map((i,n)=>i?-1:n).filter(n=>n>=0),record={pack,bankSlot,dest:empty[0],splitSlot:empty[1],item:actual,total:actual.q,take,before:e.count(actual),bankBefore:variantCount(items,actual)};
    if(!savePending(record))return false;
-   const accepted=e.perform('bank.partial.retrieve',{rule:r,guard:()=>fingerprint(p.c.bank?.[pack]?.[bankSlot])===fingerprint(actual)&&!p.c.items[record.dest]&&!p.c.items[record.splitSlot],call:()=>p.call('bank_retrieve',pack,bankSlot,record.dest),observe:()=>e.count(actual)===record.before+record.total&&variantCount(p.c.bank?.[pack]??[],actual)===record.bankBefore-record.total,details:{item:actual.name,quantity:record.total,pack,before:record.before}});
+   const accepted=e.perform('bank.partial.retrieve',{rule:r,guard:()=>fingerprint(p.c.bank?.[pack]?.[bankSlot])===fingerprint(actual)&&!p.c.items[record.dest]&&!p.c.items[record.splitSlot],call:()=>p.call('bank_retrieve',pack,bankSlot,record.dest),observe:()=>!p.c.bank?.[pack]?.[bankSlot]&&identity(p.c.items[record.dest])===identity(actual)&&p.c.items[record.dest]?.q===record.total,details:{item:actual.name,quantity:record.total,pack,before:record.before}});
    if(!accepted)savePending(null);return accepted;
   }return false;
  }
@@ -168,7 +168,7 @@ export function createBank(bot){
   if(!p.write(reclaimKey,record))return false;reclaiming=record;
   return e.perform('bank.reclaim',{guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest]&&!!eligibleBankSale(p.c.bank[pack][slot]),
    call:()=>p.call('bank_retrieve',pack,slot,dest),
-   observe:()=>e.count(item)===before+q&&variantCount(p.c.bank?.[pack]??[],item)===bankBefore-q,
+   observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(item)&&(p.c.items[dest]?.q??1)===q,
    details:{item:item.name,quantity:q,pack,lossScore:selected.lossScore,reason:'Bankdruck: geringster risikobereinigter Verlust'}});
  }
  function recoverCapacity(){if(!reclaiming)return false;if(bot.journal||bot.inventoryBlocked)return true;const r=reclaiming;

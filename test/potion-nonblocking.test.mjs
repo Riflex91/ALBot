@@ -46,8 +46,9 @@ test('ambiguous potion equip expires without setting inventoryBlocked or a journ
  assert.equal(f.bot.journal,null);
  assert.equal(f.events.find(e=>e.name==='inventory.result')?.data.result,'unknown');
  assert.equal(f.events.find(e=>e.name==='inventory.result')?.data.valueActionsBlocked,false);
+ f.setTime(21001); // Executor enforces its ordinary two-second cooldown.
  f.farmer.safety();
- assert.ok(f.bot.exec.pending.has('potion'),'next potion can be attempted after timeout without a lock');
+ assert.ok(f.bot.exec.pending.has('potion'),'next potion can be attempted after the standard cooldown without a lock');
 });
 
 test('observed potion consumption succeeds without ever creating a value journal',async()=>{

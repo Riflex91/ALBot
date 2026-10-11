@@ -1,5 +1,11 @@
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
+// Adventure Land server (node/server.js) uses B.sell_dist = 400 for the
+// ordinary NPC buy/sell/upgrade/compound/craft distance gate. Some checks are
+// strict (<400). Leave 25 units inside the boundary for movement jitter.
+export const NPC_INTERACTION_LIMIT=400;
+export const NPC_INTERACTION_BUFFER=25;
+export const NPC_WORK_RADIUS=NPC_INTERACTION_LIMIT-NPC_INTERACTION_BUFFER;
 export function createEconomy(bot){
  const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0,npcEpoch=-1;const npcCache=new Map();const ruleActions=new Map();
  const actionKey=r=>JSON.stringify([r.name,r.item,r._originalAction??r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
@@ -26,7 +32,7 @@ export function createEconomy(bot){
   if(Date.now()-ledger.hour>=3600000)ledger={...ledger,hour:Date.now(),spent:0,loss:0};
   const reserve=Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
   const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
-  return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-cost-commitments>=reserve)&&ledger.spent+cost<=cfg.merchant.maxSpendPerHour&&ledger.loss+loss<=cfg.production.lossBudget&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget));
+  return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-cost-commitments>=reserve)&&ledger.spent+cost<=cfg.merchant.maxSpendPerHour&&ledger.loss+loss<=cfg.production.lossBudget&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget))&&(!(r?._autoProduction||r?._autoDisposition)||bot.account?.spendAllowed?.(ledger.spent+cost,ledger.loss+loss)===true);
  }
  // Charge the maximum exposure BEFORE dispatch. A reload or ambiguous result cannot reset a budget.
  function charge(cost,loss,r,kind,details){
@@ -52,16 +58,22 @@ export function createEconomy(bot){
  function destination(id){try{return p.call('find_npc',id);}catch{return null;}}
  function at(d,radius=110){return !!d&&samePlace(p.c,d)&&distance(p.c,d)<=radius&&!p.c.moving;}
  function travel(d,label,radius=90){if(!d){note('Kein Arbeitsplatz: '+label);return false;}if(at(d,radius))return true;if(!bot.logistics.reserved){bot.reason='Unterwegs: '+label;bot.movement.go({...d,radius},'economy');}return false;}
+ const npcAt=d=>at(d,NPC_WORK_RADIUS);
+ const npcTravel=(d,label)=>travel(d,label,NPC_WORK_RADIUS);
  function npcFor(item){if(Number.isInteger(bot.decisionEpoch)){if(npcEpoch!==bot.decisionEpoch){npcEpoch=bot.decisionEpoch;npcCache.clear();}if(npcCache.has(item))return npcCache.get(item);}const candidates=[];for(const [id,n] of Object.entries(p.G.npcs??{})){if(!Array.isArray(n.items)||!n.items.includes(item))continue;const d=destination(id);if(d&&Number.isFinite(d.x)&&Number.isFinite(d.y)&&d.map&&!p.G.maps?.[d.map]?.ignore)candidates.push(d);}const result=candidates.sort((a,b)=>(a.map===p.c.map?-1000000:0)+distance(p.c,a)-((b.map===p.c.map?-1000000:0)+distance(p.c,b)))[0]??null;if(Number.isInteger(bot.decisionEpoch))npcCache.set(item,result);return result;}
  function npcBuy(item,r,quantity){
   const meta=p.G.items[item.name];if(!meta||item.level||item.p||item.stat_type||item.title)return false;
   const price=meta.g;if(!Number.isFinite(price)||price<=0||price>r.maxPrice)return false;
   const before=count(item),q=Math.floor(Math.min(quantity,r.batch,r.maxCount-before,Math.floor(r.goldBudget/price)));
-  if(q<1||bot.free()<=cfg.merchant.minFreeSlots||!budget(q*price,0,r)||!travel(npcFor(item.name),'NPC '+item.name))return false;
-  return perform('buy',{cost:q*price,rule:r,guard:()=>at(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
+  if(q<1||bot.free()<=cfg.merchant.minFreeSlots||!budget(q*price,0,r)||!npcTravel(npcFor(item.name),'NPC '+item.name))return false;
+  return perform('buy',{cost:q*price,rule:r,guard:()=>npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
- function npcSell(slot,r){const i=p.c.items[slot],q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice)return false;const before=count(i),gold=p.c.gold;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!travel(d,'NPC-Verkauf'))return false;
-  return perform('sell',{slots:[slot],rule:r,guard:()=>spare(slot,r)>=q&&at(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>p.call('sell',slot,q),observe:()=>count(i)<=before-q&&p.c.gold>=gold+q*r.minPrice,details:{item:i.name,variant:identity(i),quantity:q,before,expectedGold:q*price}});
+ function npcSell(slot,r){const i=p.c.items[slot],sourceBefore=i?.q??1,q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice||!remaining(r)||!budget(0,0,r))return false;const before=count(i),gold=p.c.gold;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!npcTravel(d,'NPC-Verkauf'))return false;
+  return perform('sell',{slots:[slot],rule:r,guard:()=>spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>p.call('sell',slot,q),observe:()=>{
+  const live=p.c.items[slot],left=sourceBefore-q;
+  const sourceVerified=left===0?!live:identity(live)===identity(i)&&live?.q===left;
+  return sourceVerified&&p.c.gold===gold+q*price;
+ },details:{item:i.name,variant:identity(i),quantity:q,before,sourceSlot:slot,expectedGold:q*price}});
  }
- return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
+ return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }

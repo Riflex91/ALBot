@@ -1,9 +1,25 @@
 import {distance} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
+// A stand may only open while idle. Native smart_move pathfinding can leave
+// character.moving false for several seconds; inspect the movement owner too.
+export function canOpenMerchantStand(bot){
+ const {p,cfg,me,exec}=bot;
+ if(me.role!=='merchant'||!cfg.merchant.stand||!bot.running||p.c.rip||bot.journal||bot.inventoryBlocked||p.c.stand||p.c.moving||p.c.c?.town||bot.movement?.order||exec.busy('movement')||exec.busy('stand'))return false;
+ if([p.root?.smart,p.parent?.smart].some(s=>s?.moving||s?.searching))return false;
+ if(exec.frame?.some(j=>j.resources.includes('movement')||j.resources.includes('inventory')||j.resources.includes('lifecycle')))return false;
+ return (p.c.items??[]).some(i=>i&&p.G.items?.[i.name]?.stand);
+}
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
+ let standIdleSince=null;
+ function openStandWhenIdle(){
+  if(!canOpenMerchantStand(bot)){standIdleSince=null;return false;}
+  if(standIdleSince===null){standIdleSince=Date.now();return false;}
+  if(Date.now()-standIdleSince<2000)return false;
+  return exec.run('stand',['stand'],()=>canOpenMerchantStand(bot),()=>p.call('open_stand'),{delay:5000});
+ }
  function buff(){
   if(me.role!=='merchant'||!cfg.merchant.mluck||!p.G.skills?.mluck)return;const skill=p.G.skills.mluck;
   if(p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown','mluck'))return;
@@ -21,6 +37,7 @@ export function createMerchant(bot){
   bot.logistics.travel();if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
+  if(bot.services?.approaching){const continued=bot.services.tick();if(continued||bot.services.approaching)return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
   if(me.role==='merchant'&&!bot.movement.order)bot.reason=bot.production.status().blocked??'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
@@ -30,7 +47,7 @@ export function createMerchant(bot){
     if(!r||!e.remaining(r)||['keep','send','consume'].includes(r.action))continue;
     if(['sell','bank','list','exchange'].includes(r.action)&&e.spare(slot,r)<1)continue;
     if(['upgrade','compound'].includes(r.action)&&(i.level??0)>=r.targetLevel)continue;
-    let run;if(r.action==='sell')run=()=>e.npcSell(slot,r);
+    let run;if(r.action==='sell')run=()=>r._autoDisposition===true&&(bot.market?.sellToBid?.(slot,r)??false)||e.npcSell(slot,r);
     if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
     if(me.role==='merchant'){
      if(r.action==='bank')run=()=>bot.bank.store(slot,r);
@@ -53,18 +70,20 @@ export function createMerchant(bot){
     if(r.action==='craft'&&e.rules(item,'production')===r&&bot.production.outputCount(r.item,r)<r.targetCount)add('craft:'+cfg.items.indexOf(r),r,()=>bot.production.craft(r.item,r));
    }
    if(cfg.merchant.mluck&&cfg.merchant.mluckTravel!==false)add('mluck.service',{priority:-200},()=>{const candidate=bot.farmers.map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&!(h.mluck?.strong&&h.mluck.f!==me.name)&&(!h.mluck||Number.isFinite(h.mluck.ms)&&h.mluck.ms<60000)).sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||(a.mluck?.ms??0)-(b.mluck?.ms??0)).find(h=>bot.strategy?.canVisit?.(h)??true);if(!candidate||service.claim(candidate.name)===false||distance(p.c,candidate)<(p.G.skills.mluck?.range??320))return false;return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);});
-   add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
+   add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>bot.services.tick());
   }
-  if(cfg.merchant.stand&&!p.c.stand&&!p.c.moving&&!bot.movement.order&&p.c.items.some(i=>i&&p.G.items[i.name]?.stand)&&me.role==='merchant')exec.run('stand',['stand'],()=>bot.running&&!p.c.moving,()=>p.call('open_stand'),{delay:5000});
+  // Open the stand only AFTER the priority planner has had the chance to
+  // schedule travel. The old pre-planner scheduling raced against smart_move.
   for(const job of tasks.rank(jobs)){
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
-   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();tasks.selected(job.id);bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
+   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});openStandWhenIdle();return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
+  openStandWhenIdle();
  }
  return {tick,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status()}),close(){tasks.clear();service.clear();}};
 }

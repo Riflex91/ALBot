@@ -15,18 +15,33 @@ export function createLogistics(bot){
   const count=i=>(p.c.items??[]).reduce((n,x)=>n+(x&&x.name===i.name&&(x.level??0)===i.level&&(x.stat_type??'')===i.stat_type&&(x.p??'')===i.p&&(x.title??'')===i.title?(x.q??1):0),0);
   const near=name=>{const e=bot.entity(name),h=transport.fresh(name);return e&&h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,e)&&samePlace(p.c,h)&&distance(p.c,e)<300&&distance(p.c,h)<300?e:null;};
   const safeItem=i=>i&&typeof i.name==='string'&&/^[a-zA-Z0-9_]+$/.test(i.name)&&Number.isInteger(i.level)&&i.level>=0&&i.level<100&&['stat_type','p','title'].every(k=>typeof i[k]==='string'&&i[k].length<161);
-  function capacity(i){const rule=ruleFor(i);if(!rule||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(demandFor(rule,count(i)),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
+  // Only a job that never reached send_item may issue this proof. A sent or
+  // uncertain value action must retain its journal for manual reconciliation.
+  function cancelUnsent(j,reason){
+    if(!j||!['offered','accepted'].includes(j.state))return false;
+    transport.send(j.to,'itemCancel',{notDispatched:true},j.id);
+    bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
+    return true;
+  }
+  function capacity(i,verifiedGear=false){const rule=ruleFor(i);if((!rule&&!verifiedGear)||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):0,verifiedGear?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
       counters.offersReceived++;
       if(bot.checkpoint?.durable===false||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
-      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const quantity=Math.min(d.quantity,capacity(d.item),cfg.merchant.maxDelivery);if(quantity<1)return;
+      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const quantity=Math.min(d.quantity,capacity(d.item,!!d.gear),cfg.merchant.maxDelivery);if(quantity<1)return;
       if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
       if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.
       try{bot.beginValue({kind:'receive',...incoming});}catch(e){incoming=null;throw e;}counters.acceptsSent++;transport.send(from,'accept',{quantity,gearAck:d.gear?d.gear.expected:null},m.id);
+    }else if(m.type==='itemCancel'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session
+      &&d.notDispatched===true&&!incoming.sent&&!incoming.observed&&count(incoming.item)===incoming.before
+      &&bot.journal?.kind==='receive'&&bot.journal.id===incoming.id&&bot.journal.from===from&&bot.journal.session===m.session){
+      const cancelled=incoming;
+      incoming=null;completed.set(m.id,clock());
+      bot.event?.('logistics.cancelled',{id:m.id,peer:from,state:'receiving',reason:'Sender bestätigt Nichtversand; Bestand unverändert'});
+      bot.endValue('confirmed');
     }else if(m.type==='accept'&&job&&job.state==='offered'&&m.id===job.id&&from===job.to&&m.session===job.session){
       if(!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>job.quantity)return;
       if(job.gear&&d.gearAck!==job.gear.expected)return;job.gearAck=d.gearAck;job.quantity=d.quantity;job.state='accepted';counters.acceptsReceived++;
@@ -45,17 +60,26 @@ export function createLogistics(bot){
       if(job.state==='sent'&&count(job.item)<=job.before-job.quantity&&job.receipt){counters.doneSent++;transport.send(job.to,'done',{},job.id);completed.set(job.id,now);job=null;bot.endValue('confirmed');return;}
       if(job.state==='offered'){
         const current=p.c.items[job.slot],rule=current&&sendRule(current,job.to);
-        if(fingerprint(current)!==job.fingerprint||availableTransfer(job.slot,rule)<job.quantity){nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+5000);job=null;return;}
+        if(fingerprint(current)!==job.fingerprint||availableTransfer(job.slot,rule)<job.quantity){nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+5000);cancelUnsent(job,'Bestand oder Itemfreigabe vor Versand verändert');job=null;return;}
         const retryMs=Math.max(500,Math.min(2000,Math.floor(cfg.general.messageTtlMs/3)));
         if(now-(job.lastOffer??0)>=retryMs){
           const peer=transport.fresh(job.to);
           if(peer?.session===job.session){job.lastOffer=now;transport.send(job.to,'offer',{item:job.item,quantity:job.quantity,gear:job.gear},job.id);}
         }
       }
-      if(now>job.until){const expired=job;job=null;counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht vollständig bestätigt; keine Wiederholung'});if(expired.state==='sent'||expired.state==='accepted')bot.endValue('unknown');return;}
+      if(now>job.until){const expired=job;job=null;counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht vollständig bestätigt; keine Wiederholung'});if(expired.state==='sent')bot.endValue('unknown');else cancelUnsent(expired,'Angebot ohne Versand abgelaufen');return;}
       if(job.state==='accepted'&&!bot.inventoryBlocked){
-        const j=job;
-        const guard=()=>{const current=p.c.items[j.slot],rule=current&&sendRule(current,j.to);return bot.running&&(bot.allocation?.guard(j)??true)&&near(j.to)&&!incoming&&fingerprint(current)===j.fingerprint&&availableTransfer(j.slot,rule)>=j.quantity;};
+        const j=job,peer=transport.fresh(j.to);
+        // An acceptance is bound to its receiver session. After a reload the
+        // new receiver no longer owns the old pending handoff or its receipt.
+        if(peer?.session&&peer.session!==j.session){
+          nextOffer.set(j.offerKey??offerKey(j.to,j.item.name),now+10000);
+          job=null;
+          cancelUnsent(j,'Empfängersitzung nach Annahme gewechselt');
+          bot.event?.('logistics.session-changed',{id:j.id,peer:j.to,reason:'Empfängersitzung nach Annahme gewechselt; vor Dispatch abgebrochen'});
+          return;
+        }
+        const guard=()=>{const current=p.c.items[j.slot],rule=current&&sendRule(current,j.to);return bot.running&&!bot.journal&&!bot.inventoryBlocked&&(bot.allocation?.guard(j)??true)&&transport.fresh(j.to)?.session===j.session&&near(j.to)&&!incoming&&fingerprint(current)===j.fingerprint&&availableTransfer(j.slot,rule)>=j.quantity;};
         if(!guard()||!(bot.allocation?.reserve(j)??true)){bot.reason='Lieferung verändert oder Gearreservierung fehlt; keine Übergabe';return;}
         exec.run('send',['inventory'],guard,()=>{
           bot.movement?.stop();bot.beginValue({kind:'send',...j});j.state='sent';counters.sendsStarted++;
@@ -75,22 +99,36 @@ export function createLogistics(bot){
         const r=sendRule(item,to);if(!r)continue;
         const key=offerKey(to,item.name);if(nextOffer.has(key))continue;
         const peer=transport.fresh(to);if(!near(to)||!peer)continue;
-        const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);if(!demand)continue;
-        const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,Math.floor(demand.need));if(quantity<1)continue;
+        const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);
+        const gear=bot.allocation?.offer(signature(item),to);if(gear===false)continue;
+        const wanted=Math.max(demand?.need??0,gear?1:0);if(!Number.isSafeInteger(wanted)||wanted<1)continue;
+        const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,wanted);if(quantity<1)continue;
         if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
-        const gear=bot.allocation?.offer(signature(item),to);if(gear===false)continue;job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,gear,before:count(signature(item)),offerKey:key,lastOffer:now,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
+        job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,gear,before:count(signature(item)),offerKey:key,lastOffer:now,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
         nextOffer.set(key,now+5000);counters.offersSent++;transport.send(job.to,'offer',{item:job.item,quantity,gear:job.gear},job.id);break outer;
       }
     }
+  }
+  // Finish permitted on-site storage before normal delivery departures.
+  // Emergency HP/MP supply may still interrupt the bank batch.
+  function localBankBatch(){
+   if(p.c.map!=='bank'||bot.bank?.pending||!bot.bank?.capacity?.().some(pack=>pack.map==='bank'&&pack.free>0))return false;
+   return (p.c.items??[]).some((i,slot)=>{
+    if(!i||!bot.economy?.safe(i))return false;
+    const rule=bot.economy.rules(i);
+    return rule?.action==='bank'&&bot.economy.remaining(rule)&&bot.economy.spare(slot,rule)>0;
+   });
   }
   function travel(){
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;if(route?.owner==='logistics'){const h=transport.fresh(route.dest.name);if(!h?.running||bot.strategy?.canVisit(h)===false||distance(route.dest,h)>(cfg.merchant.servicePositionError??70)*2)bot.movement.stop();}const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
     for(const [name] of [...transport.peers].sort((a,b)=>(a[0]===bot.merchant?.serviceTarget?.()?-1000:0)-(b[0]===bot.merchant?.serviceTarget?.()?-1000:0)||urgency(b[0])-urgency(a[0]))){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
-      const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
+      const requested=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
+       const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
+       const demand=requested||gearRequested;
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&capacity(item)>0;});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(bot.merchant?.claimService?.(name,urgent)===false)continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;if(bot.merchant?.claimService?.(name,urgent)===false)continue;
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;
@@ -106,6 +144,6 @@ export function createLogistics(bot){
       for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:demandFor(r,countNow),surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve-(bot.production?.reservedQuantity?.(item,r.recipient)??0)):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
       summaryOffset=(summaryOffset+result.length)%Math.max(1,all.length);return result;
     },
-    close(){if(incoming||job?.state==='sent'||job?.state==='accepted')bot.endValue('unknown');job=null;incoming=null;}
+    close(){if(incoming||job?.state==='sent')bot.endValue('unknown');else if(job)cancelUnsent(job,'Sender STOP/Pause vor Versand');job=null;incoming=null;}
   };
 }

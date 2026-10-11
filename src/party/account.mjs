@@ -13,12 +13,67 @@ export function selectAccountTeam(members,limit,{boss=false,leader='',current=[]
  }else for(const x of ranked)add(x);return chosen;
 }
 export function chooseCombatLeader(members){return members.filter(x=>x.running&&!x.rip&&x.hp>0&&x.stats?.attack>0).map(x=>({...x,leaderScore:(['warrior','paladin'].includes(x.class)?5:0)+Math.log1p(x.stats.attack*(x.stats.frequency??1))+Math.log1p(x.stats.armor??0)/2+(x.hp/Math.max(1,x.max_hp))*3})).sort((a,b)=>b.leaderScore-a.leaderScore||a.name.localeCompare(b.name))[0]?.name??null;}
+// Wealth snapshots contain monetary balances only; inventories and transferred
+// gold are never added as estimates. Missing/future/stale peers fail conservative.
+export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conservative'){
+ const observed=Array.isArray(balances)?balances.filter(x=>Number.isSafeInteger(x)&&x>=0):[];
+ const bankValid=Number.isSafeInteger(bankGold)&&bankGold>=0;
+ // JS numbers cannot represent arbitrary account totals exactly. Never promote
+ // overflowed balances to a "complete" wealthy account with spending authority.
+ let liquidFloor=0,overflow=false;
+ for(const amount of observed){if(!Number.isSafeInteger(liquidFloor+amount)){overflow=true;break;}liquidFloor+=amount;}
+ if(!overflow&&bankValid){if(Number.isSafeInteger(liquidFloor+bankGold))liquidFloor+=bankGold;else overflow=true;}
+ if(overflow)liquidFloor=0;
+ const complete=!overflow&&observed.length>0&&observed.length===balances?.length&&bankValid;
+ const wealth=complete?liquidFloor:null;
+ const bound=Number.isFinite(lossBudget)&&lossBudget>=0?lossBudget:0;
+ const normal=complete&&wealth>=(previous==='normal'?bound*7:bound*10);
+ const mode=normal?'normal':'conservative';
+ // Unknown balances are not guessed. The known liquid lower bound still permits
+ // tightly capped autonomous work instead of deadlocking away from the bank.
+ const riskLimit=Math.min(bound,Math.floor(liquidFloor*(normal?.03:.01)));
+ return {mode,wealth,liquidFloor,complete,riskLimit,reason:complete?'account-liquid-gold':'account-wealth-partial'};
+}
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
- const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false;
+ const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative';
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
  const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
  const save=next=>{if(!p.write(storageKey,next)){blocked=true;bot.report('Charakterwechsel konnte nicht gespeichert werden; Rotation gesperrt');return false;}transition=next;return true;};
+ function risk(){
+  const peers=cfg.characters.filter(c=>c.enabled&&c.group===me.group),names=new Set();
+  const balances=[];let bankGold=null,complete=true;
+  for(const member of peers){
+   if(names.has(member.name))continue;names.add(member.name);
+   const local=member.name===me.name,h=local?null:bot.transport.fresh(member.name);
+   if(!local&&(!h?.running||h.realm!==p.realm()||h.journal||h.reserved||h.inventoryBlocked)){complete=false;continue;}
+   // Gold transfers are asynchronous: a new receiver balance can overlap a stale
+   // sender heartbeat. Temporarily exclude both sides rather than double-count.
+   const transferAt=local?bot.gold?.transferAt:h.goldTransferAt;
+   const pendingTransfer=local?bot.gold?.reserved:h.goldTransferPending;
+   const holdMs=2*Math.max(15000,cfg.general?.messageTtlMs??15000);
+   if(pendingTransfer||(Number.isFinite(transferAt)&&transferAt>0&&Date.now()-transferAt<holdMs)){complete=false;continue;}
+   const gold=local?p.c.gold:h.goldBalance;
+   if(!Number.isSafeInteger(gold)||gold<0){complete=false;continue;}balances.push(gold);
+   if(member.name===cfg.party.merchant){
+    const stored=local?p.c.bank?.gold:h.bankGoldBalance;
+    if(!Number.isSafeInteger(stored)||stored<0)complete=false;
+    else bankGold=stored;
+   }
+  }
+  const snap=accountRiskSnapshot(complete?balances:[...balances,null],bankGold,cfg.production.lossBudget,riskMode);
+  // Transport messages and local storage do not provide atomic account-wide
+  // reservations. Allocate each configured team member a deterministic share
+  // instead of letting every character independently exhaust the same cap.
+  const memberCount=Math.max(1,names.size);
+  const sessionRiskLimit=Math.floor(snap.riskLimit/memberCount);
+  riskMode=snap.mode;return {...snap,memberCount,sessionRiskLimit};
+ }
+ function spendAllowed(cost,loss=0){
+  if(cost===0&&loss===0)return true;
+  if(!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(loss)||loss<0||!Number.isSafeInteger(cost+loss))return false;
+  const snap=risk();return cost+loss<=snap.sessionRiskLimit;
+ }
  function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence};}
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
@@ -44,6 +99,22 @@ export function createAccount(bot){
    const peer=bot.transport.fresh(transition.in);if(peer?.running&&peer.realm===p.realm()&&!peer.rip){const next=transition;if(save(null)){apply(next.names,next.leader);sequence++;changed=Date.now();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader});}return;}
    if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
   }
+  // Fix the adaptive-roster deadlock: a missing selected farmer must not
+  // prevent choosing another already running teammate. This does not call
+  // start_character/stop_character and does not alter any value operation.
+  const online=validNames.filter(name=>{
+   const h=bot.transport.fresh(name);
+   return h?.running&&!h.rip&&h.realm===p.realm()&&!h.inventoryBlocked;
+  }),available=new Set(online);
+  if((bot.farmers.some(n=>!available.has(n))||!available.has(bot.leader)||bot.farmers.length<Math.min(cfg.party.maxFarmers,online.length))&&online.length&&Date.now()-changed>=Math.min(15000,cfg.party.rotationCooldownMs)){
+   const preferred=available.has(cfg.party.leader)?cfg.party.leader:available.has(bot.leader)?bot.leader:null;
+   const leader=preferred??chooseCombatLeader(online.map(name=>({name,...bot.transport.fresh(name)})))??online[0];
+   const names=[leader,...bot.farmers.filter(n=>n!==leader&&available.has(n)),...online.filter(n=>n!==leader&&!bot.farmers.includes(n))].slice(0,cfg.party.maxFarmers);
+   if(names.length&&(names.join(',')!==bot.farmers.join(',')||leader!==bot.leader)&&apply(names,leader)){
+    sequence++;changed=Date.now();bot.event('account.team',{names:names.join(','),leader,reason:'Offline gewählten Farmer durch bereits aktiven Peer ersetzen'});
+   }
+   return;
+  }
   if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
   const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,hp:h?.hp,max_hp:h?.max_hp,stats:h?.gear?.stats??g?.stats};});
   const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();
@@ -57,5 +128,5 @@ export function createAccount(bot){
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }
- return {tick,heartbeat,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
+ return {tick,heartbeat,risk,spendAllowed,receive,active:()=>me.role==='merchant'||bot.farmers.includes(me.name),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,progression:bot.progression?.status()??null,blocked,transition:transition?{out:transition.out,in:transition.in,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;}};
 }

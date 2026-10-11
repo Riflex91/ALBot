@@ -1,4 +1,4 @@
-import {gearCompatible,gearScore} from './gear.mjs';
+import {gearCompatible,gearScore,gearSuitability} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {fingerprint,identity,protectedItem} from '../core/policy.mjs';
@@ -15,7 +15,11 @@ export function createGearAllocation(bot){const key='albot:gear:'+bot.me.name+':
  function offer(item,to){const g=goalFor(item,to);if(!g)return null;const peer=bot.transport.fresh(to);return peer?.gear?{goal:g.name,slot:g.gearSlot,expected:fingerprint(peer.gear.slots?.[g.gearSlot]),item,expires:Date.now()+bot.cfg.general.messageTtlMs}:false;}
  function accept(id,from,session,item,g){if(!g)return true;const profile=bot.gear.snapshot(),old=bot.p.c.slots?.[g.slot],explicit=bot.economy.explicit(item);
   if(g.expires<Date.now()||from!==bot.cfg.party.merchant||protectedItem(old)&&old||g.expected!==fingerprint(profile.slots?.[g.slot])||!gearCompatible(bot.p.G,profile,item,g.slot)||explicit&&explicit.action!=='equip')return false;
-  const role=bot.me.gearRole==='auto'?(profile.class==='priest'?'healer':'dps'):bot.me.gearRole;try{if(old&&gearScore(bot.p.call('item_properties',item),role,profile.class)<=gearScore(bot.p.call('item_properties',old),role,profile.class))return false;}catch{return false;}
+  const role=bot.me.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):bot.me.gearRole;
+  try{const next=bot.p.call('item_properties',item),previous=old?bot.p.call('item_properties',old):null;
+   if(!gearSuitability(previous,next,role,profile.class,bot.me.merchantMobility).ok)return false;
+   if(old&&gearScore(next,role,profile.class)<=gearScore(previous,role,profile.class))return false;
+  }catch{return false;}
   const row={id,from,session,item,slot:g.slot,expected:g.expected,expires:Date.now()+600000,state:'accepted'};const next=receiving.filter(r=>r.id!==id&&r.expires>Date.now()).slice(-15);next.push(row);if(!bot.p.write(receivingKey,next))return false;receiving=next;return true;
  }
  function rules(){receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}

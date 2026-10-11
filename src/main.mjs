@@ -18,6 +18,7 @@ import {INTEGRATION_DESCRIPTOR} from './config/live-c.mjs';
 import {createStrategy} from './world/strategy.mjs';
 import {createBehavior} from './core/behavior.mjs';
 import {createAccount} from './party/account.mjs';
+import {createProgression} from './world/progression.mjs';
 import {createTeamTravel} from './party/travel.mjs';
 import {createAura} from './party/aura.mjs';
 import {ECONOMY_DESCRIPTOR} from './config/live-b.mjs';
@@ -41,6 +42,8 @@ import {createSkills} from './combat/skills.mjs';
 import {createFarmer} from './combat/farmer.mjs';
 import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
+import {inspectMiningJournal} from './core/journal-audit.mjs';
+import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint} from './core/checkpoint.mjs';
 export function install(root){
   root.ALBot?.dispose?.();
@@ -102,7 +105,7 @@ export function install(root){
   if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.services=createServices(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
-  if(cfg.world){bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
+  if(cfg.world){bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
   if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.elixirs=createElixirs(bot);bot.intelligence=createEconomicIntelligence(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);}
   const cleanup=[];
   const game=root.game??p.parent.game;if(bot.observations&&typeof game?.on==='function'&&typeof game?.remove==='function')for(const [event,handler] of [['hit',d=>{bot.observations.hit(d);bot.threats?.hit(d);}],['death',d=>{bot.observations.death(d);bot.threats?.death(d);}]]){const id=game.on(event,handler);cleanup.push(()=>game.remove(id));}
@@ -112,8 +115,18 @@ export function install(root){
   cleanup.push(p.hook('on_party_invite',name=>{if(inviteAllowed(name))exec.run('party',['party'],()=>inviteAllowed(name),()=>p.call('accept_party_invite',name),{delay:3000});}));
   cleanup.push(p.hook('on_party_request',name=>{if(bot.running&&cfg.party.enabled&&me.name===bot.leader&&bot.farmers.includes(name))exec.run('party',['party'],()=>bot.running,()=>p.call('accept_party_request',name),{delay:3000});}));
   if(bot.teamTravel)cleanup.push(p.hook('on_magiport',name=>bot.teamTravel.accept(name)));
+  // Follower-initiated requests supplement lost browser invitation callbacks.
+  // Both directions only address live, selected members and are rate limited.
+  let lastPartyRequest=0;
+  function requestSelectedLeader(){
+    if(!bot.running||!cfg.party.enabled||bot.account?.active()===false||me.name===bot.leader||p.c.party||!p.has('send_party_request'))return;
+    const h=bot.transport.fresh(bot.leader),at=now();
+    if(!h?.running||h.rip||h.realm!==p.realm()||at-lastPartyRequest<30000)return;
+    lastPartyRequest=at;
+    exec.run('party.request',['party'],()=>bot.running&&!p.c.party&&bot.account?.active()!==false&&!!bot.transport.fresh(bot.leader)?.running,()=>p.call('send_party_request',bot.leader),{delay:30000});
+  }
   function publish(){try{const text=(bot.running?'ALBot ':'PAUSE ')+bot.reason.slice(0,50);if(text!==lastPublished){lastPublished=text;p.call('set_message',text);}}catch{}panel?.render();}
-  function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.observations?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason});report.flush(true);}
+  function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason});report.flush(true);}
   bot.pause=(reason='Pause')=>halt(reason);
   const warningTimes=new Map();let retryAfter=0;function runtimeWarning(where,e){bot.reason='Hinweis: '+(e?.message??e);retryAfter=now()+3000;const key=where+':'+bot.reason;if(now()-(warningTimes.get(key)??0)>30000){if(warningTimes.size>=64)warningTimes.clear();warningTimes.set(key,now());report.error(where,e);report.event('runtime.warning',{where,reason:bot.reason,continued:true,retryMs:3000,valueActionsBlocked:bot.inventoryBlocked});bot.report(bot.reason);}}
   function tick(gen){if(disposed||!bot.running||gen!==generation)return;const tickStarted=now();try{
@@ -138,7 +151,7 @@ export function install(root){
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
     if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy)bot.merchant?.tick();bot.aura?.tick();
     }
-    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){const e=bot.entity(name);if(name!==me.name&&(!e||e.party!==p.c.party||!p.c.party))exec.run('invite:'+name,['party'],()=>bot.running,()=>p.call('send_party_invite',name),{delay:10000});}}
+    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){if(name===me.name)continue;const h=bot.transport.fresh(name),e=bot.entity(name);if(!h?.running||h.rip||h.realm!==p.realm()||h.inventoryBlocked)continue;if(!e||e.party!==p.c.party||!p.c.party)exec.run('invite:'+name,['party'],()=>bot.running&&bot.farmers.includes(name)&&!!bot.transport.fresh(name)?.running,()=>p.call('send_party_invite',name),{delay:10000});}}
     publish();
     report.sample({reason:bot.reason,running:bot.running});
   }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}
@@ -149,21 +162,33 @@ export function install(root){
       if(me.class!=='auto'&&me.class!==p.c.ctype)return deny('Konfigurierte Klasse stimmt nicht');
       if(me.region+me.server!==p.realm()&&!(cfg.world?.serverHop&&cfg.world.allowedRealms.includes(p.realm())))return deny('Falscher Realm: erwartet '+me.region+me.server);
       if(cfg.general.transport==='ipc'&&!p.ipc)return deny('Lokale IPC nicht verfügbar');
-      bot.recovery?.reconcile();if(bot.inventoryBlocked)report.event('runtime.warning',{where:'start',reason:'Offene Inventaraktion: Wertaktionen gesperrt, übriger Betrieb läuft',continued:true});
-      bot.economy?.resume();report.event('start');bot.running=true;bot.reason='Start';generation++;tick(generation);return bot.running;
+      bot.recovery?.reconcile();if(cfg.production?.autoDisposition===true&&bot.inventoryBlocked&&/^gather\./.test(bot.journal?.kind??''))return deny('AutoDisposition gesperrt: offenes Inventarjournal zuerst nach Bestandsabgleich bestaetigen');if(bot.inventoryBlocked)report.event('runtime.warning',{where:'start',reason:'Offene Inventaraktion: Wertaktionen gesperrt, übriger Betrieb läuft',continued:true});
+      bot.economy?.resume();report.event('start');bot.running=true;bot.reason='Start';generation++;bot.progression?.refresh();tick(generation);return bot.running;
     },
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    transportStatus:()=>bot.transport.status(),
+    teamCheck:()=>createTeamCheck(bot,report.document()),
+    exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},
     testReport:()=>report.text(),exportTestReport:()=>report.flush(),
     chooseLogDirectory:()=>report.chooseDirectory(),logCapabilities:()=>report.capabilities(),
     acknowledgeInventory(){if(bot.running)throw Error('Zuerst pausieren und tatsächlichen Bestand prüfen');if(!checkpoint.write(null))throw Error('Speichern fehlgeschlagen');bot.journal=null;bot.inventoryBlocked=false;bot.reason='Inventar manuell abgeglichen';publish();},
+    acknowledgeMiningAfterReview(token){
+     const audit=inspectMiningJournal(bot);
+     if(!audit.eligible||typeof token!=='string'||!token||token!==audit.token)throw Error('Mining-Bestandsabgleich ist nicht mehr gültig; neu prüfen');
+     if(!checkpoint.write(null))throw Error('Journal-Speicherung fehlgeschlagen');
+     const kind=bot.journal.kind;
+     bot.journal=null;bot.inventoryBlocked=false;bot.reason='Gathering-Journal nach manueller Bestandsprüfung freigegeben';
+     bot.event('inventory.manualReconcile',{kind,changedItems:audit.changes.length,changes:audit.changes.map(c=>({item:c.item,delta:c.delta})),manualPotionLoss:audit.manualPotionLoss??0,source:'ingame-mining-audit',miningSuccess:'unknown'});
+     publish();return true;
+    },
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));
-  report.setProvider(()=>({test:cfg.general.testLogging!==undefined?'Vollbetrieb':cfg.production?.strategy?'P3/P4':cfg.world?'Live C':cfg.production?'Live B':'Live A',status:api.status(),schedulerTiming:{...schedulerTiming,meanMs:schedulerTiming.totalMs/Math.max(1,schedulerTiming.ticks)},performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',movement:bot.movement.status(),bankPartial:bot.bank?.status(),logistics:bot.logistics.stats(),goldLogistics:bot.gold?.status(),bankCapacity:bot.bank?.capacity(),production:bot.production?.status(),gear:bot.gear?.suggestions(),gearTargets:bot.gear?.status(),economy:bot.economy?.ledger,market:bot.market?.status(),performance:bot.observations?.heartbeat(),strategy:bot.strategy?.status(),teamPlan:bot.teamPlan?.status(),encounter:bot.encounter?.status(),capabilities:bot.capabilities?.snapshot(),navigation:bot.navigation?.status(),economicIntelligence:bot.intelligence?.status(),priority:bot.priority?.status(),recovery:bot.recovery?.status(),contentQuarantine:bot.content?.status(),threats:bot.threats?.status(),gearAllocation:bot.allocation?.status(),account:bot.account?.status(),travel:bot.teamTravel?.status(),services:bot.services?.status(),merchantTask:bot.merchant?.status(),settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,world:cfg.world,rules:cfg.rules,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},equipment:bot.gear?.snapshot(),itemDecisions:cfg.general.testLogging?(p.c.items??[]).flatMap((i,slot)=>i?["inventory","acquisition","production"].map(phase=>{const r=bot.economy?.rules(i,phase);return {slot,item:i.name,level:i.level??0,phase,rule:r?.name??null,action:r?.action??"keep",priority:r?.priority,protected:protectedItem(i),reserved:bot.production?.reservedQuantity(i)??0,remaining:!r||bot.economy.remaining(r),reason:protectedItem(i)?"Geschütztes Item":r?"Spezifität und Priorität; explizite Regel vor abgeleitetem Ziel":"Keine freigegebene Regel: behalten"};}):[]):undefined,inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
+  report.setProvider(()=>({test:cfg.general.testLogging!==undefined?'Vollbetrieb':cfg.production?.strategy?'P3/P4':cfg.world?'Live C':cfg.production?'Live B':'Live A',status:api.status(),schedulerTiming:{...schedulerTiming,meanMs:schedulerTiming.totalMs/Math.max(1,schedulerTiming.ticks)},performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',movement:bot.movement.status(),transport:bot.transport.status(),party:{gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]},bankPartial:bot.bank?.status(),logistics:bot.logistics.stats(),goldLogistics:bot.gold?.status(),bankCapacity:bot.bank?.capacity(),production:bot.production?.status(),gear:bot.gear?.suggestions(),gearTargets:bot.gear?.status(),economy:bot.economy?.ledger,market:bot.market?.status(),performance:bot.observations?.heartbeat(),strategy:bot.strategy?.status(),teamPlan:bot.teamPlan?.status(),encounter:bot.encounter?.status(),capabilities:bot.capabilities?.snapshot(),navigation:bot.navigation?.status(),economicIntelligence:bot.intelligence?.status(),priority:bot.priority?.status(),recovery:bot.recovery?.status(),contentQuarantine:bot.content?.status(),threats:bot.threats?.status(),gearAllocation:bot.allocation?.status(),account:bot.account?.status(),travel:bot.teamTravel?.status(),services:bot.services?.status(),merchantTask:bot.merchant?.status(),settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,world:cfg.world,rules:cfg.rules,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},equipment:bot.gear?.snapshot(),itemDecisions:cfg.general.testLogging?(p.c.items??[]).flatMap((i,slot)=>i?["inventory","acquisition","production"].map(phase=>{const r=bot.economy?.rules(i,phase);return {slot,item:i.name,level:i.level??0,phase,rule:r?.name??null,action:r?.action??"keep",priority:r?.priority,protected:protectedItem(i),reserved:bot.production?.reservedQuantity(i)??0,remaining:!r||bot.economy.remaining(r),reason:protectedItem(i)?"Geschütztes Item":r?"Spezifität und Priorität; explizite Regel vor abgeleitetem Ziel":"Keine freigegebene Regel: behalten"};}):[]):undefined,inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
   if(!checkpoint.durable)bot.report('Speicher voll: Verbrauch wird im RAM abgeglichen; Lieferungen bleiben gesperrt. Testlog ohne localStorage.');
   p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · '+(cfg.general.testLogging!==undefined?'Vollbetrieb':cfg.production?.strategy?'P3/P4':cfg.world?'Live C':cfg.production?'Live B':'Live A')+' Testkandidat');publish();if(cfg.general.autostart)api.start();return api;
 }

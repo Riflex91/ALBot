@@ -53,7 +53,7 @@ export const DESCRIPTOR = {
     party:obj('Gruppe & Skills',{
       enabled:flag('Gruppenbetrieb',true),group:text('Gruppenkennung','team1',{minLength:1}),leader:text('Kampf-Leader (leer = Rollenwahl)','',{'x-catalog':'characters'}),merchant:text('Zuständiger Merchant','',{'x-catalog':'characters'}),
       selection:choice('Teamwahl',{fixed:'Feste aktivierte Charaktere',adaptive:'Nach Aufgabe und Fähigkeiten'}),maxFarmers:int('Maximale Farmer',3,1,20),followDistance:int('Folgeabstand',180,20,2000),focusFire:flag('Gemeinsames Ziel',true),waitForTeam:flag('Auf fehlende Teammitglieder warten',true),
-      healing:flag('Gruppenheilung',true),energize:flag('Mana teilen',true),buffs:flag('Gruppenbuffs',true),revive:flag('Gruppenmitglieder wiederbeleben',true),aoe:flag('AoE erlauben'),aoeMaxTargets:int('AoE-Zielgrenze',3,1,20),
+      healing:flag('Gruppenheilung',true),energize:flag('Mana teilen',true),buffs:flag('Gruppenbuffs',true),revive:flag('Gruppenmitglieder wiederbeleben',true),aoe:flag('AoE erlauben',true),aoeMaxTargets:int('AoE-Zielgrenze',5,1,20),
       rotationCooldownMs:int('Charakterwechsel frühestens nach (ms)',60000,10000,3600000),aura:choice('Paladin-Aura',{auto:'Situationsabhängig',off:'Keine Automatik',bulwark:'Bulwark',sanctuary:'Sanctuary',zeal:'Zeal',warding:'Warding'}),auraHoldMs:int('Aura mindestens halten (ms)',30000,5000,600000)
     }),
     skills:list('Individuelle Skill-Regeln',skill,'Diese Regeln präzisieren die Standardrotation. Höhere Priorität wird zuerst bewertet; Cooldowns und Live-Voraussetzungen bleiben verpflichtend.'),

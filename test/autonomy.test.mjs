@@ -62,7 +62,7 @@ test('economic disposition processes profitable known exchange surplus within lo
 test('same plan ID refreshes follower expiry and changed role without stopping movement',()=>{const a=fixture();a.bot.teamPlan.tick();const b=fixture();b.bot.me=b.cfg.characters[1];b.c.name='B';b.peers.A={running:true,realm:'EUII',roles:{heal:'Priest1'},farmPlan:a.bot.teamPlan.heartbeat()};b.bot.teamPlan=createTeamPlan(b.bot);b.bot.teamPlan.tick();const old=b.bot.teamPlan.heartbeat().expires;b.bot.movement.order={owner:'follow'};b.peers.A.farmPlan={...b.peers.A.farmPlan,expires:old+10000};b.peers.A.roles={heal:'Priest2'};b.bot.teamPlan.tick();assert.equal(b.bot.teamPlan.heartbeat().expires,old+10000);assert.equal(b.bot.teamPlan.roles().heal,'Priest2');assert.equal(b.bot.movement.order.owner,'follow');});
 test('personal material quota prevents new pulls while aggregate request is incomplete',()=>{const {bot,peers}=fixture();peers.M={running:true,materials:[{monster:'goo',item:'mat',quantity:10,remaining:5,objective:'quota',quotas:[{name:'A',quantity:3}],expires:Date.now()+30000}]};bot.production.progress=()=>[{objective:'quota',quantity:3}];bot.teamPlan.tick();assert.equal(bot.teamPlan.wantsCombat(),false);bot.production.progress=()=>[{objective:'quota',quantity:2}];assert.equal(bot.teamPlan.wantsCombat(),true);});
 test('gear receiver rejects stale slot and explicit keep before accepting delivery promise',()=>{const {bot,c,G}=fixture();c.slots.mainhand={name:'bow',level:0};G.items.bow={type:'weapon',wtype:'bow',upgrade:true};G.classes={ranger:{mainhand:{bow:1}}};bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{mainhand:{...c.slots.mainhand,l:false,b:false}}})};const a=createGearAllocation(bot),item={name:'bow',level:2},proposal={slot:'mainhand',expected:fingerprint(bot.gear.snapshot().slots.mainhand),expires:Date.now()+10000};assert.equal(a.accept('g1','M','session',item,proposal),true);assert.equal(a.rules()[0].slot,'mainhand');c.slots.mainhand.level=1;assert.equal(a.equipGuard(item,'mainhand'),false);assert.equal(a.accept('g2','M','session',item,proposal),false);c.slots.mainhand.level=0;bot.economy.explicit=()=>({action:'keep'});assert.equal(a.accept('g3','M','session',item,proposal),false);});
-test('compound economics accumulates compatible triples and honours future gear protection',()=>{const {bot,c,G,cfg}=fixture();bot.me.role='merchant';cfg.production.autoGear=false;cfg.production.autoDisposition=cfg.production.enabled=cfg.production.compound=true;cfg.production.minChance=.9;cfg.production.autoGearMaxLevel=1;G.items.ring={compound:true,type:'ring',grades:[10,20]};G.items.cscroll0={g:1};bot.economy.value=i=>i.level===1?100:10;const i={name:'ring',level:0};c.items[0]=i;const intel=createEconomicIntelligence(bot);assert.equal(intel.disposition(i).action,'bank');c.items[1]={...i};c.items[2]={...i};assert.equal(intel.disposition(i).action,'compound');i.l=true;assert.equal(intel.disposition(i),null);});
+test('compound economics accumulates compatible triples and honours future gear protection',()=>{const {bot,c,G,cfg}=fixture();bot.me.role='merchant';cfg.production.autoGear=false;cfg.production.autoDisposition=cfg.production.enabled=cfg.production.compound=true;cfg.production.minChance=.9;cfg.production.autoGearMaxLevel=1;G.items.ring={compound:true,type:'ring',grades:[10,20]};G.items.cscroll0={g:1};G.items.superring={type:'ring'};cfg.characters=[bot.me];bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{ring1:{name:'superring',level:20},ring2:{name:'superring',level:20}}})};bot.economy.value=i=>i.level===1?100:10;const i={name:'ring',level:0};c.items[0]=i;const intel=createEconomicIntelligence(bot);assert.equal(intel.disposition(i).action,'bank');c.items[1]={...i};c.items[2]={...i};assert.equal(intel.disposition(i).action,'compound');i.l=true;assert.equal(intel.disposition(i),null);});
 
 test('gear source at a lower owned level is requested before buying replacement bases',()=>{const {bot,c,cfg,G,peers}=fixture();bot.me=cfg.characters[2];c.name='M';c.ctype='merchant';cfg.production.enabled=cfg.production.autonomy=true;G.items.bow={type:'weapon',upgrade:{},g:100};peers.B.stock=[{name:'bow',level:2}];bot.gear={goals:()=>[{name:'Gear B',enabled:true,item:'bow',level:3,sourceLevel:2,sourceOwner:'B',quantity:1,recipient:'B',character:'B',gearSlot:'mainhand',budget:100,priority:1}]};bot.bank={stock:()=>0,packs:()=>[],observed:true};bot.economy.note=()=>{};bot.economy.npcFor=()=>({map:'main',x:0,y:0});bot.economy.remaining=()=>true;bot.production=createProduction(bot);bot.production.planGoals();assert.equal(bot.production.activeGoal,null);assert.equal(bot.production.tick(),false);assert.ok(bot.production.effectiveRules().some(r=>r.item==='bow'&&r.minLevel===2&&r.action==='keep'));});
 
@@ -70,3 +70,47 @@ test('production reuses bounded decision-frame goals and rules but invalidates a
 
 
 test('upgrade scrolls remain working supplies under automatic disposition',()=>{const {bot,c,G,cfg}=fixture();bot.me=cfg.characters.find(x=>x.role==='merchant');cfg.production.autoDisposition=true;G.items.scroll0={type:'uscroll',g:1000};c.items[0]={name:'scroll0',q:35};const intel=createEconomicIntelligence(bot);assert.equal(intel.disposition(c.items[0]),null);});
+
+test('audit M02 reads plural official tables and compound probability grade differs from scroll grade',()=>{
+ const G={items:{ring:{compound:true,grades:[2,5]},sword:{upgrade:true,grades:[2,5]}},
+  compounds:[[0,.123,.22,.33,.44,.55],[0,.61,.62,.63,.64,.65]],upgrades:[[0,.17,.27,.37],[0,.81,.82,.83]]};
+ assert.equal(progressionChance(G,'ring',0,'compound'),.123);
+ assert.equal(progressionChance(G,'ring',4,'compound'),.65,'+4 to +5 uses grade at +2');
+ assert.equal(progressionChance(G,'sword',1,'upgrade'),.27,'upgrade probability grade is the base grade');
+ G.compounds[0][1]=undefined;
+ assert.equal(progressionChance(G,'ring',0,'compound'),null,'missing official cell cannot silently use historical table');
+});
+
+test('audit M01 future gear unknown protects equipment even when optimizers have no selected target',()=>{
+ const {bot,c,G,cfg}=fixture();bot.me.role='merchant';
+ G.items.bow={type:'weapon',wtype:'bow',upgrade:true,g:2,grades:[3,6]};G.classes={ranger:{mainhand:{bow:true},doublehand:{},offhand:{}}};
+ cfg.production.autoDisposition=true;cfg.production.autoGear=false;cfg.characters=[cfg.characters[1]];
+ bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{}}),profile:()=>null};
+ bot.production.reservedQuantity=()=>0;c.items[0]={name:'bow',level:0};
+ const intel=createEconomicIntelligence(bot);
+ assert.equal(intel.gearUse(c.items[0]).state,'unknown');
+ assert.equal(intel.futureGear(c.items[0]),true);
+ assert.equal(intel.disposition(c.items[0]),null);
+});
+
+test('audit M03 finite compound holdings never fund fictitious +2 results',()=>{
+ const {bot,c,G,cfg}=fixture();bot.me.role='merchant';
+ cfg.production.autoDisposition=cfg.production.enabled=cfg.production.compound=true;
+ cfg.production.autoGear=false;cfg.production.minChance=.5;cfg.production.minImprovement=0;
+ cfg.production.autoGearMaxLevel=2;cfg.production.helperMaxPrice=1000;
+ G.items.ring={type:'ring',compound:true,grades:[10,20]};
+ G.items.cscroll0={g:1};
+ G.compounds=[[0,1,1]];
+ bot.economy.value=i=>[10,20,1000][i.level??0];
+ bot.production.reservedQuantity=()=>0;
+ const i={name:'ring',level:0};
+ c.items=[{...i},{...i},{...i},...Array(39).fill(null)];
+ let intel=createEconomicIntelligence(bot);
+ assert.equal(intel.mutationEconomics(i).action,'sell','three bases do not finance nine bases for +2');
+ c.items=Array.from({length:9},()=>({...i})).concat(Array(33).fill(null));
+ intel=createEconomicIntelligence(bot);
+ assert.equal(intel.mutationEconomics(i).action,'compound','nine copies can finance a +2 path');
+ c.items[0].l=true;
+ intel=createEconomicIntelligence(bot);
+ assert.equal(intel.mutationEconomics(i).action,'sell','locked ninth input cannot finance a second compound tier');
+});

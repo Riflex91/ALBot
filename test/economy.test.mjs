@@ -397,3 +397,23 @@ test('audit M05 temporary bank pressure is cleared by another available pack',()
  bot.decisionEpoch=1;assert.equal(bot.bank.reclaim(),false);
  assert.equal(bot.bank.pressureStatus().observations,0);
 });
+
+test('audit bank.retrieve cannot complete from unrelated same-variant bank and bag changes',async()=>{
+ const {bot,c,rule,advance}=fixture();rule.action='retrieve';rule.batch=20;rule.maxCount=1000;
+ c.bank.items0[0]={name:'hpot0',q:5};
+ c.bank.items0[1]={name:'hpot0',q:5};
+ c.items[0]=null;
+ let dispatched=0;
+ bot.p.call=(name,pack,source,dest)=>{
+  assert.equal(name,'bank_retrieve');assert.equal(source,0);assert.equal(dest,0);
+  // Simulate unrelated transfer with precisely the same aggregate delta.
+  c.bank.items0[1]=null;c.items[2]={name:'hpot0',q:5};dispatched++;
+  return Promise.resolve();
+ };
+ assert.equal(bot.bank.retrieve({name:'hpot0'},rule,5),true);
+ await Promise.resolve();advance();
+ assert.equal(dispatched,1);assert.equal(bot.inventoryBlocked,true);
+ assert.equal(bot.journal?.kind,'bank.retrieve');
+ assert.deepEqual(c.bank.items0[0],{name:'hpot0',q:5});
+ assert.equal(c.items[0],null);
+});

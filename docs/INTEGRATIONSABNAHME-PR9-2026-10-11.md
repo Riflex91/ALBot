@@ -1,3 +1,7 @@
+**Finale Sicherheitskorrektur der v3-inspirierten Bank-Recovery (11.10.2026):** Notfallprüfung führt nur bei nachgewiesenem Bankdruck (weniger freie Bankplätze als `bankWorkspace`) Konsolidierung/Erweiterung/Notverkauf aus; verhindert ungewollte Bankerweiterung im Leerlauf. Quest-, Event-, seltene, Upgrade- und Compound-Metadaten blockieren jetzt auch ausdrücklich geplante Reclaim-Verkäufe. Zwei weitere Regressionen. [Code-Commit `157a9b3`](https://github.com/Riflex91/ALBot/commit/157a9b3f8d5ca981914b20ce4b985ea5489f8917), [CI #38150152399](https://github.com/Riflex91/ALBot/actions/runs/38150152399): **316/316 Linux und Windows**. Persönliches Profil: nur `farming.autoTargets:true`, `party.aoe:true`, `party.aoeMaxTargets:5` geändert; `maxAggro:1`, Ausschlusskarten, 8 Charaktere, 26 Itemregeln, `autoDisposition:true`, Budgets und `autostart:false` unverändert. Schema-/JS-Syntaxprüfung bestanden, Liveprüfung noch offen. Bisheriger ungeklärter `bank.store`-Checkpoint bleibt gesperrt und wird nicht gelöscht. Kein Merge.
+
+---
+
 ## Bankkonsolidierung und geringstwertiger Notverkauf: korrekt aus Adventure-Land-v3 (11.10.2026)
 
 Der v3-Referenzbot befindet sich **unter `Riflex91/Riflex91-Repo/v3`**, nicht im Screeps-Repository `Riflex91/boringstuff`. Direkter Vergleich:

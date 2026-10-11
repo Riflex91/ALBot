@@ -108,7 +108,8 @@ export function createSkills(bot){
     if(cfg.party.aoe){
       // Prefer the cheaper 3-shot for a small pack; reserve 5-shot for 4-5
       // already-engaged safe recipients (when the skill and MP are available).
-      const safeCount=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m)).length;
+      const shotRange=(p.G.skills['5shot']?.range??c.range)-5;
+      const safeCount=Math.min(cfg.party.aoeMaxTargets,bot.monsters().filter(m=>distance(c,m)<shotRange&&m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m)).length);
       const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
       for(const id of ids)if(use(id,t,.35,600))return;
     }

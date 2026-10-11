@@ -15,6 +15,14 @@ export function createLogistics(bot){
   const count=i=>(p.c.items??[]).reduce((n,x)=>n+(x&&x.name===i.name&&(x.level??0)===i.level&&(x.stat_type??'')===i.stat_type&&(x.p??'')===i.p&&(x.title??'')===i.title?(x.q??1):0),0);
   const near=name=>{const e=bot.entity(name),h=transport.fresh(name);return e&&h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,e)&&samePlace(p.c,h)&&distance(p.c,e)<300&&distance(p.c,h)<300?e:null;};
   const safeItem=i=>i&&typeof i.name==='string'&&/^[a-zA-Z0-9_]+$/.test(i.name)&&Number.isInteger(i.level)&&i.level>=0&&i.level<100&&['stat_type','p','title'].every(k=>typeof i[k]==='string'&&i[k].length<161);
+  // Only a job that never reached send_item may issue this proof. A sent or
+  // uncertain value action must retain its journal for manual reconciliation.
+  function cancelUnsent(j,reason){
+    if(!j||!['offered','accepted'].includes(j.state))return false;
+    transport.send(j.to,'itemCancel',{notDispatched:true},j.id);
+    bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
+    return true;
+  }
   function capacity(i){const rule=ruleFor(i);if(!rule||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(demandFor(rule,count(i)),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
@@ -27,6 +35,13 @@ export function createLogistics(bot){
       if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.
       try{bot.beginValue({kind:'receive',...incoming});}catch(e){incoming=null;throw e;}counters.acceptsSent++;transport.send(from,'accept',{quantity,gearAck:d.gear?d.gear.expected:null},m.id);
+    }else if(m.type==='itemCancel'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session
+      &&d.notDispatched===true&&!incoming.sent&&!incoming.observed&&count(incoming.item)===incoming.before
+      &&bot.journal?.kind==='receive'&&bot.journal.id===incoming.id&&bot.journal.from===from&&bot.journal.session===m.session){
+      const cancelled=incoming;
+      incoming=null;completed.set(m.id,clock());
+      bot.event?.('logistics.cancelled',{id:m.id,peer:from,state:'receiving',reason:'Sender bestätigt Nichtversand; Bestand unverändert'});
+      bot.endValue('confirmed');
     }else if(m.type==='accept'&&job&&job.state==='offered'&&m.id===job.id&&from===job.to&&m.session===job.session){
       if(!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>job.quantity)return;
       if(job.gear&&d.gearAck!==job.gear.expected)return;job.gearAck=d.gearAck;job.quantity=d.quantity;job.state='accepted';counters.acceptsReceived++;
@@ -45,14 +60,14 @@ export function createLogistics(bot){
       if(job.state==='sent'&&count(job.item)<=job.before-job.quantity&&job.receipt){counters.doneSent++;transport.send(job.to,'done',{},job.id);completed.set(job.id,now);job=null;bot.endValue('confirmed');return;}
       if(job.state==='offered'){
         const current=p.c.items[job.slot],rule=current&&sendRule(current,job.to);
-        if(fingerprint(current)!==job.fingerprint||availableTransfer(job.slot,rule)<job.quantity){nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+5000);job=null;return;}
+        if(fingerprint(current)!==job.fingerprint||availableTransfer(job.slot,rule)<job.quantity){nextOffer.set(job.offerKey??offerKey(job.to,job.item.name),now+5000);cancelUnsent(job,'Bestand oder Itemfreigabe vor Versand verändert');job=null;return;}
         const retryMs=Math.max(500,Math.min(2000,Math.floor(cfg.general.messageTtlMs/3)));
         if(now-(job.lastOffer??0)>=retryMs){
           const peer=transport.fresh(job.to);
           if(peer?.session===job.session){job.lastOffer=now;transport.send(job.to,'offer',{item:job.item,quantity:job.quantity,gear:job.gear},job.id);}
         }
       }
-      if(now>job.until){const expired=job;job=null;counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht vollständig bestätigt; keine Wiederholung'});if(expired.state==='sent'||expired.state==='accepted')bot.endValue('unknown');return;}
+      if(now>job.until){const expired=job;job=null;counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht vollständig bestätigt; keine Wiederholung'});if(expired.state==='sent')bot.endValue('unknown');else cancelUnsent(expired,'Angebot ohne Versand abgelaufen');return;}
       if(job.state==='accepted'&&!bot.inventoryBlocked){
         const j=job,peer=transport.fresh(j.to);
         // An acceptance is bound to its receiver session. After a reload the
@@ -60,6 +75,7 @@ export function createLogistics(bot){
         if(peer?.session&&peer.session!==j.session){
           nextOffer.set(j.offerKey??offerKey(j.to,j.item.name),now+10000);
           job=null;
+          cancelUnsent(j,'Empfängersitzung nach Annahme gewechselt');
           bot.event?.('logistics.session-changed',{id:j.id,peer:j.to,reason:'Empfängersitzung nach Annahme gewechselt; vor Dispatch abgebrochen'});
           return;
         }
@@ -114,6 +130,6 @@ export function createLogistics(bot){
       for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:demandFor(r,countNow),surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve-(bot.production?.reservedQuantity?.(item,r.recipient)??0)):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
       summaryOffset=(summaryOffset+result.length)%Math.max(1,all.length);return result;
     },
-    close(){if(incoming||job?.state==='sent'||job?.state==='accepted')bot.endValue('unknown');job=null;incoming=null;}
+    close(){if(incoming||job?.state==='sent')bot.endValue('unknown');else if(job)cancelUnsent(job,'Sender STOP/Pause vor Versand');job=null;incoming=null;}
   };
 }

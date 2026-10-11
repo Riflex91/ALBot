@@ -1,10 +1,21 @@
 ## Browser-Phase-1-Beobachtungen und Transportdiagnose (11.10.2026)
 
-**Vom Nutzer gelieferte Browserreports:** My_Ranger1 und My_Merchant mit Profil `ALBot Phase 1 - Browser-Diagnose`, `0.8.4-full`, EUII, `transport:auto`, je ~44 Sekunden beobachtet und wieder pausiert. Ranger: 852 Scheduler-Ticks, Ø 1,57 ms, max. 17 ms. Merchant: 170 Ticks, Ø 0,82 ms, max. 8 ms. Nach manueller Bestandsprüfung und Freigabe älterer `shoes +4`-/`beewings`-Journale blieben beide bei `inventoryBlocked:false`, `journal:null`, `pending:0`. Im kumulierten Rangerlog standen drei `regen`-Aufrufe; der genaue Zeitpunkt ist nicht belegt. Kein neuer Wertauftrag im beobachteten Testbericht. Bundle-SHA256 nicht vom Nutzer geliefert, daher konkrete Dateigleichheit zum CI-Artefakt nicht belegt. **Gegenseitiger Heartbeat-Empfang und live `smart_move` weiterhin nicht belegt.**
+**Vom Nutzer gelieferte Browserreports:** My_Ranger1 und My_Merchant mit Profil `ALBot Phase 1 - Browser-Diagnose`, `0.8.4-full`, EUII, `transport:auto`, je ~44 Sekunden beobachtet und wieder pausiert. Ranger: 852 Scheduler-Ticks, Ø 1,57 ms, max. 17 ms. Merchant: 170 Ticks, Ø 0,82 ms, max. 8 ms. Nach manueller Bestandsprüfung und Freigabe älterer `shoes +4`-/`beewings`-Journale blieben beide bei `inventoryBlocked:false`, `journal:null`, `pending:0`. Im kumulierten Rangerlog standen drei `regen`-Aufrufe; der genaue Zeitpunkt ist nicht belegt. Kein neuer Wertauftrag im beobachteten Testbericht. Bundle-SHA256 nicht vom Nutzer geliefert, daher konkrete Dateigleichheit zum CI-Artefakt nicht belegt. **Der folgende, spätere Browser-Livetest bestätigt den gegenseitigen CM-Heartbeat-Empfang; live `smart_move` bleibt ungetestet.**
 
 **Codeerweiterung in PR #9, nicht in main:** `ALBot.transportStatus()` sowie `transport` im Testreport zeigen Zähler für Heartbeat-Versuch, erfolgreiche Adapter-Rückgabe, validierten Empfang, Versandfehler, abgelehnte Pakete und Duplikate. Je Team-Peer werden Empfangsalter, Session, Realm, Laufstatus, Frische gemäß TTL und Zähler angezeigt. Rein lesende Diagnose ohne zusätzliche CM- oder Wertaktion; keine Gold-/Item-/Inventardaten in dieser Übersicht. Das Feld `heartbeatSent` bedeutet **nur**, dass der CM-/IPC-Adapter Erfolg gemeldet hat, nicht dass der Empfänger das Paket erhalten hat; auf der Gegenseite sind `heartbeatReceived > 0` und `fresh:true` erforderlich. Bestehende Session-/Sequenzprüfung und Sicherheitslimits gelten weiter.
 
-**Nächster kontrollierter Browserlauf (noch offen):** Zwei manuell gestartete Charaktere mit neuem CI-Bundle und unverändertem, wirtschaftlich deaktiviertem Phase-1-Profil mindestens 20 Sekunden laufen lassen. Bei beiden `ALBot.transportStatus()` lesen. Erst bei validiertem gegenseitigem Peer-Empfang die CM-Abnahme als bestanden markieren. Bei fehlendem Heartbeat oder `sendFailed` pausieren und CM-Kanal prüfen. Keine Farm-/Movement-/Wertfreigabe durch diesen Diagnoseschritt.
+**Nachgelieferter Browser-Livetest – Kommunikations-Gate bestanden (11.10.2026):** Nutzer führte bei `My_Ranger1` und `My_Merchant` im Spiel die erneute manuelle Phase-1-Ausführung mit der korrigierten Diagnoseruntime `0.8.4-full` durch. Die Startvorprüfung meldete je `running:false`, `inventoryBlocked:false`, `journal:null`, `pending:0`, gegenseitigen Roster-Eintrag sowie null Zähler. Während beide danach liefen (`running:true`, Realm `EUII`) wurden folgende reale CM-Ergebnisse gemeldet:
+  
+| Messgröße | My_Merchant | My_Ranger1 |
+|---|---:|---:|
+| `heartbeatAttempts` / `heartbeatSent` | 18 / 18 | 23 / 23 |
+| `heartbeatReceived` | **19** | **22** |
+| Partner `fresh` / `running` | true / true | true / true |
+| Empfangsalter Partner | 995 ms | 983 ms |
+| `sendFailed` / `rejected` / `duplicates` | 0 / 0 / 0 | 0 / 0 / 0 |
+| `inventoryBlocked` / Journal / `pending` | false / null / 0 | false / null / 0 |
+
+Die gemeldeten Peer-Sessions waren `My_Ranger1-mv3p46j3-h3626b` beim Merchant und `My_Merchant-mv3p49y7-ibad4w` beim Ranger. Beide sahen `realm:EUII`. Sende-/Empfangszähler sind Momentaufnahmen und müssen nicht übereinstimmen; **entscheidend ist der validierte Empfängerzähler auf beiden Seiten**. Die Diagnose enthält keinerlei Item-/Goldtransfers; aus den Statusausgaben allein folgt auch kein vollständiger Aktions-/Wertlog-Nachweis für das letzte Zeitfenster. Der Nutzer wurde angewiesen, beide Bots anschließend zu pausieren; separate Bestätigung der Pause steht noch aus. Eine erneute Hashmessung der real geladenen `bot.js` fehlt weiterhin. **Keine Livefreigabe von `smart_move`, Farming, Kampf, Merchant-Wirtschaft oder Wertaktionen**; als nächste Teilphase zuerst sichere Standortkoordinaten und eine kontrollierte Movement-Testfreigabe beschaffen.
 
 ---
 

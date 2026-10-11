@@ -45,6 +45,14 @@ import {createTestReport} from './core/test-report.mjs';
 import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint} from './core/checkpoint.mjs';
+export function selectedPartyMember(bot,name){
+  return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
+    (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
+}
+export function canAcceptPartyRequest(bot,name){
+  const peer=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
+  return !!(bot.running&&bot.cfg.party.enabled&&bot.me.name===bot.leader&&peer?.running&&peer.realm===bot.p.realm());
+}
 export function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
@@ -116,9 +124,7 @@ export function install(root){
   cleanup.push(p.hook('on_party_request',name=>{
     // The configured merchant is a team member, but not a farmer. Accept its
     // request exactly as a selected farmer, never an unconfigured requester.
-    const selected=()=>bot.farmers.includes(name)||name===cfg.party.merchant&&bot.teamNames.includes(name);
-    const eligible=()=>bot.running&&cfg.party.enabled&&me.name===bot.leader&&bot.teamNames.includes(name)&&selected()&&
-      !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm();
+    const eligible=()=>canAcceptPartyRequest(bot,name);
     if(eligible())exec.run('party',['party'],eligible,()=>p.call('accept_party_request',name),{delay:3000});
   }));
   if(bot.teamTravel)cleanup.push(p.hook('on_magiport',name=>bot.teamTravel.accept(name)));
@@ -165,7 +171,7 @@ export function install(root){
         const h=bot.transport.fresh(name),e=bot.entity(name);
         if(!h?.running||h.rip||h.realm!==p.realm()||name!==cfg.party.merchant&&h.inventoryBlocked)continue;
         if(!p.c.party||!e||e.party!==p.c.party){
-          const eligible=()=>bot.running&&bot.teamNames.includes(name)&&(bot.farmers.includes(name)||name===cfg.party.merchant)&&
+          const eligible=()=>bot.running&&selectedPartyMember(bot,name)&&
             !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm()&&!joined(name);
           exec.run('invite:'+name,['party'],eligible,()=>p.call('send_party_invite',name),{delay:10000});
         }

@@ -3,6 +3,9 @@ export function createBank(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const pendingKey='albot:bank-partial:'+me.name;let pending=p.read(pendingKey)??null;
  const reclaimKey='albot:bank-reclaim:'+me.name;let reclaiming=p.read(reclaimKey)??null;
+ const pressureKey='albot:bank-pressure:'+me.name;
+ let pressure=p.read(pressureKey)??{observations:0,epoch:null,at:0};
+ if(!Number.isInteger(pressure.observations)||!Number.isFinite(pressure.at))pressure={observations:0,epoch:null,at:0};
  const validPending=r=>r&&/^items\d+$/.test(r.pack)&&[r.bankSlot,r.dest,r.splitSlot].every(n=>Number.isInteger(n)&&n>=0&&n<1000)&&r.dest!==r.splitSlot&&r.item&&typeof r.item.name==='string'&&e.safe(r.item)&&[r.total,r.take,r.before,r.bankBefore].every(n=>Number.isSafeInteger(n)&&n>=0)&&r.take>0&&r.total>r.take&&r.bankBefore>=r.total;
  if(pending&&!validPending(pending)){bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: ungültiger Checkpoint; Bestand prüfen');}
  function savePending(value){if(!p.write(pendingKey,value)){bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: Checkpoint nicht gespeichert');return false;}pending=value;return true;}
@@ -132,19 +135,33 @@ export function createBank(bot){
  }
  function reclaim(){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<=cfg.merchant.minFreeSlots)return false;
-  const pressure=packs().some(([pack,items])=>packMap(pack)===p.c.map&&items.filter(i=>!i).length<(cfg.merchant.bankWorkspace??2));
-  if(!pressure)return false;
+  const rows=packs().filter(([pack])=>packMap(pack)===p.c.map);
+  const free=rows.reduce((n,[,items])=>n+items.filter(i=>!i).length,0);
+  const pressed=rows.length>0&&free<(cfg.merchant.bankWorkspace??2);
+  if(!pressed){
+   if(pressure.observations&&p.write(pressureKey,null))pressure={observations:0,epoch:null,at:0};
+   return false;
+  }
+  // Two distinct, recent decision observations are required before an
+  // irreversible emergency sale, even if a single pack is temporarily full.
+  const now=Date.now(),epoch=Number.isInteger(bot.decisionEpoch)?bot.decisionEpoch:Math.floor(now/2000);
+  if(pressure.epoch!==epoch){
+   const next={observations:Math.min(2,now-pressure.at<=60000?pressure.observations+1:1),epoch,at:now};
+   if(!p.write(pressureKey,next)){e.note('Bankdruck: Beobachtung nicht dauerhaft gespeichert; kein Notverkauf');return false;}
+   pressure=next;
+  }
   if(consolidate()||expand())return true;
+  if(pressure.observations<2){e.note('Bankdruck: zweite bestätigte Bestandsbeobachtung vor Notverkauf erforderlich');return false;}
   const candidates=[];
   for(const [pack,items] of packs()){
-   if(packMap(pack)!==p.c.map||items.filter(i=>!i).length>=(cfg.merchant.bankWorkspace??2))continue;
+   if(packMap(pack)!==p.c.map)continue;
    for(let slot=0;slot<items.length;slot++){
     const item=items[slot],safe=eligibleBankSale(item);
     if(safe)candidates.push({...safe,pack,slot,item});
    }
   }
   candidates.sort((a,b)=>a.lossScore-b.lossScore||a.price-b.price||a.item.name.localeCompare(b.item.name)||a.slot-b.slot);
-  const selected=candidates[0];if(!selected)return false;
+  const selected=candidates[0];if(!selected){e.note('Bankdruck: kein ausdrücklich freigegebenes unreserviertes Item für sicheren Notverkauf');return false;}
   const {item,pack,slot}=selected,q=item.q??1,dest=p.c.items.findIndex(i=>!i),before=e.count(item),bankBefore=variantCount(p.c.bank[pack],item),fp=fingerprint(item);
   if(dest<0)return false;
   const record={item:{...item},pack,slot,dest,before,bankBefore,quantity:q,gold:p.c.gold};
@@ -172,5 +189,5 @@ export function createBank(bot){
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
  }
- return {store,retrieve,consolidate,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,ready,recover,stock,inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {store,retrieve,consolidate,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

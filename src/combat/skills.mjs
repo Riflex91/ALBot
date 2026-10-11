@@ -3,7 +3,7 @@ import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 export function createSkills(bot){
-  const {p,cfg,exec}=bot,last=new Map();
+  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map();
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
@@ -29,7 +29,14 @@ export function createSkills(bot){
     if(id==='energize'&&!cfg.party.energize||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;
     if(!explicit&&cfg.skills.some(r=>r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype)))return false;
-    if((last.get(id)??0)+every>Date.now()||!(cfg.general.testLogging!==undefined?FULL_SKILLS:SUPPORTED_SKILLS).includes(id))return false;
+    if((last.get(id)??0)+every>Date.now()||(failedUntil.get(id)??0)>Date.now()||
+      !(cfg.general.testLogging!==undefined?FULL_SKILLS:SUPPORTED_SKILLS).includes(id))return false;
+    // Do not spend offensive mana on a normal-attack kill while the normal
+    // attack is available. Explicit user skill rules remain authoritative.
+    if(!explicit&&['supershot','quickstab','quickpunch','smash','piercingshot','arcane_needle','burst'].includes(id)&&
+       target?.type==='monster'&&!p.G.monsters?.[target.mtype]?.boss&&
+       Number.isFinite(target.hp)&&target.hp<=Math.max(1,p.c.attack??0)&&
+       !p.call('is_on_cooldown','attack'))return false;
     const s=p.G.skills[id];if(!s)return false;const control=cfg.skills.find(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype));
     let extra,argsTarget=target;
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
@@ -47,7 +54,7 @@ export function createSkills(bot){
     const accepted=exec.run('skill:'+id,['mana',s.share==='attack'||id==='heal'?'attack':'skill',...(consume?['inventory']:[])],guard,()=>{
       if(consume)bot.beginValue({kind:'consume',item:consume,before:prior});
       return id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
-    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:state=>{if(consume)bot.endValue(state);}});
+    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:state=>{if(consume)bot.endValue(state);if(state==='rejected'||state==='timeout'||state==='unknown')failedUntil.set(id,Date.now()+3000);}});
     if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve});}return accepted;
   }
   function support(){

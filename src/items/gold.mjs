@@ -23,7 +23,11 @@ export function createGoldLogistics(bot){
   const d=m.data??{};
   if(m.type==='goldOffer'){
    if(job?.id===m.id&&job.peer===from&&job.state==='receiving'){send('goldAccept',{quantity:job.quantity});return;}
-   if(me.name!==cfg.party.merchant||!cfg.characters.some(c=>c.enabled&&c.name===from&&c.role==='farmer')||job||finished.has(m.id)||!idle()||!near(from)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>cfg.merchant.goldTransferMax)return;
+   if(me.name!==cfg.party.merchant||!cfg.characters.some(c=>c.enabled&&c.name===from&&c.role==='farmer')||job||finished.has(m.id)||!near(from)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>cfg.merchant.goldTransferMax)return;
+   // An unsent item offer has not moved value and can safely be cancelled.
+   // Otherwise outgoing potion offers can starve genuine gold pickups forever.
+   if(!idle()&&bot.logistics?.itemReserved)bot.logistics.yieldUnsent?.('Goldempfang: unversandtes Itemangebot zurückstellen');
+   if(!idle())return;
    if(!markTransfer())return;
    if(me.role==='merchant')bot.movement?.stop();job={id:m.id,peer:from,session:m.session,state:'receiving',quantity:d.quantity,before:p.c.gold,until:Date.now()+cfg.general.messageTtlMs};
    try{bot.beginValue({kind:'gold.receive',...job});send('goldAccept',{quantity:job.quantity});}catch(e){job=null;throw e;}
@@ -56,11 +60,20 @@ export function createGoldLogistics(bot){
   job={id:bot.session+':gold:'+(++serial),peer:cfg.party.merchant,session:peer.session,state:'offered',quantity:Math.min(surplus(),cfg.merchant.goldTransferMax),before:p.c.gold,until:now+cfg.general.messageTtlMs,lastOffer:now};send('goldOffer',{quantity:job.quantity});
  }
  function travel(){if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
+  // Shared merchant route ownership: do not preempt item delivery or a
+  // selected economy job while smart_move/town pathfinding is underway.
+  if(['logistics','economy'].includes(bot.movement?.order?.owner))return false;
   for(const name of bot.farmers){const h=transport.fresh(name);if(!h?.running||h.rip||h.journal||h.pending||h.realm!==p.realm()||!(h.goldSurplus>=cfg.merchant.goldCollectBelow))continue;
    if(bot.strategy?.canVisit?.(h)===false||bot.merchant?.claimService?.(name)===false)continue;
    if(bot.services?.waiting)bot.services.interrupt();if(samePlace(p.c,h)&&distance(p.c,h)<200)return false;
    if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Goldüberschuss abholen: '+name;bot.movement.go({...h,radius:120},'gold');return true;
   }return false;
  }
- return {receive,poll,travel,surplus,get reserved(){return !!job;},get transferAt(){return lastTransferAt;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
+ function yieldUnsent(reason='Itemübergabe hat Vorrang'){
+  if(!job||!['offered','accepted'].includes(job.state))return false;
+  const previous=job;job=null;next=Date.now()+15000;
+  sendCancelled(previous);bot.event('gold.yieldUnsent',{id:previous.id,reason});
+  return true;
+ }
+ return {receive,poll,travel,yieldUnsent,surplus,get reserved(){return !!job;},get transferAt(){return lastTransferAt;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
 }

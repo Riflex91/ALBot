@@ -1067,3 +1067,47 @@ test('U05 impossible stack assembly never schedules an unproductive craft merge'
  assert.equal(production.craft('result',rule),false);
  assert.equal(scheduled,0);
 });
+
+test('U05 queued craft merge aborts when the authoritative recipe changes in place or by alias',()=>{
+ const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};
+ const recipe={cost:1,items:[[5,'herb']]};
+ const G={items:{herb:{s:10},result:{}},craft:{result:recipe,alias:{...recipe,output:{name:'result'}}}};
+ const cfg={production:{enabled:true,craft:true,goals:[],autonomy:false},general:{}};
+ let pending=null,posted=0;
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0);
+ const economy={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i&&!i.l,count,
+  perform:(kind,args)=>{assert.equal(kind,'inventory.merge');pending=args;posted++;return true;}};
+ const production=createProduction({p:{c,G,read:()=>null},cfg,me:{name:'M',role:'merchant'},economy,free:()=>40});
+ const rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(posted,1);
+ assert.equal(pending.guard(),true);
+ recipe.cost=2;assert.equal(pending.guard(),false,'Price changes invalidate queued preparation');
+ recipe.cost=1;assert.equal(pending.guard(),true);
+ recipe.items[0][0]=4;assert.equal(pending.guard(),false,'Input quantity changes invalidate queued preparation');
+ recipe.items[0][0]=5;assert.equal(pending.guard(),true);
+ rule.recipe='alias';assert.equal(pending.guard(),false,'Changing the rule recipe alias requires a new plan');
+ rule.recipe='result';assert.equal(pending.guard(),true);
+ G.craft.result={...recipe,quest:'new-workplace'};assert.equal(pending.guard(),false,'New workplace definitions invalidate stale merges');
+ assert.equal(posted,1,'No additional merges were scheduled during guard checks');
+});
+test('U05 queued craft merge stops when the output cap is already reached or reduced',()=>{
+ const c={name:'M',items:[{name:'herb',q:2},{name:'herb',q:3},...Array(40).fill(null)]};
+ const G={items:{herb:{s:10},result:{}},craft:{result:{cost:1,items:[[5,'herb']]}}};
+ const cfg={production:{enabled:true,craft:true,goals:[],autonomy:false},general:{}};
+ let pending=null;
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0);
+ const economy={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i&&!i.l,count,
+  perform:(kind,args)=>{assert.equal(kind,'inventory.merge');pending=args;return true;}};
+ const production=createProduction({p:{c,G,read:()=>null},cfg,me:{name:'M',role:'merchant'},economy,free:()=>40});
+ const rule={item:'result',action:'craft',recipe:'result',targetCount:2,maxCount:2};
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(pending.guard(),true);
+ c.items[2]={name:'result',q:2};
+ assert.equal(pending.guard(),false,'Output acquired elsewhere: no pending inventory manipulation');
+ c.items[2]={name:'result',q:1};
+ assert.equal(pending.guard(),true);
+ rule.maxCount=1;
+ assert.equal(pending.guard(),false,'Lowered output cap invalidates pending merge');
+ rule.maxCount=2;assert.equal(pending.guard(),true);
+});

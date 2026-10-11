@@ -23,7 +23,9 @@ test('unchanged gathering journal releases automatically only after expiry, no r
  const {bot,events}=gatherFixture();
  assert.equal(unchangedGatherJournal(bot,120999),false);
  assert.equal(unchangedGatherJournal(bot,121000),true);
- const recovery=createRecovery({...bot,me:{name:'M'},cfg:{party:{merchant:'M'},general:{messageTtlMs:10000}},transport:{peers:new Map()},report(){}});
+ bot.me={name:'M'};bot.cfg={party:{merchant:'M'},general:{messageTtlMs:10000}};
+ bot.transport={peers:new Map()};bot.report=()=>{};
+ const recovery=createRecovery(bot);
  const old=Date.now;Date.now=()=>121000;
  try{assert.equal(recovery.reconcile(),true);}finally{Date.now=old;}
  assert.equal(bot.journal,null);assert.equal(bot.inventoryBlocked,false);assert.ok(events.includes('recovery.gatherUnchanged'));

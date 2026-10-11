@@ -56,7 +56,7 @@ test('merchant opens stand only after ten seconds of uninterrupted idle time',()
   bot.exec.beginFrame();merchant.tick();bot.exec.flush();
   assert.equal(calls.filter(x=>x==='open_stand').length,1);
   assert.ok(c.stand);
-  bot.movement.order={owner:'economy'};
+  c.moving=true;
   assert.equal(canOpenMerchantStand(bot),false);
   merchant.close();
  }finally{Date.now=old;}

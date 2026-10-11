@@ -43,7 +43,7 @@ test('planner chooses bounded alternatives and explicit keep blocks an automatic
 });
 test('account assigns a scarce output to the highest goal and persists confirmed delivery',()=>{
  const {bot,c,cfg}=fixture();const goal={name:'First',enabled:true,item:'helmet',level:0,quantity:1,recipient:'A',budget:1000,priority:10};cfg.production.goals=[goal,{...goal,name:'Second',recipient:'B',priority:0}];c.items[0]={name:'helmet'};
- bot.production.planGoals();assert.equal(bot.production.activeGoal.name,'First');assert.deepEqual(bot.production.effectiveRules().filter(r=>r.action==='send').map(r=>r.recipient),['A']);assert.equal(bot.production.recordDelivery({kind:'send',id:'transfer1',to:'A',item:{name:'helmet',level:0},quantity:1}),true);
+ bot.production.planGoals();assert.equal(bot.production.activeGoal,null,'delivery-only stock must not pin production');assert.deepEqual(bot.production.effectiveRules().filter(r=>r.action==='send').map(r=>r.recipient),['A'],'scarce stock goes to highest priority');assert.equal(bot.production.recordDelivery({kind:'send',id:'transfer1',to:'A',item:{name:'helmet',level:0},quantity:1}),true);
  bot.production=createProduction(bot);assert.deepEqual(bot.production.effectiveRules().filter(r=>r.action==='send').map(r=>r.recipient),['B']);
 });
 test('recipe preparation merges identical stacks once and observes both quantity and slot release',async()=>{

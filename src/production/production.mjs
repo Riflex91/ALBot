@@ -6,6 +6,26 @@ import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
+// Independent recipients require independent send rules even for identical items.
+// Two gear slots for the same recipient accumulate their remaining quantities.
+export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
+ const grouped=new Map(),allocated=new Map();
+ for(const g of goals){
+  if(!g.recipient||g.recipient===sender)continue;
+  const remaining=Math.max(0,g.quantity-(delivered(g)??0));if(!remaining)continue;
+  const stockKey=JSON.stringify([g.item,g.level,g.variant??null]);
+  const capacity=Math.max(0,available(g));
+  const transferable=Math.min(remaining,Math.max(0,capacity-(allocated.get(stockKey)??0)));
+  if(!transferable)continue;
+  allocated.set(stockKey,(allocated.get(stockKey)??0)+transferable);
+  const key=JSON.stringify([g.recipient,g.item,g.level,g.variant??null]);
+  const prior=grouped.get(key);
+  if(prior)prior.quantity+=transferable;
+  else grouped.set(key,{...g,quantity:transferable});
+ }
+ return [...grouped.values()];
+}
+export function needsProductionStock(available,required){return available<required;}
 export function createProduction(bot){
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const routeCache=new Map();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
@@ -29,8 +49,11 @@ export function createProduction(bot){
  function effectiveRules(){
   if(rulesCache&&Number.isInteger(bot.decisionEpoch)&&rulesEpoch===bot.decisionEpoch)return rulesCache;
   if(!cfg.production.autonomy||!cfg.production.enabled)return cfg.items;
-  const extra=[],assigned=new Set();for(const g of goals()){
-   const key=g.item+':'+g.level;if(g.recipient&&g.recipient!==bot.me.name&&(deliveries[goalKey(g)]?.quantity??0)<g.quantity&&!assigned.has(key)){assigned.add(key);extra.push({...generated('send',{name:g.item,level:g.level},g.quantity-(deliveries[goalKey(g)]?.quantity??0),g),recipient:g.recipient});}
+  const extra=[];
+  for(const g of pendingDeliveryRuleNeeds(goals(),g=>deliveries[goalKey(g)]?.quantity??0,bot.me.name,g=>qty(g.item,g.level,g))){
+   extra.push({...generated('send',{name:g.item,level:g.level},g.quantity,g),recipient:g.recipient});
+  }
+  for(const g of goals()){
    if(g.gearSlot&&(!g.recipient||g.recipient===bot.me.name))extra.push({...generated('equip',{name:g.item,level:g.level},g.quantity,g),slot:g.gearSlot});
   }
   // Receiving characters derive only their explicitly configured gear demand.
@@ -219,7 +242,9 @@ export function createProduction(bot){
   const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<cfg.merchant.taskHoldMs;return Number(held(b))-Number(held(a))||b.priority-a.priority||(bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
    const wait=waiting.get(goalKey(g));if(wait?.until>Date.now())continue;if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
-   if(!needed)continue;if(qty(g.item,g.level,g)>=needed){if(g.recipient){goal=g;break;}continue;}
+   if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient
+   // must not monopolize the production slot while out of transfer range.
+   if(!needsProductionStock(qty(g.item,g.level,g),needed))continue;
    const holder=g.sourceOwner&&g.sourceOwner!==me.name?bot.transport.fresh(g.sourceOwner):null;if(holder?.running&&holder.realm===p.realm()&&holder.stock?.some(i=>i.name===g.item&&(i.level??0)===(g.sourceLevel??g.level))&&qty(g.item,g.sourceLevel??g.level,g)<1){planningReason='Vorhandenes Gear von '+g.sourceOwner+' anfordern';continue;}
    try{goal=g;
     const permit=(name,level,kind)=>{if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const item={name,level},phase=phaseOf(kind),r=e.explicit(item,phase);return r?r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level):!!cfg.production.autonomy;};

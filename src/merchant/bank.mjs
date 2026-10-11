@@ -164,7 +164,7 @@ export function createBank(bot){
   const selected=candidates[0];if(!selected){e.note('Bankdruck: kein ausdrücklich freigegebenes unreserviertes Item für sicheren Notverkauf');return false;}
   const {item,pack,slot}=selected,q=item.q??1,dest=p.c.items.findIndex(i=>!i),before=e.count(item),bankBefore=variantCount(p.c.bank[pack],item),fp=fingerprint(item);
   if(dest<0)return false;
-  const record={item:{...item},pack,slot,dest,before,bankBefore,quantity:q,gold:p.c.gold};
+  const record={item:{...item},pack,slot,dest,before,bankBefore,quantity:q,gold:p.c.gold,sourcePrint:fp,expectedSaleGold:e.value(item)*q};
   if(!p.write(reclaimKey,record))return false;reclaiming=record;
   return e.perform('bank.reclaim',{guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest]&&!!eligibleBankSale(p.c.bank[pack][slot]),
    call:()=>p.call('bank_retrieve',pack,slot,dest),
@@ -174,8 +174,19 @@ export function createBank(bot){
  function recoverCapacity(){if(!reclaiming)return false;if(bot.journal||bot.inventoryBlocked)return true;const r=reclaiming;
   if(!r.item||!e.safe(r.item)||!/^items\d+$/.test(r.pack)||![r.quantity,r.before,r.bankBefore,r.dest,r.slot].every(Number.isSafeInteger)||r.quantity<1||r.dest<0||r.dest>=p.c.items.length){bot.inventoryBlocked=true;e.note('Bankfreigabe: ungültiger Checkpoint');return true;}
   const count=e.count(r.item),bank=variantCount(p.c.bank?.[r.pack]??[],r.item);
-  if(count===r.before&&p.c.gold>r.gold){if(p.write(reclaimKey,null))reclaiming=null;return true;}
-  if(count===r.before&&p.c.bank&&bank===r.bankBefore){if(p.write(reclaimKey,null))reclaiming=null;return true;}
+  // A global item count or unrelated gold income cannot prove a sale.
+  // Require both addressed slots and the exact NPC receipt.
+  if(count===r.before&&
+     !p.c.bank?.[r.pack]?.[r.slot]&&
+     !p.c.items[r.dest]&&
+     Number.isSafeInteger(r.expectedSaleGold)&&
+     p.c.gold===r.gold+r.expectedSaleGold){
+    if(p.write(reclaimKey,null))reclaiming=null;return true;
+  }
+  if(count===r.before&&p.c.bank&&bank===r.bankBefore&&
+     fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&!p.c.items[r.dest]){
+     if(p.write(reclaimKey,null))reclaiming=null;return true;
+  }
   const item=p.c.items[r.dest],rule=item&&(e.explicit(item)??e.rules(item));
   if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&!!eligibleBankSale(item)&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity});return true;}
   e.note('Bankfreigabe: Bestand oder Verkaufsregel geändert; Auftrag benötigt Prüfung');return true;

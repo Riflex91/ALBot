@@ -38,10 +38,15 @@ test('bank confirms both sides and does not consume a protected or changed slot'
  assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.journal,null);assert.equal(c.bank.items0[0].q,10);
  c.items[0]={name:'hpot0',q:10,l:'l'};assert.equal(bot.bank.store(0,rule),false);
 });
-test('empty unlocked bank packs expose 42 slots and a compatible stack is used even in a full pack',async()=>{
+test('empty bank pack exposes 42 slots but an occupied stack is never used as bank_store target',async()=>{
  const {bot,c,rule}=fixture();c.bank.items0=[];assert.equal(bot.bank.capacity()[0].free,42);
- c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[7]={name:'hpot0',q:50};let selected;
- bot.p.call=(name,slot,pack,dest)=>{assert.equal(name,'bank_store');selected=dest;c.bank[pack][dest].q+=c.items[slot].q;c.items[slot]=null;return Promise.resolve();};assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(selected,7);assert.equal(c.bank.items0[7].q,60);assert.equal(bot.journal,null);
+ c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[7]={name:'hpot0',q:50};
+ const calls=[];bot.p.call=(name,...args)=>{calls.push([name,...args]);return Promise.resolve();};
+ assert.equal(bot.bank.store(0,rule),false);
+ assert.equal(calls.some(x=>x[0]==='bank_store'),false,'occupied bank slot may swap instead of merging');
+ assert.equal(c.bank.items0[7].q,50);
+ assert.deepEqual(c.items[0],{name:'hpot0',q:10});
+ assert.equal(bot.journal,null);
 });
 test('bank pressure reclaims only an explicit unreserved sale and resumes sale before other inventory jobs',async()=>{
  const {bot,c,rule}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.bankWorkspace=2;const sale={...rule,name:'Carrot sale',item:'carrot',action:'sell',keep:0,teamReserve:0,minPrice:1,maxActions:1};bot.cfg.items=[sale];bot.p.G.items.carrot={g:20,s:9999};c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[4]={name:'carrot',q:2};const calls=[];

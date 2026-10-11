@@ -99,6 +99,22 @@ export function createAccount(bot){
    const peer=bot.transport.fresh(transition.in);if(peer?.running&&peer.realm===p.realm()&&!peer.rip){const next=transition;if(save(null)){apply(next.names,next.leader);sequence++;changed=Date.now();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader});}return;}
    if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
   }
+  // Fix the adaptive-roster deadlock: a missing selected farmer must not
+  // prevent choosing another already running teammate. This does not call
+  // start_character/stop_character and does not alter any value operation.
+  const online=validNames.filter(name=>{
+   const h=bot.transport.fresh(name);
+   return h?.running&&!h.rip&&h.realm===p.realm()&&!h.inventoryBlocked;
+  }),available=new Set(online);
+  if((bot.farmers.some(n=>!available.has(n))||!available.has(bot.leader))&&online.length&&Date.now()-changed>=Math.min(15000,cfg.party.rotationCooldownMs)){
+   const preferred=available.has(cfg.party.leader)?cfg.party.leader:available.has(bot.leader)?bot.leader:null;
+   const leader=preferred??chooseCombatLeader(online.map(name=>({name,...bot.transport.fresh(name)})))??online[0];
+   const names=[leader,...bot.farmers.filter(n=>n!==leader&&available.has(n)),...online.filter(n=>n!==leader&&!bot.farmers.includes(n))].slice(0,cfg.party.maxFarmers);
+   if(names.length&&(names.join(',')!==bot.farmers.join(',')||leader!==bot.leader)&&apply(names,leader)){
+    sequence++;changed=Date.now();bot.event('account.team',{names:names.join(','),leader,reason:'Offline gewählten Farmer durch bereits aktiven Peer ersetzen'});
+   }
+   return;
+  }
   if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
   const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,hp:h?.hp,max_hp:h?.max_hp,stats:h?.gear?.stats??g?.stats};});
   const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();

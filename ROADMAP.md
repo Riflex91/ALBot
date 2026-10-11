@@ -1,3 +1,10 @@
+## Integration: kontrollierte Stornierung nicht versandter Itemübergaben (11.10.2026)
+
+- **Fehler bestätigt und auf Draft-PR #9 behoben:** Ein empfangsseitig persistiertes `receive`-Journal blieb nach STOP/Pause des Senders oder Abbruch eines noch nicht gesendeten Angebots wegen Bestandsänderung offen. Das blockierte wirtschaftliche Folgeaktionen, obwohl keine Itemübertragung stattgefunden hatte. Beleg: `b8e64a9`, reproduzierend [GitHub Actions 38128428331](https://github.com/Riflex91/ALBot/actions/runs/38128428331), zwei gezielt rote Tests unter Linux/Windows.
+- **Lösung:** `itemCancel/notDispatched` nur vor dem tatsächlichen `send_item`. Empfänger prüft Nachrichten-ID, Session, Journalbesitz, Bestand, fehlendes `sent` und fehlende Beobachtung. Ein nach Ausführung/Unklarheit ankommendes Cancel entsperrt **nichts**. Zwei-Charakter-, Race-, falsche ID/Session-, unbekannte Serverwirkung-, IPC-Duplikat- und Cleanup-Regressionen ergänzt.
+- **Offline-Abnahme:** [CI 38128697671](https://github.com/Riflex91/ALBot/actions/runs/38128697671) je **256/256** Tests, Linux und Windows, identische **291.496 Bytes** sowie SHA256 `1a9f70591d8281c0e126d80a64add40c401ece01e0ee49081420a500fa71f5bb`. Keine Live-Spielaktion oder reale Serverquittung.
+- **Offen:** Empfänger-Reload **nach** begonnenem Versand, verlorene `done`-/`receipt`-Nachrichten, Storage-Ausfälle beim abschließenden Checkpoint-Clear, Produktions-/Gear-Zusagen bei Storno, kontrollierte Livephasen. PR #8 nicht blind übernehmen. Kein Merge/Deployment.
+
 ## Integrationsaudit – Sessionwechsel beim Item-Handoff (11.10.2026)
 
 - **Behoben auf PR-#9-Arbeitsbranch, noch nicht in `main`:** Ein vor Empfänger-Restart bestätigtes Itemangebot konnte bei weiterhin gültiger Entfernung und neuem Heartbeat mit einer **alten Empfangszusage** ausgeführt werden. Der Item-Executor verlangt jetzt am Dispatch dieselbe Peer-Session wie beim `accept` und verwirft nachweislich veraltete, noch nicht ausgeführte Aufträge. Eigenes Diagnoseevent `logistics.session-changed`.

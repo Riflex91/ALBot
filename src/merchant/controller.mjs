@@ -20,7 +20,7 @@ export function createMerchant(bot){
   const reserve=cfg.merchant.minFreeSlots??4;
   const plan=planPickupCapacity(peer?.items,{merchant:me.name,free:bot.free(),reserve,
     known:i=>!!p.G?.items?.[i.name]});
-  pickupStatus={peer:peer.name,...plan};
+  pickupStatus={peer:peer.name,...plan,at:Date.now()};
   if(!plan.offers||plan.ready)return true;
   bot.reason='Abholung vorbereiten: '+plan.missing+' freie Inventarplätze fehlen für '+peer.name;
   if(bot.journal||bot.inventoryBlocked||bot.gold?.reserved||bot.bank.pending||
@@ -74,7 +74,11 @@ export function createMerchant(bot){
   // fresh-heartbeat retargeting. Do not cancel a valid route using its old
   // coordinates here, before logistics can replan it.
   const route=bot.movement.order;if(route?.owner==='gold'){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&(!peer?.running||bot.strategy?.canVisit?.(peer)===false))bot.movement.stop();}
-  bot.logistics.travel();if(!bot.movement.order)bot.gold?.travel();
+  bot.logistics.travel();
+  // If pickup preflight could not create space, do not schedule unrelated
+  // production/market work in the same frame and discard the pickup objective.
+  if(pickupStatus?.missing>0&&Date.now()-(pickupStatus.at??0)<3000)return;
+  if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
   if(bot.services?.approaching){const continued=bot.services.tick();if(continued||bot.services.approaching)return;}

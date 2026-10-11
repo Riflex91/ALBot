@@ -40,7 +40,7 @@ test('passive boss label does not cause preemptive flee; official auto-aggro sti
  G.monsters.bee.boss=true;
  bot.monsters=()=>[{id:'passive-boss',mtype:'bee',aggro:1,x:20,y:0,map:'main',hp:200000,max_hp:200000,range:30}];
  createFarmer(bot).tick();assert.deepEqual(moves,[]);assert.doesNotMatch(bot.reason??'',/Gefahrenrückzug/);
- bot.monsters=()=>[{id:'aggressive',mtype:'prat',x:20,y:0,map:'main',hp:9200,max_hp:9200,range:30}];
+ bot.monsters=()=>[{id:'aggressive',mtype:'prat',target:'A',x:20,y:0,map:'main',hp:9200,max_hp:9200,range:30}];
  createFarmer(bot).tick();assert.deepEqual(moves,['kite']);
  assert.equal(bot.recovering,true);
 });

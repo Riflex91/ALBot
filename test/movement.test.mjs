@@ -80,3 +80,32 @@ test('merchant town transition stops parent smart_move before invoking town',()=
   movement.stop();
  }finally{Date.now=original;}
 });
+
+test('smart_move remains bounded by the existing 120-second total travel limit',()=>{
+ const original=Date.now;let now=10000;Date.now=()=>now;
+ try{
+  const events=[],calls=[],c={name:'A',map:'main',in:'main',x:0,y:0,moving:false};
+  const bot={running:true,me:{role:'farmer'},cfg:{world:{excludedMaps:[]},farming:{pvp:false}},event:(...args)=>events.push(args)};
+  bot.p={c,root:{},parent:{smart:{searching:true}},G:{maps:{main:{}}},has:()=>true,call:name=>{
+   calls.push(name);if(name==='can_move_to')return false;
+   if(name==='smart_move')return new Promise(()=>{});
+   if(name==='stop')return Promise.resolve();
+  }};
+  bot.exec=new Executor({now:()=>now,active:()=>bot.running,limit:4,onError(){}});
+  const movement=createMovement(bot);
+  movement.go({map:'main',in:'main',x:520,y:753,radius:90},'combat');
+  now+=120001;movement.poll();
+  assert.equal(movement.order,null,'Bounded smart pathfinding must eventually release the movement owner');
+  assert.equal(calls.filter(x=>x==='stop').length,1);
+  assert.ok(events.some(([kind,data])=>kind==='movement.failed'&&data.reason==='timeout'));
+ }finally{Date.now=original;}
+});
+
+test('explicit stop cancels parent-owned searching path even without a local order',()=>{
+ const calls=[],c={map:'main',in:'main',x:0,y:0,moving:false};
+ const bot={running:true,cfg:{world:{excludedMaps:[]},farming:{pvp:false}}};
+ bot.p={c,root:{},parent:{smart:{searching:true,moving:false}},G:{maps:{main:{}}},call:name=>{calls.push(name);return Promise.resolve();}};
+ bot.exec=new Executor({now:Date.now,active:()=>true,limit:4,onError(){}});
+ createMovement(bot).stop();
+ assert.deepEqual(calls,['stop']);
+});

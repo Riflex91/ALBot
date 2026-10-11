@@ -137,7 +137,7 @@ test('merchant gathering skips a rejected smart-route zone and chooses another p
  const {createServices}=await import('../src/merchant/services.mjs');
  const polygon=[[-184,-232],[-128,-232],[-128,-184],[-184,-184]];
  const visited=[],notes=[],cfg={merchant:{mining:true,fishing:false,merrit:false,massBuffs:false},general:{economyTickMs:2000},world:{excludedMaps:[]}};
- const c={name:'M',map:'main',in:'main',x:0,y:0,level:60,mp:100,items:[{name:'pickaxe',level:0}],slots:{}};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,level:60,mp:100,items:[{name:'pickaxe',level:0},...Array(5).fill(null)],slots:{}};
  const movement={failedRecently:region=>region.map==='woffice'};
  const economy={safe:i=>!!i&&i.name==='pickaxe',note:s=>notes.push(s),travel:(dest)=>{visited.push(dest.map);return false;}};
  const bot={cfg,p:{c,G:{maps:{main:{},woffice:{zones:[{type:'mining',polygon}]},other:{zones:[{type:'mining',polygon}]}},skills:{mining:{level:1,mp:5}}},call:()=>false,has:()=>false,read:()=>null},me:{name:'M'},exec:{},economy,movement,monsters:()=>[],strategy:{status:()=>({manual:null})}};
@@ -153,7 +153,7 @@ test('merchant gathering skips a rejected smart-route zone and chooses another p
 test('merchant services keep a pending mining approach until first post-arrival tool step',async()=>{
  const {createServices}=await import('../src/merchant/services.mjs');
  const polygon=[[0,0],[100,0],[100,100],[0,100]],calls=[];
- const c={name:'M',map:'main',in:'main',x:-100,y:25,level:60,mp:100,items:[{name:'pickaxe',level:0}],slots:{}};
+ const c={name:'M',map:'main',in:'main',x:-100,y:25,level:60,mp:100,items:[{name:'pickaxe',level:0},...Array(5).fill(null)],slots:{}};
  const economy={safe:i=>!!i&&i.name==='pickaxe',note:s=>calls.push(['note',s]),travel:()=>{calls.push(['travel']);return calls.filter(x=>x[0]==='travel').length>1;},perform:key=>{calls.push(['perform',key]);return true;}};
  const bot={cfg:{merchant:{mining:true,fishing:false,merrit:false,massBuffs:false},world:{excludedMaps:[]},general:{economyTickMs:2000}},
   p:{c,G:{maps:{main:{zones:[{type:'mining',polygon}]}},skills:{mining:{level:1,mp:5}}},read:()=>null,write:()=>true,call:()=>false,has:()=>false},
@@ -169,7 +169,7 @@ test('merchant services keep a pending mining approach until first post-arrival 
 test('fishing without a rod does not send merchant to inaccessible worksite',async()=>{
  const {createServices}=await import('../src/merchant/services.mjs');
  const polygon=[[0,0],[100,0],[100,100],[0,100]],actions=[];
- const c={name:'M',map:'main',in:'main',x:-100,y:25,level:60,mp:100,items:[],slots:{}};
+ const c={name:'M',map:'main',in:'main',x:-100,y:25,level:60,mp:100,items:Array(5).fill(null),slots:{}};
  const bot={cfg:{merchant:{mining:false,fishing:true,merrit:false,massBuffs:false},world:{excludedMaps:[]},general:{economyTickMs:2000}},
   p:{c,G:{maps:{main:{zones:[{type:'fishing',polygon}]}},skills:{fishing:{level:1,mp:5}}},read:()=>null,call:()=>false,has:()=>false},
   me:{name:'M'},exec:{},economy:{safe:()=>true,note:s=>actions.push(['note',s]),travel:()=>actions.push(['travel'])},

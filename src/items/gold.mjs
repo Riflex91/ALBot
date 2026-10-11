@@ -1,4 +1,5 @@
 import {distance,samePlace} from '../core/policy.mjs';
+import {peerReadyForHandoff,confirmedHandoffCooldown} from './handoff-coordinator.mjs';
 export function createGoldLogistics(bot){
  const {p,cfg,me,exec,transport}=bot;let job=null,serial=0,next=0;const finished=new Map();
  // Recently transferred gold cannot be counted twice across asynchronous
@@ -43,7 +44,7 @@ export function createGoldLogistics(bot){
   const now=Date.now();for(const [id,at] of finished)if(now-at>120000)finished.delete(id);
   if(job){const j=job;
    if(j.state==='receiving'&&p.c.gold===j.before+j.quantity){j.observed=true;if(!j.lastReceipt||now-j.lastReceipt>1500){j.lastReceipt=now;send('goldReceipt',{quantity:j.quantity});}}
-   if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){markTransfer();send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+15000;return;}
+   if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){markTransfer();send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+confirmedHandoffCooldown(cfg.general.messageTtlMs);return;}
    if(now>j.until){if(['receiving','sent'].includes(j.state))markTransfer();job=null;next=now+15000;if(j.state==='offered'||j.state==='accepted')sendCancelled(j);else bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
    if(j.state==='offered'&&now-j.lastOffer>1500){j.lastOffer=now;send('goldOffer',{quantity:j.quantity});}
    if(j.state==='accepted'){
@@ -56,7 +57,7 @@ export function createGoldLogistics(bot){
    }return;
   }
   if(!offer||!cfg.merchant.collectGold||!cfg.merchant.enabled||me.role!=='farmer'||now<next||!idle()||surplus()<cfg.merchant.goldCollectBelow||!near(cfg.party.merchant))return;
-  const peer=transport.fresh(cfg.party.merchant);if(peer.journal||peer.inventoryBlocked)return;
+  const peer=transport.fresh(cfg.party.merchant);if(!peerReadyForHandoff(peer))return;
   job={id:bot.session+':gold:'+(++serial),peer:cfg.party.merchant,session:peer.session,state:'offered',quantity:Math.min(surplus(),cfg.merchant.goldTransferMax),before:p.c.gold,until:now+cfg.general.messageTtlMs,lastOffer:now};send('goldOffer',{quantity:job.quantity});
  }
  function travel(){if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
@@ -75,5 +76,5 @@ export function createGoldLogistics(bot){
   sendCancelled(previous);bot.event('gold.yieldUnsent',{id:previous.id,reason});
   return true;
  }
- return {receive,poll,travel,yieldUnsent,surplus,get reserved(){return !!job;},get transferAt(){return lastTransferAt;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
+ return {receive,poll,travel,yieldUnsent,surplus,get readyForHandoff(){return idle()&&!job;},get reserved(){return !!job;},get transferAt(){return lastTransferAt;},status:()=>job?{state:job.state,peer:job.peer,quantity:job.quantity,id:job.id}:null,close(){const j=job;job=null;if(j&&['offered','accepted'].includes(j.state))sendCancelled(j);else if(j)bot.endValue('unknown');}};
 }

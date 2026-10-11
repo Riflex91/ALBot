@@ -67,7 +67,7 @@ test('gold cancellation cannot clear an observed transfer or a different session
 
 import {createLogistics} from '../src/items/logistics.mjs';
 
-test('item handoff refuses dispatch after accepted receiver session is replaced',()=>{
+function itemHandoffFixture(){
  const cfg={general:{messageTtlMs:30000},merchant:{enabled:true,pickup:true,supply:true,maxDelivery:10,minFreeSlots:0},farming:{freeSlots:0},
   items:[
    {enabled:true,action:'send',item:'hpot1',recipient:'B',character:'A',role:'all',minLevel:0,maxLevel:0,keep:0,teamReserve:0,batch:2,ttlMs:30000},
@@ -88,8 +88,13 @@ test('item handoff refuses dispatch after accepted receiver session is replaced'
   bot.exec=new Executor({now:()=>clock,active:()=>bot.running,limit:5,onError(){}});
   bot.logistics=createLogistics(bot);return bot;
  };
- bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');
  const deliver=()=>{while(queue.length){const {to,from,message}=queue.shift();bots[to].logistics.receive(from,message);}};
+ return {bots,queue,sent,makeBot,deliver,advance(ms){clock+=ms;}};
+}
+
+test('item handoff refuses dispatch after accepted receiver session is replaced',()=>{
+ const {bots,queue,sent,makeBot,deliver}=itemHandoffFixture();
+ bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');
  bots.A.logistics.poll(true);deliver();
  assert.ok(bots.B.journal,'Receiver must journal its accepted offer');
  assert.equal(sent.length,0,'Acceptance alone must not dispatch a transfer');
@@ -121,4 +126,39 @@ test('item handoff refuses dispatch after accepted receiver session is replaced'
  assert.equal(bots.A.journal,null,'Rejected queued action must not create a checkpoint');
  assert.equal(bots.A.exec.pending.size,0);
  bots.A.logistics.close();bots.B.logistics.close();
+});
+
+test('accepted item offer cancelled before dispatch on STOP releases receiver value journal',()=>{
+ const {bots,queue,sent,deliver}=itemHandoffFixture(),a=bots.A,b=bots.B;
+ a.logistics.poll(true);deliver();
+ assert.equal(a.journal,null,'No sender action was dispatched');
+ assert.equal(b.journal?.kind,'receive','Receiver acceptance already wrote the checkpoint');
+ a.running=false;a.exec.invalidate();a.logistics.close();
+ assert.equal(sent.length,0,'STOP must not dispatch items');
+ deliver();
+ assert.equal(b.journal,null,'Signed no-dispatch cancel must release the acceptance checkpoint');
+ assert.equal(b.inventoryBlocked,false);
+ assert.equal(b.logistics.itemReserved,false);
+ assert.equal(queue.length,0);
+ b.logistics.close();
+});
+
+test('cancel of an undelivered item offer prevents a stranded receiving journal',()=>{
+ const {bots,queue,sent,deliver}=itemHandoffFixture(),a=bots.A,b=bots.B;
+ a.logistics.poll(true);
+ // Deliver the offer, but lose/delay its accept reply to the sender.
+ const offer=queue.shift();assert.equal(offer.message.type,'offer');
+ b.logistics.receive(offer.from,offer.message);
+ assert.equal(b.journal?.kind,'receive');
+ assert.equal(queue.length,1);
+ const accept=queue.shift();assert.equal(accept.message.type,'accept');
+ a.p.c.items[0].q=1; // Source changed before dispatch; offer is no longer safe.
+ a.logistics.poll(false);
+ assert.equal(a.journal,null);
+ assert.deepEqual(sent,[]);
+ deliver();
+ assert.equal(b.journal,null,'Stock-drift cancellation must release old receiver promise');
+ // Late accept cannot resurrect a sender job or dispatch an item.
+ a.logistics.receive('B',accept.message);a.logistics.poll(false);
+ assert.deepEqual(sent,[]);b.logistics.close();a.logistics.close();
 });

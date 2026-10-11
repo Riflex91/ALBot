@@ -20,7 +20,7 @@ export function createMerchant(bot){
   const reserve=cfg.merchant.minFreeSlots??4;
   const plan=planPickupCapacity(peer?.items,{merchant:me.name,free:bot.free(),reserve,
     known:i=>!!p.G?.items?.[i.name]});
-  pickupStatus={peer:peer.name,...plan,at:Date.now()};
+  pickupStatus={peer:peer.name,...plan,at:Date.now(),state:plan.ready?'ready':'preparing'};
   if(!plan.offers||plan.ready)return true;
   bot.reason='Abholung vorbereiten: '+plan.missing+' freie Inventarplätze fehlen für '+peer.name;
   if(bot.journal||bot.inventoryBlocked||bot.gold?.reserved||bot.bank.pending||
@@ -42,6 +42,7 @@ export function createMerchant(bot){
    if(e.npcSell(x.slot,x.rule))return false;
    if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory'))return false;
   }
+  pickupStatus.state='blocked';
   if(Date.now()-lastPickupWarning>10000){
    lastPickupWarning=Date.now();
    bot.event?.('merchant.pickupCapacity',{peer:peer.name,...plan,
@@ -77,7 +78,12 @@ export function createMerchant(bot){
   bot.logistics.travel();
   // If pickup preflight could not create space, do not schedule unrelated
   // production/market work in the same frame and discard the pickup objective.
-  if(pickupStatus?.missing>0&&Date.now()-(pickupStatus.at??0)<3000)return;
+  if(pickupStatus?.missing>0&&Date.now()-(pickupStatus.at??0)<3000){
+    // Gold requires no inventory slot. A pickup that cannot safely free
+    // space must not starve independent gold collection indefinitely.
+    if(pickupStatus.state==='blocked'&&!bot.movement.order)bot.gold?.travel();
+    return;
+  }
   if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}

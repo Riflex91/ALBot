@@ -62,3 +62,42 @@ Der [Integrationsvertrag](../docs/WORKSHOP-CONTRACT.md) ist für jede KI verbind
 ## Geprüfter Stand (6. Oktober 2026)
 
 Neun gezielte Logiktests erfolgreich; Syntax und Git-Diff geprüft. Im Browser geprüft: Item-Auswahl, Regelerstellung und Mengenänderung, Überschussvorschau, additive Schema-Erweiterung unter Erhalt bestehender Werte, Rückkehr zum ursprünglichen Schema und Exportauslösung mit einem ausdrücklich lokalen Testpaket. Keine Browser-Konsolenfehler. Der Testcode wird nicht ausgeliefert. Keine Spiel- oder Shadow-Tests; die spätere Spiel-Laufzeit bleibt offen.
+
+## CODE-Slots mit der offiziellen VS-Code-Synchronisierung aktualisieren
+
+Die lokal geöffnete Bot-Werkstatt darf ohne eine entsprechende Benutzerfreigabe
+nicht direkt auf die authentifizierten Adventure-Land-CODE-Slots schreiben.
+Die [offizielle Adventure Land for VS Code Erweiterung](https://adventure.land/vscode)
+stellt dafür eine Synchronisierung mit Versionsgeschichte bereit.
+
+1. Adventure Land im Browser anmelden, die offizielle VS-Code-Erweiterung
+   einrichten und **zunächst alle vorhandenen CODE-Dateien vom Server abrufen**.
+   Die Erweiterung verwaltet Dateien im Format `name.slot.js`.
+2. In der Werkstatt persönliche Einstellungen beibehalten und auf
+   **Auf Charaktere übertragen** klicken.
+3. Für **jeden aktiv konfigurierten Charakter** die tatsächlich vorgesehene
+   CODE-Datei exakt eintragen, z. B.
+   `My_Ranger1=ALBot_Ranger.1; My_Ranger2=ALBot_Ranger.1; My_Rogue=ALBot_Rogue.2; My_Merchant=ALBot_Merchant.12`.
+   Mehrere Charaktere dürfen denselben CODE-Slot benutzen. **Slot 0 bleibt gesperrt.**
+   Die hier gezeigten Slotnummern sind Beispiele, keine automatisch ermittelten Spiel-Slots.
+4. Vor dem Schreiben die Ziel-Dateien und Charakterzuordnung prüfen, den
+   zuständigen, **bereits synchronisierten CODE-Ordner** auswählen und den
+   lokalen Schreibzugriff ausdrücklich freigeben. Fehlt eine Datei, bricht die
+   Vorbereitung ab, statt einen unbekannten CODE-Slot anzulegen.
+5. Die Werkstatt erstellt vor Änderungen eine `.backup.txt`-Kopie jeder
+   betroffenen bestehenden Datei, aktualisiert die `.js`-Datei und liest sie
+   zur lokalen Verifikation zurück. Anschließend wird die Zuordnung als JSON
+   exportiert. Falls eine Datei bereits identisch ist, wird nichts geschrieben.
+6. **In VS Code Sync-Ergebnis und Server-CODE-Slot prüfen.** Lokales Speichern
+   oder das Erzeugen von Dateien ist *keine Bestätigung*, dass Adventure Land
+   den neuen Code übernommen oder Autorun neu gestartet hat. Bereits laufendes
+   CODE muss gegebenenfalls gesondert neu geladen werden.
+7. Falls die File-System-Access-Schnittstelle des Browsers fehlt, werden
+   `bot.js` und der Zuordnungsplan nur heruntergeladen; die CODE-Slots bleiben
+   unverändert und müssen manuell über die offizielle Erweiterung gepflegt
+   werden.
+
+Die Werkstatt benötigt oder speichert **keinen Adventure-Land-Token und kein Passwort**.
+Die eigentliche Authentifizierung und Remote-Konfliktprüfung verbleiben bei der
+offiziellen Erweiterung. Nutzerfreigabe gilt für die *lokalen* Dateien; vor
+Remote-Überschreibungen ist das Ergebnis der Erweiterung zu prüfen.

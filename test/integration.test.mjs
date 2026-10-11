@@ -17,8 +17,13 @@ test('real Live C runtime plus 1276 catalog rules passes package integrity, synt
  assert.deepEqual(validateProfile(pkg.descriptor,cfg),[]);const bundle=exportBundle(pkg.descriptor,cfg,pkg.runtime);new Script(bundle.code);assert.ok(bundle.bytes<=921600,bundle.bytes+' UTF-8 bytes');assert.equal(bundle.bytes,Buffer.byteLength(bundle.code));
 });
 
-test('merchant task hold stabilizes travel, aging admits waiting work, absent jobs are forgotten',()=>{
- let now=0;const q=createFairTasks({now:()=>now,holdMs:30000,starvationMs:120000}),high={id:'high',priority:10},low={id:'low',priority:0};q.rank([high,low]);q.selected('low');now=1000;assert.equal(q.rank([high,low])[0].id,'low');now=31000;assert.equal(q.rank([high,low])[0].id,'high');q.selected('high');now=121000;assert.equal(q.rank([high,low])[0].id,'low');q.rank([high]);assert.equal(q.status().waiting,1);q.clear();assert.equal(q.status().waiting,0);
+test('merchant task hold retains admitted work until it yields; absent jobs are forgotten',()=>{
+ let now=0;const q=createFairTasks({now:()=>now,holdMs:30000,starvationMs:120000}),high={id:'high',priority:10},low={id:'low',priority:0};
+ q.rank([high,low]);q.selected('low');now=1000;assert.equal(q.rank([high,low])[0].id,'low');
+ now=31000;assert.equal(q.rank([high,low])[0].id,'low');
+ now=121000;assert.equal(q.rank([high,low])[0].id,'low','waiting age cannot interrupt unfinished work');
+ q.defer('low',30000);assert.equal(q.rank([high,low])[0].id,'high');
+ q.selected('high');q.rank([high]);assert.equal(q.status().waiting,1);q.clear();assert.equal(q.status().waiting,0);
 });
 
 test('paladin policy changes priority for damage pressure and resource shortage',()=>{
@@ -67,4 +72,4 @@ test('merchant service holds target, blocks A-B-A, permits urgent supply and eve
 test('merchant retries unavailable task only after cooldown while other work remains selectable',()=>{let time=1000;const tasks=createFairTasks({now:()=>time}),market={id:'market',priority:100},bank={id:'bank',priority:0};tasks.rank([market,bank]);tasks.selected('market');tasks.defer('market',30000);assert.equal(tasks.rank([market,bank])[0].id,'bank');time+=30001;assert.equal(tasks.rank([market,bank])[0].id,'market');});
 
 
-test('merchant batches available local cleanup but aged work and critical space can override it',()=>{let time=1000;const tasks=createFairTasks({now:()=>time,starvationMs:120000}),sale={id:'sell',priority:-400,local:true},market={id:'market',priority:0};tasks.rank([sale,market]);tasks.selected('market');assert.equal(tasks.rank([sale,market])[0].id,'sell');time+=120001;tasks.selected('sell');assert.equal(tasks.rank([sale,market])[0].id,'market');sale.critical=true;assert.equal(tasks.rank([sale,market])[0].id,'sell');});
+test('merchant finishes admitted market task before ordinary local cleanup, but critical space may preempt',()=>{let time=1000;const tasks=createFairTasks({now:()=>time,starvationMs:120000}),sale={id:'sell',priority:-400,local:true},market={id:'market',priority:0};tasks.rank([sale,market]);tasks.selected('market');assert.equal(tasks.rank([sale,market])[0].id,'market');time+=120001;assert.equal(tasks.rank([sale,market])[0].id,'market');sale.critical=true;assert.equal(tasks.rank([sale,market])[0].id,'sell');});

@@ -79,7 +79,7 @@ export function createMerchant(bot){
   for(const job of tasks.rank(jobs)){
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
-   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();tasks.selected(job.id);bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});openStandWhenIdle();return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
+   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});openStandWhenIdle();return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);

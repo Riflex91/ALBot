@@ -85,10 +85,12 @@ export function createBank(bot){
     // New verified visit or a server-observable bank state revision.
     const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),
      revision:(catalog.revision??0)+1,rows:current};
-    if(p.write?.(catalogKey,next)===true){catalog=next;observed=true;
-     stockObservedAt=next.observedAt;stockObservedMap=p.c.map;
-     stockRows=current.filter(x=>e.explicit(x.item)?.action!=='keep');
-    }
+    // Verified in-session evidence is useful even in a minimal or readonly
+    // client; persistence is best effort and never grants mutation authority.
+    catalog=next;observed=true;
+    stockObservedAt=next.observedAt;stockObservedMap=p.c.map;
+    stockRows=current.filter(x=>e.explicit?.(x.item)?.action!=='keep');
+    p.write?.(catalogKey,next);
     lastVerifiedFingerprint=fingerprintNow;
    }
    lastAtBank=true;
@@ -98,12 +100,12 @@ export function createBank(bot){
  const stock=(name,level,wanted=Infinity)=>{
   packs();
   return catalogStock().reduce((n,r)=>n+(r.item.name===name&&
-   (r.item.level??0)===level&&e.explicit(r.item)?.action!=='keep'&&
+   (r.item.level??0)===level&&e.explicit?.(r.item)?.action!=='keep'&&
    (cfg.merchant.partialBank||(r.item.q??1)<=wanted)?(r.item.q??1):0),0);
  };
  const packFor=item=>{packs();return catalogStock().find(r=>
-   identity(r.item)===identity(item)&&e.explicit(r.item)?.action!=='keep')?.pack??null;};
- const definitions=()=>p.G.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
+   identity(r.item)===identity(item)&&e.explicit?.(r.item)?.action!=='keep')?.pack??null;};
+ const definitions=()=>p.G?.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
  function ready(pack='items0',recovery=false){const map=packMap(pack);return !!map&&(cfg.merchant.bank||recovery)&&me.name===cfg.party.merchant&&e.travel(location(map),'Bank')&&!!p.c.bank;}

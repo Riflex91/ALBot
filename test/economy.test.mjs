@@ -290,3 +290,49 @@ test('bank store does not confirm when the source remains and the destination wa
  assert.equal(bot.inventoryBlocked,true);
  assert.equal(bot.journal?.kind,'bank.store');
 });
+
+test('v3-aligned merchant merges safe matching inventory stacks via official swap',async()=>{
+ const {bot,c}=fixture();c.items[0]={name:'hpot0',q:10};c.items[1]={name:'hpot0',q:20};
+ let count=0;bot.p.call=(method,a,b)=>{assert.equal(method,'swap');assert.deepEqual([a,b],[0,1]);count++;c.items[a].q+=c.items[b].q;c.items[b]=null;return Promise.resolve();};
+ assert.equal(bot.bank.consolidateInventory(),true);await Promise.resolve();bot.exec.poll();
+ assert.equal(count,1);assert.equal(c.items[0].q,30);assert.equal(c.items[1],null);assert.equal(bot.journal,null);
+});
+test('inventory consolidation rejects overflow, locked items and custom variants',()=>{
+ const {bot,c}=fixture();c.items[0]={name:'hpot0',q:5000};c.items[1]={name:'hpot0',q:5000};
+ assert.equal(bot.bank.consolidateInventory(),false);
+ c.items[1]={name:'hpot0',q:10,l:'locked'};assert.equal(bot.bank.consolidateInventory(),false);
+ c.items[1]={name:'hpot0',q:10,data:'makeawish'};assert.equal(bot.bank.consolidateInventory(),false);
+});
+test('existing bank stacks consolidate through bank_swap and are verified',async()=>{
+ const {bot,c}=fixture();bot.cfg.merchant.consolidate=true;
+ c.bank.items0[0]={name:'hpot0',q:7};c.bank.items0[1]={name:'hpot0',q:9};
+ bot.p.call=(name,pack,a,b)=>{assert.equal(name,'bank_swap');assert.equal(pack,'items0');c.bank[pack][b].q+=c.bank[pack][a].q;c.bank[pack][a]=null;return Promise.resolve();};
+ assert.equal(bot.bank.consolidate(),true);await Promise.resolve();bot.exec.poll();
+ assert.equal(c.bank.items0[0],null);assert.equal(c.bank.items0[1].q,16);assert.equal(bot.journal,null);
+});
+test('full-bank reclaim selects the least-value eligible explicit-sale candidate',async()=>{
+ const {bot,c,rule}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.bankWorkspace=2;bot.cfg.merchant.expandBank=false;
+ c.bank.items0=Array.from({length:42},()=>({name:'reserved',l:true}));
+ c.bank.items0[2]={name:'expensive',q:1};c.bank.items0[30]={name:'cheap',q:1};
+ bot.p.G.items.expensive={g:10000};bot.p.G.items.cheap={g:2};
+ bot.cfg.items=[
+  {...rule,name:'Expensive sale',item:'expensive',action:'sell',batch:1,maxCount:1000,minPrice:1},
+  {...rule,name:'Cheap sale',item:'cheap',action:'sell',batch:1,maxCount:1000,minPrice:1}
+ ];
+ let chosen=-1;
+ bot.p.call=(name,...args)=>{
+  if(name==='item_value')return bot.p.G.items[args[0].name]?.g??Infinity;
+  if(name==='bank_retrieve'){const [pack,slot,dest]=args;chosen=slot;c.items[dest]=c.bank[pack][slot];c.bank[pack][slot]=null;return Promise.resolve();}
+  throw Error('unexpected '+name);
+ };
+ assert.equal(bot.bank.reclaim(),true);await Promise.resolve();bot.exec.poll();
+ assert.equal(chosen,30);assert.equal(bot.journal,null);
+});
+test('full bank never silently sells unique-data jar even if synthetic sell policy requests it',()=>{
+ const {bot,c,rule}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.expandBank=false;bot.cfg.merchant.bankWorkspace=2;bot.cfg.production.autoDisposition=true;
+ c.bank.items0=Array.from({length:42},()=>({name:'cxjar',data:'makeawish',q:1}));
+ bot.p.G.items.cxjar={g:1,type:'material',s:9999};
+ bot.intelligence={disposition:()=>({...rule,enabled:true,item:'cxjar',action:'sell',minPrice:1,_autoDisposition:true})};
+ bot.p.call=(name)=>{if(name==='item_value')return 1;throw Error('unexpected mutation '+name);};
+ assert.equal(bot.bank.reclaim(),false);assert.equal(bot.journal,null);
+});

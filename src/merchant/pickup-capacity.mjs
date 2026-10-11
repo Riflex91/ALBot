@@ -17,15 +17,26 @@ export function planPickupCapacity(rows,{merchant,free,reserve=4,maxBatchSlots=3
 
 // A cleanup must free a *whole slot*. Partial stack transfers are not a
 // pickup capacity gain and could consume extra temporary workspace.
-export function pickupCleanupCandidates(items,rules,spare,safe){
+// The normal keep amount is an *inventory* reserve; moving an automatically
+// bankable, unreserved stack into the bank does not destroy that reserve.
+// Never override a user-authored rule, explicit gear commitment or protected
+// variant. A derived NPC-sale rule is never broadened.
+export function pickupCleanupCandidates(items,rules,spare,safe,canBankWhole=()=>false){
  const bank=[],sell=[];
  for(let slot=0;slot<(items??[]).length;slot++){
   const item=items[slot];if(!item||!safe(item))continue;
-  const r=rules(item);
-  if(!r||!['bank','sell'].includes(r.action)||!Number.isSafeInteger(item.q??1)||
-     spare(slot,r)<(item.q??1))continue;
-  if(r.action==='bank')bank.push({slot,item,rule:r});
-  else sell.push({slot,item,rule:r});
+  const r=rules(item),quantity=item.q??1;
+  if(!r||!['bank','sell'].includes(r.action)||!Number.isSafeInteger(quantity)||
+     quantity<1)continue;
+  let rule=r,adjusted=false;
+  if(r.action==='bank'&&spare(slot,r)<quantity&&
+     r._autoDisposition===true&&canBankWhole(item,r,slot)){
+   rule={...r,keep:0,teamReserve:0,batch:Math.max(quantity,r.batch??1)};
+   adjusted=true;
+  }
+  if(spare(slot,rule)<quantity)continue;
+  if(rule.action==='bank')bank.push({slot,item,rule,adjusted});
+  else sell.push({slot,item,rule});
  }
  return {bank,sell};
 }

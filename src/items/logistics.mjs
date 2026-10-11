@@ -1,5 +1,6 @@
 import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
+import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
 // map or a frozen kite position after the recipient has moved away.
 export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190}={}){
@@ -142,7 +143,7 @@ export function createLogistics(bot){
       for(const to of sendRecipients(item)){
         const r=sendRule(item,to);if(!r)continue;
         const key=offerKey(to,item.name);if(nextOffer.has(key))continue;
-        const peer=transport.fresh(to);if(!near(to)||!peer)continue;
+        const peer=transport.fresh(to);if(!near(to)||!peerReadyForHandoff(peer,{requiresSlot:true}))continue;
         const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);
         const gear=bot.allocation?.offer(signature(item),to);if(gear===false)continue;
         const elixir=peer.elixir?.item===item.name&&peer.elixir?.quantity===1;const wanted=Math.max(demand?.need??0,gear?1:0,elixir?1:0);if(!Number.isSafeInteger(wanted)||wanted<1)continue;

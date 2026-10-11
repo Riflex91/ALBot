@@ -44,7 +44,7 @@ export function createTransport(bot){
       else if(mode==='ipc'||(p.headless&&!cfg.general.allowRemoteCM&&mode!=='cm'))return Promise.resolve(false);
       else result=p.call('send_cm',to,m);
     }catch(e){bot.report('Teamtransport: '+(e.message??e));return Promise.resolve(false);}
-    return Promise.resolve(result).then(()=>true,e=>{bot.report('Teamtransport: '+(e.message??e));return false;});
+    return Promise.resolve(result).then(value=>value!==false&&value?.success!==false,e=>{bot.report('Teamtransport: '+(e.message??e));return false;});
   }
   function parentSiblings(){try{return p.parent.caracAL?.siblings??[];}catch{return [];}}
   return {peers,send,roster,fresh(name){const d=peers.get(name);return d&&Date.now()-d.received<cfg.general.messageTtlMs?d:null;},

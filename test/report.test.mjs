@@ -25,3 +25,12 @@ test('report keeps aggregate action and transient diagnostics beyond the event r
  for(let n=0;n<400;n++)log.event('sample',{n});
  const d=log.document();assert.equal(d.events.length,256);assert.equal(d.actionStats.attack.started,1);assert.equal(d.actionStats.attack.ended,1);assert.equal(d.actionStats.attack.results.returned,1);assert.equal(d.actionStats.attack.transient,1);assert.equal(d.actionStats.attack.transientReasons.not_there,1);
 });
+
+test('main lifecycle records stop but never initiates an automatic download on pause or STOP',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../src/main.mjs',import.meta.url),'utf8');
+ const halt=source.slice(source.indexOf('function halt('),source.indexOf('bot.pause='));
+ assert.match(halt,/report\.event\('stop',\{reason\}\)/);
+ assert.doesNotMatch(halt,/report\.flush\(/,'pause, stop and unload must not call a report export');
+ assert.match(source,/exportTestReport:\(\)=>report\.flush\(\)/,'manual export remains available');
+});

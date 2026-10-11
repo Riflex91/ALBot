@@ -55,6 +55,14 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
   if(!profile||!profile.slots||!profile.class||
      member.name!==me.name&&(!peer||!peer.running||peer.rip||peer.realm!==p.realm()))
     return {state:'unknown',reason:'missing-or-stale-profile:'+member.name,checked,horizon};
+  // A fresh status heartbeat cannot make a week-old cached profile fresh.
+  // Only current-session, realm-bound, complete gear evidence can prove
+  // negative utility and authorize an automatic sale.
+  if(member.name!==me.name&&(!profile.complete||profile.session!==peer.session||
+    profile.realm!==p.realm()||!Number.isFinite(profile.at)||
+    Date.now()-profile.at>120000||profile.at>Date.now()))
+   return {state:'unknown',reason:'gear-evidence-unverified:'+member.name,
+    checked,horizon,profileAgeMs:Number.isFinite(profile.at)?Date.now()-profile.at:null};
   checked++;
   const role=member.gearRole==='auto'?
    (profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole;

@@ -1,4 +1,18 @@
 import {identity,fingerprint} from './policy.mjs';
+// A gathering skill may time out without producing an item. Only a complete,
+ // untouched, durable before-image can release that uncertainty automatically.
+ // Never replay the skill or infer a missing reward from its cooldown.
+export function unchangedGatherJournal(bot,now=Date.now()){
+ const j=bot.journal,snap=j?.evidence,c=bot.p?.c;
+ if(!bot.inventoryBlocked||!['gather.fishing','gather.mining'].includes(j?.kind)||
+    j.cost!==0||j.loss!==0||!Array.isArray(j.slots)||j.slots.length||
+    !Number.isFinite(j.at)||now-j.at<120000||now<j.at||
+    !snap||snap.realm!==bot.p.realm()||!Number.isSafeInteger(snap.gold)||
+    snap.gold!==c?.gold||!Array.isArray(snap.inventory)||!Array.isArray(c?.items)||
+    snap.inventory.length!==c.items.length||bot.exec?.pending?.size||
+    c.q?.fishing||c.q?.mining||bot.checkpoint?.durable===false)return false;
+ return snap.inventory.every((value,index)=>value===(c.items[index]?fingerprint(c.items[index]):null));
+}
 export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null;
  function authorize(kind){if(!kind.startsWith('bank.'))return true;if(me.name!==cfg.party.merchant)return false;const other=[...bot.transport.peers].map(([name,h])=>({name,...h})).find(h=>h.bankOwner&&h.name!==me.name&&h.running&&Date.now()-h.received<cfg.general.messageTtlMs);if(other){conflict=other.name;bot.report('Bankbesitz-Konflikt: '+other.name);return false;}conflict=null;lease={owner:me.name,session:bot.session,realm:p.realm(),epoch:Date.now(),purpose:kind,expires:Date.now()+cfg.general.messageTtlMs};return true;}
  // Resolve a legacy bank_store that the server executed as a stack swap.
@@ -35,7 +49,13 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return !bot.journal;
  }
 
- function reconcile(){const j=bot.journal;if(!j)return false;if(j.kind==='bank.store')return reconcileBankStore(j);if(checked===j.at)return false;checked=j.at;const snap=j.evidence;if(!snap||!Array.isArray(snap.inventory)||typeof j.variant!=='string'||j.kind==='send'||j.kind.startsWith('gold.')||j.kind.startsWith('bank.')||p.realm()!==snap.realm)return false;
+ function reconcile(){const j=bot.journal;if(!j)return false;
+  if(unchangedGatherJournal(bot)){
+   bot.inventoryBlocked=false;
+   bot.endValue('confirmed');
+   if(!bot.journal){bot.event?.('recovery.gatherUnchanged',{kind:j.kind,reason:'Gathering beendet; vollständiger Bestand und Gold nach Wartefrist unverändert, keine Wiederholung'});return true;}
+   return false;
+  }if(j.kind==='bank.store')return reconcileBankStore(j);if(checked===j.at)return false;checked=j.at;const snap=j.evidence;if(!snap||!Array.isArray(snap.inventory)||typeof j.variant!=='string'||j.kind==='send'||j.kind.startsWith('gold.')||j.kind.startsWith('bank.')||p.realm()!==snap.realm)return false;
   // Only a complete pinned before/expected snapshot admits automatic confirmation.
   const before=new Map(),after=new Map();for(const fp of snap.inventory)if(fp){const n=fp.lastIndexOf(':'),id=fp.slice(0,n),q=Number(fp.slice(n+1));if(!Number.isSafeInteger(q)||q<1)return false;before.set(id,(before.get(id)??0)+q);}for(const i of p.c.items??[])if(i){const id=identity(i);after.set(id,(after.get(id)??0)+(i.q??1));}const delta=(after.get(j.variant)??0)-(before.get(j.variant)??0),othersUnchanged=[...new Set([...before.keys(),...after.keys()])].every(id=>id===j.variant||(before.get(id)??0)===(after.get(id)??0));if(!othersUnchanged)return false;let confirmed=false;
   if(j.kind==='elixir.equip')confirmed=delta===-1&&p.c.slots?.elixir?.name===j.item;

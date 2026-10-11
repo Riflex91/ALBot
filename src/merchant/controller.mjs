@@ -32,7 +32,9 @@ export function createMerchant(bot){
   if(bot.recovering)return;
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
-  if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
+  if(me.role==='merchant'&&!cfg.merchant.enabled)return;
+// Production planning runs in the slower planning loop (src/main.mjs).
+// Do not replan while an admitted merchant job is still executing.
   // Delivery routes are owned by logistics.travel(): that controller owns
   // fresh-heartbeat retargeting. Do not cancel a valid route using its old
   // coordinates here, before logistics can replan it.
@@ -80,7 +82,7 @@ export function createMerchant(bot){
    if(cfg.merchant.mluck&&cfg.merchant.mluckTravel!==false)add('mluck.service',{priority:-200},()=>{const candidate=bot.farmers.map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&!(h.mluck?.strong&&h.mluck.f!==me.name)&&(!h.mluck||Number.isFinite(h.mluck.ms)&&h.mluck.ms<60000)).sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||(a.mluck?.ms??0)-(b.mluck?.ms??0)).find(h=>bot.strategy?.canVisit?.(h)??true);if(!candidate||service.claim(candidate.name)===false||distance(p.c,candidate)<(p.G.skills.mluck?.range??320))return false;return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);});
    add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
-   add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>bot.services.tick());
+   add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>{buff();return bot.services.tick();});
   }
   // Open the stand only AFTER the priority planner has had the chance to
   // schedule travel. The old pre-planner scheduling raced against smart_move.

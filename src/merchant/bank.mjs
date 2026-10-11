@@ -118,7 +118,7 @@ export function createBank(bot){
  function eligibleBankSale(item){
   if(!e.safe(item)||item.data!==undefined||item.p||item.title||item.stat_type||item.acc||item.rid||item.skin||item.expires||item.special||item.v||(item.level??0)>0)return null;
   const meta=p.G.items?.[item.name],price=e.value(item),explicit=e.explicit(item),r=explicit??e.rules(item);
-  if(meta&&(meta.quest||meta.q||meta.e||meta.exchange||meta.event||meta.cash||meta.cash_item||meta.soulbound||meta.rare||meta.rarity||meta.action||meta.onclick||meta.offering||meta.throw||meta.ignore||meta.wtype||meta.class||meta.grades||meta.tier))return null;
+  if(meta&&(meta.quest||meta.q||meta.e||meta.exchange||meta.event||meta.cash||meta.cash_item||meta.soulbound||meta.compound||meta.upgrade||meta.rare||meta.rarity||meta.action||meta.onclick||meta.offering||meta.throw||meta.ignore||meta.wtype||meta.class||meta.grades||meta.tier))return null;
   if(!meta||!Number.isFinite(price)||price<0||r?.action!=='sell'||!e.remaining(r)||r.keep||r.teamReserve||(item.q??1)>r.batch||e.count(item)+(item.q??1)>r.maxCount||price<r.minPrice)return null;
   if(bot.production?.reserved(item)||bot.production?.reservedQuantity?.(item)>0||bot.production?.status()?.steps?.some(step=>step.item===item.name)||(cfg.production.goals??[]).some(g=>g.enabled&&g.item===item.name)||(cfg.production.gearTargets??[]).some(g=>g.enabled&&g.item===item.name)||bot.intelligence?.futureGear?.(item))return null;
   if(!explicit){
@@ -132,6 +132,8 @@ export function createBank(bot){
  }
  function reclaim(){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<=cfg.merchant.minFreeSlots)return false;
+  const pressure=packs().some(([pack,items])=>packMap(pack)===p.c.map&&items.filter(i=>!i).length<(cfg.merchant.bankWorkspace??2));
+  if(!pressure)return false;
   if(consolidate()||expand())return true;
   const candidates=[];
   for(const [pack,items] of packs()){

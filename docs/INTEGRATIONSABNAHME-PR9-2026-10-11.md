@@ -1,3 +1,17 @@
+## Bank-Livestillstand, AOE-Standard und Spawn-Suche (11.10.2026)
+
+Neue Logs `test-My_Merchant-2026-10-11T14-34-25-024Z-part001.json` sowie Ranger1/Ranger2/Rogue, ca. 14:34–14:38 UTC:
+- Merchant `bank.store` `slice_honey` 40 Stück in `items0` gestartet 14:36:44 UTC; 14:37:04 UTC `unknown`, danach `inventoryBlocked:true`, `pending:0`, `journal.kind:'bank.store'`; dies ist der konkrete Grund für den Bankstillstand. Exportiert: jeweils `items0` und `items1` 42/42 Bankplätze belegt, kein freier Platz. Journal-Ausgangsinventar `slice_honey` 40+10, Exportinventar 160+10, Gold 16485840 weiterhin unverändert. **Das ist keine bewiesene erfolgreiche Einlagerung und darf nicht per blindem Journal-Reset automatisch freigegeben werden.** Der alte Journal-Datensatz enthält keine exakte Bankziel-Slot-Referenz und keinen entsprechenden Vorher-Snapshot. Exakte Bankinhalte müssten getrennt verglichen werden, um den ursprünglichen Vorgang nachträglich zu klären.
+- Für zukünftige `bank.store` nutzt die Beobachtung die tatsächlich adressierten **Quell- und Ziel-Slots**: Quellslot muss leer sein, im beauftragten Bankslot muss die korrekte exakte Itemvariante und erwartete Zielmenge stehen. Änderungen des Gesamtsbestandes während der Transaktion dürfen nicht fälschlich `unknown` auslösen. Gold, Inventarschutz und journalbasierte Unklarheitssperre bleiben unverändert. Regressionstests für gleichzeitige Bestandszunahme und ausbleibende Banklagerung.
+- Die Schaltflächen **„Mining-Journal prüfen“** und **„Nach Prüfung manuell freigeben“** inklusive Mining-Audit-Panel werden vollständig aus der Browseroberfläche entfernt. Bestehende Journal-Sicherheitsmechanismen, irreversible Aktionen und ihre Schutzsperren bleiben erhalten. Keine automatische unbelegte Journalfreigabe.
+- AOE ist künftig als **Schema-Standard** aktiviert (`party.aoe:true`); für die persönlich ausgelieferte Konfiguration ebenso `true`, `aoeMaxTargets:3`, nur bereits am Team engagierte zugelassene Gegner, keine zusätzlichen fremden Pulls. Sichtbare Rückzugs- und Todesgrenzen bleiben erhalten.
+- Bisherige persönliche Konfiguration: `farming.autoTargets:false`, `farming.targets:['goo','bee']`, alle charakterindividuellen `farmTargets:[]`; Bot analysiert selbst öffentlich definierte Spawnplätze aus `G.maps`, **aber nur für diese zwei Monsterarten**. Die engine kann bei `autoTargets:true` nicht-Boss-Monster aus Spieldaten erschließen und unter strengen Risikogates vergleichen. Wegen vorheriger tödlicher `greenjr`-Begegnung werden autoTargets und die gesperrten Karten **noch nicht automatisch freigegeben**.
+- Party in allen vier Reports My_Ranger1, My_Ranger2, My_Rogue. Während des kurzen Tests Ranger1 99, Ranger2 12, Rogue 7 Angriffe; Ziel `bee`. Verschieden hohe Attackzahlen sind beobachtet, nicht auf fehlende Party zurückzuführen.
+
+Keine Live-Transaktionen durch Entwicklung, kein Merge, PR #9 bleibt Draft.
+
+---
+
 ## Merchant-Pingpong/AutoDisposition-Härtung – 11.10.2026
 
 Aus Live-Report `test-My_Merchant-2026-10-11T14-00-37-682Z-part001.json`: 53 Bewegungsaufträge in rund fünf Minuten, 40 Ankünfte, 15 bestätigte `bank.store`, aber wiederholte Bank–Mitspieler–Bank–NPC–Bank-Routen. Nach jeder `bank.store`-Bestätigung konnte die höher priorisierte `logistics.travel`-Routine den Merchant verlassen lassen, obwohl vor Ort weitere gültige Bankregeln warteten. `npcSell` prüfte das Konto-/AutoDisposition-Budget bisher erst nach Ankunft am NPC, wodurch vergebliche Routen möglich waren. Ein Bank-Reclaim verkaufte ein seltenes `cxjar` (`data:makeawish`) für 1 Gold.

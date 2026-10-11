@@ -261,3 +261,32 @@ test('bank reclaim requires explicit sale rule rather than synthetic auto-dispos
  bot.p.call=name=>{if(name==='item_value')return 1;throw Error('Unexpected bank operation: '+name);};
  assert.equal(bot.bank.reclaim(),false);assert.equal(bot.journal,null);
 });
+
+test('bank store confirmation is based on exact source and bank slot despite other inventory gains',async()=>{
+ const {bot,c,rule}=fixture();c.items[0]={name:'hpot0',q:10};
+ let called=false;
+ bot.p.call=(name,source,pack,dest)=>{
+  assert.equal(name,'bank_store');
+  assert.equal(source,0);
+  // A separate incoming packet adds matching goods elsewhere. Aggregate
+  // variantCount no longer reflects the amount this bank action transferred.
+  c.items[1]={name:'hpot0',q:120};
+  c.bank[pack][dest]={...c.items[source]};
+  c.items[source]=null;called=true;
+  return Promise.resolve();
+ };
+ assert.equal(bot.bank.store(0,rule),true);
+ await Promise.resolve();bot.exec.poll();
+ assert.equal(called,true);
+ assert.equal(bot.economy.count({name:'hpot0'}),120);
+ assert.equal(bot.journal,null);
+ assert.equal(bot.inventoryBlocked,false);
+});
+test('bank store does not confirm when the source remains and the destination was unchanged',async()=>{
+ const {bot,c,rule,advance}=fixture();
+ bot.p.call=name=>{assert.equal(name,'bank_store');return Promise.resolve();};
+ assert.equal(bot.bank.store(0,rule),true);
+ await Promise.resolve();advance();
+ assert.equal(bot.inventoryBlocked,true);
+ assert.equal(bot.journal?.kind,'bank.store');
+});

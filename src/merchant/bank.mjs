@@ -50,8 +50,16 @@ export function createBank(bot){
    const dest=compatible>=0?compatible:items.findIndex(i=>!i);if(dest<0)continue;
    const before=e.count(item),bankBefore=variantCount(items,item),q=item.q??1;
    const targetPrint=fingerprint(p.c.bank[pack][dest]);
+   const targetBefore=p.c.bank[pack][dest];
+   const targetQuantity=targetBefore?(targetBefore.q??1):0;
+   // A concurrent delivery or other legitimate inventory update can change
+   // the character-wide quantity while the bank request is in flight. Observe
+   // the exact source slot and addressed bank stack instead of an aggregate
+   // count that is unrelated to the bank transfer's success.
    return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&fingerprint(p.c.bank[pack][dest])===targetPrint&&e.spare(slot,r)>=q,
-    call:()=>p.call('bank_store',slot,pack,dest),observe:()=>e.count(item)===before-q&&variantCount(p.c.bank?.[pack]??[],item)===bankBefore+q,details:{item:item.name,quantity:q,pack,before}});
+    call:()=>p.call('bank_store',slot,pack,dest),
+    observe:()=>!p.c.items[slot]&&identity(p.c.bank?.[pack]?.[dest])===identity(item)&&(p.c.bank[pack][dest].q??1)===targetQuantity+q,
+    details:{item:item.name,quantity:q,pack,before,sourceSlot:slot,bankSlot:dest,bankTargetBefore:targetPrint,bankTargetQuantity:targetQuantity}});
   }if(consolidate()||reclaim()||!r.pack&&expand())return true;e.note('Bank voll: kein freier erlaubter Platz; erlaubte Konsolidierung, Verkauf und Erweiterungsbudget geprüft');return false;
  }
  function retrieve(item,r,wanted){

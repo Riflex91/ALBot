@@ -1,3 +1,11 @@
+## Merchant-Routefix: erste Live-Failover-Beobachtung (11.10.2026)
+
+**Bestätigter Teilnachweis des Nutzers:** In der neu geladenen Normalbetriebsruntime mit Route-Failover blieb `My_Merchant` aktiv (`running:true`, `inventoryBlocked:false`, `journal:null`, `pending:1`, `runtimeWarnings:0`). Im Browser wurde um **11:22:52.676 UTC** eine `movement.request` nach `woffice` (owner `economy`, `mode:"smart_move"`, Ziel -170/-248) protokolliert. Nach 297 ms folgten genau eine `movement.route-quarantined` (retryAfter 1791718072973, reason `failed`) und eine `movement.failed` für `woffice`. Um **11:23:00.977 UTC** erfolgte bereits ein neuer `smart_move`-Request nach `tunnel` (280/-44), ohne erneuten `woffice`-Request im vorgelegten Ausschnitt. Vorher waren mehrere direkte `move`-Aufträge auf `main` mit `movement.arrived` bestätigt.
+
+**Abnahmegrenze:** Die **Fehlererkennung, temporäre Quarantäne und alternative Zielwahl sind live beobachtet**; ein bestätigtes `movement.arrived` für `tunnel` liegt noch **nicht** vor. Mangels längeren Zeitfensters ist die komplette fünfminütige Vermeidung von `woffice` nicht live belegt; CI deckt sie offline ab. Keine neue Inventarsperre oder Runtime-Warnung im gelieferten Auszug. Für die schnelle Rückkehr können zusätzliche Farmer manuell gestartet werden; bei erneutem Bewegungsfehler-Spam oder unklaren Werttransfers die jeweilige Bot-Instanz pausieren.
+
+---
+
 ## Browser-Merchant: erfolglose Mining-Route nach woffice (11.10.2026)
 
 **Vom Nutzer gelieferter Normalbetriebs-Diagnoseauszug:** My_Merchant, `main` (24, -48), laufender `smart_move` mit owner `economy` zum Mining-Standort `woffice` (-170, -248), während Merchant-Serviceplanner `services` aktiv blieb. Gesamte Ereigniszähler `movement.request:37`, `movement.arrived:22`, `movement.failed:8`, `merchant.selected:78`; mehrere `smart_move`-Aufträge zu identischem Ziel scheiterten nach ca. 0,3 s mit `reason:"failed"`. Das ist **kein 12-s-Stall-Watchdog**, sondern eine Rückmeldung der nativen Wegsuche. Zwischendurch direkte `move`-Ankünfte auf `main`; wiederholte Strecken zwischen anderen Zielen und der fehlschlagenden `woffice`-Route sind belegt. Beim Report waren `inventoryBlocked:false`, `journal:null`, `pending:1`. Auf Benutzeranforderung nach rascher Rückkehr zum Normalbetrieb wurde eine begrenzte Failover-Härtung vorgenommen.

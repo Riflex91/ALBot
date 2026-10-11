@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {planPickupCapacity,pickupCleanupCandidates} from '../src/merchant/pickup-capacity.mjs';
 import {createMerchant} from '../src/merchant/controller.mjs';
 import {createLogistics} from '../src/items/logistics.mjs';
+import {createGoldLogistics} from '../src/items/gold.mjs';
 
 const offer=(name='mat',q=1)=>({item:name,variant:{name,level:0,stat_type:'',p:'',title:''},to:'My_Merchant',surplus:q});
 test('pickup preparation respects reserve and distinct advertised variants, not offer retry count',()=>{
@@ -88,4 +89,28 @@ test('logistics starts pickup preparation despite full inventory, without depart
  const logistics=createLogistics(bot);
  logistics.travel();
  assert.deepEqual(prepared,['F']);
+});
+
+test('valid incoming gold offer can cancel only an unsent item offer and receive gold',()=>{
+ const {bot}=merchantFixture(),responses=[],calls=[];
+ bot.p.c.map='main';bot.p.c.in='main';bot.p.c.x=0;bot.p.c.y=0;bot.p.c.gold=500;
+ bot.p.realm=()=> 'USIV';bot.p.read=()=>null;bot.p.write=()=>true;
+ bot.cfg.merchant.collectGold=true;bot.cfg.merchant.goldTransferMax=100000;
+ bot.cfg.merchant.goldReserve=0;bot.cfg.general={messageTtlMs:10000};
+ bot.cfg.characters=[{name:'F',enabled:true,role:'farmer'}];
+ bot.entity=()=>({name:'F',map:'main',in:'main',x:10,y:0});
+ bot.transport={fresh:()=>({name:'F',session:'f',running:true,rip:false,realm:'USIV',map:'main',in:'main',x:10,y:0}),
+  send:(to,type,data,id)=>responses.push({to,type,id,data})};
+ bot.checkpoint={durable:true};bot.exec={busy:()=>false};
+ bot.services={active:false};bot.movement={order:null,stop:()=>calls.push('stop')};
+ bot.logistics={reserved:true,itemReserved:true,yieldUnsent(reason){
+   calls.push('yieldUnsent');this.reserved=false;this.itemReserved=false;return true;
+ }};
+ bot.beginValue=j=>{bot.journal=j;};
+ const gold=createGoldLogistics(bot);
+ gold.receive('F',{type:'goldOffer',id:'gold1',session:'f',data:{quantity:100}});
+ assert.deepEqual(calls,['yieldUnsent','stop']);
+ assert.equal(gold.status().state,'receiving');
+ assert.equal(bot.journal.kind,'gold.receive');
+ assert.equal(responses[0].type,'goldAccept');
 });

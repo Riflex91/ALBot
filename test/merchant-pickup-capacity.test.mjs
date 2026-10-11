@@ -51,6 +51,7 @@ test('no safe cleanup means no arbitrary sale and no false pickup admission',()=
  const merchant=createMerchant(bot);
  assert.equal(merchant.preparePickup({name:'F',items:[offer()]}),false);
  assert.equal(merchant.status().pickup.missing,1);
+ assert.equal(merchant.status().pickup.state,'blocked');
  assert.deepEqual(actions,[]);
 });
 test('merchant can accept a farmer item at its configured soft four-slot reserve',()=>{

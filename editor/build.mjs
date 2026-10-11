@@ -14,7 +14,7 @@ const data='const INITIAL_DESCRIPTOR='+JSON.stringify(DESCRIPTOR).replace(/</g,'
 const html=shell.replace('/*__CONTRACT__*/',()=>safe(contract.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,''))).replace('/*__DATA__*/',()=>data).replace('/*__APP__*/',()=>safe(transfer.replace(/^export /gm,'')+'\n'+app));
 // Validate the exact assembled browser script. Node module tests alone cannot
 // detect malformed inline JavaScript that prevents the entire UI from starting.
-const inlineScripts=[...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script\\s*>/gi)];
+const inlineScripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi)];
 if(inlineScripts.length!==1)throw Error('Standalone-Werkstatt muss genau ein Inline-Skript enthalten.');
 new Script(inlineScripts[0][1],{filename:'Bot-Werkstatt.html:inline'});
 await writeFile(dir+'Bot-Werkstatt.html',html);

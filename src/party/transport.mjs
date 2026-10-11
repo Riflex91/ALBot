@@ -56,7 +56,8 @@ export function createTransport(bot){
   if(p.ipc)offs.push(p.h.onMessage(e=>{if(e.topic==='albot/1')receive(e.from,e.data);}));
   offs.push(p.hook('on_cm',(from,data)=>{if(data?.protocol!=='albot/1')return;if(cfg.general.transport!=='ipc'&&(!p.headless||cfg.general.allowRemoteCM||cfg.general.transport==='cm'))receive(from,data);return true;}));
   function send(to,type,data,id=''){
-    if(!roster.includes(to)||to===me.name)return Promise.resolve(failure(to,type,'recipient'));
+    if(to===me.name)return Promise.resolve(false);
+    if(!roster.includes(to))return Promise.resolve(failure(to,type,'recipient'));
     const m={protocol:'albot/1',from:me.name,to,group:me.group,session:bot.session,seq:++seq,time:Date.now(),ttl:cfg.general.messageTtlMs,type,id,data};
     if(type==='status')counters.heartbeatAttempts++;
     if(JSON.stringify(m).length>=5000)return Promise.resolve(failure(to,type,'size'));

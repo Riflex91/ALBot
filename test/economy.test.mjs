@@ -46,7 +46,7 @@ test('empty unlocked bank packs expose 42 slots and a compatible stack is used e
 test('bank pressure reclaims only an explicit unreserved sale and resumes sale before other inventory jobs',async()=>{
  const {bot,c,rule}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.bankWorkspace=2;const sale={...rule,name:'Carrot sale',item:'carrot',action:'sell',keep:0,teamReserve:0,minPrice:1,maxActions:1};bot.cfg.items=[sale];bot.p.G.items.carrot={g:20,s:9999};c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[4]={name:'carrot',q:2};const calls=[];
  bot.p.call=(name,...args)=>{calls.push(name);if(name==='item_value')return 10;if(name==='find_npc')return {map:'bank',in:'bank',x:0,y:-100};if(name==='bank_retrieve'){const [pack,slot,dest]=args;c.items[dest]=c.bank[pack][slot];c.bank[pack][slot]=null;}if(name==='sell'){const [slot,q]=args;c.items[slot]=null;c.gold+=q*10;}return Promise.resolve();};
- assert.equal(bot.bank.reclaim(),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.bank.pending,true);bot.bank=createBank(bot);assert.equal(bot.bank.recoverCapacity(),true);await Promise.resolve();bot.exec.poll();bot.bank.recoverCapacity();assert.equal(bot.bank.pending,false);assert.equal(c.bank.items0[4],null);assert.equal(calls.filter(x=>x==='bank_retrieve').length,1);assert.equal(calls.filter(x=>x==='sell').length,1);
+ bot.decisionEpoch=0;assert.equal(bot.bank.reclaim(),false,'first pressure reading cannot start destructive recovery');bot.decisionEpoch=1;assert.equal(bot.bank.reclaim(),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.bank.pending,true);bot.bank=createBank(bot);assert.equal(bot.bank.recoverCapacity(),true);await Promise.resolve();bot.exec.poll();bot.bank.recoverCapacity();assert.equal(bot.bank.pending,false);assert.equal(c.bank.items0[4],null);assert.equal(calls.filter(x=>x==='bank_retrieve').length,1);assert.equal(calls.filter(x=>x==='sell').length,1);
 });
 test('bank partial stack keeps reserves and verifies a split before storage',async()=>{
  const {bot,c,rule}=fixture();rule.keep=7;bot.p.call=(name,slot,q)=>{assert.equal(name,'split');assert.equal(q,3);c.items[slot].q-=q;c.items[1]={name:'hpot0',q};return Promise.resolve();};
@@ -325,7 +325,7 @@ test('full-bank reclaim selects the least-value eligible explicit-sale candidate
   if(name==='bank_retrieve'){const [pack,slot,dest]=args;chosen=slot;c.items[dest]=c.bank[pack][slot];c.bank[pack][slot]=null;return Promise.resolve();}
   throw Error('unexpected '+name);
  };
- assert.equal(bot.bank.reclaim(),true);await Promise.resolve();bot.exec.poll();
+ bot.decisionEpoch=0;assert.equal(bot.bank.reclaim(),false,'first pressure reading cannot start destructive recovery');bot.decisionEpoch=1;assert.equal(bot.bank.reclaim(),true);await Promise.resolve();bot.exec.poll();
  assert.equal(chosen,30);assert.equal(bot.journal,null);
 });
 test('full bank never silently sells unique-data jar even if synthetic sell policy requests it',()=>{
@@ -388,4 +388,12 @@ test('audit M04 unrelated gold gain cannot falsely confirm a partially observed 
  assert.equal(bot.market.sellToBid(0,rule),true);
  await Promise.resolve();advance();
  assert.equal(bot.inventoryBlocked,true);assert.equal(bot.journal?.kind,'market.sell');
+});
+
+test('audit M05 temporary bank pressure is cleared by another available pack',()=>{
+ const {bot,c}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.bankWorkspace=2;
+ c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));
+ c.bank.items1=Array(42).fill(null);bot.p.G.bank_packs={items0:['bank',100],items1:['bank',100]};
+ bot.decisionEpoch=1;assert.equal(bot.bank.reclaim(),false);
+ assert.equal(bot.bank.pressureStatus().observations,0);
 });

@@ -88,13 +88,12 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
-    // Retreat before an overpowered nearby roaming enemy locks onto us.
-    const danger=me.role==='farmer'?bot.monsters().filter(m=>m.hp>0&&!m.dead&&
-      isNaturallyAggressive(p.G,m)&&(!m.target||m.target===c.name)&&
-      distance(c,m)<Math.max(70,(m.range??p.G.monsters?.[m.mtype]?.range??30)+45)&&
-      bot.strategy?.safeTarget?.(m.mtype,m,true)===false
-    ).sort((a,b)=>distance(c,a)-distance(c,b))[0]:null;
-    if(danger){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährlicher Monsterkontakt im Farmgebiet',danger.mtype);bot.target=null;bot.reason='Gefahrenrückzug: '+danger.mtype;retreat(danger);bot.skills.rotation(null);return;}
+    // A dangerous-looking roaming monster is not evidence of incoming
+    // combat. Do not flee or quarantine the farm plan merely because its
+    // definition has high damage or it wandered inside an arbitrary radius.
+    // A retreat is only warranted after an autonomously aggressive species
+    // actually targets THIS character (see isOwnAggressiveThreat above).
+    // The existing safety branch below still handles that confirmed threat.
     if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährlicher Gegner greift an',threat.mtype);bot.target=null;bot.reason='Rückzug: '+threat.mtype;retreat(threat);bot.skills.rotation(null);return;}
     if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}

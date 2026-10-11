@@ -28,8 +28,7 @@ export function createPanel(bot,api){
   title.addEventListener('pointerdown',startDrag);
   doc.addEventListener('pointermove',onMove);doc.addEventListener('pointerup',onUp);
   doc.addEventListener('pointercancel',onUp);
-  const saved=bot.p.read?.(positionKey);
-  if(saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y))position(saved.x,saved.y);
+
   for(const [label,action] of [['Start',()=>api.start()],['Pause',()=>api.pause()],['STOP',()=>api.stop()],...(bot.cfg.general.testLogging?[['Testordner wählen',()=>api.chooseLogDirectory()]]:[]),['Testlog speichern',()=>api.exportTestReport()]]){const b=doc.createElement('button');b.textContent=label;if(label==='Testordner wählen'&&!api.logCapabilities().directory){b.textContent='Ordnerauswahl nicht verfügbar';b.disabled=true;b.title='Testlog speichern verwenden. Den Desktop als Downloadziel im Browser einstellen.';}else b.onclick=action;node.append(b);}
   if(bot.cfg.general.testLogging){
    const button=doc.createElement('button');button.textContent='Party/Kampf prüfen + speichern';
@@ -46,5 +45,7 @@ export function createPanel(bot,api){
    node.append(button,result);
   }
   if(bot.cfg.general.testLogging&&!api.logCapabilities().directory){const hint=doc.createElement('p');hint.textContent='Logs per „Testlog speichern“ herunterladen. Speicherort in den Browser-Downloads wählen.';node.append(hint);}
-  doc.body.append(node);return {render(){const text=bot.me.role+' · '+(bot.running?'Aktiv':'Angehalten')+' · '+bot.reason;if(status.textContent!==text)status.textContent=text;},remove(){drag=null;title.removeEventListener('pointerdown',startDrag);doc.removeEventListener('pointermove',onMove);doc.removeEventListener('pointerup',onUp);doc.removeEventListener('pointercancel',onUp);node.remove();}};
+  doc.body.append(node);const saved=bot.p.read?.(positionKey);
+  if(saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y))position(saved.x,saved.y);
+  return {render(){const text=bot.me.role+' · '+(bot.running?'Aktiv':'Angehalten')+' · '+bot.reason;if(status.textContent!==text)status.textContent=text;},remove(){drag=null;title.removeEventListener('pointerdown',startDrag);doc.removeEventListener('pointermove',onMove);doc.removeEventListener('pointerup',onUp);doc.removeEventListener('pointercancel',onUp);node.remove();}};
 }

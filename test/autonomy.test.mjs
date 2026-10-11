@@ -70,3 +70,47 @@ test('production reuses bounded decision-frame goals and rules but invalidates a
 
 
 test('upgrade scrolls remain working supplies under automatic disposition',()=>{const {bot,c,G,cfg}=fixture();bot.me=cfg.characters.find(x=>x.role==='merchant');cfg.production.autoDisposition=true;G.items.scroll0={type:'uscroll',g:1000};c.items[0]={name:'scroll0',q:35};const intel=createEconomicIntelligence(bot);assert.equal(intel.disposition(c.items[0]),null);});
+
+test('audit M02 reads plural official tables and compound probability grade differs from scroll grade',()=>{
+ const G={items:{ring:{compound:true,grades:[2,5]},sword:{upgrade:true,grades:[2,5]}},
+  compounds:[[0,.123,.22,.33,.44,.55],[0,.61,.62,.63,.64,.65]],upgrades:[[0,.17,.27,.37],[0,.81,.82,.83]]};
+ assert.equal(progressionChance(G,'ring',0,'compound'),.123);
+ assert.equal(progressionChance(G,'ring',4,'compound'),.65,'+4 to +5 uses grade at +2');
+ assert.equal(progressionChance(G,'sword',1,'upgrade'),.27,'upgrade probability grade is the base grade');
+ G.compounds[0][1]=undefined;
+ assert.equal(progressionChance(G,'ring',0,'compound'),null,'missing official cell cannot silently use historical table');
+});
+
+test('audit M01 future gear unknown protects equipment even when optimizers have no selected target',()=>{
+ const {bot,c,G,cfg}=fixture();bot.me.role='merchant';
+ G.items.bow={type:'weapon',wtype:'bow',upgrade:true,g:2,grades:[3,6]};G.classes={ranger:{mainhand:{bow:true},doublehand:{},offhand:{}}};
+ cfg.production.autoDisposition=true;cfg.production.autoGear=false;
+ bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{}}),profile:()=>null};
+ bot.production.reservedQuantity=()=>0;c.items[0]={name:'bow',level:0};
+ const intel=createEconomicIntelligence(bot);
+ assert.equal(intel.gearUse(c.items[0]).state,'unknown');
+ assert.equal(intel.futureGear(c.items[0]),true);
+ assert.equal(intel.disposition(c.items[0]),null);
+});
+
+test('audit M03 finite compound holdings never fund fictitious +2 results',()=>{
+ const {bot,c,G,cfg}=fixture();bot.me.role='merchant';
+ cfg.production.autoDisposition=cfg.production.enabled=cfg.production.compound=true;
+ cfg.production.autoGear=false;cfg.production.minChance=.5;cfg.production.minImprovement=0;
+ cfg.production.autoGearMaxLevel=2;cfg.production.helperMaxPrice=1000;
+ G.items.ring={type:'ring',compound:true,grades:[10,20]};
+ G.items.cscroll0={g:1};
+ G.compounds=[[0,1,1]];
+ bot.economy.value=i=>[10,20,1000][i.level??0];
+ bot.production.reservedQuantity=()=>0;
+ const i={name:'ring',level:0};
+ c.items=[{...i},{...i},{...i},...Array(39).fill(null)];
+ let intel=createEconomicIntelligence(bot);
+ assert.equal(intel.mutationEconomics(i).action,'sell','three bases do not finance nine bases for +2');
+ c.items=Array.from({length:9},()=>({...i})).concat(Array(33).fill(null));
+ intel=createEconomicIntelligence(bot);
+ assert.equal(intel.mutationEconomics(i).action,'compound','nine copies can finance a +2 path');
+ c.items[0].l=true;
+ intel=createEconomicIntelligence(bot);
+ assert.equal(intel.mutationEconomics(i).action,'compound','protected base is excluded but remaining safe groups can still be evaluated');
+});

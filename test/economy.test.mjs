@@ -355,3 +355,37 @@ test('a high-value upgrade item is not a valid bank emergency sale even with exp
  assert.equal(bot.bank.reclaim(),false);
  assert.equal(bot.journal,null);
 });
+
+test('audit M04 trade_sell confirms server-rounded net proceeds and exact item loss',async()=>{
+ const {bot,c,rule}=fixture();
+ c.map=c.in='main';c.x=c.y=0;c.tax=.05;
+ c.items=[{name:'hpot0',q:2},...Array(41).fill(null)];
+ Object.assign(rule,{enabled:true,name:'Explicit approved sale',action:'sell',batch:2,keep:0,teamReserve:0,minPrice:1,maxCount:1000});
+ bot.cfg.items=[rule];bot.p.has=()=>true;
+ const offer={name:'hpot0',level:0,b:true,q:2,price:100,rid:'buyer-bid'};
+ const buyer={name:'Buyer',type:'character',stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:offer}};
+ bot.p.entities={Buyer:buyer};bot.entity=()=>buyer;
+ bot.p.call=(name,...args)=>{
+  if(name==='item_value')return 20;
+  assert.equal(name,'trade_sell');assert.deepEqual(args,[buyer,'trade1',2]);
+  c.items[0]=null;c.gold+=190;return Promise.resolve();
+ };
+ bot.market=createMarket(bot);
+ assert.equal(bot.market.sellToBid(0,rule),true);
+ await Promise.resolve();bot.exec.poll();
+ assert.equal(bot.journal,null);
+ assert.equal(bot.inventoryBlocked,false);
+});
+test('audit M04 unrelated gold gain cannot falsely confirm a partially observed trade',async()=>{
+ const {bot,c,rule,advance}=fixture();c.map=c.in='main';c.x=c.y=0;c.tax=.05;
+ c.items=[{name:'hpot0',q:2},...Array(41).fill(null)];
+ Object.assign(rule,{enabled:true,name:'Explicit sale',action:'sell',batch:2,keep:0,teamReserve:0,minPrice:1,maxCount:1000});
+ bot.cfg.items=[rule];bot.p.has=()=>true;
+ const buyer={name:'Buyer',type:'character',stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:{name:'hpot0',level:0,b:true,q:2,price:100,rid:'bid'}}};
+ bot.p.entities={Buyer:buyer};bot.entity=()=>buyer;
+ bot.p.call=name=>{if(name==='item_value')return 20;c.items[0]=null;c.gold+=250;return Promise.resolve();};
+ bot.market=createMarket(bot);
+ assert.equal(bot.market.sellToBid(0,rule),true);
+ await Promise.resolve();advance();
+ assert.equal(bot.inventoryBlocked,true);assert.equal(bot.journal?.kind,'market.sell');
+});

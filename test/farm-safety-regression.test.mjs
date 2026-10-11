@@ -33,3 +33,20 @@ test('roaming overpowered hostile causes preemptive retreat before aggro',()=>{
  assert.equal(bot.target,null);
  assert.match(bot.reason,/Gefahrenrückzug/);
 });
+
+test('audit G01 follower assists existing safe fight instead of opening another pull',()=>{
+ const commands=[],mob={id:'bee-1',mtype:'bee',type:'monster',hp:100,max_hp:100,target:'Leader',map:'main',in:'main',x:50,y:0};
+ const c={name:'Follower',ctype:'ranger',map:'main',in:'main',x:0,y:0,hp:100,max_hp:100,mp:100,max_mp:100,range:200,rip:false,items:[],slots:{}};
+ const leader={name:'Leader',running:true,rip:false,realm:'EUII',map:'main',in:'main',x:150,y:0,target:mob.id};
+ const bot={p:{c,G:{items:{},monsters:{bee:{}},maps:{main:{}}},parent:{is_pvp:false},call:(name)=>{if(name==='can_attack')return true;if(name==='is_on_cooldown')return true;if(name==='attack')commands.push('attack');if(name==='change_target')commands.push('target');return false;},realm:()=> 'EUII'},
+ cfg:{farming:{enabled:true,loot:false,autoTravel:false,restBelow:.3,resumeAbove:.8,hpBelow:.5,mpBelow:.2,freeSlots:1,rangeBuffer:10,deathWindowMs:600000},party:{enabled:true,followDistance:100,waitForTeam:false,focusFire:false}},
+ me:{name:'Follower',role:'farmer'},leader:'Leader',farmers:['Leader','Follower'],teamNames:['Leader','Follower'],
+ monsters:()=>[mob],allowed:()=>true,entity:()=>mob,
+ transport:{fresh:()=>leader},strategy:{safeTarget:()=>true,busy:false,travel:()=>false},
+ logistics:{handoffActive:false,reserved:false},bank:{pending:false},gold:{reserved:false},free:()=>20,
+ account:{active:()=>true},movement:{order:null,go:()=>commands.push('follow'),stop:()=>commands.push('stop')},
+ skills:{rotation:t=>commands.push(t?'offense':'support-only')},exec:{run:(key,res,guard,invoke)=>guard()?!!(invoke(),true):false},reason:''};
+ createFarmer(bot).tick();
+ assert.ok(commands.includes('offense'));assert.ok(commands.includes('attack'));
+ assert.equal(commands.includes('follow'),false);
+});

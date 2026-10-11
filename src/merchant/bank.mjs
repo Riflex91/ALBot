@@ -38,9 +38,9 @@ export function createBank(bot){
  function consolidateInventory(){
   if(bot.journal||bot.inventoryBlocked||bot.logistics?.reserved)return false;
   for(let a=0;a<p.c.items.length;a++)for(let b=a+1;b<p.c.items.length;b++){
-   const x=p.c.items[a],y=p.c.items[b];
-   if(!simple(x)||!simple(y)||identity(x)!==identity(y)||!Number.isSafeInteger(x.q)||!Number.isSafeInteger(y.q)||x.q<1||y.q<1||x.q+y.q>stackMax(x))continue;
-   const fa=fingerprint(x),fb=fingerprint(y),total=x.q+y.q;
+   const x=p.c.items[a],y=p.c.items[b],qa=x?.q??1,qb=y?.q??1;
+   if(!simple(x)||!simple(y)||identity(x)!==identity(y)||!Number.isSafeInteger(qa)||!Number.isSafeInteger(qb)||qa<1||qb<1||qa+qb>stackMax(x))continue;
+   const fa=fingerprint(x),fb=fingerprint(y),total=qa+qb;
    return e.perform('inventory.consolidate',{slots:[a,b],
     guard:()=>fingerprint(p.c.items[a])===fa&&fingerprint(p.c.items[b])===fb,
     call:()=>p.call('swap',a,b),
@@ -62,11 +62,11 @@ export function createBank(bot){
    if(bot.free()<=cfg.merchant.minFreeSlots)return false;const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
-  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>e.safe(i)&&identity(i)===identity(item)&&(i.q??1)+(item.q??1)<=(p.G.items[item.name]?.s??0)))?.[0]||rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
+  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>e.safe(i)&&identity(i)===identity(item)&&stackMax(item)>1&&(i.q??1)+(item.q??1)<=stackMax(item)))?.[0]||rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
   if(!ready(preferred))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
-   const compatible=items.findIndex(i=>e.safe(i)&&identity(i)===identity(item)&&i.q&&(i.q+(item.q??1))<=(p.G.items[item.name]?.s??0));
+   const compatible=items.findIndex(i=>e.safe(i)&&identity(i)===identity(item)&&stackMax(item)>1&&(i.q??1)+(item.q??1)<=stackMax(item));
    const dest=compatible>=0?compatible:items.findIndex(i=>!i);if(dest<0)continue;
    const before=e.count(item),bankBefore=variantCount(items,item),q=item.q??1;
    const targetPrint=fingerprint(p.c.bank[pack][dest]);
@@ -105,8 +105,8 @@ export function createBank(bot){
  function consolidate(){
   if(!cfg.merchant.bank||!cfg.merchant.consolidate||!p.c.bank)return false;
   for(const [pack,items] of packs())for(let a=0;a<items.length;a++)for(let b=a+1;b<items.length;b++){
-   const x=items[a],y=items[b];if(packMap(pack)!==p.c.map||!simple(x)||!simple(y)||!Number.isSafeInteger(x.q)||!Number.isSafeInteger(y.q)||x.q<1||y.q<1||identity(x)!==identity(y)||x.q+y.q>stackMax(x))continue;
-   const fa=fingerprint(x),fb=fingerprint(y),total=x.q+y.q;
+   const x=items[a],y=items[b],qa=x?.q??1,qb=y?.q??1;if(packMap(pack)!==p.c.map||!simple(x)||!simple(y)||!Number.isSafeInteger(qa)||!Number.isSafeInteger(qb)||qa<1||qb<1||identity(x)!==identity(y)||qa+qb>stackMax(x))continue;
+   const fa=fingerprint(x),fb=fingerprint(y),total=qa+qb;
    return e.perform('bank.consolidate',{guard:()=>fingerprint(p.c.bank?.[pack]?.[a])===fa&&fingerprint(p.c.bank?.[pack]?.[b])===fb,call:()=>p.call('bank_swap',pack,a,b),observe:()=>{const row=p.c.bank?.[pack];return !!row&&((!row[a]&&identity(row[b])===identity(x)&&row[b]?.q===total)||(!row[b]&&identity(row[a])===identity(x)&&row[a]?.q===total));},details:{item:x.name,quantity:total,pack}});
   }return false;
  }

@@ -42,12 +42,20 @@ export function createSkills(bot){
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
     const aimed=['3shot','5shot'].includes(id);
     const visible=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
-    // Aimed ranger shots explicitly select recipients. Nearby neutral or other-party
-    // monsters must not cancel a safe shot, and must never enter its target list.
-    // Untargeted area skills stay conservative: any bystander blocks the cast.
+    // Aimed shots select exact recipients. Neutral mobs may be pulled ONLY
+    // while the encounter planner is explicitly building a validated multi-pull,
+    // with at least one already engaged team enemy and spare aggro capacity.
+    // Other-party mobs never enter the target list. Untargeted AoE stays strict.
     const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&bot.allowed(e));
-    const candidates=aimed?visible.filter(eligible):visible;
     const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets);
+    const engaged=visible.filter(eligible);
+    const canPull=e=>!e.target&&!!bot.teamPlan?.target()&&e.mtype===bot.teamPlan.target()&&bot.allowed(e);
+    function extraAllowance(){
+      const phase=bot.encounter?.status?.(),allEngaged=bot.monsters().filter(e=>e.target&&bot.teamNames.includes(e.target)).length;
+      return engaged.length&&phase?.phase==='BUILD'?Math.max(0,Math.min(limit-engaged.length,phase.capacity-allEngaged,cfg.farming.maxAggro-allEngaged)):0;
+    }
+    const additional=aimed?Math.floor(extraAllowance()):0;
+    const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
     const selected=multi?candidates.slice(0,limit):[];
     if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??2)||(!aimed&&(visible.length>limit||visible.some(e=>!eligible(e)))))return false;argsTarget=['cleave','stomp'].includes(id)?null:selected;target=selected[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}
@@ -56,7 +64,7 @@ export function createSkills(bot){
     if(s.hostile&&target&&target.type!=='monster')return false;
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
-    const guard=()=>ready(id,target,reserve)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||selected.every(e=>{const live=bot.entity(e.id);return !!(live&&eligible(live));}));
+    const guard=()=>ready(id,target,reserve)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
     if(!guard())return false;
     if(consume&&(bot.inventoryBlocked||bot.logistics.reserved))return false;
     const accepted=exec.run('skill:'+id,['mana',s.share==='attack'||id==='heal'?'attack':'skill',...(consume?['inventory']:[])],guard,()=>{

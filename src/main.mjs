@@ -45,6 +45,14 @@ import {createTestReport} from './core/test-report.mjs';
 import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint} from './core/checkpoint.mjs';
+export function selectedPartyMember(bot,name){
+  return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
+    (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
+}
+export function canAcceptPartyRequest(bot,name){
+  const peer=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
+  return !!(bot.running&&bot.cfg.party.enabled&&bot.me.name===bot.leader&&peer?.running&&peer.realm===bot.p.realm());
+}
 export function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
@@ -113,7 +121,12 @@ export function install(root){
   if(typeof root.addEventListener==='function')for(const type of ['error','unhandledrejection']){const handler=e=>{report.error(type,e.error??e.reason??e.message);report.flush(true);};root.addEventListener(type,handler);cleanup.push(()=>root.removeEventListener(type,handler));}
   const inviteAllowed=name=>bot.running&&cfg.party.enabled&&name===bot.leader&&bot.teamNames.includes(name)&&!p.c.party;
   cleanup.push(p.hook('on_party_invite',name=>{if(inviteAllowed(name))exec.run('party',['party'],()=>inviteAllowed(name),()=>p.call('accept_party_invite',name),{delay:3000});}));
-  cleanup.push(p.hook('on_party_request',name=>{if(bot.running&&cfg.party.enabled&&me.name===bot.leader&&bot.farmers.includes(name))exec.run('party',['party'],()=>bot.running,()=>p.call('accept_party_request',name),{delay:3000});}));
+  cleanup.push(p.hook('on_party_request',name=>{
+    // The configured merchant is a team member, but not a farmer. Accept its
+    // request exactly as a selected farmer, never an unconfigured requester.
+    const eligible=()=>canAcceptPartyRequest(bot,name);
+    if(eligible())exec.run('party',['party'],eligible,()=>p.call('accept_party_request',name),{delay:3000});
+  }));
   if(bot.teamTravel)cleanup.push(p.hook('on_magiport',name=>bot.teamTravel.accept(name)));
   // Follower-initiated requests supplement lost browser invitation callbacks.
   // Both directions only address live, selected members and are rate limited.
@@ -151,7 +164,19 @@ export function install(root){
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
     if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy)bot.merchant?.tick();bot.aura?.tick();
     }
-    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&me.name===bot.leader)for(const name of bot.farmers){if(name===me.name)continue;const h=bot.transport.fresh(name),e=bot.entity(name);if(!h?.running||h.rip||h.realm!==p.realm()||h.inventoryBlocked)continue;if(!e||e.party!==p.c.party||!p.c.party)exec.run('invite:'+name,['party'],()=>bot.running&&bot.farmers.includes(name)&&!!bot.transport.fresh(name)?.running,()=>p.call('send_party_invite',name),{delay:10000});}}
+    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&me.name===bot.leader){
+      const memberNames=[...new Set([...bot.farmers,...(bot.teamNames.includes(cfg.party.merchant)?[cfg.party.merchant]:[])])];
+      const roster=p.parent.party;const joined=name=>Array.isArray(roster)?roster.some(x=>(typeof x==='string'?x:x?.name)===name):!!(roster&&typeof roster==='object'&&Object.hasOwn(roster,name));
+      for(const name of memberNames){if(name===me.name||joined(name))continue;
+        const h=bot.transport.fresh(name),e=bot.entity(name);
+        if(!h?.running||h.rip||h.realm!==p.realm()||name!==cfg.party.merchant&&h.inventoryBlocked)continue;
+        if(!p.c.party||!e||e.party!==p.c.party){
+          const eligible=()=>bot.running&&selectedPartyMember(bot,name)&&
+            !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm()&&!joined(name);
+          exec.run('invite:'+name,['party'],eligible,()=>p.call('send_party_invite',name),{delay:10000});
+        }
+      }
+    }}
     publish();
     report.sample({reason:bot.reason,running:bot.running});
   }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}

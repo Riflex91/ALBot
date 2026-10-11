@@ -64,7 +64,7 @@ export function createServices(bot){
   if(Date.now()<probe)return false;
   // Without a permitted offer, Merrit cannot grant the reward. Do not
   // abandon gathering and route to the market just to discover this later.
-  const eligible=Object.entries(p.c.slots??{}).some(([k,v])=>/^trade\\d+$/.test(k)&&v&&p.G.items[v.name]&&v.name!=='placeholder'&&!v.l&&!v.acl&&!v.v&&v.giveaway===undefined&&!v.want&&Number.isFinite(v.price)&&v.price>0&&(v.q===undefined||v.q>0)&&(!v.b||p.c.gold>=v.price));
+  const eligible=Object.entries(p.c.slots??{}).some(([k,v])=>/^trade\d+$/.test(k)&&v&&p.G.items[v.name]&&v.name!=='placeholder'&&!v.l&&!v.acl&&!v.v&&v.giveaway===undefined&&!v.want&&Number.isFinite(v.price)&&v.price>0&&(v.q===undefined||v.q>0)&&(!v.b||p.c.gold>=v.price));
   if(baseline===null&&!eligible){anchor=null;probe=Date.now()+60000;e.note('Merrit ausgesetzt: kein freigegebenes Standangebot');return false;}
   const safe=point=>!(p.G.maps?.main?.npcs??[]).some(n=>Array.isArray(n.position)&&distance({x:n.position[0],y:n.position[1]},point)<=(meta.npc_clearance??40))&&!Object.values(p.entities).some(x=>x!==p.c&&(x.npc||x.type==='npc'?distance(x,point)<=(meta.npc_clearance??40):x.stand&&(distance(x,point)<=(meta.stand_clearance??10)||Math.abs(xy(x).x-point.x)<(meta.front_width??10)&&Math.abs(xy(x).y-point.y)<=(meta.front_clearance??15))));
   if(!anchor){const points=[];for(const [x0,y0,x1,y1] of meta.areas.slice(0,8))for(let x=x0+24;x<x1-20;x+=48)for(let y=y0+24;y<y1-20;y+=48)points.push({map:'main',in:'main',x,y});anchor=points.sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(safe)??null;if(!anchor){e.note('Kein freier Merrit-Standplatz');probe=Date.now()+30000;return false;}}

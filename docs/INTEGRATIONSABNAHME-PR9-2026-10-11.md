@@ -1,3 +1,11 @@
+## Merchant-Pingpong/AutoDisposition-Härtung – 11.10.2026
+
+Aus Live-Report `test-My_Merchant-2026-10-11T14-00-37-682Z-part001.json`: 53 Bewegungsaufträge in rund fünf Minuten, 40 Ankünfte, 15 bestätigte `bank.store`, aber wiederholte Bank–Mitspieler–Bank–NPC–Bank-Routen. Nach jeder `bank.store`-Bestätigung konnte die höher priorisierte `logistics.travel`-Routine den Merchant verlassen lassen, obwohl vor Ort weitere gültige Bankregeln warteten. `npcSell` prüfte das Konto-/AutoDisposition-Budget bisher erst nach Ankunft am NPC, wodurch vergebliche Routen möglich waren. Ein Bank-Reclaim verkaufte ein seltenes `cxjar` (`data:makeawish`) für 1 Gold.
+
+Die neue `logistics.travel`-Routine respektiert innerhalb der Bankkarte vorhandene Lagerarbeitslisten aus gültigen `economy.rules` und freien Bankplätzen, bevor sie **normale**, nicht dringende Lieferfahrten plant. Kritische Trankversorgung bleibt ausgenommen. `npcSell` prüft `remaining` und `budget` vor der NPC-Anreise. Bank-`reclaim` darf nun nur **explizit freigegebene Verkaufsregeln** verwenden; dynamische Wertklassifizierung von Items mit `data` oder Sonderattributen unterbleibt. Eine adaptive Gruppe mit weniger Mitgliedern als aktuell online möglich nimmt nach Re-Stabilisierung zurückgekehrte Farmer wieder auf. Keine geänderten Budgets, keine automatischen Liveaktionen, kein Merge.
+
+---
+
 ## NPC-Reichweite: maximale Interaktionsdistanz mit kleinem Puffer (11.10.2026)
 
 Auf Nutzerwunsch nutzt der Merchant für **reguläre NPC-Interaktionen** (NPC-Kauf und -Verkauf, Upgrade, Compound, Craft, Exchange, Ponty) künftig **375 statt bisher typischerweise 90** Spieleinheiten. Adventure-Land-Serverquelle [`node/server.js`](https://github.com/kaansoral/adventureland_mongodb/blob/main/node/server.js) setzt `B.sell_dist=400`, prüft z. T. strikt `<400`. 25 Einheiten Reserve gegen Positionsänderung, Tick-Latenz und Rundung. Sowohl `npcTravel` als auch der Dispatch-Guard `npcAt` verwenden dieselbe effektive Distanz, sodass der Bot nicht am Ziel ankommt und die Aktion anschließend wegen des bisherigen 110er Guards verweigert. Der NPC-Radius wird auch an `movement.go` übergeben und beendet Bewegungen, sobald der Character innerhalb des 375er Radius ist.

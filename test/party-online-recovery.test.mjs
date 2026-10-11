@@ -77,3 +77,16 @@ test('follower does not start independent farm smart_move against the leader fol
  assert.equal(planner.travel(),false,'followers should only follow actual leader location');
  assert.deepEqual(moves,[]);
 });
+
+test('coordinator restores a returning active ranger to an underfilled adaptive group',()=>{
+ const old=Date.now;let now=10000;Date.now=()=>now;
+ try{
+  const {bot,peers}=accountFixture(['My_Ranger2','My_Rogue']);
+  bot.farmers=['My_Ranger2','My_Rogue'];bot.leader='My_Ranger2';
+  const account=createAccount(bot);
+  now+=15001;account.tick();assert.deepEqual(bot.farmers,['My_Ranger2','My_Rogue']);
+  peers.set('My_Ranger1',{name:'My_Ranger1',running:true,rip:false,realm:'EUII',hp:100,max_hp:100,class:'ranger',stats:{attack:70,frequency:1,armor:5}});
+  now+=15001;account.tick();
+  assert.deepEqual(bot.farmers,['My_Ranger1','My_Ranger2','My_Rogue']);assert.equal(bot.leader,'My_Ranger1');
+ }finally{Date.now=old;}
+});

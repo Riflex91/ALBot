@@ -106,7 +106,7 @@ export function createAccount(bot){
    const h=bot.transport.fresh(name);
    return h?.running&&!h.rip&&h.realm===p.realm()&&!h.inventoryBlocked;
   }),available=new Set(online);
-  if((bot.farmers.some(n=>!available.has(n))||!available.has(bot.leader))&&online.length&&Date.now()-changed>=Math.min(15000,cfg.party.rotationCooldownMs)){
+  if((bot.farmers.some(n=>!available.has(n))||!available.has(bot.leader)||bot.farmers.length<Math.min(cfg.party.maxFarmers,online.length))&&online.length&&Date.now()-changed>=Math.min(15000,cfg.party.rotationCooldownMs)){
    const preferred=available.has(cfg.party.leader)?cfg.party.leader:available.has(bot.leader)?bot.leader:null;
    const leader=preferred??chooseCombatLeader(online.map(name=>({name,...bot.transport.fresh(name)})))??online[0];
    const names=[leader,...bot.farmers.filter(n=>n!==leader&&available.has(n)),...online.filter(n=>n!==leader&&!bot.farmers.includes(n))].slice(0,cfg.party.maxFarmers);

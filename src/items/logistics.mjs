@@ -109,6 +109,16 @@ export function createLogistics(bot){
       }
     }
   }
+  // Finish permitted on-site storage before normal delivery departures.
+  // Emergency HP/MP supply may still interrupt the bank batch.
+  function localBankBatch(){
+   if(p.c.map!=='bank'||bot.bank?.pending||!bot.bank?.capacity?.().some(pack=>pack.map==='bank'&&pack.free>0))return false;
+   return (p.c.items??[]).some((i,slot)=>{
+    if(!i||!bot.economy?.safe(i))return false;
+    const rule=bot.economy.rules(i);
+    return rule?.action==='bank'&&bot.economy.remaining(rule)&&bot.economy.spare(slot,rule)>0;
+   });
+  }
   function travel(){
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;if(route?.owner==='logistics'){const h=transport.fresh(route.dest.name);if(!h?.running||bot.strategy?.canVisit(h)===false||distance(route.dest,h)>(cfg.merchant.servicePositionError??70)*2)bot.movement.stop();}const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
@@ -118,7 +128,7 @@ export function createLogistics(bot){
        const demand=requested||gearRequested;
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&capacity(item)>0;});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(bot.merchant?.claimService?.(name,urgent)===false)continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;if(bot.merchant?.claimService?.(name,urgent)===false)continue;
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;

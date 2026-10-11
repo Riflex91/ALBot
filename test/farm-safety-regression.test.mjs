@@ -17,7 +17,7 @@ test('dangerous farm-area failure quarantines a spawn instead of instantly resel
  assert.equal(plan.heartbeat(),null,'dangerous area must not be immediately reused');
 });
 
-test('roaming overpowered hostile causes preemptive retreat before aggro',()=>{
+test('overpowered roaming hostile without self-aggro does not trigger flee',()=>{
  const calls=[],monster={id:'greenjr-1',mtype:'greenjr',type:'monster',map:'main',in:'main',x:60,y:0,real_x:60,real_y:0,hp:10000,max_hp:10000,range:40,aggro:1};
  const c={name:'Farmer',map:'main',in:'main',x:0,y:0,range:100,speed:50,hp:900,max_hp:1000,mp:100,max_mp:100,items:[],slots:{},gold:0,ctype:'ranger',rip:false};
  const bot={p:{c,G:{monsters:{greenjr:{aggro:1,range:40,boss:true}},maps:{main:{}}},parent:{is_pvp:false},call:(name)=>name==='can_move_to'?true:false},
@@ -28,10 +28,9 @@ test('roaming overpowered hostile causes preemptive retreat before aggro',()=>{
    logistics:{handoffActive:false,reserved:false},bank:{pending:false},gold:{reserved:false},exec:{pending:new Map()},target:null,free:()=>20,
    account:{active:()=>true},event:()=>{},transport:{fresh:()=>null}};
  createFarmer(bot).tick();
- assert.ok(calls.some(x=>x[0]==='fail'));
- assert.ok(calls.some(x=>x[0]==='local'));
- assert.equal(bot.target,null);
- assert.match(bot.reason,/Gefahrenrückzug/);
+ assert.equal(calls.some(x=>x[0]==='fail'),false);
+ assert.equal(calls.some(x=>x[0]==='local'),false);
+ assert.doesNotMatch(bot.reason??'',/Gefahrenrückzug/);
 });
 
 test('audit G01 follower assists existing safe fight instead of opening another pull',()=>{

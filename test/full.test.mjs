@@ -129,7 +129,7 @@ test('item handoff refuses dispatch after accepted receiver session is replaced'
 });
 
 test('accepted item offer cancelled before dispatch on STOP releases receiver value journal',()=>{
- const {bots,queue,sent,deliver}=itemHandoffFixture(),a=bots.A,b=bots.B;
+ const {bots,queue,sent,makeBot,deliver}=itemHandoffFixture();bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');const a=bots.A,b=bots.B;
  a.logistics.poll(true);deliver();
  assert.equal(a.journal,null,'No sender action was dispatched');
  assert.equal(b.journal?.kind,'receive','Receiver acceptance already wrote the checkpoint');
@@ -144,7 +144,7 @@ test('accepted item offer cancelled before dispatch on STOP releases receiver va
 });
 
 test('cancel of an undelivered item offer prevents a stranded receiving journal',()=>{
- const {bots,queue,sent,deliver}=itemHandoffFixture(),a=bots.A,b=bots.B;
+ const {bots,queue,sent,makeBot,deliver}=itemHandoffFixture();bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');const a=bots.A,b=bots.B;
  a.logistics.poll(true);
  // Deliver the offer, but lose/delay its accept reply to the sender.
  const offer=queue.shift();assert.equal(offer.message.type,'offer');

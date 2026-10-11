@@ -24,7 +24,7 @@ export function createStrategy(bot){
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm
   // spawn on followers: only the failed farm target itself invalidates it.
-  if(bot.teamPlan?.status()?.current?.target===id)bot.teamPlan.failed(reason);
+  if(bot.teamPlan?.status?.()?.current?.target===id)bot.teamPlan.failed(reason);
   failed=Object.fromEntries(Object.entries(failed).filter(([,until])=>until>Date.now()).slice(-31));failed[id]=Date.now()+cfg.farming.deathWindowMs;p.write?.(riskKey,failed);activity=null;manual=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.failedTarget',{target:id,reason,retryAfter:failed[id]});}
  function canVisit(h){if(!full)return true;if(bot.recovering||h.inventoryBlocked||h.rip||h.hp/h.max_hp<cfg.farming.resumeAbove)return false;
   const uncertainty=(h.motion?.moving?h.motion.speed:0)*Math.max(0,Date.now()-(h.motion?.at??Date.now()))/1000;if(uncertainty>(cfg.merchant.servicePositionError??70))return false;if(h.threats>0&&!h.motion)return false;if(h.threats>0&&h.hp/h.max_hp<(cfg.farming.pullHp??.8))return false;if(h.activity?.target){const m=p.G.monsters?.[h.activity.target];if(!m||!Number.isFinite(m.attack)||!(m.frequency>0)||m.attack*m.frequency>p.c.max_hp*.03)return false;}

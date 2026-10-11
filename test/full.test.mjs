@@ -136,7 +136,7 @@ test('accepted item offer cancelled before dispatch on STOP releases receiver va
  a.running=false;a.exec.invalidate();a.logistics.close();
  assert.equal(sent.length,0,'STOP must not dispatch items');
  deliver();
- assert.equal(b.journal,null,'Signed no-dispatch cancel must release the acceptance checkpoint');
+ assert.equal(b.journal,null,'Session-bound no-dispatch cancel must release the acceptance checkpoint');
  assert.equal(b.inventoryBlocked,false);
  assert.equal(b.logistics.itemReserved,false);
  assert.equal(queue.length,0);

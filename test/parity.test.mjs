@@ -1204,3 +1204,25 @@ test('integration: IPC and CM explicit transport refusals never count as success
  assert.deepEqual(messages,[['send_cm','B','status']]);
  t.close();
 });
+
+test('integration: itemCancel reaches the recipient through IPC and stale duplicates are ignored',async()=>{
+ const cfg={characters:[{name:'A',enabled:true,group:'team'},{name:'B',enabled:true,group:'team'}],
+  general:{transport:'ipc',messageTtlMs:15000}};
+ const listeners=new Map(),messages=[],received=[];
+ const setup=name=>{
+  const peer=name==='A'?'B':'A';
+  const bot={cfg,me:{name,group:'team'},session:name+'-session',running:true,report:()=>assert.fail('Valid IPC should not produce errors'),
+   p:{ipc:true,headless:true,parent:{caracAL:{siblings:[peer]}},
+    h:{onMessage:fn=>{listeners.set(name,fn);return ()=>listeners.delete(name);},
+     send:(to,topic,data)=>{messages.push({from:name,to,topic,data});listeners.get(to)?.({from:name,topic,data});return true;}},
+    hook:()=>()=>{}},logistics:{receive:(from,m)=>received.push({from,type:m.type,id:m.id,session:m.session})}};
+  bot.transport=createTransport(bot);return bot;
+ };
+ const b=setup('B'),a=setup('A');
+ assert.equal(await a.transport.send('B','itemCancel',{notDispatched:true},'item-1'),true);
+ assert.deepEqual(received,[{from:'A',type:'itemCancel',id:'item-1',session:'A-session'}]);
+ listeners.get('B')?.({from:'A',topic:'albot/1',data:messages[0].data});
+ assert.equal(received.length,1,'Duplicate no-send claim must not reapply cancellation');
+ a.transport.close();b.transport.close();
+ assert.equal(listeners.size,0,'Pause/Reload cleanup removes both transport listeners');
+});

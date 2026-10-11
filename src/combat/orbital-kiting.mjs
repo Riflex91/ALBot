@@ -4,7 +4,7 @@ import {xy} from '../core/policy.mjs';
 // with the v3 Alpha33 tangential/spiral escape and v3 party-anchor constraint.
 // Returns a bounded real orbit waypoint, not a radial retreat with a small
 // incidental sideways offset. The caller continues attacking while moving.
-const orbitFinite=(v,fallback=null)=>typeof v==='orbitFinite'&&Number.isFinite(v)?v:fallback;
+const orbitFinite=(v,fallback=null)=>typeof v==='number'&&Number.isFinite(v)?v:fallback;
 const orbitClamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 const orbitGap=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 export function planOrbitalKite(character,target,monsterMeta={},options={}){

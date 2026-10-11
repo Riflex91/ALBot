@@ -5,7 +5,7 @@ import {createCombatNavigation} from '../src/combat/navigation.mjs';
 
 const monster={id:'bee-1',mtype:'bee',type:'monster',hp:500,map:'main',in:'main',x:0,y:0,range:25,speed:40,target:'Ranger'};
 const hero=(x=108,y=0,ctype='ranger')=>({name:'Ranger',ctype,map:'main',in:'main',x,y,range:150,speed:40});
-const metadata={range:25,speed:40};
+const metadata={range:25,speed:40,aggro:1};
 const polarAngle=p=>Math.atan2(p.y,p.x);
 function advance(position,previous){
  const diff=polarAngle(position)-polarAngle(previous);

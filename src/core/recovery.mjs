@@ -16,7 +16,7 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   const source=snap.inventory[j.sourceSlot],bankBefore=j.bankTargetBefore;
   if(typeof source!=='string'||typeof bankBefore!=='string'||source!==j.slots?.[0]?.[1]||
      j.slots?.[0]?.[0]!==j.sourceSlot)return false;
-  const fp=fingerprint;
+  const fp=x=>x?fingerprint(x):null;
   const untouched=snap.inventory.every((v,i)=>i===j.sourceSlot||v===fp(items[i]));
   if(!untouched)return false;
   const nowSource=fp(items[j.sourceSlot]),nowBank=fp(pack[j.bankSlot]);

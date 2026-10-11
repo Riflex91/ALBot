@@ -40,15 +40,23 @@ export function createSkills(bot){
     const s=p.G.skills[id];if(!s)return false;const control=cfg.skills.find(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype));
     let extra,argsTarget=target;
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
-    const candidates=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
-    if(multi){if(!cfg.party.aoe||candidates.length<(control?.minTargets??2)||candidates.length>Math.min(maxTargets,cfg.party.aoeMaxTargets)||candidates.some(e=>!bot.allowed(e)||!e.target||!bot.teamNames.includes(e.target)))return false;argsTarget=['cleave','stomp'].includes(id)?null:candidates.slice(0,id==='3shot'?3:5);target=candidates[0];}
+    const aimed=['3shot','5shot'].includes(id);
+    const visible=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
+    // Aimed ranger shots explicitly select recipients. Nearby neutral or other-party
+    // monsters must not cancel a safe shot, and must never enter its target list.
+    // Untargeted area skills stay conservative: any bystander blocks the cast.
+    const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&bot.allowed(e));
+    const candidates=aimed?visible.filter(eligible):visible;
+    const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets);
+    const selected=multi?candidates.slice(0,limit):[];
+    if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??2)||(!aimed&&(visible.length>limit||visible.some(e=>!eligible(e)))))return false;argsTarget=['cleave','stomp'].includes(id)?null:selected;target=selected[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}
     let burstMana=0;if(id==='cburst'){const budget=Math.floor(Math.min(p.c.mp-p.c.max_mp*reserve-(s.mp??0),p.c.max_mp*(control?.manaBudget??1)));burstMana=Math.min(budget,Math.ceil((target?.hp??0)/Math.max(.001,s.ratio??.5)));if(!target||burstMana<=0)return false;argsTarget=[[target.id,burstMana]];}
     const consume=s.consume,prior=consume?bot.count(consume):0;
     if(s.hostile&&target&&target.type!=='monster')return false;
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
-    const guard=()=>ready(id,target,reserve)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||candidates.every(e=>bot.allowed(bot.entity(e.id))));
+    const guard=()=>ready(id,target,reserve)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||selected.every(e=>{const live=bot.entity(e.id);return !!(live&&eligible(live));}));
     if(!guard())return false;
     if(consume&&(bot.inventoryBlocked||bot.logistics.reserved))return false;
     const accepted=exec.run('skill:'+id,['mana',s.share==='attack'||id==='heal'?'attack':'skill',...(consume?['inventory']:[])],guard,()=>{
@@ -97,7 +105,14 @@ export function createSkills(bot){
     }
     if(!t)return;
     if(cfg.party.advancedSkills&&c.ctype==='mage'&&long){if(use('cburst',t,.4,700))return;const ratio=p.G.skills.burst?.ratio;if(Number.isFinite(ratio)&&t.hp>=Math.max(1200,c.attack*4)&&t.hp<=c.mp*ratio&&c.mp/c.max_mp>=.75&&!bot.allies().some(a=>a.name!==c.name&&a.mp/a.max_mp<.5)&&use('burst',t,0,6000))return;}
-    if(cfg.party.aoe)for(const id of ({ranger:['5shot','3shot'],warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]))if(use(id,t,.35,600))return;
+    if(cfg.party.aoe){
+      // Prefer the cheaper 3-shot for a small pack; reserve 5-shot for 4-5
+      // already-engaged safe recipients (when the skill and MP are available).
+      const shotRange=(p.G.skills['5shot']?.range??c.range)-5;
+      const safeCount=Math.min(cfg.party.aoeMaxTargets,bot.monsters().filter(m=>distance(c,m)<shotRange&&m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m)).length);
+      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
+      for(const id of ids)if(use(id,t,.35,600))return;
+    }
     const choices={
       warrior:[[long&&cfg.party.buffs,'warcry',null,5000],[t.target&&t.target!==c.name&&bot.teamNames.includes(t.target),'taunt',t,1500],[distance(c,t)>c.range*1.4,'charge',null,10000]],
       ranger:[[long,'huntersmark',t,5000],[long,'poisonarrow',t,1500],[(t.armor??p.G.monsters[t.mtype]?.armor??0)>200,'piercingshot',t,700],[t.hp>c.attack*1.5,'supershot',t,1500]],

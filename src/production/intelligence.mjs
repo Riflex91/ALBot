@@ -23,7 +23,18 @@ export function progressionChance(G,name,level,kind){
  return Number.isFinite(value)&&value>0&&value<=1?value:null;
 }
 export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluated=[],at=0,allocation=[],chances=new Map(),props=new Map(),propsVersion=p.G.version,profitAt=0,profits=[],stockEpoch=-1,stocks=null;
- function mutationChance(name,level,kind){const observed=chances.get(name+':'+level+':'+kind);return observed&&Date.now()-observed.at<3600000?observed.value:progressionChance(p.G,name,level,kind);}
+ function chanceEvidenceKey(name,level,kind,scroll,offering=''){
+  return JSON.stringify([p.G.version,p.G.items?.[name],kind,level,scroll,
+   p.G.items?.[scroll],offering,offering?p.G.items?.[offering]:null]);
+ }
+ function mutationChance(name,level,kind){
+  const grade=p.call('item_grade',{name,level});
+  const scroll=(kind==='compound'?'cscroll':'scroll')+grade;
+  const key=chanceEvidenceKey(name,level,kind,scroll,'');
+  const observed=chances.get(key);
+  return observed&&Date.now()-observed.at<3600000?observed.value:
+   progressionChance(p.G,name,level,kind);
+ }
  function properties(i){if(propsVersion!==p.G.version){propsVersion=p.G.version;props.clear();}const key=identity(i);if(props.has(key))return props.get(key);const value=p.call('item_properties',i);if(props.size>=512)props.clear();props.set(key,value);return value;}
  function stockItems(){if(stocks&&Number.isInteger(bot.decisionEpoch)&&stockEpoch===bot.decisionEpoch)return stocks;const result=p.c.items.filter(i=>i&&bot.economy.safe(i)).map(i=>({item:i,owner:me.name}));for(const row of bot.bank?.catalogStock?.()??(bot.bank?.packs?.()??[]).flatMap(([pack,items])=>
    items.filter(i=>i&&bot.economy.safe(i)).map(item=>({pack,item}))))
@@ -182,4 +193,11 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
    const travelBudget=external?Math.max(0,(cfg.production.goldPerHour??0)/120):0;
    if((choice.ev-bot.economy.value(i))*accessible<=travelBudget)continue;const goal={name:'Gewinnproduktion '+i.name+' +'+choice.level,enabled:true,item:i.name,level:choice.level,quantity:1,recipient:'',priority:-100,budget:Math.min(cfg.production.lossBudget,cfg.production.helperMaxPrice),variant:{stat_type:i.stat_type,p:i.p,title:i.title,data:i.data}};if(!result.some(g=>g.item===goal.item&&g.level===goal.level&&JSON.stringify(g.variant)===JSON.stringify(goal.variant)))result.push(goal);}profitAt=Date.now();profits=result.slice(0,16);return profits;}
  function rules(){const candidates=[...p.c.items.filter(Boolean)];if(me.role==='merchant')for(const [,h] of bot.transport.peers)if(h.running&&h.realm===p.realm())for(const row of h.items??[])if(row.to===me.name&&row.surplus>0)candidates.push(row.variant??{name:row.item,level:0});return [...new Map(candidates.filter(i=>!bot.economy.explicit(i)).map(i=>[identity(i),disposition(i)])).values()].filter(Boolean).slice(0,64);}
- return {targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value){if(Number.isFinite(value)&&value>0&&value<=1){if(chances.size>128)chances.clear();chances.set(name+':'+level+':'+kind,{value,at:Date.now()});at=0;}},status:()=>({targets:evaluated,allocations:allocation}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}
+ return {targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value,{scroll='',offering=''}={}){
+  if(Number.isFinite(value)&&value>0&&value<=1&&scroll&&p.G.items?.[scroll]){
+   if(chances.size>128)chances.clear();
+   const key=chanceEvidenceKey(name,level,kind,scroll,offering);
+   chances.set(key,{value,at:Date.now(),source:'server-preview',scroll,offering});
+   at=0;
+  }
+ },status:()=>({targets:evaluated,allocations:allocation}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}

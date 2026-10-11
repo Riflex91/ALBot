@@ -1182,3 +1182,25 @@ test('integration: real team transport delivers bounded large status and account
  sender.transport.close();receiver.transport.close();
  assert.equal(peerMessage,null,'Transport listeners are detached on cleanup');
 });
+
+test('integration: IPC and CM explicit transport refusals never count as successful delivery',async()=>{
+ const messages=[];
+ const cfg={characters:[{name:'A',group:'g',enabled:true},{name:'B',group:'g',enabled:true}],
+  general:{transport:'ipc',messageTtlMs:15000}};
+ const p={ipc:true,headless:true,parent:{caracAL:{siblings:['B']}},h:{
+  onMessage:()=>()=>{},send:()=>false
+ },hook:()=>()=>{},call:()=>false};
+ const bot={cfg,me:{name:'A',group:'g'},session:'a-session',p,report:()=>{}};
+ const t=createTransport(bot);
+ assert.equal(await t.send('B','goldOffer',{quantity:100},'gold1'),false,'Explicit IPC false must be propagated');
+ p.h.send=()=>({success:false});
+ assert.equal(await t.send('B','offer',{quantity:1},'item1'),false,'Explicit rejected IPC result must be propagated');
+ p.h.send=()=>({queued:['B']});
+ assert.equal(await t.send('B','status',{},'hb1'),true);
+ cfg.general.transport='cm';p.call=(name,to,message)=>{messages.push([name,to,message.type]);return false;};
+ assert.equal(await t.send('B','status',{},'hb2'),false,'Explicit CM false must be propagated');
+ p.call=()=>Promise.reject(new Error('CM offline'));
+ assert.equal(await t.send('B','status',{},'hb3'),false,'Rejected CM promise must be handled');
+ assert.deepEqual(messages,[['send_cm','B','status']]);
+ t.close();
+});

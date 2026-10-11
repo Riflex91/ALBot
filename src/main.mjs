@@ -65,7 +65,7 @@ export function canAcceptPartyInvite(bot,name){
 export function canAcceptPartyRequest(bot,name){
   const peer=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
   return !!(bot.running&&bot.cfg.party.enabled&&peer?.running&&peer.realm===bot.p.realm()&&
-    (bot.me.name===bot.leader&&!bot.p.c.party||bot.p.c.party===bot.me.name));
+    (bot.me.name===bot.leader&&!bot.p.c?.party||bot.p.c?.party===bot.me.name));
 }
 export function install(root){
   root.ALBot?.dispose?.();

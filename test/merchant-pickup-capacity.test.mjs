@@ -77,7 +77,7 @@ test('logistics starts pickup preparation despite full inventory, without depart
  const prepared=[];
  bot.session='M';bot.farmers=['F'];bot.p.c.map='main';bot.p.c.in='main';bot.p.c.x=0;bot.p.c.y=0;
  bot.p.realm=()=> 'USIV';bot.p.G.items.mat={type:'material'};
- bot.p.call=()=>null;bot.cfg.merchant.maxDelivery=3000;bot.cfg.merchant.supply=true;
+ bot.p.call=()=>null;bot.cfg.items=[];bot.economy.explicit=()=>null;bot.cfg.merchant.maxDelivery=3000;bot.cfg.merchant.supply=true;
  bot.cfg.general={messageTtlMs:10000};bot.cfg.farming={freeSlots:4,hpBelow:0.4,mpBelow:0.4};
  bot.transport={fresh:()=>({name:'F',running:true,rip:false,realm:'USIV',session:'F',map:'main',in:'main',x:1000,y:0,items:[offer()],hp:100,max_hp:100,mp:100,max_mp:100}),
   peers:new Map([['F',{}]])};

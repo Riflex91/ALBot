@@ -62,12 +62,14 @@ export function createBank(bot){
    if(bot.free()<=cfg.merchant.minFreeSlots)return false;const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
-  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>e.safe(i)&&identity(i)===identity(item)&&stackMax(item)>1&&(i.q??1)+(item.q??1)<=stackMax(item)))?.[0]||rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
+  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
   if(!ready(preferred))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
-   const compatible=items.findIndex(i=>e.safe(i)&&identity(i)===identity(item)&&stackMax(item)>1&&(i.q??1)+(item.q??1)<=stackMax(item));
-   const dest=compatible>=0?compatible:items.findIndex(i=>!i);if(dest<0)continue;
+   // Adventure Land bank_store to an occupied slot can SWAP the stacks, not
+   // combine them. Never dispatch against an occupied bank slot: the observed
+   // live failure returned the previous bank stack to the inventory source.
+   const dest=items.findIndex(i=>!i);if(dest<0)continue;
    const before=e.count(item),bankBefore=variantCount(items,item),q=item.q??1;
    const targetPrint=fingerprint(p.c.bank[pack][dest]);
    const targetBefore=p.c.bank[pack][dest];
@@ -76,7 +78,7 @@ export function createBank(bot){
    // the character-wide quantity while the bank request is in flight. Observe
    // the exact source slot and addressed bank stack instead of an aggregate
    // count that is unrelated to the bank transfer's success.
-   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&fingerprint(p.c.bank[pack][dest])===targetPrint&&e.spare(slot,r)>=q,
+   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&!p.c.bank[pack][dest]&&fingerprint(p.c.bank[pack][dest])===targetPrint&&e.spare(slot,r)>=q,
     call:()=>p.call('bank_store',slot,pack,dest),
     observe:()=>!p.c.items[slot]&&identity(p.c.bank?.[pack]?.[dest])===identity(item)&&(p.c.bank[pack][dest].q??1)===targetQuantity+q,
     details:{item:item.name,quantity:q,pack,before,sourceSlot:slot,bankSlot:dest,bankTargetBefore:targetPrint,bankTargetQuantity:targetQuantity}});

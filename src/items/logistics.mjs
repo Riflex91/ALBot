@@ -58,7 +58,16 @@ export function createLogistics(bot){
     bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
     return true;
   }
-  function capacity(i,verifiedGear=false,verifiedElixir=false){const rule=ruleFor(i),implicit=defaultPotionDemand(i,count(i));if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit)||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):implicit,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
+  function capacity(i,verifiedGear=false,verifiedElixir=false){
+    const rule=ruleFor(i),implicit=defaultPotionDemand(i,count(i));
+    // minFreeSlots is a cleanup target, not a pickup embargo. At the live
+    // Merchant reserve (4 slots in USIV) legitimate incoming loot must still
+    // be accepted if at least one physical slot is actually available.
+    const known=!!p.G?.items?.[i?.name]&&bot.economy?.safe?.(i)!==false;
+    const pickup=me.role==='merchant'&&cfg.merchant.enabled&&cfg.merchant.pickup&&known?cfg.merchant.maxDelivery:0;
+    if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit&&!pickup)||protectedItem(i))return 0;
+    const min=me.role==='merchant'?0:cfg.farming.freeSlots;
+    if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):implicit,pickup,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
@@ -157,6 +166,9 @@ export function createLogistics(bot){
   function travel(){
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;
+    // Delivery must not cancel an in-progress gold pickup or economy order.
+    // The current owner releases the route after arrival/settlement.
+    if(route&&['gold','economy'].includes(route.owner))return;
     if(route?.owner==='logistics'){
       const h=transport.fresh(route.dest.name);
       const decision=deliveryRouteDecision(route,h,p.c,{error:cfg.merchant.servicePositionError??70});
@@ -195,7 +207,14 @@ export function createLogistics(bot){
       }
     }
   }
-  return {receive,poll,travel,get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
+  function yieldUnsent(reason='Anderer Werttransfer hat Vorrang'){
+    if(!job||!['offered','accepted'].includes(job.state))return false;
+    const old=job;job=null;
+    nextOffer.set(old.offerKey??offerKey(old.to,old.item.name),clock()+10000);
+    cancelUnsent(old,reason);
+    return true;
+  }
+  return {receive,poll,travel,yieldUnsent,get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
     summary(){
       const rules=allRules().filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}

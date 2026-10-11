@@ -33,13 +33,21 @@ export function createMerchant(bot){
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;if(me.role==='merchant')bot.production.planGoals();buff();
-  const route=bot.movement.order;if(['logistics','gold'].includes(route?.owner)){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&!peer?.running||bot.strategy?.canVisit?.(peer??route.dest)===false)bot.movement.stop();}
+  // Delivery routes are owned by logistics.travel(): that controller owns
+  // fresh-heartbeat retargeting. Do not cancel a valid route using its old
+  // coordinates here, before logistics can replan it.
+  const route=bot.movement.order;if(route?.owner==='gold'){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&(!peer?.running||bot.strategy?.canVisit?.(peer)===false))bot.movement.stop();}
   bot.logistics.travel();if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
   if(bot.services?.approaching){const continued=bot.services.tick();if(continued||bot.services.approaching)return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
-  if(me.role==='merchant'&&!bot.movement.order)bot.reason=bot.production.status().blocked??'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
+  if(me.role==='merchant'&&!bot.movement.order){
+    const progress=bot.production.status(),intent=progress.intent;
+    bot.reason=progress.blocked??(intent?.phase==='delivery'
+      ?'Lieferauftrag offen: '+(intent.recipient??'Team')+' – Warte auf freigegebene Items/aktuelle Empfangsposition'
+      :'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf');
+  }
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');

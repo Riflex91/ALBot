@@ -49,9 +49,23 @@ export function selectedPartyMember(bot,name){
   return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
     (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
 }
+// The combat leader need not own the current in-game party.
+// Only a live selected peer advertising itself as the actual party owner
+// may receive a recovery request from an unpartied teammate.
+export function currentPartyOwner(bot){
+ if(bot.p.c.party)return null;
+ const candidates=[bot.cfg.party.merchant,...bot.farmers].filter((n,i,a)=>n!==bot.me.name&&a.indexOf(n)===i&&selectedPartyMember(bot,n));
+ return candidates.find(name=>{const h=bot.transport.fresh(name);return h?.running&&!h.rip&&h.realm===bot.p.realm()&&h.party===name;})??null;
+}
+export function canAcceptPartyInvite(bot,name){
+ const h=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
+ return !!(bot.running&&bot.cfg.party.enabled&&!bot.p.c.party&&h?.running&&h.realm===bot.p.realm()&&
+   (name===bot.leader||h.party===name));
+}
 export function canAcceptPartyRequest(bot,name){
   const peer=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
-  return !!(bot.running&&bot.cfg.party.enabled&&bot.me.name===bot.leader&&peer?.running&&peer.realm===bot.p.realm());
+  return !!(bot.running&&bot.cfg.party.enabled&&peer?.running&&peer.realm===bot.p.realm()&&
+    (bot.me.name===bot.leader&&!bot.p.c?.party||bot.p.c?.party===bot.me.name));
 }
 export function install(root){
   root.ALBot?.dispose?.();
@@ -129,7 +143,7 @@ export function install(root){
   const game=root.game??p.parent.game;if(bot.observations&&typeof game?.on==='function'&&typeof game?.remove==='function')for(const [event,handler] of [['hit',d=>{bot.observations.hit(d);bot.threats?.hit(d);}],['death',d=>{bot.observations.death(d);bot.threats?.death(d);}]]){const id=game.on(event,handler);cleanup.push(()=>game.remove(id));}
   if(bot.services&&typeof p.c.on==='function'&&(typeof p.c.remove==='function'||typeof p.c.off==='function')){const events=p.c,handler=data=>bot.services.observeMerrit(data),id=events.on('merrit',handler);cleanup.push(()=>typeof events.remove==='function'?events.remove(id):events.off('merrit',handler));}
   if(typeof root.addEventListener==='function')for(const type of ['error','unhandledrejection']){const handler=e=>{report.error(type,e.error??e.reason??e.message);report.flush(true);};root.addEventListener(type,handler);cleanup.push(()=>root.removeEventListener(type,handler));}
-  const inviteAllowed=name=>bot.running&&cfg.party.enabled&&name===bot.leader&&bot.teamNames.includes(name)&&!p.c.party;
+  const inviteAllowed=name=>canAcceptPartyInvite(bot,name);
   cleanup.push(p.hook('on_party_invite',name=>{if(inviteAllowed(name))exec.run('party',['party'],()=>inviteAllowed(name),()=>p.call('accept_party_invite',name),{delay:3000});}));
   cleanup.push(p.hook('on_party_request',name=>{
     // The configured merchant is a team member, but not a farmer. Accept its
@@ -142,11 +156,13 @@ export function install(root){
   // Both directions only address live, selected members and are rate limited.
   let lastPartyRequest=0;
   function requestSelectedLeader(){
-    if(!bot.running||!cfg.party.enabled||bot.account?.active()===false||me.name===bot.leader||p.c.party||!p.has('send_party_request'))return;
-    const h=bot.transport.fresh(bot.leader),at=now();
+    if(!bot.running||!cfg.party.enabled||bot.account?.active()===false||p.c.party||!p.has('send_party_request'))return;
+    const owner=currentPartyOwner(bot),target=owner??(me.name===bot.leader?null:bot.leader);
+    if(!target)return;
+    const h=bot.transport.fresh(target),at=now();
     if(!h?.running||h.rip||h.realm!==p.realm()||at-lastPartyRequest<30000)return;
     lastPartyRequest=at;
-    exec.run('party.request',['party'],()=>bot.running&&!p.c.party&&bot.account?.active()!==false&&!!bot.transport.fresh(bot.leader)?.running,()=>p.call('send_party_request',bot.leader),{delay:30000});
+    exec.run('party.request',['party'],()=>bot.running&&!p.c.party&&bot.account?.active()!==false&&!!bot.transport.fresh(target)?.running,()=>p.call('send_party_request',target),{delay:30000});
   }
   function publish(){try{const text=(bot.running?'ALBot ':'PAUSE ')+bot.reason.slice(0,50);if(text!==lastPublished){lastPublished=text;p.call('set_message',text);}}catch{}panel?.render();}
   function halt(reason){bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason}); /* Export only on explicit user command. */}
@@ -178,15 +194,19 @@ export function install(root){
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
     if(!worldAction)bot.farmer.tick();if(economyDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy)bot.merchant?.tick();bot.aura?.tick();
     }
-    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&me.name===bot.leader){
+    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&(p.c.party===me.name||me.name===bot.leader&&!p.c.party&&!currentPartyOwner(bot))){
       const memberNames=[...new Set([...bot.farmers,...(bot.teamNames.includes(cfg.party.merchant)?[cfg.party.merchant]:[])])];
       const roster=p.parent.party;const joined=name=>Array.isArray(roster)?roster.some(x=>(typeof x==='string'?x:x?.name)===name):!!(roster&&typeof roster==='object'&&Object.hasOwn(roster,name));
       for(const name of memberNames){if(name===me.name||joined(name))continue;
         const h=bot.transport.fresh(name),e=bot.entity(name);
         if(!h?.running||h.rip||h.realm!==p.realm()||name!==cfg.party.merchant&&h.inventoryBlocked)continue;
+        // A fresh owner heartbeat is stronger than a stale local roster view.
+        // Never re-invite an already joined member just because it is offscreen.
+        if(p.c.party&&(h.party===p.c.party||e?.party===p.c.party))continue;
         if(!p.c.party||!e||e.party!==p.c.party){
           const eligible=()=>bot.running&&selectedPartyMember(bot,name)&&
-            !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm()&&!joined(name);
+            !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm()&&!joined(name)&&
+            (!p.c.party||bot.transport.fresh(name)?.party!==p.c.party);
           exec.run('invite:'+name,['party'],eligible,()=>p.call('send_party_invite',name),{delay:10000});
         }
       }
@@ -208,7 +228,7 @@ export function install(root){
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

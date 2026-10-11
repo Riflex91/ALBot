@@ -29,7 +29,7 @@ export function createServices(bot){
   for(const target of ['mainhand','offhand']){
    const wanted=record[target],current=p.c.slots?.[target];if(identity(current)===wanted)continue;
    if(current&&protectedItem(current)){e.note('Werkzeug-Rückwechsel durch geschützte Ausrüstung blockiert');return true;}
-   if(!wanted){if(bot.free()<=cfg.merchant.minFreeSlots)return true;return e.perform('gather.restore',{guard:()=>!!p.c.slots[target]&&!protectedItem(p.c.slots[target]),call:()=>p.call('unequip',target),observe:()=>!p.c.slots[target],details:{slot:target}});}
+   if(!wanted){if(bot.free()<1)return true;return e.perform('gather.restore',{guard:()=>!!p.c.slots[target]&&!protectedItem(p.c.slots[target]),call:()=>p.call('unequip',target),observe:()=>!p.c.slots[target],details:{slot:target}});}
    const slot=p.c.items.findIndex(i=>identity(i)===wanted);if(slot<0||!e.safe(p.c.items[slot])){e.note('Vorherige Ausrüstung für Werkzeugwechsel fehlt');return true;}
    return e.perform('gather.restore',{slots:[slot],guard:()=>!p.c.slots[target]||!protectedItem(p.c.slots[target]),call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===wanted,details:{item:p.c.items[slot].name,slot:target}});
   }if(save(null))kind=null;return !!record;
@@ -61,13 +61,13 @@ export function createServices(bot){
    if(p.c.stand){exec.run?.('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return true;}
   if(!record&&(p.c.slots?.mainhand&&protectedItem(p.c.slots.mainhand)&&p.c.slots.mainhand.name!==tool||p.c.slots?.offhand&&protectedItem(p.c.slots.offhand))){e.note('Geschützte Ausrüstung verhindert Werkzeugwechsel');return false;}
   if(!record){if(!save({mainhand:identity(p.c.slots?.mainhand),offhand:identity(p.c.slots?.offhand)}))return false;sliceStarted=Date.now();}kind=activity;
-  if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=cfg.merchant.minFreeSlots){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
+  if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=1){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
    const before=identity(p.c.slots.offhand);return e.perform('gather.offhand',{guard:()=>identity(p.c.slots.offhand)===before,call:()=>p.call('unequip','offhand'),observe:()=>!p.c.slots.offhand,details:{slot:'offhand'}});
   }
   if(p.c.slots.mainhand?.name!==tool){const slot=p.c.items.findIndex(i=>i?.name===tool&&e.safe(i));
    if(slot<0){const r=e.rules({name:tool,level:0},'acquisition');if(r?.action==='buy')return e.npcBuy({name:tool,level:0},{...r,goldBudget:Math.min(r.goldBudget,cfg.merchant.toolBudget)},1);e.note('Werkzeug fehlt: '+tool);return restore();}
    if(p.c.slots.mainhand&&protectedItem(p.c.slots.mainhand))return restore();
-   return e.perform('gather.equip',{slots:[slot],guard:()=>!p.c.slots.offhand&&bot.free()>cfg.merchant.minFreeSlots,call:()=>p.call('equip',slot,'mainhand'),observe:()=>p.c.slots.mainhand?.name===tool,details:{item:tool}});
+   return e.perform('gather.equip',{slots:[slot],guard:()=>!p.c.slots.offhand&&bot.free()>=1&&p.c.items[slot]?.name===tool&&!protectedItem(p.c.slots.mainhand),call:()=>p.call('equip',slot,'mainhand'),observe:()=>p.c.slots.mainhand?.name===tool,details:{item:tool}});
   }
   const ready=()=>{const main=p.c.slots?.mainhand,definition=main&&p.G.items?.[main.name];return main?.name===tool&&(definition?.wtype??main.name)===tool&&!p.c.slots.offhand&&!p.c.stand&&!p.c.moving&&(bot.free?.()??p.c.items?.filter(i=>!i).length??0)>0&&p.c.level>=(skill.level??16)&&p.c.mp>=(skill.mp??120)&&!p.c.q?.[activity]&&!p.call('is_on_cooldown',activity)&&nearGatherZone(xy(p.c),zone.polygon);};
    const accepted=e.perform('gather.'+activity,{guard:ready,call:()=>p.call('use_skill',activity),observe:()=>!!p.c.q?.[activity]||p.call('is_on_cooldown',activity),details:{item:tool},timeout:60000});

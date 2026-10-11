@@ -50,7 +50,7 @@ export function createServices(bot){
    if(p.c.slots.mainhand&&protectedItem(p.c.slots.mainhand))return restore();
    return e.perform('gather.equip',{slots:[slot],guard:()=>!p.c.slots.offhand&&bot.free()>cfg.merchant.minFreeSlots,call:()=>p.call('equip',slot,'mainhand'),observe:()=>p.c.slots.mainhand?.name===tool,details:{item:tool}});
   }
-  const accepted=e.perform('gather.'+activity,{guard:()=>p.c.slots.mainhand?.name===tool&&!p.c.slots.offhand&&!p.c.moving&&!p.call('is_on_cooldown',activity)&&nearGatherZone(xy(p.c),zone.polygon),call:()=>p.call('use_skill',activity),observe:()=>!!p.c.q?.[activity]||p.call('is_on_cooldown',activity),details:{item:tool},timeout:20000});
+  const accepted=e.perform('gather.'+activity,{guard:()=>p.c.slots.mainhand?.name===tool&&!p.c.slots.offhand&&!p.c.moving&&!p.call('is_on_cooldown',activity)&&nearGatherZone(xy(p.c),zone.polygon),call:()=>p.call('use_skill',activity),observe:()=>!!p.c.q?.[activity]||p.call('is_on_cooldown',activity),details:{item:tool},timeout:60000});
   if(accepted){lastKind=activity;nextGather=Date.now()+20000;}return accepted;
  }
  function merrit(){

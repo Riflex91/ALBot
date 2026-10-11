@@ -37,6 +37,13 @@ export function createFarmer(bot){
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
     const threat=bot.monsters().filter(m=>m.target===c.name).sort((a,b)=>distance(c,a)-distance(c,b))[0];
+    // Retreat before an overpowered nearby roaming enemy locks onto us.
+    const danger=me.role==='farmer'?bot.monsters().filter(m=>m.hp>0&&!m.dead&&
+      (m.aggro||p.G.monsters?.[m.mtype]?.aggro||p.G.monsters?.[m.mtype]?.boss)&&
+      distance(c,m)<Math.max(170,(m.range??p.G.monsters?.[m.mtype]?.range??30)+110)&&
+      bot.strategy?.safeTarget?.(m.mtype,m,true)===false
+    ).sort((a,b)=>distance(c,a)-distance(c,b))[0]:null;
+    if(danger){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährlicher Monsterkontakt im Farmgebiet',danger.mtype);bot.target=null;bot.reason='Gefahrenrückzug: '+danger.mtype;retreat(danger);bot.skills.rotation(null);return;}
     if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährlicher Gegner greift an',threat.mtype);bot.target=null;bot.reason='Rückzug: '+threat.mtype;retreat(threat);bot.skills.rotation(null);return;}
     if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}

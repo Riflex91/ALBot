@@ -104,4 +104,21 @@ test('item handoff refuses dispatch after accepted receiver session is replaced'
  assert.equal(bots.A.journal,null,'Unsent transfer must not create a value journal');
  assert.equal(bots.A.exec.pending.size,0,'Old session must not retain an executor action');
  bots.A.logistics.close();bots.B.logistics.close();
+
+ // The session can also change after an action enters the priority frame,
+ // but before Executor.flush() invokes send_item. Dispatch must recheck it.
+ queue.length=0;
+ bots.A=makeBot('A','A-2');bots.B=makeBot('B','B-3');
+ bots.A.logistics.poll(true);deliver();
+ bots.A.exec.beginFrame();bots.A.logistics.poll(false);
+ assert.equal(bots.A.exec.frame.length,1,'Expected a scheduled but not dispatched item action');
+ const secondJournal=bots.B.journal;
+ bots.B.logistics.close();
+ bots.B=makeBot('B','B-4');
+ bots.B.journal=secondJournal;bots.B.inventoryBlocked=true;
+ bots.A.exec.flush();
+ assert.equal(sent.length,0,'Executor must drop the queued action for an old recipient session');
+ assert.equal(bots.A.journal,null,'Rejected queued action must not create a checkpoint');
+ assert.equal(bots.A.exec.pending.size,0);
+ bots.A.logistics.close();bots.B.logistics.close();
 });

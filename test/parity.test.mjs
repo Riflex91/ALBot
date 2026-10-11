@@ -14,6 +14,7 @@ import {createProgression,supportedProgressionRows} from '../src/world/progressi
 import {createPorts} from '../src/runtime/ports.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
 import {createGoldLogistics} from '../src/items/gold.mjs';
+import {createTransport,fitHeartbeat} from '../src/party/transport.mjs';
 import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
@@ -1114,4 +1115,70 @@ test('U05 queued craft merge stops when the output cap is already reached or red
  rule.maxCount=1;
  assert.equal(pending.guard(),false,'Lowered output cap invalidates pending merge');
  rule.maxCount=2;assert.equal(pending.guard(),true);
+});
+
+test('integration: oversized team status sheds optional fields, not money or delivery safety state',()=>{
+ const data={name:'A',map:'main',in:'main',realm:'EUII',x:0,y:0,running:true,items:[{item:'hpot0',need:10}],
+  goldBalance:12345,bankGoldBalance:54321,goldTransferPending:true,goldTransferAt:Date.now(),
+  journal:true,inventoryBlocked:true,reserved:true,
+  gear:{slots:'x'.repeat(7500)},performance:{history:'y'.repeat(6500)},
+  farmPlan:{rows:'z'.repeat(4000)},materials:[{item:'silk',monster:'spider',quantity:1}]};
+ const original=JSON.stringify(data);
+ const shaped=fitHeartbeat(data);
+ assert.ok(shaped);
+ assert.ok(JSON.stringify(shaped).length<=4200);
+ assert.deepEqual(shaped.items,data.items);
+ assert.deepEqual(shaped.materials,data.materials);
+ for(const key of ['goldBalance','bankGoldBalance','goldTransferPending','goldTransferAt','journal','inventoryBlocked','reserved','running','realm','map','x','y'])assert.equal(shaped[key],data[key],key);
+ assert.equal(shaped.gear,undefined);
+ assert.equal(JSON.stringify(data),original,'Status fitting must not mutate other module snapshots');
+});
+test('integration: real team transport delivers bounded large status and account risk honors transfer hold',()=>{
+ let peerMessage=null;
+ const cfg={characters:[{name:'A',enabled:true,group:'g',role:'merchant'},{name:'B',enabled:true,group:'g',role:'farmer'}],
+  party:{merchant:'A',leader:'B',selection:'fixed',maxFarmers:1},general:{transport:'ipc',messageTtlMs:15000},
+  production:{lossBudget:1000}};
+ const bc={name:'B',map:'main',in:'main',gold:8000,items:Array(42).fill(null)};
+ const receiver={cfg,me:{name:'B',role:'farmer',group:'g'},running:true,leader:'B',farmers:['B'],teamNames:['A','B'],
+  p:{c:bc,realm:()=> 'EUII',ipc:true,read:()=>null,write:()=>true,
+   h:{onMessage:fn=>{peerMessage=fn;return ()=>{peerMessage=null;}},send:()=>true},hook:()=>()=>{}},
+  report:m=>assert.fail('Unexpected incoming status error: '+m),gold:{transferAt:0,reserved:false},logistics:{reserved:false},
+  exec:{pending:new Map()},monsters:()=>[]};
+ receiver.transport=createTransport(receiver);
+ const ac={name:'A',map:'main',in:'main',x:10,y:20,ctype:'merchant',level:80,rip:false,hp:100,max_hp:100,mp:80,max_mp:100,
+  gold:12000,bank:{gold:2500},items:Array(42).fill(null),s:{},slots:{}};
+ const messages=[];
+ const sender={cfg,me:{name:'A',group:'g',role:'merchant'},session:'sender-session',running:true,
+  p:{c:ac,G:{items:{},skills:{}},ipc:true,headless:true,realm:()=> 'EUII',parent:{caracAL:{siblings:['B']}},
+   h:{onMessage:()=>()=>{},send:(to,topic,data)=>{messages.push(data);assert.equal(to,'B');peerMessage?.({topic,from:'A',data});return true;}},hook:()=>()=>{}},
+  target:null,free:()=>42,monsters:()=>[],farmers:['B'],leader:'B',
+  gold:{surplus:()=>0,reserved:false,transferAt:Date.now()},
+  logistics:{summary:()=>[{item:'hpot0',need:10,to:'A'}],reserved:false},
+  gear:{snapshot:()=>({stats:'s'.repeat(8000)}),goals:()=>[]},
+  production:{materials:()=>[{item:'silk',monster:'spider',quantity:2}],progress:()=>[{reason:'x'.repeat(4000)}]},
+  teamPlan:{heartbeat:()=>({proof:'t'.repeat(6000)}),roles:()=>[]},
+  capabilities:{snapshot:()=>({present:'c'.repeat(5000)})},
+  observations:{heartbeat:()=>({rows:'o'.repeat(5000)})},
+  account:{heartbeat:()=>({names:['B'],leader:'B',seq:1})},
+  exec:{pending:new Map()}};
+ sender.transport=createTransport(sender);
+ sender.transport.heartbeat();
+ assert.equal(messages.length,1);
+ assert.ok(JSON.stringify(messages[0]).length<5000,'Must fit the IPC/CM envelope');
+ const peer=receiver.transport.fresh('A');
+ assert.ok(peer,'The receiver must receive a fresh heartbeat despite oversized telemetry');
+ assert.equal(peer.goldBalance,12000);
+ assert.equal(peer.bankGoldBalance,2500);
+ assert.deepEqual(peer.items,[{item:'hpot0',need:10,to:'A'}]);
+ const account=createAccount(receiver);
+ let risk=account.risk();
+ assert.equal(risk.complete,false);
+ assert.equal(risk.liquidFloor,8000,'Recent transfer hold prevents stale sender from inflating risk budget');
+ sender.gold.transferAt=0;
+ sender.transport.heartbeat();
+ risk=account.risk();
+ assert.equal(risk.complete,true);
+ assert.equal(risk.liquidFloor,22500,'Fresh unencumbered merchant gold and bank balance are included once');
+ sender.transport.close();receiver.transport.close();
+ assert.equal(peerMessage,null,'Transport listeners are detached on cleanup');
 });

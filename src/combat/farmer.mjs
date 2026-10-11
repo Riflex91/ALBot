@@ -3,7 +3,7 @@ export function combatApproach(character,target,range,canMove){const a=xy(charac
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
 export function createFarmer(bot){
-  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0;
+  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   function recover(){
@@ -54,6 +54,30 @@ export function createFarmer(bot){
   },()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(enemy.id)),()=>{bot.target=null;}),{delay:100});
   return true;
 }
+function recoverCohesion(now){
+  if(me.name!==bot.leader)return false;
+  const away=(bot.farmers??[]).filter(n=>n!==me.name).map(n=>{
+    const h=bot.transport.fresh(n);
+    return h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,h)?
+      {name:n,h,distance:distance(p.c,h)}:null;
+  }).filter(r=>r&&r.distance>cfg.party.followDistance*2)
+    .sort((a,b)=>b.distance-a.distance||a.name.localeCompare(b.name));
+  if(!away.length){cohesion.key='';return false;}
+  const target=away[0],key=target.name+':'+target.h.map+':'+(target.h.in??target.h.map);
+  if(cohesion.key!==key){cohesion={key,progress:now,gap:target.distance,attempt:cohesion.attempt};return false;}
+  if(target.distance<cohesion.gap-20){cohesion.progress=now;cohesion.gap=target.distance;}
+  if(bot.movement.order?.owner==='cohesion'){bot.reason='Gruppe sammeln: '+target.name;return true;}
+  if(now-cohesion.progress<45000||now-cohesion.attempt<120000)return false;
+  if(bot.monsters().some(m=>m.target&&bot.teamNames.includes(m.target))||
+     bot.strategy?.canVisit?.(target.h)===false)return false;
+  const from=xy(p.c),to=xy(target.h),mid={x:(from.x+to.x)/2,y:(from.y+to.y)/2};
+  if(!Number.isFinite(mid.x)||!Number.isFinite(mid.y)||
+     !p.call('can_move_to',mid.x,mid.y))return false;
+  cohesion.attempt=now;bot.target=null;bot.reason='Gruppenblockade lösen: '+target.name;
+  bot.movement.go({map:p.c.map,in:p.c.in??p.c.map,...mid,radius:Math.max(30,cfg.party.followDistance/2)},'cohesion');
+  bot.event?.('party.cohesion-recovery',{peer:target.name,gap:Math.round(target.distance),reason:'45 Sekunden ohne Annäherung'});
+  return true;
+}
 function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
   function tick(){
     bot.recovering=false;
@@ -85,7 +109,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){if(helpEngagedTeamFight(leader))return;bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
-    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){waitSafely('Warte auf Gruppe');return;}
+    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
     const planned=bot.teamPlan?.target(),visible=planned?bot.monsters().filter(m=>m.mtype===planned):[];if(me.name===bot.leader&&visible.length&&visible.every(m=>bot.strategy?.safeTarget(planned,m,true)===false)){bot.strategy.failActivity('Sichtbare Gegner stärker als Farmplan; neues sicheres Ziel wählen',planned);bot.reason='Farmziel neu bewerten: sichtbare Gegner zu stark';return;}bot.encounter?.pull();const mobs=bot.monsters().filter(bot.allowed);
     const focus=cfg.party.enabled&&cfg.party.focusFire&&leader?.target&&(!bot.teamPlan||leader.farmPlan?.id===bot.teamPlan.heartbeat()?.id||leader.activity)?mobs.find(e=>e.id===leader.target):null;
     const previous=bot.target&&mobs.find(e=>e.id===bot.target.id);

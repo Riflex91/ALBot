@@ -5,7 +5,7 @@ export function planSlotFiles(config,mappingText){
  if(!names.length)throw Error('Keine aktiven Charaktere konfiguriert.');
  if(new Set(names).size!==names.length)throw Error('Charakternamen müssen eindeutig sein.');
  const seen=new Set(),files=new Map(),rows=[];
- for(const raw of String(mappingText??'').split(/\r?\n/)){
+ for(const raw of String(mappingText??'').split(/[;\r\n]+/)){
   const line=raw.trim();if(!line)continue;
   const match=/^([^=]+)=([A-Za-z0-9_-]{1,64})\.([A-Za-z0-9_]{1,32})$/.exec(line);
   if(!match)throw Error('CODE-Zuordnung ungültig: '+line);

@@ -151,7 +151,7 @@ export function createSkills(bot){
       ranger:[[long,'huntersmark',t,5000],[long,'poisonarrow',t,1500],[(t.armor??p.G.monsters[t.mtype]?.armor??0)>200,'piercingshot',t,700],[t.hp>c.attack*1.5,'supershot',t,1500]],
       mage:[[long&&t.attack>c.max_hp*.04,'entangle',t,5000],[long,'arcane_needle',t,700]],
       priest:[[long&&cfg.party.buffs,'darkblessing',null,5000],[long,'curse',t,3000],[hp<.3,'phaseout',null,5000]],
-      rogue:[[long,'pcoat',null,5000],[long,'mentalburst',t,1500],[true,'quickstab',t,500],[true,'quickpunch',t,500]],
+      rogue:[[t.hp>c.attack*1.5,'pcoat',null,5000],[t.hp>c.attack*1.5,'mentalburst',t,1500],[true,'quickstab',t,500],[true,'quickpunch',t,500]],
       paladin:[[long,'shield_slam',t,1000],[long,'purify',t,1200],[true,'smash',t,1000]]
     };
     for(const [ok,id,target,delay] of choices[c.ctype]??[])if(ok&&use(id,target,.3,delay))return;

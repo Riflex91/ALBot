@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planProduction} from '../src/production/planner.mjs';
-import {recipeGridIngredients,recipeIngredients,matchRecipeSlots} from '../src/production/recipes.mjs';
+import {recipeGridIngredients,recipeIngredients,matchRecipeSlots,planCraftStackMerge} from '../src/production/recipes.mjs';
 import {materialSources,exchangeSource} from '../src/production/materials.mjs';
 import {estimateRoutes} from '../src/production/costs.mjs';
 import {createProduction} from '../src/production/production.mjs';
@@ -1017,4 +1017,53 @@ test('U05 crafting merge selects only safe integer stacks within live stack capa
  G.items.herb.s=5;
  assert.equal(production.craft('result',rule),true);
  assert.equal(queued,1);
+});
+
+test('U05 merge planner chooses a complete group rather than a dead-end largest pair',()=>{
+ const stacks=[4,3,2,2].map((quantity,slot)=>({quantity,slot}));
+ assert.deepEqual(planCraftStackMerge(stacks,8,8),{slots:[0,2,3],sum:8});
+ assert.equal(planCraftStackMerge([{slot:0,quantity:4},{slot:1,quantity:3},{slot:2,quantity:3}],8,8),null);
+ assert.deepEqual(planCraftStackMerge([{slot:2,quantity:2},{slot:4,quantity:3}],5,5),{slots:[2,4],sum:5});
+ assert.equal(planCraftStackMerge([{slot:0,quantity:1},{slot:0,quantity:2}],3,3),null,'Reusing one inventory slot must fail closed');
+ assert.equal(planCraftStackMerge([{slot:0,quantity:Number.MAX_SAFE_INTEGER},{slot:1,quantity:1}],2,Number.MAX_SAFE_INTEGER),null,'Unsafe summed quantity must fail closed');
+});
+test('U05 craft merge builds a feasible three-stack ingredient through two safe swaps',()=>{
+ const items=[{name:'herb',q:4},{name:'herb',q:3},{name:'herb',q:2},{name:'herb',q:2},...Array(38).fill(null)];
+ const c={name:'M',items};
+ const p={c,G:{items:{herb:{s:8},result:{}},craft:{result:{items:[[8,'herb']],cost:1}}},read:()=>null};
+ const cfg={production:{enabled:true,craft:true,goals:[],autonomy:false},merchant:{minFreeSlots:0},general:{}};
+ let pending=null,kind=null;
+ const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0);
+ const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i&&!i.l,count,
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  perform:(k,opts)=>{kind=k;pending=opts;return true;}};
+ const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>c.items.filter(i=>!i).length};
+ const production=createProduction(bot),rule={action:'craft',item:'result',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(kind,'inventory.merge');
+ assert.deepEqual(pending.slots,[0,2], 'Do not merge the large 4+3 pair that would strand the final 2');
+ assert.equal(pending.guard(),true);
+ c.items[0].q=6;c.items[2]=null;
+ assert.equal(pending.observe(),true);
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(kind,'inventory.merge');
+ assert.deepEqual(pending.slots,[0,3]);
+ assert.equal(pending.guard(),true);
+ c.items[0].q=8;c.items[3]=null;
+ assert.equal(pending.observe(),true);
+ assert.equal(production.craft('result',rule),true);
+ assert.equal(kind,'craft');
+ assert.deepEqual(pending.slots,[0]);
+ assert.equal(pending.guard(),true);
+});
+test('U05 impossible stack assembly never schedules an unproductive craft merge',()=>{
+ const c={name:'M',items:[{name:'herb',q:4},{name:'herb',q:3},{name:'herb',q:3},...Array(39).fill(null)]};
+ const p={c,G:{items:{herb:{s:8},result:{}},craft:{result:{items:[[8,'herb']],cost:1}}},read:()=>null};
+ let scheduled=0;
+ const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i,
+  count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),perform:()=>{scheduled++;return true;}};
+ const bot={p,cfg:{production:{enabled:true,craft:true,goals:[],autonomy:false},general:{}},me:{name:'M',role:'merchant'},economy:e,free:()=>39};
+ const production=createProduction(bot),rule={action:'craft',item:'result',recipe:'result',targetCount:1,maxCount:1};
+ assert.equal(production.craft('result',rule),false);
+ assert.equal(scheduled,0);
 });

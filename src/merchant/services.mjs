@@ -34,7 +34,11 @@ export function createServices(bot){
   const tool=activity==='fishing'?'rod':'pickaxe',allRegions=zones().filter(z=>z.kind===activity),
    regions=allRegions.filter(z=>!bot.movement?.failedRecently?.(z,'economy')),
    here=regions.find(z=>z.map===p.c.map&&nearGatherZone(xy(p.c),z.polygon));let zone=here?{...here,...xy(p.c)}:regions.find(z=>z.map===p.c.map)??regions[0];
-  if(zone&&!here&&zone.map===p.c.map&&p.has?.('can_move_to')){const point=zone.points.slice().sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(point=>p.call('can_move_to',point.x,point.y));if(!point){e.note('Kein erreichbarer '+activity+'-Arbeitsplatz');return false;}zone={...zone,...point};}
+  // can_move_to tests direct movement, not smart_move pathfinding. A distant
+   // fishing shore may have no direct line while remaining routeable by smart_move.
+   if(zone&&!here&&zone.map===p.c.map){const candidates=zone.points.slice().sort((a,b)=>distance(p.c,a)-distance(p.c,b));
+    const direct=p.has?.('can_move_to')?candidates.find(point=>p.call('can_move_to',point.x,point.y)):null;
+    zone={...zone,...(direct??candidates[0])};}
   if(!zone){approaching=null;e.note(allRegions.length?'Gathering-Zone nach fehlgeschlagenem smart_move vorübergehend ausgesetzt: '+activity:'Keine öffentliche '+activity+'-Zone bekannt');return false;}
   if(bot.monsters().some(m=>m.target===p.c.name)){approaching=null;return restore();}
    if(p.c.slots?.mainhand?.name!==tool&&!p.c.items.some(i=>i?.name===tool&&e.safe(i))){approaching=null;e.note('Werkzeug fehlt: '+tool);return false;}

@@ -52,7 +52,14 @@ test('non-dispatched value intent cannot settle or block another action journal'
 test('channel travel holds movement until observed arrival rather than immediate API return',async()=>{let arrived=false,clock=0;const calls=[],exec=new Executor({now:()=>clock,active:()=>true,limit:10,onError(){}});exec.run('travel.town',['movement'],()=>true,()=>undefined,{waitForObservation:true,observe:()=>arrived,onSettle:r=>calls.push(r)});await Promise.resolve();exec.poll();assert.equal(exec.busy('movement'),true);assert.equal(exec.run('move',['movement'],()=>true,()=>assert.fail('Town channel interrupted')),false);arrived=true;clock=5000;exec.poll();assert.equal(exec.busy('movement'),false);assert.deepEqual(calls,['confirmed']);});
 
 import {createBank} from '../src/merchant/bank.mjs';
-test('bank route availability respects full stacks until partial retrieval is enabled',()=>{const cfg={merchant:{partialBank:false}},bot={cfg,me:{name:'M'},p:{c:{bank:{items0:[{name:'elixir',q:12}]}},read:()=>null},economy:{safe:i=>!!i,explicit:()=>null}};const bank=createBank(bot);assert.equal(bank.stock('elixir',0,1),0);cfg.merchant.partialBank=true;assert.equal(bank.stock('elixir',0,1),12);});
+test('bank route availability respects full stacks until partial retrieval is enabled',()=>{
+ const cfg={merchant:{partialBank:false}},bot={cfg,me:{name:'M'},p:{
+  c:{name:'M',map:'bank',bank:{items0:[{name:'elixir',q:12}]}},
+  G:{bank_packs:{items0:['bank',100]}},realm:()=> 'USIV',
+  read:()=>null,write:()=>true},economy:{safe:i=>!!i,explicit:()=>null}};
+ const bank=createBank(bot);assert.equal(bank.stock('elixir',0,1),0);
+ cfg.merchant.partialBank=true;assert.equal(bank.stock('elixir',0,1),12);
+});
 
 test('U01 P90 ranks reliable material source ahead of lower mean and exposes selected route hours',()=>{
  const G={monsters:{uncertain:{},steady:{}},drops:{monsters:{uncertain:[[.1,'material',1]],steady:[[1,'material',1]]}}};

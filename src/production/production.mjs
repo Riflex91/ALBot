@@ -126,7 +126,7 @@ export function createProduction(bot){
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
   if(preview?.key!==key||Date.now()-preview.time>5000){
    if(exec.busy('economy'))return false;preview={key,time:Date.now(),chance:null,cost:null};const token=preview;
-   const accepted=exec.run('production.preview',['economy'],()=>bot.running,()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{if(preview!==token||!bot.running)return;const raw=typeof result==='number'?result:result?.chance??result?.success_chance;token.chance=Number(raw);bot.intelligence?.recordChance(i.name,i.level??0,kind,token.chance);token.cost=result?.cost??0;}),{delay:1000});if(!accepted)preview=null;return accepted;
+   const accepted=exec.run('production.preview',['economy'],()=>bot.running,()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{if(preview!==token||!bot.running)return;const raw=typeof result==='number'?result:result?.chance??result?.success_chance;token.chance=Number(raw);bot.intelligence?.recordChance(i.name,i.level??0,kind,token.chance,{scroll:scrollName,offering:r.offering??''});token.cost=result?.cost??0;}),{delay:1000});if(!accepted)preview=null;return accepted;
   }
   const chance=preview.chance,cost=preview.cost;
   if(!Number.isFinite(chance)||chance>1||chance<Math.max(r.minChance,cfg.production.minChance)||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}

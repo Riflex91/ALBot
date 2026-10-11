@@ -36,12 +36,25 @@ export function createGear(bot){
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
  if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))profiles={};
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
- function snapshot(){const slots={};for(const [slot,i] of Object.entries(p.c.slots??{}))if(i&&!slot.startsWith('trade'))slots[slot]={name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??'',l:!!i.l,b:!!i.b};const stats=Object.fromEntries(["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].filter(k=>Number.isFinite(p.c[k])).map(k=>[k,p.c[k]]));return {class:p.c.ctype,level:p.c.level,slots,stats};}
+ const gearSlots=['mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet',
+  'belt','cape','ring1','ring2','earring1','earring2','orb'];
+ function snapshot(){
+  const slots=Object.fromEntries(gearSlots.map(slot=>[slot,null]));
+  for(const [slot,i] of Object.entries(p.c.slots??{}))
+   if(i&&!slot.startsWith('trade'))slots[slot]={name:i.name,level:i.level??0,
+    stat_type:i.stat_type??'',p:i.p??'',title:i.title??'',l:!!i.l,b:!!i.b};
+  const stats=Object.fromEntries(["attack","frequency","armor","resistance","max_hp","max_mp",
+   "range","crit","apiercing","rpiercing"].filter(k=>Number.isFinite(p.c[k])).map(k=>[k,p.c[k]]));
+  return {class:p.c.ctype,level:p.c.level,slots,stats,complete:true,at:Date.now(),
+   session:bot.session,realm:p.realm()};
+ }
  function refresh(){
   if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
    if(!data||typeof data.class!=='string'||!Number.isFinite(data.level)||!data.slots||typeof data.slots!=='object')continue;
-   const slots={};for(const [slot,i] of Object.entries(data.slots).slice(0,16))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level,stat_type:typeof i.stat_type==='string'?i.stat_type:'',p:typeof i.p==='string'?i.p:'',title:typeof i.title==='string'?i.title:'',l:!!i.l,b:!!i.b};
-   profiles[name]={class:data.class,level:data.level,slots,stats:Object.fromEntries(Object.entries(data.stats??{}).filter(([k,v])=>["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].includes(k)&&Number.isFinite(v)&&Math.abs(v)<1e9)),at:Date.now()};
+   const complete=gearSlots.every(slot=>Object.hasOwn(data.slots,slot));
+   const slots=Object.fromEntries(gearSlots.map(slot=>[slot,null]));
+   for(const [slot,i] of Object.entries(data.slots).slice(0,20))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level,stat_type:typeof i.stat_type==='string'?i.stat_type:'',p:typeof i.p==='string'?i.p:'',title:typeof i.title==='string'?i.title:'',l:!!i.l,b:!!i.b};
+   profiles[name]={class:data.class,level:data.level,slots,complete,session:peer?.session??bot.session,realm:peer?.realm??p.realm(),stats:Object.fromEntries(Object.entries(data.stats??{}).filter(([k,v])=>["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].includes(k)&&Number.isFinite(v)&&Math.abs(v)<1e9)),at:Date.now()};
   }
   profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&Date.now()-x.at<7*86400000).slice(0,20));
   if(cfg.production.offlineProfiles&&Date.now()-lastSave>60000){lastSave=Date.now();p.write(key,profiles);}

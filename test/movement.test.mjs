@@ -137,7 +137,7 @@ test('merchant gathering skips a rejected smart-route zone and chooses another p
  const {createServices}=await import('../src/merchant/services.mjs');
  const polygon=[[-184,-232],[-128,-232],[-128,-184],[-184,-184]];
  const visited=[],notes=[],cfg={merchant:{mining:true,fishing:false,merrit:false,massBuffs:false},general:{economyTickMs:2000},world:{excludedMaps:[]}};
- const c={name:'M',map:'main',in:'main',x:0,y:0,level:60,mp:100,items:[],slots:{}};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,level:60,mp:100,items:[{name:'pickaxe',level:0}],slots:{}};
  const movement={failedRecently:region=>region.map==='woffice'};
  const economy={note:s=>notes.push(s),travel:(dest)=>{visited.push(dest.map);return false;}};
  const bot={cfg,p:{c,G:{maps:{main:{},woffice:{zones:[{type:'mining',polygon}]},other:{zones:[{type:'mining',polygon}]}},skills:{mining:{level:1,mp:5}}},call:()=>false,has:()=>false,read:()=>null},me:{name:'M'},exec:{},economy,movement,monsters:()=>[],strategy:{status:()=>({manual:null})}};

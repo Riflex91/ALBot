@@ -8,15 +8,20 @@ import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
-export function pendingDeliveryRuleNeeds(goals,delivered,sender){
- const grouped=new Map();
+export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
+ const grouped=new Map(),allocated=new Map();
  for(const g of goals){
   if(!g.recipient||g.recipient===sender)continue;
   const remaining=Math.max(0,g.quantity-(delivered(g)??0));if(!remaining)continue;
+  const stockKey=JSON.stringify([g.item,g.level,g.variant??null]);
+  const capacity=Math.max(0,available(g));
+  const transferable=Math.min(remaining,Math.max(0,capacity-(allocated.get(stockKey)??0)));
+  if(!transferable)continue;
+  allocated.set(stockKey,(allocated.get(stockKey)??0)+transferable);
   const key=JSON.stringify([g.recipient,g.item,g.level,g.variant??null]);
   const prior=grouped.get(key);
-  if(prior)prior.quantity+=remaining;
-  else grouped.set(key,{...g,quantity:remaining});
+  if(prior)prior.quantity+=transferable;
+  else grouped.set(key,{...g,quantity:transferable});
  }
  return [...grouped.values()];
 }
@@ -45,7 +50,7 @@ export function createProduction(bot){
   if(rulesCache&&Number.isInteger(bot.decisionEpoch)&&rulesEpoch===bot.decisionEpoch)return rulesCache;
   if(!cfg.production.autonomy||!cfg.production.enabled)return cfg.items;
   const extra=[];
-  for(const g of pendingDeliveryRuleNeeds(goals(),g=>deliveries[goalKey(g)]?.quantity??0,bot.me.name)){
+  for(const g of pendingDeliveryRuleNeeds(goals(),g=>deliveries[goalKey(g)]?.quantity??0,bot.me.name,g=>qty(g.item,g.level,g))){
    extra.push({...generated('send',{name:g.item,level:g.level},g.quantity,g),recipient:g.recipient});
   }
   for(const g of goals()){

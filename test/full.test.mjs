@@ -64,3 +64,44 @@ test('gold receiver can accept during non-inventory movement and holds the rende
 test('accepted gold cancelled before dispatch releases receiver without transfer or unknown inventory',()=>{const {bots,calls,deliver}=goldFixture(),a=bots.A,m=bots.M;a.gold.poll(true);deliver();assert.equal(a.gold.status().state,'accepted');assert.equal(m.journal.kind,'gold.receive');a.gold.close();deliver();assert.deepEqual(calls,[]);assert.equal(m.journal,null);assert.equal(m.inventoryBlocked,false);assert.equal(m.gold.reserved,false);});
 
 test('gold cancellation cannot clear an observed transfer or a different session',()=>{const {bots,deliver}=goldFixture(),a=bots.A,m=bots.M;a.gold.poll(true);deliver();const j=m.gold.status();m.gold.receive('A',{type:'goldCancel',id:j.id,session:'old',data:{quantity:100,notDispatched:true}});assert.ok(m.journal);a.gold.poll();m.gold.poll();m.gold.receive('A',{type:'goldCancel',id:j.id,session:'A-session',data:{quantity:100,notDispatched:true}});assert.ok(m.journal);deliver();a.gold.poll();deliver();assert.equal(m.journal,null);});
+
+import {createLogistics} from '../src/items/logistics.mjs';
+
+test('item handoff refuses dispatch after accepted receiver session is replaced',()=>{
+ const cfg={general:{messageTtlMs:30000},merchant:{enabled:true,pickup:true,supply:true,maxDelivery:10,minFreeSlots:0},farming:{freeSlots:0},
+  items:[
+   {enabled:true,action:'send',item:'hpot1',recipient:'B',character:'A',role:'all',minLevel:0,maxLevel:0,keep:0,teamReserve:0,batch:2,ttlMs:30000},
+   {enabled:true,action:'keep',item:'hpot1',character:'B',role:'all',minLevel:0,maxLevel:0,keep:0,teamReserve:0,targetCount:2,maxCount:10,requestBelow:2}
+  ]};
+ const bots={},queue=[],sent=[];let clock=0;
+ const makeBot=(name,session)=>{
+  const me={name,role:'farmer'},c={name,map:'main',in:'main',x:0,y:0,items:Array(6).fill(null)};
+  if(name==='A')c.items[0]={name:'hpot1',q:2};
+  const bot={cfg,me,session,running:true,journal:null,inventoryBlocked:false,checkpoint:{durable:true},
+   p:{c,G:{items:{hpot1:{}}},realm:()=> 'EUII',call(kind,...args){if(kind==='send_item'){sent.push(args);return Promise.resolve({success:true});}throw Error('Unexpected action: '+kind);}},
+   entity:other=>bots[other]?.p.c,rule:()=>cfg.items.find(r=>r.character===name),
+   free:()=>c.items.filter(i=>!i).length,event(){},report(){},
+   beginValue(j){assert.equal(this.journal,null);this.journal=j;},
+   endValue(result){if(result==='confirmed')this.journal=null;else this.inventoryBlocked=true;},
+   transport:{fresh:other=>{const peer=bots[other];return peer?{...peer.p.c,realm:'EUII',running:peer.running,rip:false,session:peer.session,items:[{item:'hpot1',need:2}]}:null;},
+    send:(to,type,data,id)=>{queue.push({to,from:name,message:{type,data,id,session:bot.session}});return Promise.resolve(true);}}};
+  bot.exec=new Executor({now:()=>clock,active:()=>bot.running,limit:5,onError(){}});
+  bot.logistics=createLogistics(bot);return bot;
+ };
+ bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');
+ const deliver=()=>{while(queue.length){const {to,from,message}=queue.shift();bots[to].logistics.receive(from,message);}};
+ bots.A.logistics.poll(true);deliver();
+ assert.ok(bots.B.journal,'Receiver must journal its accepted offer');
+ assert.equal(sent.length,0,'Acceptance alone must not dispatch a transfer');
+ const pendingReceiverJournal=bots.B.journal;
+ bots.B.logistics.close();bots.B.running=false;
+ bots.B=makeBot('B','B-2');
+ bots.B.journal=pendingReceiverJournal;bots.B.inventoryBlocked=true;
+ // Recipient is still nearby and has a valid new heartbeat, but its old
+ // acceptance belongs to a different runtime session.
+ bots.A.logistics.poll(false);
+ assert.equal(sent.length,0,'Never send inventory against an obsolete acceptance');
+ assert.equal(bots.A.journal,null,'Unsent transfer must not create a value journal');
+ assert.equal(bots.A.exec.pending.size,0,'Old session must not retain an executor action');
+ bots.A.logistics.close();bots.B.logistics.close();
+});

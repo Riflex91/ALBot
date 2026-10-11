@@ -54,7 +54,7 @@ test('R02 six compound inputs and one single-unit buyer bid favor one batch',()=
   compounds:[[null,1,1]]};
  const buyer={id:'Buyer',name:'Buyer',type:'character',stand:true,map:'main',in:'main',x:10,y:0,
   slots:{trade1:{name:'ring',level:1,b:true,rid:'bid',price:100,q:1}}};
- const cfg={production:{autoProfitMaxLevel:1,autoGearMaxLevel:1,helperMaxPrice:1000,
+ const cfg={merchant:{marketHistory:false},production:{autoProfitMaxLevel:1,autoGearMaxLevel:1,helperMaxPrice:1000,
   minChance:.5,minImprovement:0,lossBudget:10000,goldPerHour:0}};
  const bot={p:{c,G,entities:{Buyer:buyer},read:()=>null,call:()=>0},cfg,
   me:{name:'M',role:'merchant'},economy:{value:i=>i.level===1?20:10,

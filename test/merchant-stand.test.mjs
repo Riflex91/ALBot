@@ -45,19 +45,37 @@ test('merchant planner never schedules stand in a frame that starts movement',()
  assert.ok(calls.includes('smart_move'));
  bot.movement.stop();
 });
-test('merchant opens stand only after ten seconds of uninterrupted idle time',()=>{
+test('merchant opens stand only after two seconds of uninterrupted idle time',()=>{
  const old=Date.now;let clock=100000;Date.now=()=>clock;
  try{
   const {bot,c,calls}=fixture(),merchant=createMerchant(bot);
   bot.services.tick=()=>true;
-  for(let i=0;i<4;i++){bot.exec.beginFrame();merchant.tick();bot.exec.flush();clock+=2000;}
+  bot.exec.beginFrame();merchant.tick();bot.exec.flush();
   assert.equal(calls.filter(x=>x==='open_stand').length,0);
-  clock+=3000;
+  clock+=1999;
+  bot.exec.beginFrame();merchant.tick();bot.exec.flush();
+  assert.equal(calls.filter(x=>x==='open_stand').length,0);
+  clock+=1;
   bot.exec.beginFrame();merchant.tick();bot.exec.flush();
   assert.equal(calls.filter(x=>x==='open_stand').length,1);
   assert.ok(c.stand);
   c.moving=true;
   assert.equal(canOpenMerchantStand(bot),false);
+  merchant.close();
+ }finally{Date.now=old;}
+});
+test('merchant idle clock resets after a movement interruption before stand can reopen',()=>{
+ const old=Date.now;let clock=100000;Date.now=()=>clock;
+ try{
+  const {bot,c,calls}=fixture(),merchant=createMerchant(bot);
+  bot.services.tick=()=>true;
+  const tick=()=>{bot.exec.beginFrame();merchant.tick();bot.exec.flush();};
+  tick();clock+=1500;
+  c.moving=true;tick();c.moving=false;clock+=100;
+  tick();clock+=1999;tick();
+  assert.equal(calls.filter(x=>x==='open_stand').length,0,'Movement must reset idle clock');
+  clock+=1;tick();
+  assert.equal(calls.filter(x=>x==='open_stand').length,1);
   merchant.close();
  }finally{Date.now=old;}
 });

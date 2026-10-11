@@ -17,7 +17,7 @@ export function createMerchant(bot){
  function openStandWhenIdle(){
   if(!canOpenMerchantStand(bot)){standIdleSince=null;return false;}
   if(standIdleSince===null){standIdleSince=Date.now();return false;}
-  if(Date.now()-standIdleSince<10000)return false;
+  if(Date.now()-standIdleSince<2000)return false;
   return exec.run('stand',['stand'],()=>canOpenMerchantStand(bot),()=>p.call('open_stand'),{delay:5000});
  }
  function buff(){

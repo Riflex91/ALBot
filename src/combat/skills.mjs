@@ -54,8 +54,8 @@ export function createSkills(bot){
       const phase=bot.encounter?.status?.(),allEngaged=bot.monsters().filter(e=>e.target&&bot.teamNames.includes(e.target)).length;
       return engaged.length&&phase?.phase==='BUILD'?Math.max(0,Math.min(limit-engaged.length,phase.capacity-allEngaged,cfg.farming.maxAggro-allEngaged)):0;
     }
-    const extra=aimed?Math.floor(extraAllowance()):0;
-    const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,extra)]:visible;
+    const additional=aimed?Math.floor(extraAllowance()):0;
+    const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
     const selected=multi?candidates.slice(0,limit):[];
     if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??2)||(!aimed&&(visible.length>limit||visible.some(e=>!eligible(e)))))return false;argsTarget=['cleave','stomp'].includes(id)?null:selected;target=selected[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}

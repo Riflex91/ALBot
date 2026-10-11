@@ -47,7 +47,7 @@ export function createProduction(bot){
   return {...generated(step.kind,item,Math.max(1,qtyRaw(item)+(step.outputQuantity??step.quantity))),targetLevel:step.targetLevel??(item.level??0)+1,recipe:step.recipe??step.output??''};
  }
  const qtyRaw=item=>p.c.items.reduce((n,i)=>n+(i?.name===item.name&&(i.level??0)===(item.level??0)&&!i.l&&!i.b?(i.q??1):0),0);
- function mergeFor(item,required,r){
+ function mergeFor(item,required,r,contextReady){
   const key=identity(item),level=item.level??0;
   // Merges rearrange inventory. Do not select an ingredient protected by
   // either an explicit or an effective (derived) inventory keep rule.
@@ -57,7 +57,7 @@ export function createProduction(bot){
   const livePair=(x,y)=>{
    const a=p.c.items[x],b=p.c.items[y],sum=(a?.q??1)+(b?.q??1),policy=a&&e.rules(a,'inventory');
    return x!==y&&eligible(a)&&eligible(b)&&Number.isSafeInteger(sum)&&Number.isSafeInteger(limit())&&
-    sum<=limit()&&cfg.production.enabled&&cfg.production.craft&&e.remaining(r)&&
+    sum<=limit()&&cfg.production.enabled&&cfg.production.craft&&e.remaining(r)&&contextReady()&&
     e.count(a)-required>=(policy?.keep??0)+(policy?.teamReserve??0)+reserveOther(item.name,level);
   };
   const slots=p.c.items.map((i,n)=>({i,n})).filter(({i})=>{
@@ -136,6 +136,7 @@ export function createProduction(bot){
    e?.message&&bot.event?.('production.craft-unavailable',{recipe:found.key,reason:String(e.message).slice(0,120)});
    return false;
   }
+  const recipeProof=JSON.stringify([found.key,recipe]);
   const totalFor=(id,level)=>totals.find(x=>x.item===id&&x.level===level)?.quantity??0;
   // Each official craft grid position needs a different inventory slot.
   // Build candidate sets before assigning any slot: first-fit can consume
@@ -162,7 +163,16 @@ export function createProduction(bot){
    if(!candidate)return false;
    const policy=e.rules(candidate);
    if(e.count(candidate)-total<(policy?policy.keep+policy.teamReserve:0)+reserveOther(id,level))return false;
-   return mergeFor(candidate,q,r);
+   // A queued swap is still a crafting operation: stale recipe keys, changed
+   // ingredient requirements or a completed output target must stop it too.
+   const contextReady=()=>{
+    const live=findRecipe(p.G,name,r.recipe);
+    const currentYield=live?.recipe?.q??live?.recipe?.quantity??1;
+    return !!live&&JSON.stringify([live.key,live.recipe])===recipeProof&&
+     Number.isSafeInteger(currentYield)&&currentYield>0&&
+     outputCount(name,r)+currentYield<=Math.min(r.targetCount,r.maxCount);
+   };
+   return mergeFor(candidate,q,r,contextReady);
   }
   const requirements=slots.map((slot,n)=>({item:{...p.c.items[slot]},before:e.count(p.c.items[slot]),q:grid[n].quantity}));
   if(!Number.isFinite(recipe.cost)||recipe.cost<0)return false;
@@ -172,7 +182,6 @@ export function createProduction(bot){
   // The game chooses the craft outcome from the live recipe/ingredients. Recheck
   // that contract at dispatch: an inventory fingerprint alone cannot detect a
   // changed recipe, keep rule, reserve, output cap or crafting permission.
-  const recipeProof=JSON.stringify([found.key,recipe]);
   const craftReady=()=>{
    if(!cfg.production.enabled||!cfg.production.craft||!e.remaining(r))return false;
    const live=findRecipe(p.G,name,r.recipe);

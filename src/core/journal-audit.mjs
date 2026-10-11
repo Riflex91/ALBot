@@ -3,8 +3,8 @@ import {fingerprint} from './policy.mjs';
 // The checkpoint has immutable "before" fingerprints. User actions that
 // follow a timed-out gathering skill may legitimately ADD items, so a
 // slot-by-slot comparison is too strict for a human-approved reconciliation.
-// Never classify disappearing inventory variants, changing gold, or a live
-// gathering animation as safe to acknowledge.
+// A HUMAN-reviewed exception for up to two ordinary MP potions is permitted.
+// All other missing variants, gold changes and live gathering still block.
 function readFingerprint(fp){
  if(fp===null)return null;
  if(typeof fp!=='string')return null;
@@ -25,6 +25,7 @@ function totals(fingerprints){
  return byId;
 }
 const itemLabel=i=>i.name+(i.level?' +'+i.level:'');
+const PLAIN_MPOT0=JSON.stringify(['mpot0',0,'','','','','','','']);
 export function inspectMiningJournal(bot){
  const j=bot.journal;
  if(!j)return {eligible:false,kind:null,inventoryEqual:false,goldEqual:false,reason:'Kein offenes Journal',changes:[]};
@@ -49,23 +50,30 @@ export function inspectMiningJournal(bot){
   }
  }
  changes.sort((a,b)=>a.item.localeCompare(b.item));
+ const losses=changes.filter(c=>c.delta<0);
+ // Current report contains exactly two missing ordinary mpot0 potions. Allow
+ // ONLY this tightly bounded, explicitly reviewed consumption discrepancy.
+ // A changed rarity/lock/stat variant or loss of other goods is not eligible.
+ const reviewedPotionLoss=losses.length===1&&losses[0].variant===PLAIN_MPOT0&&losses[0].delta>=-2;
+ const unapprovedLoss=losses.length>0&&!reviewedPotionLoss;
  const pending=bot.exec?.pending?.size??0;
  const activity=j.kind==='gather.mining'?'mining':j.kind==='gather.fishing'?'fishing':null;
  const activeSkill=!!(activity&&bot.p.c.q?.[activity]);
- const eligible=!!(!bot.running&&pending===0&&bot.inventoryBlocked&&kindOK&&sameLength&&earlier&&later&&!missing&&goldEqual&&realmEqual&&!activeSkill);
+ const eligible=!!(!bot.running&&pending===0&&bot.inventoryBlocked&&kindOK&&sameLength&&earlier&&later&&!unapprovedLoss&&goldEqual&&realmEqual&&!activeSkill);
  const token=eligible?JSON.stringify([j.kind,j.at??null,snap.realm,snap.gold,before,after]):null;
  const reason=!kindOK?'Nur offene, kostenfreie Gathering-Journale dürfen so geprüft werden':
   bot.running||pending>0?'Bot muss pausiert sein; kein Auftrag darf mehr laufen':
   activeSkill?'Gathering läuft noch; zunächst vollständig beenden':
   !sameLength||!earlier||!later?'Inventar-Snapshot fehlt oder ist nicht eindeutig lesbar':
   !realmEqual||!goldEqual?'Gold oder Realm unterscheiden sich vom Journal':
-  missing?'Mindestens eine ursprüngliche Itemvariante fehlt: keine Freigabe ohne gesonderten Abgleich':
+  unapprovedLoss?'Mindestens eine nicht freigegebene Itemvariante fehlt: keine manuelle Freigabe':
   !bot.inventoryBlocked?'Keine bestehende Inventarsperre':
+  reviewedPotionLoss?'Bis zu zwei normale mpot0 fehlen. Nur nach eigenem Abgleich des Trankverbrauchs und aller anderen Items manuell freigeben; Mining-Erfolg unbekannt':
   changes.length?'Bestandszuwächse erkannt; nach menschlichem Abgleich kann das Journal ausdrücklich bestätigt werden':
   inventoryEqual?'Inventar und Gold unverändert; Mining-Erfolg weiterhin unbekannt':
   'Nur die Anordnung der Gegenstände hat sich geändert; manuelle Prüfung erforderlich';
  return {eligible,kind:j.kind,inventoryEqual,goldEqual,realmEqual,activeSkill,pending,
-  changes,token,reason,comparison:{before,after},snapshotAt:j.at??null};
+  changes,manualPotionLoss:reviewedPotionLoss?Math.abs(losses[0].delta):0,token,reason,comparison:{before,after},snapshotAt:j.at??null};
 }
 export function saveMiningAudit(p,audit){
  if(p.headless)return null;
@@ -76,7 +84,7 @@ export function saveMiningAudit(p,audit){
   const record={format:'albot-mining-manual-audit',createdAt:new Date().toISOString(),
    kind:audit.kind,eligible:audit.eligible,reason:audit.reason,
    inventoryEqual:audit.inventoryEqual,goldEqual:audit.goldEqual,realmEqual:audit.realmEqual,
-   changes:audit.changes,before:audit.comparison?.before,after:audit.comparison?.after,snapshotAt:audit.snapshotAt};
+   changes:audit.changes,manualPotionLoss:audit.manualPotionLoss??0,before:audit.comparison?.before,after:audit.comparison?.after,snapshotAt:audit.snapshotAt};
   const url=win.URL.createObjectURL(new win.Blob([JSON.stringify(record,null,2)],{type:'application/json;charset=utf-8'}));
   const link=doc.createElement('a');link.href=url;link.download=filename;doc.body.append(link);link.click();link.remove();
   win.setTimeout(()=>win.URL.revokeObjectURL(url),1000);

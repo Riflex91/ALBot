@@ -42,7 +42,8 @@ export function createPanel(bot,api){
     if(!reviewedToken||!result.eligible||result.token!==reviewedToken){
      reviewedToken=null;acknowledge.disabled=true;auditText.textContent='Bestand hat sich geaendert; bitte Mining-Journal erneut pruefen';return;
     }
-    const answer=bot.p.parent.prompt?.('Mining-Erfolg ist UNGEKLAERT. Nur wenn du den heruntergeladenen Vorher-/Nachher-Bericht und den tatsaechlichen Bestand geprueft hast, genau BESTAND GEPRUEFT eingeben:', '');
+    const warn=result.manualPotionLoss?'ACHTUNG: '+result.manualPotionLoss+' mpot0 fehlen seit Journalbeginn. Ob sie legitim verbraucht wurden, ist nicht bewiesen. ':'';
+    const answer=bot.p.parent.prompt?.(warn+'Mining-Erfolg ist UNGEKLAERT. Nur wenn du den heruntergeladenen Vorher-/Nachher-Bericht und den tatsaechlichen Bestand geprueft hast, genau BESTAND GEPRUEFT eingeben:', '');
     if(answer!=='BESTAND GEPRUEFT')return;
     if(!bot.p.parent.confirm?.('Das offene Gathering-Journal wird jetzt manuell als abgeglichen markiert. Kein Mining-Erfolg wird behauptet und keine Aktion wiederholt. Wirklich freigeben?'))return;
     try{api.acknowledgeMiningAfterReview(reviewedToken);reviewedToken=null;acknowledge.disabled=true;auditText.textContent='Journal nach ausdruecklicher manueller Bestandspruefung freigegeben. Kein Mining-Erfolg angenommen.';}

@@ -182,7 +182,7 @@ export function install(root){
      if(!checkpoint.write(null))throw Error('Journal-Speicherung fehlgeschlagen');
      const kind=bot.journal.kind;
      bot.journal=null;bot.inventoryBlocked=false;bot.reason='Gathering-Journal nach manueller Bestandsprüfung freigegeben';
-     bot.event('inventory.manualReconcile',{kind,changedItems:audit.changes.length,source:'ingame-mining-audit',miningSuccess:'unknown'});
+     bot.event('inventory.manualReconcile',{kind,changedItems:audit.changes.length,changes:audit.changes.map(c=>({item:c.item,delta:c.delta})),manualPotionLoss:audit.manualPotionLoss??0,source:'ingame-mining-audit',miningSuccess:'unknown'});
      publish();return true;
     },
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}

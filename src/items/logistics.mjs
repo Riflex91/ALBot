@@ -27,13 +27,13 @@ export function createLogistics(bot){
   };
   const potionRule=(item,to)=>{
     if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
-       !bot.farmers.includes(to)||!isPotion(item)||bot.economy?.explicit(item))return null;
+       !bot.farmers?.includes(to)||!isPotion(item)||chooseRule(cfg.items,item,context())||bot.economy?.explicit(item))return null;
     return {enabled:true,name:'Autoversorgung '+item.name+' → '+to,action:'send',
       item:item.name,recipient:to,keep:200,teamReserve:0,batch:1500,ttlMs:cfg.general.messageTtlMs};
   };
   const sendRecipients=item=>{
     const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-    return configured.length?configured:(isPotion(item)&&!bot.economy?.explicit(item)?bot.farmers.filter(n=>n!==me.name):[]);
+    return configured.length?configured:(isPotion(item)&&!chooseRule(cfg.items,item,context())&&!bot.economy?.explicit(item)?(bot.farmers??[]).filter(n=>n!==me.name):[]);
   };
   const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};

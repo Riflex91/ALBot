@@ -1,6 +1,17 @@
 import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
+// Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
+// map or a frozen kite position after the recipient has moved away.
+export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190}={}){
+ if(!route||route.owner!=='logistics')return 'none';
+ if(!peer?.running||peer.rip||!Number.isFinite(peer.x)||!Number.isFinite(peer.y)||
+    !peer.map||!peer.realm)return 'cancel';
+ if(peer.name!==route.dest?.name)return 'cancel';
+ if(samePlace(character,peer)&&distance(character,peer)<=arrival)return 'arrived';
+ if(!samePlace(route.dest,peer))return 'retarget';
+ return distance(route.dest,peer)>Math.max(45,Math.min(100,error))?'retarget':'keep';
+}
 export function createLogistics(bot){
-  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0;const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
+  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastDeliveryRetarget=0;const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
@@ -121,7 +132,30 @@ export function createLogistics(bot){
   }
   function travel(){
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
-    const route=bot.movement?.order;if(route?.owner==='logistics'){const h=transport.fresh(route.dest.name);if(!h?.running||bot.strategy?.canVisit(h)===false||distance(route.dest,h)>(cfg.merchant.servicePositionError??70)*2)bot.movement.stop();}const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
+    const route=bot.movement?.order;
+    if(route?.owner==='logistics'){
+      const h=transport.fresh(route.dest.name);
+      const decision=deliveryRouteDecision(route,h,p.c,{error:cfg.merchant.servicePositionError??70});
+      if(decision==='cancel'||decision==='arrived'||h?.realm!==p.realm()||bot.strategy?.canVisit?.(h)===false){
+        bot.movement.stop();
+        bot.event?.('logistics.pursuit',{peer:route.dest.name,decision:'stop',reason:decision});
+        if(decision==='cancel'||h?.realm!==p.realm())return;
+      }else if(decision==='retarget'){
+        const mapChanged=!samePlace(route.dest,h);
+        if(mapChanged||clock()-lastDeliveryRetarget>1800){
+          // Retarget using the latest authenticated, live heartbeat.
+          // The movement wrapper cancels the prior smart_move before starting
+          // a new one, so the previous map can no longer be the destination.
+          bot.movement.stop();lastDeliveryRetarget=clock();
+          bot.event?.('logistics.pursuit',{peer:h.name,decision:'retarget',map:h.map,x:h.x,y:h.y,
+            shift:distance(route.dest,h),mapChanged});
+          bot.movement.go({...h,radius:120},'logistics');
+          return;
+        }
+        return;
+      }else return; // Active route is current; do not schedule other jobs.
+    }
+    const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
     for(const [name] of [...transport.peers].sort((a,b)=>(a[0]===bot.merchant?.serviceTarget?.()?-1000:0)-(b[0]===bot.merchant?.serviceTarget?.()?-1000:0)||urgency(b[0])-urgency(a[0]))){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
       const requested=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
        const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
@@ -132,7 +166,7 @@ export function createLogistics(bot){
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;
-        if(bot.movement.order?.owner==='economy'){if(!demand)continue;bot.movement.stop();}bot.reason='Lieferweg zu '+name;bot.movement.go({...h,radius:120},'logistics');return;
+        if(bot.movement.order?.owner==='economy'){if(!demand)continue;bot.movement.stop();}bot.reason='Lieferweg zu '+name;lastDeliveryRetarget=clock();bot.event?.('logistics.pursuit',{peer:name,decision:'depart',map:h.map,x:h.x,y:h.y});bot.movement.go({...h,radius:120},'logistics');return;
       }
     }
   }

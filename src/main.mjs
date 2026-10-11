@@ -143,7 +143,11 @@ export function install(root){
   bot.pause=(reason='Pause')=>halt(reason);
   const warningTimes=new Map();let retryAfter=0;function runtimeWarning(where,e){bot.reason='Hinweis: '+(e?.message??e);retryAfter=now()+3000;const key=where+':'+bot.reason;if(now()-(warningTimes.get(key)??0)>30000){if(warningTimes.size>=64)warningTimes.clear();warningTimes.set(key,now());report.error(where,e);report.event('runtime.warning',{where,reason:bot.reason,continued:true,retryMs:3000,valueActionsBlocked:bot.inventoryBlocked});bot.report(bot.reason);}}
   function tick(gen){if(disposed||!bot.running||gen!==generation)return;const tickStarted=now();try{
-    if(!p.c||!p.G){runtimeWarning('state','Spielzustand fehlt');return;}if(now()<retryAfter)return;
+    if(!p.c||!p.G){runtimeWarning('state','Spielzustand fehlt');return;}
+    // The bank snapshot may arrive after the original action timed out. Only
+    // exact, pinned source/destination evidence can release the value lock.
+    if(bot.inventoryBlocked&&bot.journal?.kind==='bank.store')bot.recovery?.reconcile();
+    if(now()<retryAfter)return;
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
     bot.teamTravel?.tick();if(!bot.running)return;

@@ -1,3 +1,8 @@
+// Only consumptions positively identified as game potions are non-durable.
+// An unknown consume item is NOT safe to discard; other transactions retain journals.
+export function isPotionConsumption(journal,G){
+ return journal?.kind==='consume'&&typeof journal.item==='string'&&G?.items?.[journal.item]?.type==='pot';
+}
 // Reserve a small fixed-size record, rather than rewriting the whole profile.
 // Only our obsolete optional configuration cache may be removed, never other bots.
 export function createCheckpoint(p,key,report){

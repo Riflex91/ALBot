@@ -26,6 +26,9 @@ export function createMovement(bot){
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
+    // An asynchronous open_stand may not yet be reflected in character.stand.
+    // Never initiate a route while opening/closing the stand is pending.
+    if(bot.me?.role==='merchant'&&exec.busy('stand'))return false;
     if(p.c.stand){exec.run('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return false;}
     const dest={...d,radius:d.radius??20};
     // Smart movement can enter public maps; never attempt somebody else's instance.
@@ -34,7 +37,7 @@ export function createMovement(bot){
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     token.mode=local?'move':'smart_move';
-    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'||state==='superseded'){const reason=error?.reason??error?.message??state;if(state!=='superseded')recordRouteFailure(owner,token.mode,dest,reason);stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason});}}});
+    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand'),()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'||state==='superseded'){const reason=error?.reason??error?.message??state;if(state!=='superseded')recordRouteFailure(owner,token.mode,dest,reason);stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason});}}});
     if(accepted)bot.event?.('movement.request',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }

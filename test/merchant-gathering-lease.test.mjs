@@ -39,3 +39,14 @@ test('merchant without an eligible market listing does not travel to Merrit',()=
  assert.equal(calls.some(c=>c[0]==='travel'),false);
  assert.ok(calls.some(c=>c[0]==='note'&&c[1].includes('Merrit ausgesetzt')));
 });
+
+test('smart_move is attempted when no direct can_move_to path exists to a fishing zone',()=>{
+ const {bot,calls}=fixture({item:'rod'});
+ bot.cfg.merchant.mining=false;
+ bot.p.has=name=>name==='can_move_to';
+ bot.p.call=name=>name==='is_on_cooldown'?false:name==='can_move_to'?false:null;
+ const services=createServices(bot);
+ assert.equal(services.tick(),true,'distant legal gathering zone must reach pathfinder');
+ assert.ok(calls.some(x=>x[0]==='travel'&&x[1]==='fishing'));
+ assert.equal(calls.some(x=>x[0]==='note'&&x[1].includes('Kein erreichbarer fishing-Arbeitsplatz')),false);
+});

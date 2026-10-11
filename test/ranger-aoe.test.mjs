@@ -11,7 +11,7 @@ function rangerFixture(teamCount,outsiders=0,maxTargets=5){
  const c={name:'Ranger1',ctype:'ranger',level:80,map:'main',in:'main',x:0,y:0,range:150,
   mp:2000,max_mp:2000,attack:100,hp:1000,max_hp:1000,slots:{},s:{}};
  const cfg={general:{testLogging:true},farming:{pvp:false},party:{enabled:true,aoe:true,aoeMaxTargets:maxTargets,advancedSkills:true},skills:[]};
- const p={c,parent:{is_pvp:false},G:{skills:{
+ const p={c,parent:{is_pvp:false},G:{items:{},skills:{
   '3shot':{class:['ranger'],level:60,mp:300,range:150,hostile:true},
   '5shot':{class:['ranger'],level:75,mp:420,range:150,hostile:true},
  },monsters:{bee:{}},maps:{main:{}}},call:(name,...args)=>{

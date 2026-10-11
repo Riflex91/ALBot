@@ -1,11 +1,33 @@
 import {assessServerHop} from '../world/servers.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
+// Only official numbered European/American realms are eligible. PvP in any
+// spelling or metadata is a hard reject, even if a caller mislabels the mode.
+export function nonPvpRealm(realm){
+ return typeof realm==='string'&&/^(EU|US)(?:I|II|III|IV|V|VI|VII|VIII|IX|X)$/.test(realm)&&!/pvp/i.test(realm);
+}
+export function normalizeServerRegistry(raw,now=Date.now(),fromOfficialGame=false){
+ return (Array.isArray(raw)?raw:[]).map(s=>{
+  const realm=s.realm??String(s.region??'')+String(s.name??s.identifier??'');
+  const name=String(s.name??s.identifier??'');
+  const pvp=/pvp/i.test(realm)||/pvp/i.test(name)||s.pvp===true||
+    (typeof s.mode==='string'&&/pvp/i.test(s.mode))||s.mode==='PVP';
+  const explicitMode=typeof s.mode==='string'?s.mode.toUpperCase():s.pvp===false?'NORMAL':null;
+  // X.servers is the game's own live list. Only its canonical numbered realms
+  // with finite population and no contradicting metadata admit inference.
+  const canonical=nonPvpRealm(realm);
+  const trusted=fromOfficialGame&&canonical&&!pvp&&Number.isFinite(s.players)&&s.players>=0;
+  const mode=pvp?'PVP':explicitMode??(trusted?'NORMAL':'UNBEKANNT');
+  const offline=s.online===false||s.status==='offline'||s.status==='down';
+  const online=!offline&&(s.online===true||s.status==='online'||trusted);
+  return {realm,mode,online,players:s.players,at:s.at??now};
+ });
+}
 export function createTeamTravel(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();let registryRef=null,registryAt=0,history=p.read('albot:hop-history:'+me.name)??[];if(!Array.isArray(history))history=[];
- function registry(){const raw=p.root.ALBotServerRegistry??p.parent.ALBotServerRegistry??p.parent.X?.servers??[];if(raw!==registryRef){registryRef=raw;registryAt=Date.now();}return (Array.isArray(raw)?raw:[]).map(s=>({realm:s.realm??String(s.region??'')+String(s.name??s.identifier??''),mode:typeof s.mode==='string'?s.mode.toUpperCase():(s.pvp===true?'PVP':s.pvp===false?'NORMAL':'UNBEKANNT'),online:s.online===true||s.status==='online',players:s.players,at:s.at??registryAt}));}
+ function registry(){const external=p.root.ALBotServerRegistry??p.parent.ALBotServerRegistry;const official=external==null;const raw=external??p.parent.X?.servers??[];if(raw!==registryRef){registryRef=raw;registryAt=Date.now();}return normalizeServerRegistry(raw,registryAt,official);}
  function admission(realm){return cfg.general.testLogging===undefined||assessServerHop(registry().find(s=>s.realm===realm),history,Date.now(),{pvp:cfg.farming.pvp,cooldown:w.hopCooldownMs}).allowed;}
  const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
- const realmAllowed=realm=>admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm)&&/^[A-Z]{2}.+$/.test(realm);
+ const realmAllowed=realm=>nonPvpRealm(realm)&&!cfg.farming.pvp&&admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm);
  function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
   hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm},hop.id);return true;
@@ -31,7 +53,7 @@ export function createTeamTravel(bot){
   if(hop){if(hop.until<Date.now()){if(me.name===bot.leader)for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);hop=null;return;}
    if(me.name===bot.leader&&!hop.broadcast&&hop.names.every(n=>hop.ready.has(n))&&safe()){const token=hop;hop.broadcast=true;Promise.all(hop.names.filter(n=>n!==me.name).map(n=>bot.transport.send(n,'hopCommit',{realm:hop.realm},hop.id))).then(results=>{if(hop===token&&results.every(Boolean))applyHop();else if(hop===token)hop=null;},()=>{if(hop===token)hop=null;});}return;
   }
-  if(cfg.general.testLogging!==undefined&&w.autoHop!==false&&me.name===bot.leader&&bot.teamPlan?.status().pressure>.6&&safe()){const current=registry().find(s=>s.realm===p.realm()),next=registry().filter(s=>s.realm!==p.realm()&&realmAllowed(s.realm)&&Number.isFinite(s.players)&&s.players<(current?.players??0)*.7).sort((a,b)=>a.players-b.players)[0];if(next&&requestHop(next.realm)){bot.event('server.autoHop',{realm:next.realm,reason:'Anhaltender Standortdruck und geringer belegter Serverbesatz'});return;}}
+  if(cfg.general.testLogging!==undefined&&w.autoHop!==false&&me.name===bot.leader&&bot.teamPlan?.status().pressure>.6&&safe()){const current=registry().find(s=>s.realm===p.realm()),next=registry().filter(s=>s.realm!==p.realm()&&realmAllowed(s.realm)&&Number.isFinite(current?.players)&&Number.isFinite(s.players)&&s.players<current.players*.85).sort((a,b)=>a.players-b.players)[0];if(next&&requestHop(next.realm)){bot.event('server.autoHop',{realm:next.realm,reason:'Anhaltender Standortdruck und geringer belegter Serverbesatz'});return;}}
   if(!w.magiport||p.c.ctype!=='mage'||!safe()||p.c.mp<(p.G.skills.magiport?.mp??900)+p.c.max_mp*.2)return;
   const leader=me.name===bot.leader?p.c:bot.transport.fresh(bot.leader);if(!leader||!samePlace(p.c,leader)||distance(p.c,leader)>cfg.party.followDistance)return;
   for(const name of bot.farmers){const peer=bot.transport.fresh(name);if(name===me.name||!peer?.running||peer.rip||peer.realm!==p.realm()||consents.has(name)||samePlace(p.c,peer)&&distance(p.c,peer)<cfg.party.followDistance*2)continue;

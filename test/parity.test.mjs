@@ -137,7 +137,7 @@ test('U03 merchant equip rechecks mobility when dispatch guard is evaluated',()=
 });
 
 test('U04 live buyer bids require reachability, exact variant, current price and limited quantity',()=>{
- const c={name:'M',map:'main',in:'main',x:0,y:0,speed:50};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,speed:50,tax:.05};
  const bid=(name,level,price,q,extra={})=>({name,level,price,q,b:true,rid:'bid-'+price,...extra});
  const seller=(name,x,slots)=>({name,id:name,type:'character',stand:true,map:'main',in:'main',x,y:0,slots});
  const p={c,entities:{A:seller('A',100,{trade1:bid('ring',2,100,3)}),B:seller('B',100,{trade1:bid('ring',2,50,2)}),C:seller('C',100,{trade1:bid('ring',2,1000,10,{stat_type:'str'})}),D:seller('D',1000,{trade1:bid('ring',2,1000,10)})},read:()=>null};

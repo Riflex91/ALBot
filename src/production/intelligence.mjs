@@ -96,15 +96,23 @@ function futureGear(i){return gearUse(i).state!=='no-gear-use';}
  const n=Math.max(0,Math.min(42,held-Math.max(0,reserved)));
  if(n<1)return {level:i.level??0,ev:current,action:'bank',reason:'no-unreserved-copies'};
  const start=i.level??0,memo=new Map(),priceCache=new Map();
- const priceAt=l=>{
-  if(!priceCache.has(l))priceCache.set(l,resaleValue({...i,level:l},1,l>start));
-  return priceCache.get(l);
+ const saleTotal=(level,quantity)=>{
+  if(quantity<=0)return 0;
+  const key=level+':'+quantity;
+  if(!priceCache.has(key)){
+   const item={...i,level},npc=bot.economy.value(item);
+   const quote=bot.market?.bidValuation?.(item,quantity,npc,{future:level>start});
+   const total=Number.isFinite(quote?.totalValue)?quote.totalValue:
+    Number.isFinite(quote?.unitValue)?quote.unitValue*quantity:npc*quantity;
+   priceCache.set(key,Number.isFinite(total)?Math.max(npc*quantity,total):NaN);
+  }
+  return priceCache.get(key);
  };
  function solve(l,count){
   if(count<=0)return {value:0,groups:0};
   const key=l+':'+count;if(memo.has(key))return memo.get(key);
-  const sale=priceAt(l);
-  let best={value:count*sale,groups:0};
+  const sale=saleTotal(l,count);
+  let best={value:sale,groups:0};
   if(l<max&&count>=3&&Number.isFinite(sale)){
    const c=mutationChance(i.name,l,'compound');
    const grade=p.call('item_grade',{...i,level:l});
@@ -119,7 +127,7 @@ function futureGear(i){return gearUse(i).state!=='no-gear-use';}
       expected+=prob*solve(l+1,j).value;
       comb=comb*(k-j)/(j+1);
      }
-     const total=(count-3*k)*sale+expected-k*cost;
+     const total=saleTotal(l,count-3*k)+expected-k*cost;
      if(Number.isFinite(total)&&total>best.value*(1+(cfg.production.minImprovement??0)))
       best={value:total,groups:k};
     }

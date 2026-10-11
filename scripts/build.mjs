@@ -1,5 +1,6 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {posix} from 'node:path';
 import {Script} from 'node:vm';
 import {createHash} from 'node:crypto';
 import {minify} from 'terser';
@@ -8,7 +9,20 @@ import {VERSION} from '../src/version.mjs';
 import {checkDescriptor,defaultsFor,envelope,exportBundle,checkPackage} from '../editor/lib/contract.mjs';
 process.chdir(fileURLToPath(new URL('../',import.meta.url)));
 const version=VERSION;
-const files=['src/runtime/primitives.js','src/version.mjs','editor/lib/schema.mjs','editor/lib/contract.mjs','src/config/live-a.mjs','src/config/live-b.mjs','src/config/live-c.mjs','src/config/p3p4.mjs','src/config/full.mjs','src/core/policy.mjs','src/core/executor.mjs','src/core/test-report.mjs','src/core/team-check.mjs','src/core/journal-audit.mjs','src/core/checkpoint.mjs','src/core/fair-tasks.mjs','src/core/priority.mjs','src/core/recovery.mjs','src/runtime/ports.mjs','src/party/transport.mjs','src/core/movement.mjs','src/party/capabilities.mjs','src/combat/encounter.mjs','src/combat/aggression.mjs','src/combat/orbital-kiting.mjs','src/combat/navigation.mjs','src/combat/threats.mjs','src/production/allocation.mjs','src/combat/skills.mjs','src/items/logistics.mjs','src/items/gold.mjs','src/combat/farmer.mjs','src/ui/panel.mjs','src/merchant/economy.mjs','src/merchant/bank.mjs','src/merchant/market.mjs','src/production/probability.mjs','src/production/materials.mjs','src/production/recipes.mjs','src/production/observations.mjs','src/production/costs.mjs','src/production/planner.mjs','src/production/production.mjs','src/production/gear.mjs','src/merchant/service-plan.mjs','src/merchant/controller.mjs','src/merchant/services.mjs','src/world/risk.mjs','src/world/knowledge.mjs','src/world/content.mjs','src/world/servers.mjs','src/world/team-plan.mjs','src/world/progression.mjs','src/items/elixirs.mjs','src/production/intelligence.mjs','src/world/strategy.mjs','src/core/behavior.mjs','src/party/account.mjs','src/party/aura.mjs','src/party/travel.mjs','src/main.mjs'];
+const files=['src/runtime/primitives.js','src/version.mjs','editor/lib/schema.mjs','editor/lib/contract.mjs','src/config/live-a.mjs','src/config/live-b.mjs','src/config/live-c.mjs','src/config/p3p4.mjs','src/config/full.mjs','src/core/policy.mjs','src/core/executor.mjs','src/core/test-report.mjs','src/core/team-check.mjs','src/core/journal-audit.mjs','src/core/checkpoint.mjs','src/core/fair-tasks.mjs','src/core/priority.mjs','src/core/recovery.mjs','src/runtime/ports.mjs','src/party/transport.mjs','src/core/movement.mjs','src/party/capabilities.mjs','src/combat/encounter.mjs','src/combat/aggression.mjs','src/combat/orbital-kiting.mjs','src/combat/navigation.mjs','src/combat/threats.mjs','src/production/allocation.mjs','src/combat/skills.mjs','src/items/logistics.mjs','src/items/gold.mjs','src/combat/farmer.mjs','src/ui/panel.mjs','src/merchant/economy.mjs','src/merchant/bank.mjs','src/merchant/market.mjs','src/production/probability.mjs','src/production/materials.mjs','src/production/recipes.mjs','src/production/observations.mjs','src/production/costs.mjs','src/production/planner.mjs','src/production/production.mjs','src/production/gear.mjs','src/merchant/service-plan.mjs','src/merchant/pickup-capacity.mjs','src/merchant/controller.mjs','src/merchant/services.mjs','src/world/risk.mjs','src/world/knowledge.mjs','src/world/content.mjs','src/world/servers.mjs','src/world/team-plan.mjs','src/world/progression.mjs','src/items/elixirs.mjs','src/production/intelligence.mjs','src/world/strategy.mjs','src/core/behavior.mjs','src/party/account.mjs','src/party/aura.mjs','src/party/travel.mjs','src/main.mjs'];
+// This builder deliberately strips local imports when concatenating runtime
+// modules. Fail the build if any import target was left out of the allowlist:
+// syntax checking a combined bundle cannot detect unbound identifiers.
+const included=new Set(files);
+for(const path of files){
+ const content=await readFile(path,'utf8');
+ for(const match of content.matchAll(/^import\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"];?/gm)){
+  const spec=match[1];
+  if(!spec.startsWith('.'))continue;
+  const target=posix.normalize(posix.join(posix.dirname(path),spec));
+  if(!included.has(target))throw Error('Runtime-Import fehlt im Bundle: '+path+' → '+target);
+ }
+}
 checkDescriptor(LIVE_DESCRIPTOR);
 const chunks=await Promise.all(files.map(async path=>'// '+path+'\n'+(await readFile(path,'utf8')).replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace(/^export /gm,'')));
 const source='/* ALBot '+version+' · Vollbetrieb Live-Test pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';

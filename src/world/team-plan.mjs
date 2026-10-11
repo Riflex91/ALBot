@@ -17,7 +17,13 @@ export function createTeamPlan(bot){
  }
  function observe(){if(me.name!==bot.leader)return;const now=Date.now(),dt=Math.max(0,Math.min(5000,now-previous));previous=now;if(!current||!samePlace(p.c,current)||distance(p.c,current)>220){area=null;lastXp=p.c.xp??0;lastGold=p.c.gold??0;return;}
   const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear)),old=history[id]??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
-  old.seconds+=dt/1000;old.xp+=Math.max(0,(p.c.xp??0)-lastXp);lastXp=p.c.xp??0;if(!bot.journal&&!bot.logistics.reserved&&!bot.gold?.reserved)old.gold=(old.gold??0)+Math.max(0,(p.c.gold??0)-lastGold);lastGold=p.c.gold??0;old.empty+=visible.length?0:dt/1000;old.foreign+=foreign*dt/1000;old.samples++;old.at=now;history[id]=old;area=id;absence=old.empty/Math.max(1,old.seconds);samples++;
+  old.seconds+=dt/1000;old.xp+=Math.max(0,(p.c.xp??0)-lastXp);lastXp=p.c.xp??0;if(!bot.journal&&!bot.logistics.reserved&&!bot.gold?.reserved)old.gold=(old.gold??0)+Math.max(0,(p.c.gold??0)-lastGold);lastGold=p.c.gold??0;old.empty+=visible.length?0:dt/1000;old.foreign+=foreign*dt/1000;old.samples++;old.at=now;history[id]=old;area=id;
+  // A crowded spawn is often NOT empty: other players claim monsters before
+  // us. Count sustained foreign presence as pressure, not just empty time.
+  const emptyRatio=old.empty/Math.max(1,old.seconds);
+  const foreignAvg=old.foreign/Math.max(1,old.seconds);
+  absence=old.seconds>=60?Math.max(emptyRatio,foreignAvg>=2?.75:0):0;
+  samples++;
   history=Object.fromEntries(Object.entries(history).sort((a,b)=>b[1].at-a[1].at).slice(0,96));if(now-lastSave>30000){lastSave=now;p.write(key+':areas',history);}
  }
  function capabilities(){const names=bot.farmers??[],members=names.map(name=>{const h=name===me.name?{name,running:bot.running,hp:p.c.hp,max_hp:p.c.max_hp,mp:p.c.mp,max_mp:p.c.max_mp,class:p.c.ctype,map:p.c.map,in:p.c.in,stats:{attack:p.c.attack,frequency:p.c.frequency},skills:p.G.skills?Object.entries(p.G.skills).filter(([,s])=>(!s.class||s.class.includes?.(p.c.ctype))&&(s.level??0)<=p.c.level).map(([id])=>id):[]}:bot.transport.fresh(name);return h?{...h,name}:null;}).filter(h=>h?.running&&!h.rip);

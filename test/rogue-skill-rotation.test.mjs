@@ -11,7 +11,7 @@ function rogueFixture({skills={},targets=1,foreign=false,capacity=3,allowedNeutr
   x:26,y:0,hp:300,max_hp:300,target:'OtherTeam'});
  const calls=[],cfg={general:{testLogging:true},farming:{pvp:false,maxAggro:5},
   party:{enabled:false,aoe:true,aoeMaxTargets:5,buffs:true},skills:[]};
- const p={c,parent:{is_pvp:false},G:{items:{fireblade:{wtype:'sword'}},monsters:{bee:{}},maps:{main:{}},
+ const p={c,parent:{is_pvp:false},G:{items:{fireblade:{wtype:'short_sword'}},monsters:{bee:{}},maps:{main:{}},
    skills},call:(method,...args)=>{if(method==='is_on_cooldown')return false;
     if(method==='use_skill')calls.push({id:args[0],target:args[1]});return null;}};
  const bot={p,cfg,teamNames:['My_Rogue'],farmers:['My_Rogue'],leader:'My_Rogue',me:{name:'My_Rogue'},

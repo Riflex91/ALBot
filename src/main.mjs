@@ -42,6 +42,7 @@ import {createSkills} from './combat/skills.mjs';
 import {createFarmer} from './combat/farmer.mjs';
 import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
+import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint} from './core/checkpoint.mjs';
 export function install(root){
@@ -175,6 +176,15 @@ export function install(root){
     testReport:()=>report.text(),exportTestReport:()=>report.flush(),
     chooseLogDirectory:()=>report.chooseDirectory(),logCapabilities:()=>report.capabilities(),
     acknowledgeInventory(){if(bot.running)throw Error('Zuerst pausieren und tatsächlichen Bestand prüfen');if(!checkpoint.write(null))throw Error('Speichern fehlgeschlagen');bot.journal=null;bot.inventoryBlocked=false;bot.reason='Inventar manuell abgeglichen';publish();},
+    acknowledgeMiningAfterReview(token){
+     const audit=inspectMiningJournal(bot);
+     if(!audit.eligible||typeof token!=='string'||!token||token!==audit.token)throw Error('Mining-Bestandsabgleich ist nicht mehr gültig; neu prüfen');
+     if(!checkpoint.write(null))throw Error('Journal-Speicherung fehlgeschlagen');
+     const kind=bot.journal.kind;
+     bot.journal=null;bot.inventoryBlocked=false;bot.reason='Gathering-Journal nach manueller Bestandsprüfung freigegeben';
+     bot.event('inventory.manualReconcile',{kind,changedItems:audit.changes.length,source:'ingame-mining-audit',miningSuccess:'unknown'});
+     publish();return true;
+    },
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));

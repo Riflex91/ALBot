@@ -1,5 +1,5 @@
 import {VERSION} from '../version.mjs';
-import {inspectMiningJournal} from '../core/journal-audit.mjs';
+import {inspectMiningJournal,saveMiningAudit} from '../core/journal-audit.mjs';
 export function createPanel(bot,api){
   if(bot.p.headless||!bot.cfg.general.ui)return {render(){},remove(){}};
   const doc=bot.p.parent.document;if(!doc?.body)return {render(){},remove(){}};
@@ -25,19 +25,28 @@ export function createPanel(bot,api){
    const check=doc.createElement('button');check.textContent='Mining-Journal prüfen';
    const acknowledge=doc.createElement('button');acknowledge.textContent='Nach Prüfung manuell freigeben';acknowledge.disabled=true;
    const auditText=doc.createElement('pre');auditText.style.cssText='white-space:pre-wrap;max-width:280px;word-break:break-word';
-   let reviewed=false;
+   let reviewedToken=null;
    check.onclick=()=>{
     const result=inspectMiningJournal(bot);
-    reviewed=!!result.eligible;
-    acknowledge.disabled=!reviewed;
-    auditText.textContent='Journal: '+(result.kind??'keines')+'\nInventar identisch: '+result.inventoryEqual+'\nGold identisch: '+result.goldEqual+'\n'+result.reason+'\n'+(reviewed?'Keine Mining-Erfolgsbestätigung; Freigabe ausschließlich nach eigener Prüfung.':'Freigabe gesperrt');
+    reviewedToken=null;acknowledge.disabled=true;
+    const filename=result.kind?saveMiningAudit(bot.p,result):null;
+    const changes=result.changes.map(x=>x.item+': '+x.before+' -> '+x.after+' ('+(x.delta>=0?'+':'')+x.delta+')');
+    auditText.textContent='Journal: '+(result.kind??'keines')+'\nInventar identisch: '+result.inventoryEqual+
+     '\nGold identisch: '+result.goldEqual+'\n'+(changes.length?'Aenderungen:\n'+changes.join('\n'):'Keine Mengenabweichung')+
+     '\n'+result.reason+'\n'+(filename?'Audit gespeichert: '+filename:'Audit-Datei nicht gespeichert');
+    if(result.eligible&&filename){reviewedToken=result.token;acknowledge.disabled=false;}
+    else auditText.textContent+='\nFreigabe gesperrt (erst Bestandsbericht sichern und Voraussetzungen pruefen)';
    };
    acknowledge.onclick=()=>{
     const result=inspectMiningJournal(bot);
-    if(!reviewed||!result.eligible){reviewed=false;acknowledge.disabled=true;auditText.textContent='Freigabe gesperrt: Zustand verändert oder nicht geeignet';return;}
-    if(bot.p.parent.confirm?.('ACHTUNG: Der Mining-Erfolg ist UNGEKLÄRT. Nur fortfahren, wenn du den aktuellen Bestand selbst mit dem Vorherzustand abgeglichen hast. Das Journal wird manuell bestätigt und nicht erneut ausgeführt.')){
-     try{api.acknowledgeInventory();reviewed=false;acknowledge.disabled=true;auditText.textContent='Journal nach manueller Bestätigung freigegeben. Keine automatische Mining-Wiederholung.';}catch(e){auditText.textContent='Keine Freigabe: '+e.message;}
+    if(!reviewedToken||!result.eligible||result.token!==reviewedToken){
+     reviewedToken=null;acknowledge.disabled=true;auditText.textContent='Bestand hat sich geaendert; bitte Mining-Journal erneut pruefen';return;
     }
+    const answer=bot.p.parent.prompt?.('Mining-Erfolg ist UNGEKLAERT. Nur wenn du den heruntergeladenen Vorher-/Nachher-Bericht und den tatsaechlichen Bestand geprueft hast, genau BESTAND GEPRUEFT eingeben:', '');
+    if(answer!=='BESTAND GEPRUEFT')return;
+    if(!bot.p.parent.confirm?.('Das offene Gathering-Journal wird jetzt manuell als abgeglichen markiert. Kein Mining-Erfolg wird behauptet und keine Aktion wiederholt. Wirklich freigeben?'))return;
+    try{api.acknowledgeMiningAfterReview(reviewedToken);reviewedToken=null;acknowledge.disabled=true;auditText.textContent='Journal nach ausdruecklicher manueller Bestandspruefung freigegeben. Kein Mining-Erfolg angenommen.';}
+    catch(e){reviewedToken=null;acknowledge.disabled=true;auditText.textContent='Freigabe abgebrochen: '+e.message;}
    };
    node.append(check,acknowledge,auditText);
   }

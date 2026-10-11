@@ -51,6 +51,7 @@ test('adaptive team elects online fallback when configured combat leader disappe
 test('follower receives updated team roster from coordinator heartbeat',()=>{
  const {bot}=accountFixture(['My_Ranger1','My_Ranger2','My_Rogue']);
  bot.me={name:'My_Ranger2'};
+ bot.movement={stop(){}};
  bot.transport.fresh=name=>name==='My_Merchant'?{team:{names:['My_Ranger1','My_Ranger2','My_Rogue'],leader:'My_Ranger1',seq:1}}:null;
  const account=createAccount(bot);
  account.tick();
@@ -63,7 +64,7 @@ test('follower does not start independent farm smart_move against the leader fol
  const G={monsters:{goo:{hp:50,attack:10,frequency:1}},maps:{main:{monsters:[{type:'goo',count:3,boundaries:[['main',0,0,100,100]]}]}}};
  const source=spawnLocations(G,['goo'],[],false)[0],moves=[];
  const plan={...source,id:'live-plan',realm:'EUII',leader:'My_Ranger1',kind:'farm',expires:now+30000,started:now,objective:null};
- const bot={p:{read:()=>null,G,c:{name:'My_Ranger2',map:'main',in:'main',x:0,y:0},realm:()=> 'EUII'},
+ const bot={p:{read:()=>null,G,root:{S:{}},parent:{S:{}},c:{name:'My_Ranger2',map:'main',in:'main',x:0,y:0},realm:()=> 'EUII'},
   cfg:{general:{testLogging:true,messageTtlMs:10000},party:{enabled:true},world:{excludedMaps:[],cacheTtlMs:60000},farming:{pvp:false}},
   me:{name:'My_Ranger2',role:'farmer'},leader:'My_Ranger1',farmers:['My_Ranger1','My_Ranger2'],
   transport:{fresh:()=>({running:true,rip:false,farmPlan:plan})},

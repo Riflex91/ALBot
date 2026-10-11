@@ -37,6 +37,7 @@ export function createMerchant(bot){
   bot.logistics.travel();if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
+  if(bot.services?.approaching){const continued=bot.services.tick();if(continued||bot.services.approaching)return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}
   if(me.role==='merchant'&&!bot.movement.order)bot.reason=bot.production.status().blocked??'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf';
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});

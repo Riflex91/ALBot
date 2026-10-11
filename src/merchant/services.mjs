@@ -3,7 +3,7 @@ export function insidePolygon(point,polygon){let inside=false;for(let i=0,j=poly
 export const nearGatherZone=(point,polygon)=>[[0,-24],[-24,0],[24,0],[0,24]].some(([x,y])=>insidePolygon({x:point.x+x,y:point.y+y},polygon));
 export function createServices(bot){
  const {p,cfg,exec,me}=bot,e=bot.economy,key='albot:tools:'+me.name;
- let record=p.read(key),kind=null,cache=null,version=null,lastKind='mining',nextGather=0;
+ let record=p.read(key),kind=null,cache=null,version=null,lastKind='mining',nextGather=0,approaching=null;
  let merritUntil=Number(p.read('albot:merrit:'+me.name))||0,anchor=null,baseline=null,since=0,probe=0;
  let merritGift=null,lastReward=null,baselineReceipt=null,sliceStarted=0;
  // This is the official event on the local character, never a CM/IPC payload.
@@ -35,11 +35,13 @@ export function createServices(bot){
    regions=allRegions.filter(z=>!bot.movement?.failedRecently?.(z,'economy')),
    here=regions.find(z=>z.map===p.c.map&&nearGatherZone(xy(p.c),z.polygon));let zone=here?{...here,...xy(p.c)}:regions.find(z=>z.map===p.c.map)??regions[0];
   if(zone&&!here&&zone.map===p.c.map&&p.has?.('can_move_to')){const point=zone.points.slice().sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(point=>p.call('can_move_to',point.x,point.y));if(!point){e.note('Kein erreichbarer '+activity+'-Arbeitsplatz');return false;}zone={...zone,...point};}
-  if(!zone){e.note(allRegions.length?'Gathering-Zone nach fehlgeschlagenem smart_move vorübergehend ausgesetzt: '+activity:'Keine öffentliche '+activity+'-Zone bekannt');return false;}
-  if(bot.monsters().some(m=>m.target===p.c.name))return restore();
-  if(!e.travel(zone,activity,5))return true;
+  if(!zone){approaching=null;e.note(allRegions.length?'Gathering-Zone nach fehlgeschlagenem smart_move vorübergehend ausgesetzt: '+activity:'Keine öffentliche '+activity+'-Zone bekannt');return false;}
+  if(bot.monsters().some(m=>m.target===p.c.name)){approaching=null;return restore();}
+   if(p.c.slots?.mainhand?.name!==tool&&!p.c.items.some(i=>i?.name===tool&&e.safe(i))){approaching=null;e.note('Werkzeug fehlt: '+tool);return false;}
+   if(!e.travel(zone,activity,5)){if(!approaching||approaching.activity!==activity)approaching={activity,at:Date.now()};return true;}
+   approaching=null;
   if(!record&&(p.c.slots?.mainhand&&protectedItem(p.c.slots.mainhand)&&p.c.slots.mainhand.name!==tool||p.c.slots?.offhand&&protectedItem(p.c.slots.offhand))){e.note('Geschützte Ausrüstung verhindert Werkzeugwechsel');return false;}
-  if(!record&&!save({mainhand:identity(p.c.slots?.mainhand),offhand:identity(p.c.slots?.offhand)}))return false;kind=activity;
+  if(!record){if(!save({mainhand:identity(p.c.slots?.mainhand),offhand:identity(p.c.slots?.offhand)}))return false;sliceStarted=Date.now();}kind=activity;
   if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=cfg.merchant.minFreeSlots+1){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
    const before=identity(p.c.slots.offhand);return e.perform('gather.offhand',{guard:()=>identity(p.c.slots.offhand)===before,call:()=>p.call('unequip','offhand'),observe:()=>!p.c.slots.offhand,details:{slot:'offhand'}});
   }
@@ -77,9 +79,9 @@ export function createServices(bot){
   }
   if(record&&(!kind||Date.now()<nextGather||(!cfg.merchant.fishing&&!cfg.merchant.mining)))return restore();
   const requested=bot.strategy?.status().manual?.task;
-  if((!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;
+  if(!approaching&&!record&&(!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;
   for(const activity of ['fishing','mining'].filter(k=>cfg.merchant[k]&&(!requested||requested===k)).sort((a,b)=>(a===lastKind?1:0)-(b===lastKind?1:0)))if(gather(activity))return true;return restore();
  }
- function interrupt(){kind=null;anchor=null;since=0;baseline=null;merritGift=null;sliceStarted=0;}
- return {tick,restore,merrit,observeMerrit,get active(){return !!record;},get waiting(){return !!anchor||baseline!==null;},status:()=>({gathering:kind,restorePending:!!record,merritWaiting:!!anchor||baseline!==null,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt};
+ function interrupt(){kind=null;approaching=null;anchor=null;since=0;baseline=null;merritGift=null;sliceStarted=0;}
+ return {tick,restore,merrit,observeMerrit,get active(){return !!record;},get approaching(){return !!approaching;},get waiting(){return !!anchor||baseline!==null;},status:()=>({gathering:kind,approaching:approaching?{...approaching}:null,restorePending:!!record,merritWaiting:!!anchor||baseline!==null,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt};
 }

@@ -99,10 +99,12 @@ export function createLogistics(bot){
         const r=sendRule(item,to);if(!r)continue;
         const key=offerKey(to,item.name);if(nextOffer.has(key))continue;
         const peer=transport.fresh(to);if(!near(to)||!peer)continue;
-        const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);if(!demand)continue;
-        const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,Math.floor(demand.need));if(quantity<1)continue;
+        const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);
+        const gear=bot.allocation?.offer(signature(item),to);if(gear===false)continue;
+        const wanted=Math.max(demand?.need??0,gear?1:0);if(!Number.isSafeInteger(wanted)||wanted<1)continue;
+        const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,wanted);if(quantity<1)continue;
         if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
-        const gear=bot.allocation?.offer(signature(item),to);if(gear===false)continue;job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,gear,before:count(signature(item)),offerKey:key,lastOffer:now,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
+        job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,gear,before:count(signature(item)),offerKey:key,lastOffer:now,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
         nextOffer.set(key,now+5000);counters.offersSent++;transport.send(job.to,'offer',{item:job.item,quantity,gear:job.gear},job.id);break outer;
       }
     }
@@ -111,7 +113,9 @@ export function createLogistics(bot){
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;if(route?.owner==='logistics'){const h=transport.fresh(route.dest.name);if(!h?.running||bot.strategy?.canVisit(h)===false||distance(route.dest,h)>(cfg.merchant.servicePositionError??70)*2)bot.movement.stop();}const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
     for(const [name] of [...transport.peers].sort((a,b)=>(a[0]===bot.merchant?.serviceTarget?.()?-1000:0)-(b[0]===bot.merchant?.serviceTarget?.()?-1000:0)||urgency(b[0])-urgency(a[0]))){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
-      const demand=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
+      const requested=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
+       const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
+       const demand=requested||gearRequested;
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&capacity(item)>0;});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
         const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(bot.merchant?.claimService?.(name,urgent)===false)continue;

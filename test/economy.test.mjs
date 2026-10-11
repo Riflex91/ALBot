@@ -336,3 +336,22 @@ test('full bank never silently sells unique-data jar even if synthetic sell poli
  bot.p.call=(name)=>{if(name==='item_value')return 1;throw Error('unexpected mutation '+name);};
  assert.equal(bot.bank.reclaim(),false);assert.equal(bot.journal,null);
 });
+
+test('idle bank recovery does not buy bank capacity while many free slots remain',()=>{
+ const {bot,c}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.expandBank=true;
+ bot.cfg.merchant.bankWorkspace=2;bot.cfg.merchant.bankBudget=1000;
+ bot.p.G.bank_packs={items0:['bank',100],items1:['bank',100]};
+ let calls=0;bot.p.call=(method)=>{calls++;throw Error('Unexpected bank purchase '+method);};
+ assert.equal(bot.bank.reclaim(),false);
+ assert.equal(c.bank.items0.filter(i=>!i).length,42);
+ assert.equal(calls,0);
+});
+test('a high-value upgrade item is not a valid bank emergency sale even with explicit SELL rule',()=>{
+ const {bot,c,rule}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.expandBank=false;bot.cfg.merchant.bankWorkspace=2;
+ c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[0]={name:'sword',q:1};
+ bot.p.G.items.sword={g:5,upgrade:true};
+ bot.cfg.items=[{...rule,name:'SWORD',item:'sword',action:'sell',batch:1,maxCount:1000,minPrice:1}];
+ bot.p.call=name=>{if(name==='item_value')return 5;throw Error('No bank mutation allowed '+name);};
+ assert.equal(bot.bank.reclaim(),false);
+ assert.equal(bot.journal,null);
+});

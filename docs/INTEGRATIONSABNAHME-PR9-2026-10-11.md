@@ -1,3 +1,9 @@
+## Ergänzung – Empfänger-Session als Handoff-Gate (11.10.2026)
+
+**Offline bestätigter und behobener Integrationsfehler:** Ein bereits akzeptiertes Itemangebot darf nicht über eine Empfänger-Runtime-Session hinweg ausgeführt werden. Zwei simulierte Charaktere prüfen `offer` → `accept` → Empfänger-Reload mit neuer Session → **kein** `send_item`, **kein** neues Senderjournal; auch wenn die neue Session erst zwischen Scheduler-Einplanung und `Executor.flush()` sichtbar wird. Die verworfene, noch nicht ausgeführte Zusage erzeugt `logistics.session-changed`. [CI 38128018952](https://github.com/Riflex91/ALBot/actions/runs/38128018952): **250/250 Tests je Linux/Windows**, Builds und Bundle-Hash erfolgreich. Das ist kein Beleg eines echten Itemtransfers im Spiel.
+
+**Zusätzliche Live-Gates für Phase 3 und 6:** Bei kontrollierten, manuell freigegebenen Tests Session-ID des Senders und Empfängers für jede `offer/accept/sent/receipt/done`-Kette erfassen. Wird der Empfänger **vor** dem Versand neu gestartet, darf kein veralteter Versand erfolgen. Nach einem **bereits versandten** oder nicht eindeutig quittierten Item bleibt die Inventar-Journalsperre bis zur belegten Bestandsprüfung erhalten. Zu Diagnosezwecken `logistics.session-changed`, `logistics.timeout`, `inventory.intent`, `inventory.result` und `action.selection/start/end` mit UTC-Zeit korrelieren; bei Differenzen sofort abbrechen. Kein Auto-Retry, kein automatisches Quittieren.
+
 # PR #9: Gemeinsame Integrationsprüfung und kontrollierte Live-Abnahme
 
 Stand: **11. Oktober 2026**. Gilt für den **nicht gemergten** Arbeitsbranch `work/u01-u02-source-verification-20261010` in [PR #9](https://github.com/Riflex91/ALBot/pull/9). **Nicht** als vorhandene Livebestätigung interpretieren. Testphase erst nach bewusster manueller Auswahl des passenden Builds und der eigenen Konfiguration starten; **kein** automatischer Login, Deployment, Merge oder Game-API-Aufruf durch die Offline-CI.

@@ -1,4 +1,4 @@
-import {assessServerHop} from '../world/servers.mjs';
+import {assessServerHop,assessHomeSpawn,chooseHomeFallback} from '../world/servers.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 // Only official numbered European/American realms are eligible. PvP in any
 // spelling or metadata is a hard reject, even if a caller mislabels the mode.
@@ -24,6 +24,16 @@ export function normalizeServerRegistry(raw,now=Date.now(),fromOfficialGame=fals
 }
 export function createTeamTravel(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();let registryRef=null,registryAt=0,history=p.read('albot:hop-history:'+me.name)??[];if(!Array.isArray(history))history=[];
+ const homeRealm=nonPvpRealm(w.homeRealm)?w.homeRealm:'';
+ const homeKey='albot:home-return:'+me.name;
+ const savedHome=p.read(homeKey);
+ let home=savedHome&&savedHome.realm===homeRealm&&
+   Number.isFinite(savedHome.retryAt)&&savedHome.retryAt>=0?
+   savedHome:{realm:homeRealm,phase:'idle',retryAt:0,enteredAt:0,prior:null};
+ function saveHome(next){
+  if(p.write(homeKey,next)!==true){bot.report?.('Heimserver-Rückkehr: Frist konnte nicht gespeichert werden');return false;}
+  home=next;return true;
+ }
  function registry(){const external=p.root.ALBotServerRegistry??p.parent.ALBotServerRegistry;const official=external==null;const raw=external??p.parent.X?.servers??[];if(raw!==registryRef){registryRef=raw;registryAt=Date.now();}return normalizeServerRegistry(raw,registryAt,official);}
  function admission(realm){return cfg.general.testLogging===undefined||assessServerHop(registry().find(s=>s.realm===realm),history,Date.now(),{pvp:cfg.farming.pvp,cooldown:w.hopCooldownMs}).allowed;}
  const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
@@ -48,11 +58,68 @@ export function createTeamTravel(bot){
    exec.run('magiport',['skill','mana','lifecycle'],()=>bot.running&&p.c.mp>=(p.G.skills.magiport?.mp??900)+p.c.max_mp*.2,()=>p.call('use_skill','magiport',from),{delay:15000});consents.delete(from);
   }
  }
+ function homeTick(){
+  if(!homeRealm||!w.serverHop||!w.allowedRealms.includes(homeRealm)||
+     me.name!==bot.leader)return false;
+  const now=Date.now(),retryMs=Math.max(600000,w.homeRetryMs??600000);
+  const stateRealm=p.realm();
+  if(stateRealm===homeRealm){
+   if(home.phase!=='checking'&&home.phase!=='settled'){
+    saveHome({...home,realm:homeRealm,phase:'checking',enteredAt:now});
+    return true;
+   }
+   const pressure=bot.teamPlan?.status()?.pressure;
+   if(home.phase==='settled'){
+    if(Number.isFinite(pressure)&&pressure>=w.homePressureThreshold&&
+       now-(home.settledAt??0)>=Math.max(60000,w.homeCheckMs??90000))
+     saveHome({...home,phase:'checking',enteredAt:now});
+    return true;
+   }
+   if(!home.enteredAt||home.enteredAt>now){
+    saveHome({...home,enteredAt:now});return true;
+   }
+   const decision=assessHomeSpawn({realm:stateRealm,home:homeRealm,
+    enteredAt:home.enteredAt,now,pressure,
+    checkMs:w.homeCheckMs??90000,threshold:w.homePressureThreshold??.65});
+   if(decision.state==='settled'){
+    if(saveHome({...home,phase:'settled',settledAt:now,enteredAt:home.enteredAt}))
+     bot.event?.('server.homeSettled',{realm:homeRealm,pressure});
+   }else if(decision.state==='crowded'&&safe()){
+    const prior=home.prior;
+    const fallback=chooseHomeFallback(registry(),stateRealm,homeRealm,prior,realmAllowed);
+    if(fallback&&requestHop(fallback)){
+     if(saveHome({...home,phase:'away',prior:fallback,retryAt:now+retryMs,
+       enteredAt:0,crowdedAt:now})){
+      bot.event?.('server.homeCrowded',{realm:homeRealm,pressure,
+       fallback,retryAt:now+retryMs});
+     }else{for(const n of hop?.names??[])if(n!==me.name)
+       bot.transport.send(n,'hopCancel',{},hop.id);hop=null;}
+    }
+   }
+   // Home travel owns pressure-based server selection; do not race autoHop.
+   return true;
+  }
+  if(now<home.retryAt||!safe()||hop||!realmAllowed(homeRealm))return false;
+  // Always reserve enough hourly hop budget for a possible immediate escape
+  // from a blocked home spawn. Three hops per hour remains the hard ceiling.
+  if(history.filter(at=>now-at<3600000).length>1)return false;
+  const prior=stateRealm;
+  if(!requestHop(homeRealm))return false;
+  if(!saveHome({...home,realm:homeRealm,phase:'checking',enteredAt:0,
+    prior,retryAt:now+retryMs,attemptedAt:now})){
+   for(const n of hop?.names??[])if(n!==me.name)bot.transport.send(n,'hopCancel',{},hop.id);
+   hop=null;return false;
+  }
+  bot.event?.('server.homeReturnAttempt',{realm:homeRealm,from:prior,
+   retryAt:now+retryMs});
+  return true;
+ }
  function tick(){
   for(const [name,t] of consents)if(t.until<Date.now())consents.delete(name);
   if(hop){if(hop.until<Date.now()){if(me.name===bot.leader)for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);hop=null;return;}
    if(me.name===bot.leader&&!hop.broadcast&&hop.names.every(n=>hop.ready.has(n))&&safe()){const token=hop;hop.broadcast=true;Promise.all(hop.names.filter(n=>n!==me.name).map(n=>bot.transport.send(n,'hopCommit',{realm:hop.realm},hop.id))).then(results=>{if(hop===token&&results.every(Boolean))applyHop();else if(hop===token)hop=null;},()=>{if(hop===token)hop=null;});}return;
   }
+  if(homeTick())return;
   if(cfg.general.testLogging!==undefined&&w.autoHop!==false&&me.name===bot.leader&&bot.teamPlan?.status().pressure>.6&&safe()){const current=registry().find(s=>s.realm===p.realm()),next=registry().filter(s=>s.realm!==p.realm()&&realmAllowed(s.realm)&&Number.isFinite(current?.players)&&Number.isFinite(s.players)&&s.players<current.players*.85).sort((a,b)=>a.players-b.players)[0];if(next&&requestHop(next.realm)){bot.event('server.autoHop',{realm:next.realm,reason:'Anhaltender Standortdruck und geringer belegter Serverbesatz'});return;}}
   if(!w.magiport||p.c.ctype!=='mage'||!safe()||p.c.mp<(p.G.skills.magiport?.mp??900)+p.c.max_mp*.2)return;
   const leader=me.name===bot.leader?p.c:bot.transport.fresh(bot.leader);if(!leader||!samePlace(p.c,leader)||distance(p.c,leader)>cfg.party.followDistance)return;
@@ -61,5 +128,5 @@ export function createTeamTravel(bot){
   }
  }
  function accept(name){if(w.magiport&&consents.get(name)?.purpose==='accept'&&consents.get(name)?.until>Date.now()&&safe()){consents.delete(name);return exec.run('magiport.accept',['lifecycle','movement'],()=>bot.running&&!bot.journal,()=>p.call('accept_magiport',name),{delay:10000});}return false;}
- return {requestHop,receive,tick,accept,get blocked(){return !!hop;},status:()=>({registry:registry(),history:[...history],hop:hop?{realm:hop.realm,until:hop.until}:null}),close(){hop=null;consents.clear();}};
+ return {requestHop,receive,tick,accept,get blocked(){return !!hop;},status:()=>({registry:registry(),history:[...history],hop:hop?{realm:hop.realm,until:hop.until}:null,home:homeRealm?{...home}:null}),close(){hop=null;consents.clear();}};
 }

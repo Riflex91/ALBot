@@ -44,3 +44,22 @@ test('Bot panel drag cannot be started from a button and saved off-screen coordi
  assert.equal(button.listeners.has('pointerdown'),false);
  panel.remove();
 });
+
+test('browser without a directory picker omits unavailable folder button but retains report download',()=>{
+ const f=docFixture();f.bot.cfg.general.testLogging=true;
+ f.api.logCapabilities=()=>({mode:'download',directory:false});
+ const panel=createPanel(f.bot,f.api),node=f.nodes[0];
+ const labels=node.children.filter(c=>c.tag==='button').map(c=>c.textContent);
+ assert.equal(labels.includes('Ordnerauswahl nicht verfügbar'),false);
+ assert.equal(labels.includes('Testordner wählen'),false);
+ assert.ok(labels.includes('Testlog speichern'));
+ panel.remove();
+});
+test('directory picker is shown when the capability is available',()=>{
+ const f=docFixture();f.bot.cfg.general.testLogging=true;
+ f.api.logCapabilities=()=>({mode:'directory',directory:true});f.api.chooseLogDirectory=()=>{};
+ const panel=createPanel(f.bot,f.api),node=f.nodes[0];
+ const labels=node.children.filter(c=>c.tag==='button').map(c=>c.textContent);
+ assert.ok(labels.includes('Testordner wählen'));
+ panel.remove();
+});

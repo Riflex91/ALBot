@@ -1,4 +1,4 @@
-import {identity} from './policy.mjs';
+import {identity,fingerprint} from './policy.mjs';
 export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null;
  function authorize(kind){if(!kind.startsWith('bank.'))return true;if(me.name!==cfg.party.merchant)return false;const other=[...bot.transport.peers].map(([name,h])=>({name,...h})).find(h=>h.bankOwner&&h.name!==me.name&&h.running&&Date.now()-h.received<cfg.general.messageTtlMs);if(other){conflict=other.name;bot.report('Bankbesitz-Konflikt: '+other.name);return false;}conflict=null;lease={owner:me.name,session:bot.session,realm:p.realm(),epoch:Date.now(),purpose:kind,expires:Date.now()+cfg.general.messageTtlMs};return true;}
  // Resolve a legacy bank_store that the server executed as a stack swap.
@@ -16,12 +16,12 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   const source=snap.inventory[j.sourceSlot],bankBefore=j.bankTargetBefore;
   if(typeof source!=='string'||typeof bankBefore!=='string'||source!==j.slots?.[0]?.[1]||
      j.slots?.[0]?.[0]!==j.sourceSlot)return false;
-  const fp=x=>x?JSON.stringify([x.name,x.level??0,x.stat_type??'',x.p??'',x.title??'',x.data??'',x.acc??'',x.rid??'',x.special??''])+':'+(x.q??1):null;
+  const fp=fingerprint;
   const untouched=snap.inventory.every((v,i)=>i===j.sourceSlot||v===fp(items[i]));
   if(!untouched)return false;
   const nowSource=fp(items[j.sourceSlot]),nowBank=fp(pack[j.bankSlot]);
   let outcome=null;
-  if(bankBefore==='null'||bankBefore===''||bankBefore==null){
+  if(bankBefore===':1'||bankBefore===''||bankBefore==null){
    if(!items[j.sourceSlot]&&nowBank===source)outcome='deposited';
   }else if(nowSource===bankBefore&&nowBank===source&&
      j.bankTargetQuantity>0&&j.bankTargetQuantity!==j.quantity){

@@ -84,7 +84,7 @@ test('audit M02 reads plural official tables and compound probability grade diff
 test('audit M01 future gear unknown protects equipment even when optimizers have no selected target',()=>{
  const {bot,c,G,cfg}=fixture();bot.me.role='merchant';
  G.items.bow={type:'weapon',wtype:'bow',upgrade:true,g:2,grades:[3,6]};G.classes={ranger:{mainhand:{bow:true},doublehand:{},offhand:{}}};
- cfg.production.autoDisposition=true;cfg.production.autoGear=false;
+ cfg.production.autoDisposition=true;cfg.production.autoGear=false;cfg.characters=[cfg.characters[1]];
  bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{}}),profile:()=>null};
  bot.production.reservedQuantity=()=>0;c.items[0]={name:'bow',level:0};
  const intel=createEconomicIntelligence(bot);
@@ -112,5 +112,5 @@ test('audit M03 finite compound holdings never fund fictitious +2 results',()=>{
  assert.equal(intel.mutationEconomics(i).action,'compound','nine copies can finance a +2 path');
  c.items[0].l=true;
  intel=createEconomicIntelligence(bot);
- assert.equal(intel.mutationEconomics(i).action,'compound','protected base is excluded but remaining safe groups can still be evaluated');
+ assert.equal(intel.mutationEconomics(i).action,'sell','locked ninth input cannot finance a second compound tier');
 });

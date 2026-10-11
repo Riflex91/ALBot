@@ -28,7 +28,7 @@ export function createBank(bot){
   }
   bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: Bestand weicht vom Checkpoint ab; manuell prüfen');return true;
  }
- let observed=false,stockRows=[],packEpoch=-1,packCache=null;
+ let observed=false,stockRows=[],packEpoch=-1,packCache=null,stockObservedAt=0,stockObservedMap=null;
  // Server-approved plain stack candidates; require an exact item variant.
  const stackMax=i=>{const limit=bot.p.G.items?.[i?.name]?.s;return limit===true?9999:Number.isSafeInteger(limit)&&limit>1?limit:0;};
  const simple=i=>e.safe(i)&&stackMax(i)>1&&!i.data&&!i.p&&!i.title&&!i.stat_type&&!i.acc&&!i.rid&&!i.special&&!i.v;
@@ -46,9 +46,9 @@ export function createBank(bot){
   }
   return false;
  }
- const packs=()=>{if(packCache&&Number.isInteger(bot.decisionEpoch)&&packEpoch===bot.decisionEpoch)return packCache;const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},(_,n)=>items[n]??null)]);if(rows.length){observed=true;stockRows=rows.flatMap(([pack,items])=>items.filter(i=>e.safe(i)&&e.explicit(i)?.action!=='keep').map(i=>({pack,item:{...i}}))).slice(0,2000);}packEpoch=bot.decisionEpoch;packCache=rows;return rows;};
- const stock=(name,level,wanted=Infinity)=>{packs();return stockRows.reduce((n,r)=>n+(r.item.name===name&&(r.item.level??0)===level&&(cfg.merchant.partialBank||(r.item.q??1)<=wanted)?(r.item.q??1):0),0);};
- const packFor=item=>{packs();return stockRows.find(r=>identity(r.item)===identity(item))?.pack;};
+ const packs=()=>{if(packCache&&Number.isInteger(bot.decisionEpoch)&&packEpoch===bot.decisionEpoch)return packCache;const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},(_,n)=>items[n]??null)]);if(rows.length){observed=true;stockObservedAt=Date.now();stockObservedMap=p.c.map;stockRows=rows.flatMap(([pack,items])=>items.filter(i=>e.safe(i)&&e.explicit(i)?.action!=='keep').map(i=>({pack,item:{...i}}))).slice(0,2000);}packEpoch=bot.decisionEpoch;packCache=rows;return rows;};
+ const stock=(name,level,wanted=Infinity)=>{packs();if(Date.now()-stockObservedAt>120000||!p.c.bank||stockObservedMap!==p.c.map)return 0;return stockRows.reduce((n,r)=>n+(r.item.name===name&&(r.item.level??0)===level&&(cfg.merchant.partialBank||(r.item.q??1)<=wanted)?(r.item.q??1):0),0);};
+ const packFor=item=>{packs();if(Date.now()-stockObservedAt>120000||!p.c.bank||stockObservedMap!==p.c.map)return null;return stockRows.find(r=>identity(r.item)===identity(item))?.pack;};
  const definitions=()=>p.G.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
  const location=map=>({map,in:map,x:0,y:-100,radius:80});

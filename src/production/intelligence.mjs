@@ -5,7 +5,23 @@ import {gearScore,gearCompatible,gearSuitability} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 const HISTORICAL_CHANCES={upgrade:[[.9999999,.98,.95,.7,.6,.4,.25,.15,.07,.024],[.99998,.97,.94,.68,.58,.38,.24,.14,.066,.018],[.97,.94,.92,.64,.52,.32,.232,.13,.062,.015]],compound:[[.99,.75,.4,.25,.2,.1,.07,.05,.05,.05],[.9,.7,.4,.2,.15,.08,.07,.05,.05,.03],[.8,.6,.32,.16,.1,.07,.03,.03,.03,.02]]};
-export function progressionChance(G,name,level,kind){const m=G.items?.[name];const table=kind==='compound'?G.compound:G.upgrade;const grade=Array.isArray(m?.grades)?level>=m.grades[1]?2:level>=m.grades[0]?1:0:m?.igrade??0;const value=table?.[grade]?.[level+1]??table?.chances?.[grade]?.[level+1]??HISTORICAL_CHANCES[kind]?.[Math.min(2,grade)]?.[level];return Number.isFinite(value)&&value>0&&value<=1?value:null;}
+export function progressionChance(G,name,level,kind){
+ const m=G.items?.[name],targetLevel=level+1;
+ if(!m||!Number.isInteger(level)||level<0||!['upgrade','compound'].includes(kind))return null;
+ // Official progression: the probability grade is distinct from the scroll
+ // grade. Upgrade uses the base grade; compound uses level - 2 above +3.
+ const probabilityLevel=kind==='compound'&&targetLevel>3?targetLevel-3:0;
+ const grade=Array.isArray(m.grades)?
+   (probabilityLevel>=m.grades[1]?2:probabilityLevel>=m.grades[0]?1:0):
+   (Number.isInteger(m.igrade)?m.igrade:0);
+ if(!Number.isInteger(grade)||grade<0||grade>2)return null;
+ const table=kind==='compound'?G.compounds:G.upgrades;
+ // Missing cells in a PRESENT live table are unknown, not permission to use
+ // an obsolete historical probability.
+ const value=table?(table[grade]?.[targetLevel]??table.chances?.[grade]?.[targetLevel]):
+   HISTORICAL_CHANCES[kind]?.[grade]?.[level];
+ return Number.isFinite(value)&&value>0&&value<=1?value:null;
+}
 export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluated=[],at=0,allocation=[],chances=new Map(),props=new Map(),propsVersion=p.G.version,profitAt=0,profits=[],stockEpoch=-1,stocks=null;
  function mutationChance(name,level,kind){const observed=chances.get(name+':'+level+':'+kind);return observed&&Date.now()-observed.at<3600000?observed.value:progressionChance(p.G,name,level,kind);}
  function properties(i){if(propsVersion!==p.G.version){propsVersion=p.G.version;props.clear();}const key=identity(i);if(props.has(key))return props.get(key);const value=p.call('item_properties',i);if(props.size>=512)props.clear();props.set(key,value);return value;}
@@ -18,14 +34,105 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
     }}if(best){evaluated.push(best);allocation.push({character:member.name,slot,item:best.item,level:best.level,utility:best.utility,state:'reserved',recipientSession:bot.transport.fresh(member.name)?.session??null});}}
   }return evaluated;
  }
- function futureGear(i){return targets().some(g=>g.item===i.name&&g.level>=(i.level??0));}
+ function gearUse(i){
+ const meta=p.G.items?.[i?.name];
+ if(!meta||(meta.upgrade!==true&&meta.compound!==true&&
+   !meta.upgrade&&!meta.compound))return {state:'no-gear-use',reason:'not-progressive-gear',checked:0};
+ const members=(cfg.characters??[]).filter(c=>c.enabled);
+ if(!members.length)return {state:'unknown',reason:'no-expected-profiles',checked:0};
+ if(i.data!==undefined||i.p||i.title||i.stat_type||i.acc||i.rid||i.special)
+   return {state:'unknown',reason:'specific-variant-not-proven',checked:0};
+ let checked=0;
+ const horizon=Math.max(i.level??0,cfg.production.autoGearMaxLevel??0);
+ for(const member of members){
+  // A stale profile is not evidence of disuse. Remote profiles must have an
+  // independently fresh heartbeat even when old gear is cached locally.
+  const peer=member.name===me.name?null:bot.transport?.fresh?.(member.name);
+  const profile=member.name===me.name?bot.gear?.snapshot?.():bot.gear?.profile?.(member.name);
+  if(!profile||!profile.slots||!profile.class||
+     member.name!==me.name&&(!peer||!peer.running||peer.rip||peer.realm!==p.realm()))
+    return {state:'unknown',reason:'missing-or-stale-profile:'+member.name,checked,horizon};
+  checked++;
+  const role=member.gearRole==='auto'?
+   (profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole;
+  const slots=new Set([...Object.keys(profile.slots),'mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb']);
+  for(const slot of slots){
+   if(!gearCompatible(p.G,profile,i,slot))continue;
+   const old=profile.slots[slot]??null;
+   let oldStats,oldScore;
+   try{
+    oldStats=old?properties(old):{};
+    if(old&&!oldStats)return {state:'unknown',reason:'unknown-current-stats',checked,horizon};
+    oldScore=old?gearScore(oldStats,role,profile.class):0;
+   }catch{return {state:'unknown',reason:'invalid-current-stats',checked,horizon};}
+   for(let level=Math.max(0,i.level??0);level<=horizon;level++){
+    try{
+     const candidate={...i,level},newStats=properties(candidate);
+     if(!newStats||typeof newStats!=='object')return {state:'unknown',reason:'unknown-candidate-stats',checked,horizon};
+     if(!gearSuitability(oldStats,newStats,role,profile.class,member.merchantMobility).ok)continue;
+     const score=gearScore(newStats,role,profile.class);
+     if(score>oldScore+Math.max(.01,Math.abs(oldScore)*(cfg.production.minImprovement??0)))
+      return {state:'gear-useful',reason:'improvement:'+member.name+':'+slot,checked,horizon,level};
+    }catch{return {state:'unknown',reason:'gear-analysis-failed',checked,horizon};}
+   }
+  }
+ }
+ return {state:'no-gear-use',reason:'checked-all-expected-profiles-within-horizon',checked,horizon};
+}
+function futureGear(i){return gearUse(i).state!=='no-gear-use';}
  // Discounted, quantity-bounded bids supplement the NPC baseline only when a
  // verified buyer is currently reachable; a future upgrade gets a larger haircut.
  function resaleValue(item,quantity=1,future=true){
   const npc=bot.economy.value(item);const bid=bot.market?.bidValuation?.(item,quantity,npc,{future});
   return Number.isFinite(bid?.unitValue)&&bid.unitValue>=npc?bid.unitValue:npc;
  }
- function mutationEconomics(i){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoGearMaxLevel;if(!Number.isFinite(current)||cfg.production.lossBudget>0&&current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
+ function finiteCompoundValue(i,max,current){
+ // Sell-or-compound optimization over the FINITE, currently actionable
+ // inventory. Each batch consumes three units; a failed attempt returns zero
+ // units. Future results cannot be financed with nonexistent inputs.
+ const held=p.c.items.filter(x=>x&&identityVariant(x,i)&&bot.economy.safe(x))
+   .reduce((n,x)=>n+(Number.isSafeInteger(x.q)&&x.q>0?x.q:1),0);
+ const reserved=bot.production?.reservedQuantity?.(i)??0;
+ const n=Math.max(0,Math.min(42,held-Math.max(0,reserved)));
+ if(n<1)return {level:i.level??0,ev:current,action:'bank',reason:'no-unreserved-copies'};
+ const start=i.level??0,memo=new Map(),priceCache=new Map();
+ const priceAt=l=>{
+  if(!priceCache.has(l))priceCache.set(l,resaleValue({...i,level:l},1,l>start));
+  return priceCache.get(l);
+ };
+ function solve(l,count){
+  if(count<=0)return {value:0,groups:0};
+  const key=l+':'+count;if(memo.has(key))return memo.get(key);
+  const sale=priceAt(l);
+  let best={value:count*sale,groups:0};
+  if(l<max&&count>=3&&Number.isFinite(sale)){
+   const c=mutationChance(i.name,l,'compound');
+   const grade=p.call('item_grade',{...i,level:l});
+   const cost=p.G.items?.['cscroll'+grade]?.g;
+   if(c>=cfg.production.minChance&&Number.isFinite(cost)&&cost>=0&&
+     cost<=cfg.production.helperMaxPrice){
+    for(let k=1;k<=Math.floor(count/3);k++){
+     if(k*cost>cfg.production.helperMaxPrice)break;
+     let expected=0,comb=1;
+     for(let j=0;j<=k;j++){
+      const prob=comb*Math.pow(c,j)*Math.pow(1-c,k-j);
+      expected+=prob*solve(l+1,j).value;
+      comb=comb*(k-j)/(j+1);
+     }
+     const total=(count-3*k)*sale+expected-k*cost;
+     if(Number.isFinite(total)&&total>best.value*(1+(cfg.production.minImprovement??0)))
+      best={value:total,groups:k};
+    }
+   }
+  }
+  memo.set(key,best);return best;
+ }
+ const answer=solve(start,n);
+ return {level:start+(answer.groups?1:0),ev:answer.value/n,
+   action:answer.groups?'compound':'sell',quantity:n,groups:answer.groups,
+   reason:answer.groups?'finite-stock-compound':'finite-stock-sell'};
+}
+function mutationEconomics(i){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel;if(!Number.isFinite(current)||cfg.production.lossBudget>0&&current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};if(kind==='compound')return finiteCompoundValue(i,max,current);let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
   for(let l=max-1;l>=(i.level??0);l--){const c=mutationChance(i.name,l,kind),grade=p.call('item_grade',{...i,level:l}),scrollCost=p.G.items[(kind==='compound'?'cscroll':'scroll')+grade]?.g,immediate=resaleValue({...i,level:l},1,l>(i.level??0));if(!(c>=cfg.production.minChance)||!Number.isFinite(scrollCost)||!Number.isFinite(immediate)){value=immediate;continue;}const ev=(c*value-scrollCost)/factor;if(ev>immediate*(1+cfg.production.minImprovement)&&scrollCost<=cfg.production.helperMaxPrice){value=ev;if(l===(i.level??0))best={level:l+1,ev,action:kind};}else value=immediate;}
   return best;
  }
@@ -42,4 +149,4 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  }
  function profitGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-profitAt<1000)return profits;if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoDisposition)return [];const result=[],stock=stockItems();for(const {item:i} of stock){if(bot.economy.explicit(i)||futureGear(i)||!p.G.items[i.name]?.upgrade&&!p.G.items[i.name]?.compound)continue;const choice=mutationEconomics(i),kind=choice.action;if(!['upgrade','compound'].includes(kind)||!cfg.production[kind])continue;const sources=stock.filter(r=>identityVariant(r.item,i));if(kind==='compound'&&sources.reduce((n,r)=>n+(r.item.q??1),0)<3)continue;if(choice.ev<=bot.economy.value(i))continue;const goal={name:'Gewinnproduktion '+i.name+' +'+choice.level,enabled:true,item:i.name,level:choice.level,quantity:1,recipient:'',priority:-100,budget:Math.min(cfg.production.lossBudget,cfg.production.helperMaxPrice),variant:{stat_type:i.stat_type,p:i.p,title:i.title,data:i.data}};if(!result.some(g=>g.item===goal.item&&g.level===goal.level&&JSON.stringify(g.variant)===JSON.stringify(goal.variant)))result.push(goal);}profitAt=Date.now();profits=result.slice(0,16);return profits;}
  function rules(){const candidates=[...p.c.items.filter(Boolean)];if(me.role==='merchant')for(const [,h] of bot.transport.peers)if(h.running&&h.realm===p.realm())for(const row of h.items??[])if(row.to===me.name&&row.surplus>0)candidates.push(row.variant??{name:row.item,level:0});return [...new Map(candidates.filter(i=>!bot.economy.explicit(i)).map(i=>[identity(i),disposition(i)])).values()].filter(Boolean).slice(0,64);}
- return {targets,disposition,rules,profitGoals,futureGear,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value){if(Number.isFinite(value)&&value>0&&value<=1){if(chances.size>128)chances.clear();chances.set(name+':'+level+':'+kind,{value,at:Date.now()});at=0;}},status:()=>({targets:evaluated,allocations:allocation}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}
+ return {targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value){if(Number.isFinite(value)&&value>0&&value<=1){if(chances.size>128)chances.clear();chances.set(name+':'+level+':'+kind,{value,at:Date.now()});at=0;}},status:()=>({targets:evaluated,allocations:allocation}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}

@@ -29,7 +29,32 @@ export function createFarmer(bot){
     return false;
   }
   function retreat(t){if(bot.navigation?.orbit(t))return;const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>m.target===c.name);if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
-  function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
+  function helpEngagedTeamFight(leader){
+  // Soft follow distance must not suppress safe, reachable assistance to an
+  // EXISTING team fight. This path never pulls an unattached monster.
+  if(!leader?.running||leader.rip||!samePlace(p.c,leader))return false;
+  const range=Math.max(5,(p.c.range??0)-Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
+  const enemy=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&m.target&&
+    bot.teamNames.includes(m.target)&&bot.allowed(m)&&
+    bot.strategy?.safeTarget?.(m.mtype,m)!==false&&
+    distance(p.c,m)<=range).sort((a,b)=>
+    Number(b.id===leader.target)-Number(a.id===leader.target)||
+    distance(p.c,a)-distance(p.c,b))[0];
+  if(!enemy)return false;
+  bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
+  bot.skills.rotation(enemy);
+  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&
+    !!bot.entity(enemy.id)?.target,()=>p.call('change_target',enemy),{delay:500});
+  exec.run('attack',['attack','mana'],()=>{
+    const live=bot.entity(enemy.id);
+    return live&&live.target&&bot.teamNames.includes(live.target)&&
+      bot.allowed(live)&&bot.strategy?.safeTarget?.(live.mtype,live)!==false&&
+      distance(p.c,live)<=range&&p.call('can_attack',live)&&
+      !p.call('is_on_cooldown','attack');
+  },()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(enemy.id)),()=>{bot.target=null;}),{delay:100});
+  return true;
+}
+function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>m.target===p.c.name);if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
   function tick(){
     bot.recovering=false;
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
@@ -57,7 +82,7 @@ export function createFarmer(bot){
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}
-      if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
+      if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){if(helpEngagedTeamFight(leader))return;bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){waitSafely('Warte auf Gruppe');return;}

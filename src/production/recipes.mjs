@@ -61,3 +61,31 @@ export function matchRecipeSlots(candidates){
  for(const [slot,row] of slotOwner)result[row]=slot;
  return result;
 }
+
+// A craft-preparation merge is useful only when the complete required stack
+// can eventually be assembled under the game's maximum stack size. Picking
+// the largest immediate pair can get stuck (4+3=7, while 4+2+2=8 works).
+// Exact bounded subset sums identify an achievable complete group. No swaps
+// occur while planning; callers merge the first two members and replan later.
+export function planCraftStackMerge(stacks,required,limit){
+ if(!Array.isArray(stacks)||stacks.length<2||!Number.isSafeInteger(required)||required<2||
+    !Number.isSafeInteger(limit)||limit<required)return null;
+ const states=new Map([[0,[]]]),seenSlots=new Set();
+ for(const stack of stacks){
+  const slot=stack?.slot,q=stack?.quantity;
+  if(!Number.isSafeInteger(slot)||slot<0||seenSlots.has(slot)||!Number.isSafeInteger(q)||q<1)return null;
+  seenSlots.add(slot);
+  for(const [sum,path] of [...states]){
+   const next=sum+q;
+   if(!Number.isSafeInteger(next)||next>limit)continue;
+   const candidate=[...path,slot],prior=states.get(next);
+   if(!prior||candidate.length<prior.length)states.set(next,candidate);
+  }
+  // Bounded in both time and memory; failing closed is preferable to
+  // selecting an unsafe or non-terminating sequence of inventory swaps.
+  if(states.size>4096)return null;
+ }
+ const complete=[...states].filter(([sum,path])=>sum>=required&&path.length>1)
+  .sort((a,b)=>a[1].length-b[1].length||a[0]-b[0])[0];
+ return complete?{slots:complete[1],sum:complete[0]}:null;
+}

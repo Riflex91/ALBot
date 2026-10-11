@@ -112,3 +112,34 @@ test('gold reservation prevents new item offers, item acceptance and logistics t
 
 
 test('item transfer timeout tolerates reentrant cleanup without null job access or duplicate send',()=>{const {A,B}=pair();let now=Date.now();A.exec.now=B.exec.now=()=>now;A.p.call=()=>new Promise(()=>{});A.logistics.poll();A.logistics.poll();A.endValue=()=>{A.inventoryBlocked=true;A.logistics.close();};now+=20000;assert.doesNotThrow(()=>A.logistics.poll());assert.equal(A.inventoryBlocked,true);assert.ok(A.journal);assert.equal(A.logistics.handoffActive,false);});
+
+test('verified gear promise initiates delivery even without receiver inventory demand',()=>{
+ const {A,B,sends}=pair();
+ B.p.c.items[0].q=10;
+ const promise={slot:'mainhand',expected:'empty',expires:Date.now()+10000};
+ A.allocation={offer:()=>promise,reserve:j=>j.gearAck==='empty',guard:()=>true};
+ B.allocation={accept:()=>true};
+ assert.equal(B.logistics.summary()[0].need,0);
+ A.logistics.poll();
+ assert.equal(A.logistics.stats().offersSent,1);
+ assert.equal(B.journal?.kind,'receive');
+ A.logistics.poll();
+ assert.equal(sends(),1);
+ B.logistics.poll();A.logistics.poll();
+ assert.equal(A.inventoryBlocked,false);
+});
+test('merchant can travel for validated gear promise without receiver item-demand row',()=>{
+ const {A,B}=pair();B.p.c.items[0].q=10;A.p.c.x=800;
+ let destination=null;
+ A.allocation={offer:()=>({slot:'mainhand',expected:'empty',expires:Date.now()+10000})};
+ A.transport.peers.set('B',{});
+ A.movement={order:null,go:(dest,owner)=>{destination={dest,owner};}};
+ A.logistics.travel();
+ assert.equal(destination?.owner,'logistics');
+ assert.equal(destination?.dest?.name,undefined);
+});
+test('merchant never sends unsolicited goods when neither demand nor validated gear promise exists',()=>{
+ const {A,B}=pair();B.p.c.items[0].q=10;
+ A.logistics.poll();
+ assert.equal(A.logistics.stats().offersSent,0);
+});

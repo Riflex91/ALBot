@@ -149,3 +149,34 @@ test('merchant gathering skips a rejected smart-route zone and chooses another p
  assert.deepEqual(visited,['other'],'No repeated move toward quarantined woffice');
  assert.ok(notes.some(s=>s.includes('vorübergehend ausgesetzt')));
 });
+
+test('merchant services keep a pending mining approach until first post-arrival tool step',async()=>{
+ const {createServices}=await import('../src/merchant/services.mjs');
+ const polygon=[[0,0],[100,0],[100,100],[0,100]],calls=[];
+ const c={name:'M',map:'main',in:'main',x:-100,y:25,level:60,mp:100,items:[{name:'pickaxe',level:0}],slots:{}};
+ const economy={safe:i=>!!i&&i.name==='pickaxe',note:s=>calls.push(['note',s]),travel:()=>{calls.push(['travel']);return calls.filter(x=>x[0]==='travel').length>1;},perform:key=>{calls.push(['perform',key]);return true;}};
+ const bot={cfg:{merchant:{mining:true,fishing:false,merrit:false,massBuffs:false},world:{excludedMaps:[]},general:{economyTickMs:2000}},
+  p:{c,G:{maps:{main:{zones:[{type:'mining',polygon}]}},skills:{mining:{level:1,mp:5}}},read:()=>null,write:()=>true,call:()=>false,has:()=>false},
+  me:{name:'M'},exec:{},economy,movement:{failedRecently:()=>false},monsters:()=>[],strategy:{status:()=>({manual:null})}};
+ const s=createServices(bot);
+ assert.equal(s.tick(),true);
+ assert.equal(s.approaching,true);
+ assert.equal(s.tick(),true);
+ assert.equal(s.approaching,false);
+ assert.equal(s.status().gathering,'mining');
+ assert.ok(calls.some(x=>x[0]==='perform'&&x[1]==='gather.equip'));
+});
+test('fishing without a rod does not send merchant to inaccessible worksite',async()=>{
+ const {createServices}=await import('../src/merchant/services.mjs');
+ const polygon=[[0,0],[100,0],[100,100],[0,100]],actions=[];
+ const c={name:'M',map:'main',in:'main',x:-100,y:25,level:60,mp:100,items:[],slots:{}};
+ const bot={cfg:{merchant:{mining:false,fishing:true,merrit:false,massBuffs:false},world:{excludedMaps:[]},general:{economyTickMs:2000}},
+  p:{c,G:{maps:{main:{zones:[{type:'fishing',polygon}]}},skills:{fishing:{level:1,mp:5}}},read:()=>null,call:()=>false,has:()=>false},
+  me:{name:'M'},exec:{},economy:{safe:()=>true,note:s=>actions.push(['note',s]),travel:()=>actions.push(['travel'])},
+  movement:{failedRecently:()=>false},monsters:()=>[],strategy:{status:()=>({manual:null})}};
+ const s=createServices(bot);
+ assert.equal(s.tick(),false);
+ assert.equal(s.approaching,false);
+ assert.ok(actions.some(x=>x[0]==='note'&&x[1].includes('rod')));
+ assert.ok(!actions.some(x=>x[0]==='travel'));
+});

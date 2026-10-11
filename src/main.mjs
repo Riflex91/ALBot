@@ -161,7 +161,7 @@ export function install(root){
       if(me.class!=='auto'&&me.class!==p.c.ctype)return deny('Konfigurierte Klasse stimmt nicht');
       if(me.region+me.server!==p.realm()&&!(cfg.world?.serverHop&&cfg.world.allowedRealms.includes(p.realm())))return deny('Falscher Realm: erwartet '+me.region+me.server);
       if(cfg.general.transport==='ipc'&&!p.ipc)return deny('Lokale IPC nicht verfügbar');
-      bot.recovery?.reconcile();if(cfg.production?.autoDisposition===true&&bot.inventoryBlocked)return deny('AutoDisposition gesperrt: offenes Inventarjournal zuerst nach Bestandsabgleich bestaetigen');if(bot.inventoryBlocked)report.event('runtime.warning',{where:'start',reason:'Offene Inventaraktion: Wertaktionen gesperrt, übriger Betrieb läuft',continued:true});
+      bot.recovery?.reconcile();if(cfg.production?.autoDisposition===true&&bot.inventoryBlocked&&/^gather\./.test(bot.journal?.kind??''))return deny('AutoDisposition gesperrt: offenes Inventarjournal zuerst nach Bestandsabgleich bestaetigen');if(bot.inventoryBlocked)report.event('runtime.warning',{where:'start',reason:'Offene Inventaraktion: Wertaktionen gesperrt, übriger Betrieb läuft',continued:true});
       bot.economy?.resume();report.event('start');bot.running=true;bot.reason='Start';generation++;bot.progression?.refresh();tick(generation);return bot.running;
     },
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),

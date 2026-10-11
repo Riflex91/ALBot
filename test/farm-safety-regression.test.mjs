@@ -50,3 +50,25 @@ test('audit G01 follower assists existing safe fight instead of opening another 
  assert.ok(commands.includes('offense'));assert.ok(commands.includes('attack'));
  assert.equal(commands.includes('follow'),false);
 });
+
+test('audit G02 leader starts one bounded regroup after 45 seconds of stalled formation',()=>{
+ const clock=Date.now;let time=1000000;Date.now=()=>time;
+ try{
+  let stops=0,starts=0,events=0;
+  const c={name:'Leader',ctype:'ranger',map:'main',in:'main',x:0,y:0,range:200,hp:100,max_hp:100,mp:100,max_mp:100,rip:false,items:[]};
+  const peer={name:'Follower',running:true,rip:false,realm:'EUII',map:'main',in:'main',x:500,y:0};
+  const moves=[];
+  const bot={p:{c,parent:{is_pvp:false},G:{items:{},maps:{main:{}},monsters:{}},realm:()=> 'EUII',call:(name)=>name==='can_move_to'},
+   cfg:{general:{},farming:{enabled:true,loot:false,autoTravel:false,freeSlots:1,hpBelow:.5,mpBelow:.2,restBelow:.4,resumeAbove:.8,deathWindowMs:600000},party:{enabled:true,followDistance:100,waitForTeam:true}},
+   me:{name:'Leader',role:'farmer'},leader:'Leader',teamNames:['Leader','Follower'],farmers:['Leader','Follower'],
+   transport:{fresh:n=>n==='Follower'?peer:null},account:{active:()=>true},logistics:{handoffActive:false,reserved:false},
+   bank:{pending:false},gold:{reserved:false},free:()=>30,monsters:()=>[],allowed:()=>true,skills:{rotation(){}},strategy:{travel:()=>false,canVisit:()=>true},
+   movement:{order:null,go(dest,owner){moves.push({dest,owner});this.order={owner};},stop(){stops++;this.order=null;}},event:()=>events++};
+  const farmer=createFarmer(bot);farmer.tick();assert.equal(moves.length,0);
+  time+=46000;farmer.tick();assert.deepEqual(moves.map(m=>m.owner),['cohesion']);
+  assert.equal(moves[0].dest.x,250);assert.equal(events,1);
+  farmer.tick();assert.equal(moves.length,1,'ongoing recovery is not restarted');
+  peer.x=60;time+=1000;farmer.tick();assert.equal(bot.movement.order,null,'recovered formation releases the leader');
+  assert.ok(stops>=1);
+ }finally{Date.now=clock;}
+});

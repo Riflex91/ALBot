@@ -203,10 +203,26 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
     // better than selling the inputs; otherwise preserve the sell decision.
     if(hypothetical.action==='compound'&&hypothetical.ev>value*(1+(cfg.production.minImprovement??0))&&
        cfg.merchant.bank)action='bank';
-   }if(action==='sell'&&value>(cfg.production.autoSellMaxValue??100))action='bank';if(action==='bank'&&!cfg.merchant.bank)return null;
+   }
+   if(me.role==='merchant'&&action==='sell'){
+    // A progressive item may be sold at *any* verified price once no team
+    // member can use it, its bounded mutation outcome is not profitable and
+    // no explicit/reserved production target needs it. autoSellMaxValue was
+    // previously a blanket veto even after all these checks.
+    const kind=m.compound?'compound':'upgrade',grade=(i.level??0)<(cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel)?
+     p.call('item_grade',i):null;
+    const chance=grade===null?1:mutationChance(i.name,i.level??0,kind);
+    const scroll=grade===null?0:p.G.items?.[(kind==='compound'?'cscroll':'scroll')+grade]?.g;
+    if(!Number.isFinite(value)||value<0||
+       !Number.isFinite(chance)||!Number.isFinite(scroll)){
+      action='bank'; // Unverified chance/cost cannot prove mutation is worse.
+    }
+   }
+   if(action==='bank'&&!cfg.merchant.bank)return null;
    const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Kurve '+i.name,item:i.name,minLevel:i.level??0,maxLevel:i.level??0,statType:i.stat_type??'',property:i.p??'',title:i.title??'',role:me.role,character:me.name,recipient:cfg.party.merchant,action,priority:-400,_autoDisposition:true,targetLevel:choice.level,targetCount:100,maxCount:100,batch:action==='compound'?3:1,minChance:cfg.production.minChance,goldBudget:cfg.production.helperMaxPrice,lossBudget:cfg.production.lossBudget,minPrice:Math.floor(value),keep:0};noteDisposition(i,derived,choice);return derived;
   }
-  const recipeUsed=Object.values(p.G.craft??{}).some(r=>(r.items??[]).some(x=>x[1]===i.name)),value=bot.economy.value(i);const rewards=Number.isSafeInteger(m.e)&&m.e>0?materialDrops(p.G,p.G.drops?.[i.name]):[],returnValue=rewards.reduce((n,r)=>n+r.chance*r.quantity*bot.economy.value({name:r.item,level:0}),0),valuableProbability=Math.min(1,rewards.filter(r=>bot.economy.value({name:r.item,level:0})>0).reduce((n,r)=>n+r.chance,0)),processable=cfg.production.enabled&&cfg.production.exchange&&bot.count(i.name)>=m.e&&valuableProbability>=cfg.production.minChance&&returnValue>value*m.e*(1+cfg.production.minImprovement)&&value*m.e<=cfg.production.lossBudget;const action=me.role==='farmer'?(cfg.party.merchant&&cfg.merchant.pickup?'send':null):processable?'exchange':recipeUsed?'bank':Number.isFinite(value)&&value<=(cfg.production.autoSellMaxValue??100)?'sell':'bank';if(!action||action==='bank'&&!cfg.merchant.bank)return null;
+  const recipeUsed=Object.values(p.G.craft??{}).some(r=>(r.items??[]).some(x=>x[1]===i.name)),value=bot.economy.value(i);const rewards=Number.isSafeInteger(m.e)&&m.e>0?materialDrops(p.G,p.G.drops?.[i.name]):[],returnValue=rewards.reduce((n,r)=>n+r.chance*r.quantity*bot.economy.value({name:r.item,level:0}),0),valuableProbability=Math.min(1,rewards.filter(r=>bot.economy.value({name:r.item,level:0})>0).reduce((n,r)=>n+r.chance,0)),processable=cfg.production.enabled&&cfg.production.exchange&&bot.count(i.name)>=m.e&&valuableProbability>=cfg.production.minChance&&returnValue>value*m.e*(1+cfg.production.minImprovement)&&value*m.e<=cfg.production.lossBudget;const action=me.role==='farmer'?(cfg.party.merchant&&cfg.merchant.pickup?'send':null):processable?'exchange':recipeUsed?'bank':
+   Number.isFinite(value)&&value>=0?'sell':'bank';if(!action||action==='bank'&&!cfg.merchant.bank)return null;
   const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Disposition '+i.name,item:i.name,role:me.role,character:me.name,recipient:action==='send'?cfg.party.merchant:'',action,priority:-500,_autoDisposition:true,minLevel:0,maxLevel:0,batch:100,maxCount:100000,targetCount:100000,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,minPrice:action==='sell'?Math.floor(value):1,keep:me.role==='merchant'&&recipeUsed?10:0};noteDisposition(i,derived);return derived;
  }
  function profitGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-profitAt<1000)return profits;if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoDisposition)return [];const result=[],stock=stockItems();for(const {item:i} of stock){if(bot.economy.explicit(i)||futureGear(i)||!p.G.items[i.name]?.upgrade&&!p.G.items[i.name]?.compound)continue;const sources=stock.filter(r=>identityVariant(r.item,i));

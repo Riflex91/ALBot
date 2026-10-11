@@ -203,3 +203,44 @@ test('gear slot missing from sparse character.slots can still be equipped if cla
  assert.equal(bot.gear.equip(0,{slot:'gloves'}),true);
  assert.equal(called,true);
 });
+
+test('NPC working range stops 25 units short of the server 400 limit without changing regular travel',()=>{
+ const {bot,c}=fixture(),economy=bot.economy,move=[];
+ const npc={map:'main',in:'main',x:0,y:0};
+ c.map=c.in='main';c.x=375;c.y=0;c.moving=false;
+ bot.movement.go=(dest,owner)=>{move.push({dest,owner});return false;};
+ assert.equal(economy.npcAt(npc),true);
+ assert.equal(economy.npcTravel(npc,'NPC shop'),true);
+ assert.equal(move.length,0,'no movement when already safely within the interaction radius');
+ c.x=376;
+ assert.equal(economy.npcAt(npc),false);
+ assert.equal(economy.npcTravel(npc,'NPC shop'),false);
+ assert.equal(move.length,1);
+ assert.equal(move[0].dest.radius,375);
+ assert.equal(move[0].owner,'economy');
+ assert.equal(economy.at(npc),false,'unrelated strict 110-distance test must stay unchanged');
+ assert.equal(economy.travel(npc,'Bank'),false);
+ assert.equal(move[1].dest.radius,90,'general non-NPC travel range stays narrow');
+});
+
+test('NPC purchase and sale execute from 375 units, retaining server-side value observation',async()=>{
+ const {bot,c,rule}=fixture();c.map=c.in='main';c.x=375;c.y=0;c.moving=false;
+ bot.p.G.npcs={potions:{items:['hpot0']}};
+ const calls=[];
+ bot.p.call=(name,...args)=>{
+  if(name==='find_npc')return {map:'main',in:'main',x:0,y:0};
+  if(name==='item_value')return 20;
+  calls.push(name);
+  if(name==='buy_with_gold'){c.items[0].q+=args[1];c.gold-=20*args[1];return Promise.resolve();}
+  if(name==='sell'){c.items[0].q-=args[1];c.gold+=20*args[1];return Promise.resolve();}
+  throw Error('unexpected '+name);
+ };
+ rule.action='buy';rule.maxPrice=20;
+ assert.equal(bot.economy.npcBuy({name:'hpot0',level:0},rule,2),true);
+ await Promise.resolve();bot.exec.poll();
+ assert.equal(bot.journal,null);assert.ok(calls.includes('buy_with_gold'));
+ rule.action='sell';rule.minPrice=1;rule.batch=2;
+ assert.equal(bot.economy.npcSell(0,rule),true);
+ await Promise.resolve();bot.exec.poll();
+ assert.equal(bot.journal,null);assert.ok(calls.includes('sell'));
+});

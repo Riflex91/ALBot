@@ -1,3 +1,13 @@
+## NPC-Reichweite: maximale Interaktionsdistanz mit kleinem Puffer (11.10.2026)
+
+Auf Nutzerwunsch nutzt der Merchant für **reguläre NPC-Interaktionen** (NPC-Kauf und -Verkauf, Upgrade, Compound, Craft, Exchange, Ponty) künftig **375 statt bisher typischerweise 90** Spieleinheiten. Adventure-Land-Serverquelle [`node/server.js`](https://github.com/kaansoral/adventureland_mongodb/blob/main/node/server.js) setzt `B.sell_dist=400`, prüft z. T. strikt `<400`. 25 Einheiten Reserve gegen Positionsänderung, Tick-Latenz und Rundung. Sowohl `npcTravel` als auch der Dispatch-Guard `npcAt` verwenden dieselbe effektive Distanz, sodass der Bot nicht am Ziel ankommt und die Aktion anschließend wegen des bisherigen 110er Guards verweigert. Der NPC-Radius wird auch an `movement.go` übergeben und beendet Bewegungen, sobald der Character innerhalb des 375er Radius ist.
+
+**Nicht auf 375 erweitert:** Bank/Bankpack (orts- und kartenabhängig), Gathering mit Radius 5, manuell gesetzter Merchantstand-Platz, Spielerhandel (separate 300er Grenze), Transport/Delivery und Skill-/Mluck-Reichweiten. `npcSell` validiert zudem verbleibende Aktionsanzahl und Freigabe-/Budgetstatus **vor** einer NPC-Reise, um unnötige Pendelwege zu vermeiden. Regressionen prüfen Grenze 375/376, NPC-Kauf/-Verkauf in 375 Distanz und unveränderten allgemeinen 90er Radius.
+
+CI und Browser-Test erforderlich; ungemergter Draft PR #9.
+
+---
+
 ## Merchant-Task-Lease: normale Nebenarbeit unterbricht keinen gehaltenen Auftrag (11.10.2026)
 
 Die Nutzerlogs meldeten `merchant.selected:53` in rund 5½ Minuten; davon waren 32 wiederholte `services`-Selektionen, nicht 32 tatsächliche Taskwechsel. `createFairTasks.rank()` priorisierte bisher jedoch jede lokale Nebenaufgabe **vor** einem gerade gehaltenen Job, obwohl `taskHoldMs=30000` festgelegt war. Dies erklärt einen Teil der schnellen Wechsel nach Ankunft an NPCs. Der Scheduler bevorzugt nun den bestehenden Task innerhalb des 30-s-Haltefensters, solange keine kritische Aktion ansteht und kein anderer Task unzulässig lange wartet. Explizit kritische Bank-/Verkaufsaktionen bei knappem Inventar, dringende Gold-/Itemtransfers und Freigabe-/Sicherheitsprüfungen bleiben höher priorisiert. `merchant.selected` wird nur bei wirklicher Task-ID-Änderung geloggt; tatsächliche Ausführungen bleiben im Aktionslog. Neue Regressionstests prüfen normalen Hold und Notfall-Vorrang. Nicht im Browser neu abgenommen, keine Live-Aktivierung oder Änderung an Benutzerbudgets.

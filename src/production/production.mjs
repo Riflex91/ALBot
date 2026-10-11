@@ -94,7 +94,7 @@ export function createProduction(bot){
   const scroll=p.c.items.findIndex(x=>x?.name===scrollName&&usable(x));const offering=r.offering?p.c.items.findIndex(x=>x?.name===r.offering&&usable(x)):null;
   if(scroll<0||(r.offering&&offering<0)){e.note('Produktion benötigt '+scrollName+(r.offering?' / '+r.offering:''));return false;}
   const slots=[...inputs,scroll,...(offering===null?[]:[offering])];if(new Set(slots).size!==slots.length)return false;
-  const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.travel(d,kind))return false;
+  const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
   // Bind the preview to the current mutation definitions and user's rule.
   // Slot fingerprints alone do not capture changed minimum chance or scroll policy.
   const policyProof=()=>JSON.stringify([p.G.items[i.name],p.G.items[scrollName],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production.minChance]);
@@ -118,7 +118,7 @@ export function createProduction(bot){
    if(!inputs.every(n=>e.safe(p.c.items[n])&&identity(p.c.items[n])===identity(i)))return false;
    if(p.c.items[scroll]?.name!==scrollName||!usable(p.c.items[scroll]))return false;
    if(offering!==null&&(p.c.items[offering]?.name!==r.offering||!usable(p.c.items[offering])))return false;
-   return e.at(d);
+   return e.npcAt(d);
   };
   return e.perform(kind,{slots,cost,loss,rule:r,guard:mutationReady,
    call:()=>p.call(kind,...args),observe:()=>{
@@ -178,7 +178,7 @@ export function createProduction(bot){
   if(!Number.isFinite(recipe.cost)||recipe.cost<0)return false;
   const questNpc=recipe.quest&&(p.G.npcs?.[recipe.quest]?recipe.quest:Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===recipe.quest)?.[0]),d=e.destination(questNpc||'craftsman');if(recipe.quest&&!questNpc){e.note('Rezept-Arbeitsplatz fehlt: '+recipe.quest);return false;}
   const item={name,level:0,data:recipe.output?.data},total=()=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===(item.level??0)&&(item.data===undefined||JSON.stringify(i.data)===JSON.stringify(item.data))?i.q??1:0),0),before=total();
-  if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item)||!e.travel(d,'Craft '+name))return false;
+  if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item)||!e.npcTravel(d,'Craft '+name))return false;
   // The game chooses the craft outcome from the live recipe/ingredients. Recheck
   // that contract at dispatch: an inventory fingerprint alone cannot detect a
   // changed recipe, keep rule, reserve, output cap or crafting permission.
@@ -199,7 +199,7 @@ export function createProduction(bot){
   // Observe the *aggregate* consumption. Looking at each repeated row alone
   // would falsely confirm a two-position recipe after consuming only one.
   const consumption=totals.map(req=>({...req,before:e.count({name:req.item,level:req.level})}));
-  return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.at(d)&&craftReady(),call:()=>p.call('craft',...slots),observe:()=>total()>before&&consumption.every(x=>e.count({name:x.item,level:x.level})<=x.before-x.quantity),details:{item:name,recipe:found.key,before},timeout:45000});
+  return e.perform('craft',{slots,cost:recipe.cost,rule:r,guard:()=>e.npcAt(d)&&craftReady(),call:()=>p.call('craft',...slots),observe:()=>total()>before&&consumption.every(x=>e.count({name:x.item,level:x.level})<=x.before-x.quantity),details:{item:name,recipe:found.key,before},timeout:45000});
  }
  function exchange(slot,r,step=null){
    const existing=p.c.items[slot];if(!existing)return false;
@@ -211,8 +211,8 @@ export function createProduction(bot){
    const verified=source(),proof=x=>JSON.stringify({quest:x.quest,npc:x.npc,destination:x.destination,event:x.event});
    if(!verified.ready||step?.sourceProof&&proof(verified)!==JSON.stringify(step.sourceProof)){e.note('Exchange-Quelle nicht verifiziert: '+i.name+' / '+(verified.reason??'Quellenwechsel'));return false;}
    const d=verified.quest?verified.destination:e.destination('exchange');
-   if(!e.travel(d,'Exchange '+i.name))return false;const before=e.count(i),initialProof=proof(verified);
-   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.at(d)&&e.spare(slot,r)>=q;},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},timeout:45000});
+   if(!e.npcTravel(d,'Exchange '+i.name))return false;const before=e.count(i),initialProof=proof(verified);
+   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.npcAt(d)&&e.spare(slot,r)>=q;},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},timeout:45000});
   }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;

@@ -16,14 +16,14 @@ test('merchant continues selected service until it yields, even after hold time 
  assert.equal(tasks.rank(jobs)[0].id,'nearby-acquisition');
 });
 
-test('inventory-critical bank work waits until current admitted job yields',()=>{
+test('inventory-critical bank recovery may preempt the active job to avoid deadlock',()=>{
  let time=10000;
  const tasks=createFairTasks({holdMs:30000,starvationMs:120000,now:()=>time});
  const jobs=[{id:'services',priority:-1000},{id:'bank',priority:1,critical:true,local:true}];
  tasks.selected('services');time+=1000;
- assert.equal(tasks.rank(jobs)[0].id,'services');
- tasks.defer('services',1000);
  assert.equal(tasks.rank(jobs)[0].id,'bank');
+ jobs[1].critical=false;
+ assert.equal(tasks.rank(jobs)[0].id,'services');
 });
 
 test('disappeared tasks release their claim and do not block next work',()=>{

@@ -1,6 +1,22 @@
 import {arrived,samePlace,distance,xy} from './policy.mjs';
 export function createMovement(bot){
   const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,townQueued=false;
+  // Only native smart-route failures quarantine a destination map, not normal
+  // travel stops or a rejected non-movement action. Keep the cache bounded.
+  const failedEconomyRoutes=new Map(),routeCooldownMs=300000;
+  function recordRouteFailure(owner,mode,dest,reason){
+    if(owner!=='economy'||mode!=='smart_move'||typeof dest?.map!=='string')return;
+    failedEconomyRoutes.set(dest.map,{at:Date.now(),reason});
+    if(failedEconomyRoutes.size>16)failedEconomyRoutes.delete(failedEconomyRoutes.keys().next().value);
+    bot.event?.('movement.route-quarantined',{owner,mode,map:dest.map,retryAfter:Date.now()+routeCooldownMs,reason});
+  }
+  function failedRecently(dest,owner='economy'){
+    if(owner!=='economy'||typeof dest?.map!=='string')return false;
+    const entry=failedEconomyRoutes.get(dest.map);
+    if(!entry)return false;
+    if(Date.now()-entry.at>=routeCooldownMs){failedEconomyRoutes.delete(dest.map);return false;}
+    return true;
+  }
   // On headless clients the native smart path search can live in parent,
   // even while character.moving is false and root.smart is absent.
   const smartActive=()=>[p.root?.smart,p.parent?.smart].some(s=>s?.moving||s?.searching);
@@ -18,7 +34,7 @@ export function createMovement(bot){
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     token.mode=local?'move':'smart_move';
-    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'||state==='superseded'){stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason:error?.reason??error?.message??state});}}});
+    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip,()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'||state==='superseded'){const reason=error?.reason??error?.message??state;if(state!=='superseded')recordRouteFailure(owner,token.mode,dest,reason);stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason});}}});
     if(accepted)bot.event?.('movement.request',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }
@@ -27,12 +43,12 @@ export function createMovement(bot){
     // change; retain its ownership until the bounded 120 s deadline.
     const timedOut=now-order.started>120000;
     if(timedOut||(order.mode!=='smart_move'&&now-order.progress>12000)){
-      const failed=order;stop();blockedUntil=now+10000;
+      const failed=order;const reason=timedOut?'timeout':'no_progress';recordRouteFailure(failed.owner,failed.mode,failed.dest,reason);stop();blockedUntil=now+10000;
       bot.reason=timedOut?'Wegzeit überschritten; neuer Versuch in 10 Sekunden':'Weg ohne Fortschritt; neuer Versuch in 10 Sekunden';
       bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:timedOut?'timeout':'no_progress'});
     }
   }
-  return {go,poll,stop,get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
+  return {go,poll,stop,failedRecently,get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner){if(order&&order.owner!==owner)return false;if(!p.call('can_move_to',x,y))return false;return go({map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);},
     farmLocation(type){const candidates=[];for(const [map,data] of Object.entries(p.G.maps)){if(data.ignore||data.instance||data.pvp)continue;for(const pack of data.monsters??[]){if(pack.type!==type)continue;const ranges=pack.boundaries??(pack.boundary?[[map,...pack.boundary]]:[]);for(const [m,x1,y1,x2,y2] of ranges)candidates.push({map:m,in:m,x:(x1+x2)/2,y:(y1+y2)/2,radius:45});}}return candidates.sort((a,b)=>(a.map===p.c.map?-100000:0)+distance(p.c,a)-((b.map===p.c.map?-100000:0)+distance(p.c,b)))[0];}
   };

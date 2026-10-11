@@ -31,9 +31,11 @@ export function createServices(bot){
  }
  function gather(activity){
   const skill=p.G.skills?.[activity];if(!skill||p.c.level<(skill.level??0)||p.c.mp<(skill.mp??0)||p.call('is_on_cooldown',activity))return false;
-  const tool=activity==='fishing'?'rod':'pickaxe',regions=zones().filter(z=>z.kind===activity),here=regions.find(z=>z.map===p.c.map&&nearGatherZone(xy(p.c),z.polygon));let zone=here?{...here,...xy(p.c)}:regions.find(z=>z.map===p.c.map)??regions[0];
+  const tool=activity==='fishing'?'rod':'pickaxe',allRegions=zones().filter(z=>z.kind===activity),
+   regions=allRegions.filter(z=>!bot.movement?.failedRecently?.(z,'economy')),
+   here=regions.find(z=>z.map===p.c.map&&nearGatherZone(xy(p.c),z.polygon));let zone=here?{...here,...xy(p.c)}:regions.find(z=>z.map===p.c.map)??regions[0];
   if(zone&&!here&&zone.map===p.c.map&&p.has?.('can_move_to')){const point=zone.points.slice().sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(point=>p.call('can_move_to',point.x,point.y));if(!point){e.note('Kein erreichbarer '+activity+'-Arbeitsplatz');return false;}zone={...zone,...point};}
-  if(!zone){e.note('Keine öffentliche '+activity+'-Zone bekannt');return false;}
+  if(!zone){e.note(allRegions.length?'Gathering-Zone nach fehlgeschlagenem smart_move vorübergehend ausgesetzt: '+activity:'Keine öffentliche '+activity+'-Zone bekannt');return false;}
   if(bot.monsters().some(m=>m.target===p.c.name))return restore();
   if(!e.travel(zone,activity,5))return true;
   if(!record&&(p.c.slots?.mainhand&&protectedItem(p.c.slots.mainhand)&&p.c.slots.mainhand.name!==tool||p.c.slots?.offhand&&protectedItem(p.c.slots.offhand))){e.note('Geschützte Ausrüstung verhindert Werkzeugwechsel');return false;}

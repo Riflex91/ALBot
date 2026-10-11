@@ -109,3 +109,43 @@ test('explicit stop cancels parent-owned searching path even without a local ord
  createMovement(bot).stop();
  assert.deepEqual(calls,['stop']);
 });
+
+test('failed economy smart_move quarantines its destination map for five minutes only',async()=>{
+ const original=Date.now;let now=10000;Date.now=()=>now;
+ try{
+  const events=[],c={name:'M',map:'main',in:'main',x:0,y:0,moving:false};
+  const bot={running:true,me:{role:'merchant'},cfg:{merchant:{townTravel:false},world:{excludedMaps:[]},farming:{pvp:false}},event:(...a)=>events.push(a)};
+  bot.p={c,root:{},parent:{},G:{maps:{main:{},woffice:{},other:{}}},has:()=>false,call:(kind)=>{
+   if(kind==='smart_move')return Promise.reject(new Error('failed'));
+   return Promise.resolve();
+  }};
+  bot.exec=new Executor({now:()=>now,active:()=>bot.running,limit:4,onError(){}});
+  const movement=createMovement(bot);
+  movement.go({map:'woffice',in:'woffice',x:-170,y:-248},'economy');
+  assert.equal(movement.order?.mode,'smart_move');
+  await Promise.resolve();await Promise.resolve();bot.exec.poll();
+  assert.equal(movement.order,null);
+  assert.equal(movement.failedRecently({map:'woffice'}),true);
+  assert.equal(movement.failedRecently({map:'other'}),false);
+  assert.ok(events.some(([type,e])=>type==='movement.route-quarantined'&&e.map==='woffice'));
+  now+=300001;
+  assert.equal(movement.failedRecently({map:'woffice'}),false);
+ }finally{Date.now=original;}
+});
+
+test('merchant gathering skips a rejected smart-route zone and chooses another public zone',async()=>{
+ const {createServices}=await import('../src/merchant/services.mjs');
+ const polygon=[[-184,-232],[-128,-232],[-128,-184],[-184,-184]];
+ const visited=[],notes=[],cfg={merchant:{mining:true,fishing:false,merrit:false,massBuffs:false},general:{economyTickMs:2000},world:{excludedMaps:[]}};
+ const c={name:'M',map:'main',in:'main',x:0,y:0,level:60,mp:100,items:[],slots:{}};
+ const movement={failedRecently:region=>region.map==='woffice'};
+ const economy={note:s=>notes.push(s),travel:(dest)=>{visited.push(dest.map);return false;}};
+ const bot={cfg,p:{c,G:{maps:{main:{},woffice:{zones:[{type:'mining',polygon}]},other:{zones:[{type:'mining',polygon}]}},skills:{mining:{level:1,mp:5}}},call:()=>false,has:()=>false,read:()=>null},me:{name:'M'},exec:{},economy,movement,monsters:()=>[],strategy:{status:()=>({manual:null})}};
+ const services=createServices(bot);
+ assert.equal(services.tick(),true);
+ assert.deepEqual(visited,['other'],'Failing woffice route must not be retried while another allowed zone exists');
+ bot.p.G={maps:{main:{},woffice:{zones:[{type:'mining',polygon}]}},skills:{mining:{level:1,mp:5}}};
+ assert.equal(services.tick(),false);
+ assert.deepEqual(visited,['other'],'No repeated move toward quarantined woffice');
+ assert.ok(notes.some(s=>s.includes('vorübergehend ausgesetzt')));
+});

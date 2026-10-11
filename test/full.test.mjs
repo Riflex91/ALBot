@@ -162,3 +162,54 @@ test('cancel of an undelivered item offer prevents a stranded receiving journal'
  a.logistics.receive('B',accept.message);a.logistics.poll(false);
  assert.deepEqual(sent,[]);b.logistics.close();a.logistics.close();
 });
+
+test('item no-dispatch cancellation rejects wrong session, wrong ID and unsafe claims',()=>{
+ // All actors share this queue and transport for realistic handoff messages.
+ const setup=itemHandoffFixture();
+ setup.bots.A=setup.makeBot('A','A-1');setup.bots.B=setup.makeBot('B','B-1');
+ const a=setup.bots.A,b=setup.bots.B;
+ a.logistics.poll(true);setup.deliver();
+ const id=b.journal.id;
+ for(const message of [
+  {type:'itemCancel',id:'other-id',session:a.session,data:{notDispatched:true}},
+  {type:'itemCancel',id,session:'old-session',data:{notDispatched:true}},
+  {type:'itemCancel',id,session:a.session,data:{notDispatched:false}}
+ ]){b.logistics.receive('A',message);assert.equal(b.journal?.id,id,'Untrusted cancellation must not release a checkpoint');}
+ a.running=false;a.exec.invalidate();a.logistics.close();setup.deliver();
+ assert.equal(b.journal,null,'Only matching no-send cancellation may reconcile');
+ assert.deepEqual(setup.sent,[]);
+ b.logistics.close();
+});
+
+test('already dispatched item remains blocked after STOP and late no-send cancellation',()=>{
+ const {bots,makeBot,sent,deliver}=itemHandoffFixture();
+ bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');
+ const a=bots.A,b=bots.B;
+ a.logistics.poll(true);deliver();a.logistics.poll(false);deliver();
+ assert.equal(sent.length,1);
+ assert.equal(a.journal?.kind,'send');assert.equal(b.journal?.kind,'receive');
+ const id=b.journal.id;
+ // Even if an incorrect cancellation is delivered after a sent notification,
+ // no acknowledged completion or new transfer is allowed.
+ b.logistics.receive('A',{type:'itemCancel',id,session:a.session,data:{notDispatched:true}});
+ assert.equal(b.journal?.id,id,'Prior sent message makes cancellation ambiguous');
+ a.running=false;a.exec.invalidate();a.logistics.close();deliver();
+ assert.equal(a.inventoryBlocked,true,'Sender with uncertain server effect must stay blocked');
+ assert.equal(b.journal?.id,id,'Receiver retains unresolved receipt after sender STOP');
+ assert.equal(sent.length,1);
+ b.logistics.close();
+});
+
+test('item receiving observation prevents cancellation even without a sent notification',()=>{
+ const {bots,makeBot,queue,deliver}=itemHandoffFixture();
+ bots.A=makeBot('A','A-1');bots.B=makeBot('B','B-1');
+ const a=bots.A,b=bots.B;
+ a.logistics.poll(true);deliver();const id=b.journal.id;
+ // Simulate an externally observed arrival before receiving any sent notification.
+ b.p.c.items[0]={name:'hpot1',q:2};
+ b.logistics.receive('A',{type:'itemCancel',id,session:a.session,data:{notDispatched:true}});
+ assert.equal(b.journal?.id,id);
+ a.logistics.close();deliver();
+ assert.equal(b.journal?.id,id);
+ b.logistics.close();
+});

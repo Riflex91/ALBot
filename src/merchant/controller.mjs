@@ -20,8 +20,13 @@ export function createMerchant(bot){
   const reserve=cfg.merchant.minFreeSlots??4;
   const plan=planPickupCapacity(peer?.items,{merchant:me.name,free:bot.free(),reserve,
     known:i=>!!p.G?.items?.[i.name]});
+  const previous=pickupStatus;
   pickupStatus={peer:peer.name,...plan,at:Date.now(),state:plan.ready?'ready':'preparing'};
-  if(!plan.offers||plan.ready)return true;
+  if(!plan.offers||plan.ready){
+   if(plan.ready&&previous?.peer===peer.name&&previous.missing>0)
+    bot.event?.('merchant.pickupReady',{peer:peer.name,free:plan.free,target:plan.target});
+   return true;
+  }
   bot.reason='Abholung vorbereiten: '+plan.missing+' freie Inventarplätze fehlen für '+peer.name;
   if(bot.journal||bot.inventoryBlocked||bot.gold?.reserved||bot.bank.pending||
      bot.logistics?.reserved||exec.busy('inventory'))return false;
@@ -33,20 +38,38 @@ export function createMerchant(bot){
   // action reuses economy.perform and durable per-slot value journals.
   if(bot.bank.consolidateInventory?.())return false;
   const options=pickupCleanupCandidates(p.c.items,i=>e.rules(i),
-    (slot,rule)=>e.spare(slot,rule),i=>e.safe(i));
+    (slot,rule)=>e.spare(slot,rule),i=>e.safe(i),
+    (item,rule)=>cfg.merchant.bank&&rule._autoDisposition===true&&
+      !e.explicit?.(item)&&!e.explicit?.(item,'production')&&e.remaining(rule)&&
+      (bot.production?.reservedQuantity?.(item)??0)===0);
   for(const x of options.bank){
-   if(bot.bank.store(x.slot,x.rule))return false;
-   if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory'))return false;
+   // Persist preparation across the trip to the bank and every subsequent
+   // confirmed slot release. Never start a farmer pickup from here.
+   if(bot.bank.store(x.slot,x.rule)){
+    pickupStatus.state='banking';pickupStatus.cleanup={slot:x.slot,
+      item:x.item.name,fullStack:!!x.adjusted};
+    return false;
+   }
+   if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory')){
+    pickupStatus.state='banking';pickupStatus.cleanup={slot:x.slot,item:x.item.name};
+    return false;
+   }
   }
   for(const x of options.sell){
-   if(e.npcSell(x.slot,x.rule))return false;
-   if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory'))return false;
+   if(e.npcSell(x.slot,x.rule)){
+    pickupStatus.state='selling';pickupStatus.cleanup={slot:x.slot,item:x.item.name};
+    return false;
+   }
+   if(bot.movement?.order?.owner==='economy'||bot.journal||exec.busy('inventory')){
+    pickupStatus.state='selling';pickupStatus.cleanup={slot:x.slot,item:x.item.name};
+    return false;
+   }
   }
   pickupStatus.state='blocked';
   if(Date.now()-lastPickupWarning>10000){
    lastPickupWarning=Date.now();
    bot.event?.('merchant.pickupCapacity',{peer:peer.name,...plan,
-      state:'blocked',reason:'Nur sichere, vollständig freigebbare Bank-/Verkaufsstapel geeignet; keine weiteren Aufgaben starten'});
+      state:'blocked',reason:'Kein sicherer Ganzstapel frei; manuelle Regeln, Gear-/Produktionsreservierungen und Wertjournale bleiben geschützt'});
   }
   return false;
  }

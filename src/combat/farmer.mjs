@@ -43,6 +43,7 @@ export function createFarmer(bot){
     distance(p.c,a)-distance(p.c,b))[0];
   if(!enemy)return false;
   bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
+  bot.navigation?.rangePosition?.(enemy);
   bot.skills.rotation(enemy);
   if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&
     !!bot.entity(enemy.id)?.target,()=>p.call('change_target',enemy),{delay:500});
@@ -121,8 +122,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     bot.reason='Kampf: '+target.mtype;
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);
-    if(cfg.farming.kiting&&isNaturallyAggressive(p.G,target)&&target.target===c.name&&c.range>(target.range??20)+25&&d<Math.min(range,(target.range??20)+35))retreat(target);
-    else if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
+    // Ranged v3 spacing is proactive and nonexclusive: attack/skills still run
+    // in this tick, and passive mobs are not treated as emergency threats.
+    if(d<=range&&cfg.farming.kiting)bot.navigation?.rangePosition?.(target);
+    if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
     if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},()=>tolerate('attack','not_there',()=>p.call('attack',bot.entity(target.id)),()=>{bot.target=null;}),{delay:100});
   }

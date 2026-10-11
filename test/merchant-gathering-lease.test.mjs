@@ -81,3 +81,40 @@ test('fishing does not initiate a route without a free inventory slot',()=>{
  assert.ok(calls.some(x=>x[0]==='note'&&x[1].includes('freien Inventarplatz')));
  assert.equal(calls.some(x=>x[0]==='travel'),false);
 });
+
+test('merchant with exactly four free slots can checkpoint shield, equip rod and restore both hands',()=>{
+ const {bot,c}=fixture({item:'rod',free:4}),actions=[];
+ c.x=15;c.y=0;c.ctype='merchant';c.q={};
+ bot.cfg.merchant.mining=false;
+ bot.p.G.items={rod:{wtype:'rod'},staff:{wtype:'staff'},shield:{wtype:'shield'}};
+ bot.free=()=>c.items.filter(i=>!i).length;
+ bot.economy.safe=i=>!!i;
+ bot.economy.travel=()=>true;
+ bot.economy.perform=(id,{guard,call,observe})=>{assert.equal(guard(),true,id);
+  actions.push(id);call();assert.equal(observe(),true,id);return true;};
+ bot.p.call=(id,...args)=>{
+  if(id==='is_on_cooldown')return false;
+  if(id==='unequip'){const [slot]=args,idx=c.items.findIndex(i=>!i);assert.ok(idx>=0);
+   c.items[idx]=c.slots[slot];c.slots[slot]=null;return null;}
+  if(id==='equip'){const [slot,target]=args,prev=c.slots[target];
+   c.slots[target]=c.items[slot];c.items[slot]=prev??null;return null;}
+  if(id==='use_skill'&&args[0]==='fishing'){c.q.fishing=true;return null;}
+  return null;
+ };
+ const svc=createServices(bot);
+ assert.equal(bot.free(),4);
+ assert.equal(svc.tick(),true);
+ assert.equal(bot.free(),3,'shield uses one temporary workspace slot');
+ assert.equal(svc.tick(),true,'mainhand change is allowed below configured reserve');
+ assert.equal(c.slots.mainhand.name,'rod');
+ assert.equal(svc.tick(),true,'fishing starts with a free inventory slot');
+ assert.equal(c.q.fishing,true);
+ c.q.fishing=false;svc.interrupt();
+ assert.equal(svc.restore(),true);
+ assert.equal(svc.restore(),true);
+ assert.equal(svc.restore(),false);
+ assert.equal(c.slots.mainhand.name,'staff');
+ assert.equal(c.slots.offhand.name,'shield');
+ assert.equal(svc.active,false);
+ assert.deepEqual(actions,['gather.offhand','gather.equip','gather.fishing','gather.restore','gather.restore']);
+});

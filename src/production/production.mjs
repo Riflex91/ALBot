@@ -127,7 +127,7 @@ export function createProduction(bot){
    },details:{item:i.name,before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
  }
  function craft(name,r){
-  const found=findRecipe(p.G,name,r.recipe),recipe=found?.recipe;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.craft||!recipe)return false;
+  const found=findRecipe(p.G,name,r.recipe),recipe=found?.recipe;if(r.action!=='craft'||!e.remaining(r)||!cfg.production.enabled||!cfg.production.craft||!recipe)return false;
   const yieldCount=recipe.q??recipe.quantity??1;if(!Number.isSafeInteger(yieldCount)||yieldCount<1||outputCount(name,r)+yieldCount>Math.min(r.targetCount,r.maxCount))return false;
   // Game definitions may change or contain malformed recipes. A bad grid
   // must reject only this action, not throw out of the autonomous bot tick.
@@ -168,7 +168,7 @@ export function createProduction(bot){
    const contextReady=()=>{
     const live=findRecipe(p.G,name,r.recipe);
     const currentYield=live?.recipe?.q??live?.recipe?.quantity??1;
-    return !!live&&JSON.stringify([live.key,live.recipe])===recipeProof&&
+    return r.action==='craft'&&!!live&&JSON.stringify([live.key,live.recipe])===recipeProof&&
      Number.isSafeInteger(currentYield)&&currentYield>0&&
      outputCount(name,r)+currentYield<=Math.min(r.targetCount,r.maxCount);
    };
@@ -183,7 +183,7 @@ export function createProduction(bot){
   // that contract at dispatch: an inventory fingerprint alone cannot detect a
   // changed recipe, keep rule, reserve, output cap or crafting permission.
   const craftReady=()=>{
-   if(!cfg.production.enabled||!cfg.production.craft||!e.remaining(r))return false;
+   if(r.action!=='craft'||!cfg.production.enabled||!cfg.production.craft||!e.remaining(r))return false;
    const live=findRecipe(p.G,name,r.recipe);
    if(!live||JSON.stringify([live.key,live.recipe])!==recipeProof)return false;
    const produced=live.recipe.q??live.recipe.quantity??1;

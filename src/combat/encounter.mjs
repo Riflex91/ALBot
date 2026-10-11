@@ -12,6 +12,27 @@ export function createEncounter(bot){
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0};
  }
  function permit(m){if(m.target)return true;if(bot.me.name!==bot.leader&&bot.cfg.party.enabled)return false;return phase==='BUILD'&&bot.monsters().filter(x=>bot.teamNames.includes(x.target)).length<capacity&&(m.mtype&&m.mtype!==bot.teamPlan.target()||bot.teamPlan.wantsCombat());}
- function pull(){if(bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.capabilities?.available(bot.me.name,'agitate'))return false;const range=bot.p.G.skills.agitate?.range??320,near=bot.monsters().filter(m=>distance(bot.p.c,m)<=range);if(near.length<2||near.length>capacity||near.some(m=>m.mtype!==bot.teamPlan.target()||m.target&&!bot.teamNames.includes(m.target)||!bot.strategy.safeTarget(m.mtype,m)))return false;return bot.skills.use('agitate',null,.35,2000);}
+ function pull(){
+  if(bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.teamPlan?.target()||!bot.teamPlan.wantsCombat())return false;
+  const engaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target));
+  if(!engaged.length||engaged.length>=capacity||bot.recovering)return false;
+  if(bot.capabilities?.available(bot.me.name,'agitate')){
+   const range=bot.p.G.skills.agitate?.range??320,near=bot.monsters().filter(m=>distance(bot.p.c,m)<=range);
+   if(near.length>=2&&near.length<=capacity&&near.every(m=>m.mtype===bot.teamPlan.target()&&(!m.target||bot.teamNames.includes(m.target))&&bot.strategy.safeTarget(m.mtype,m))&&bot.skills.use('agitate',null,.35,2000))return true;
+  }
+  // Rangers cannot use agitate. Pull ONE additional explicitly selected, safe
+  // spawn mob with the normal attack; teammates can then use 3shot/5shot.
+  const range=Math.max(5,(bot.p.c.range??0)-Math.min(bot.cfg.farming.rangeBuffer??0,(bot.p.c.range??0)*.25));
+  const candidate=bot.monsters().filter(m=>!m.target&&m.mtype===bot.teamPlan.target()&&distance(bot.p.c,m)<=range&&bot.allowed(m)&&bot.strategy.safeTarget(m.mtype,m)).sort((a,b)=>distance(bot.p.c,a)-distance(bot.p.c,b))[0];
+  if(!candidate)return false;
+  const guard=()=>{
+   const m=bot.entity(candidate.id);
+   return bot.running&&phase==='BUILD'&&capacity>1&&bot.teamPlan.target()===candidate.mtype&&m&&!m.target&&
+    bot.monsters().filter(t=>t.target&&bot.teamNames.includes(t.target)).length<capacity&&
+    bot.allowed(m)&&bot.strategy.safeTarget(m.mtype,m)&&distance(bot.p.c,m)<=range&&
+    bot.p.call('can_attack',m)&&!bot.p.call('is_on_cooldown','attack');
+  };
+  return bot.exec.run('attack',['attack','mana'],guard,()=>bot.p.call('attack',bot.entity(candidate.id)),{delay:250});
+ }
  return {tick,permit,pull,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
 }

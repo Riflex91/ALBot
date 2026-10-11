@@ -44,10 +44,11 @@ test('ranger 5shot caps already engaged targets at five, even when six are nearb
  assert.deepEqual(actions[0].targets.map(x=>x.id),['team-0','team-1','team-2','team-3','team-4']);
 });
 
-test('ranger ignores unapproved neutral monsters even when they would enable an AoE skill',()=>{
+test('ranger fires at one engaged team target without including unapproved neutral monsters',()=>{
  const {skills,mobs,actions}=rangerFixture(1,5);
  skills.rotation(mobs[0]);
- assert.deepEqual(actions,[]);
+ assert.equal(actions[0]?.skill,'3shot');
+ assert.deepEqual(actions[0]?.targets.map(t=>t.id),['team-0']);
 });
 
 test('ranger respects the per-cast target cap and skill min target floor',()=>{

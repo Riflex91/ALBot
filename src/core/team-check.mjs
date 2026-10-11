@@ -26,6 +26,13 @@ export function createTeamCheck(bot,report={}){
    farmPlan:bot.teamPlan?.status?.()?.current?(({id,target,map,leader,expires})=>({id,target,map,leader,expires}))(bot.teamPlan.status().current):null,
    attacksStarted:attacks.started??0,attacksEnded:attacks.ended??0,attackResults:{...(attacks.results??{})}},
   partyActions,
+  equipment:{
+   mainhand:p.c?.slots?.mainhand?{name:p.c.slots.mainhand.name,level:p.c.slots.mainhand.level??0}:null,
+   offhand:p.c?.slots?.offhand?{name:p.c.slots.offhand.name,level:p.c.slots.offhand.level??0}:null,
+   offhandTypes:Object.keys(p.G?.classes?.[p.c?.ctype]?.offhand??{}),
+   fireblade:{type:p.G?.items?.fireblade?.type??null,wtype:p.G?.items?.fireblade?.wtype??null,
+    allowedInOffhand:!!(p.G?.items?.fireblade&&Object.hasOwn(p.G?.classes?.[p.c?.ctype]?.offhand??{},p.G.items.fireblade.wtype??p.G.items.fireblade.type))}
+  },
   economy:{inventoryUsed:(p.c?.items??[]).filter(Boolean).length,inventoryFree:(p.c?.items??[]).filter(i=>!i).length,
    minFreeSlots:bot.cfg?.merchant?.minFreeSlots??null,autoDisposition:bot.cfg?.production?.autoDisposition===true,
    services:bot.services?.status?.()??null,production:bot.production?.status?.()??null,

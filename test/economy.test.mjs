@@ -9,6 +9,7 @@ import {planProduction} from '../src/production/planner.mjs';
 import {createProduction} from '../src/production/production.mjs';
 import {createMarket} from '../src/merchant/market.mjs';
 import {createServices} from '../src/merchant/services.mjs';
+import {createGear} from '../src/production/gear.mjs';
 function fixture(){
  const cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema);cfg.merchant.goldReserve=100;cfg.merchant.maxSpendPerHour=10000;cfg.production.lossBudget=1000;cfg.party.merchant='M';
  const data=new Map(),c={name:'M',map:'bank',in:'bank',x:0,y:-100,gold:10000,items:[{name:'hpot0',q:10},...Array(41).fill(null)],slots:{},bank:{items0:Array(42).fill(null),gold:0}};
@@ -158,4 +159,47 @@ test('fulfilled upgrade target suppresses reacquisition of the consumed base ite
 test('NPC lookup skips unplaced sellers and buys potions from the nearest valid seller',async()=>{
  const {bot,c,rule}=fixture();c.map=c.in='main';c.x=c.y=0;bot.p.G.npcs={pots:{items:['hpot0']},fancypots:{items:['hpot0']},other:{items:['hpot0']}};const calls=[];bot.p.call=(name,...args)=>{if(name==='find_npc')return args[0]==='pots'?null:{map:args[0]==='other'?'remote':'main',in:args[0]==='other'?'remote':'main',x:0,y:0};if(name==='buy_with_gold'){calls.push(args);c.items[0].q+=args[1];c.gold-=20*args[1];return Promise.resolve();}throw Error(name);};
  assert.equal(bot.economy.npcFor('hpot0').map,'main');const buy={...rule,action:'buy',maxPrice:20};assert.equal(bot.economy.npcBuy({name:'hpot0'},buy,5),true);await Promise.resolve();bot.exec.poll();assert.deepEqual(calls,[['hpot0',5]]);assert.equal(bot.journal,null);
+});
+
+test('merchant with five free slots and four-slot minimum can unequip offhand for gathering',async()=>{
+ const {bot,c}=fixture();const calls=[];
+ bot.cfg.merchant.minFreeSlots=4;bot.cfg.merchant.mining=true;bot.cfg.merchant.fishing=false;bot.cfg.merchant.merrit=false;bot.cfg.merchant.massBuffs=false;
+ c.map=c.in='main';c.x=16;c.y=0;c.level=60;c.mp=1000;c.slots={mainhand:{name:'staff'},offhand:{name:'shield'}};
+ c.items=[{name:'pickaxe',level:0},...Array.from({length:36},()=>({name:'hpot0',q:1})),...Array(5).fill(null)];
+ bot.free=()=>c.items.filter(i=>!i).length;
+ bot.p.G.maps={main:{zones:[{type:'mining',polygon:[[-10,-10],[10,-10],[10,10],[-10,10]]}]}};
+ bot.p.G.skills={mining:{level:16,mp:120}};
+ bot.p.call=(name,...args)=>{
+  if(name==='is_on_cooldown')return false;
+  calls.push(name);if(name==='unequip'){const slot=c.items.findIndex(i=>!i);c.items[slot]=c.slots[args[0]];delete c.slots[args[0]];}
+  return Promise.resolve();
+ };
+ bot.monsters=()=>[];
+ const services=createServices(bot);
+ assert.equal(bot.free(),5);
+ assert.equal(services.tick(),true,'available fifth slot must be used to free offhand');
+ await Promise.resolve();bot.exec.poll();
+ assert.equal(c.slots.offhand,undefined);
+ assert.equal(bot.free(),4);
+ assert.ok(calls.includes('unequip'));
+ assert.equal(bot.inventoryBlocked,false);
+});
+
+test('gear slot missing from sparse character.slots can still be equipped if class permits',()=>{
+ const {bot,c}=fixture();
+ c.ctype='rogue';c.level=38;c.slots={mainhand:{name:'fireblade',level:0}};
+ c.items[0]={name:'poker',level:3};
+ bot.cfg.production.gear=true;bot.cfg.production.minImprovement=.01;
+ bot.me.gearRole='auto';bot.me.role='farmer';
+ bot.p.G.items={...bot.p.G.items,poker:{type:'gloves'},fireblade:{type:'weapon',wtype:'sword'}};
+ bot.p.G.classes={rogue:{mainhand:{sword:true},offhand:{dagger:true}}};
+ bot.p.call=(name)=>{if(name==='item_properties')return {attack:20,dex:6,hp:100};return null;};
+ let called=false;
+ bot.economy.perform=(name,options)=>{called=true;assert.equal(name,'gear.equip');assert.equal(options.details.slot,'gloves');return true;};
+ bot.allocation={equipGuard:()=>true};
+ bot.teamNames=['M'];
+ bot.gear=createGear(bot);
+ assert.equal(Object.hasOwn(c.slots,'gloves'),false);
+ assert.equal(bot.gear.equip(0,{slot:'gloves'}),true);
+ assert.equal(called,true);
 });

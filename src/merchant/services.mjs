@@ -42,7 +42,7 @@ export function createServices(bot){
    approaching=null;
   if(!record&&(p.c.slots?.mainhand&&protectedItem(p.c.slots.mainhand)&&p.c.slots.mainhand.name!==tool||p.c.slots?.offhand&&protectedItem(p.c.slots.offhand))){e.note('Geschützte Ausrüstung verhindert Werkzeugwechsel');return false;}
   if(!record){if(!save({mainhand:identity(p.c.slots?.mainhand),offhand:identity(p.c.slots?.offhand)}))return false;sliceStarted=Date.now();}kind=activity;
-  if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=cfg.merchant.minFreeSlots+1){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
+  if(p.c.slots.offhand){if(protectedItem(p.c.slots.offhand)||bot.free()<=cfg.merchant.minFreeSlots){e.note('Gathering benötigt freien Offhand-Slot');return restore();}
    const before=identity(p.c.slots.offhand);return e.perform('gather.offhand',{guard:()=>identity(p.c.slots.offhand)===before,call:()=>p.call('unequip','offhand'),observe:()=>!p.c.slots.offhand,details:{slot:'offhand'}});
   }
   if(p.c.slots.mainhand?.name!==tool){const slot=p.c.items.findIndex(i=>i?.name===tool&&e.safe(i));
@@ -62,6 +62,10 @@ export function createServices(bot){
    merritUntil=until;lastReward={received:true,source:receiptSeen?'receipt':merritGift?'character-event':'inventory',shells:receiptSeen?receipt.shells??0:merritGift?.shells??0,parcel:bot.count('marketparcel')>baseline};anchor=null;baseline=null;merritGift=null;bot.event('merchant.merrit',lastReward);return false;
   }
   if(Date.now()<probe)return false;
+  // Without a permitted offer, Merrit cannot grant the reward. Do not
+  // abandon gathering and route to the market just to discover this later.
+  const eligible=Object.entries(p.c.slots??{}).some(([k,v])=>/^trade\\d+$/.test(k)&&v&&p.G.items[v.name]&&v.name!=='placeholder'&&!v.l&&!v.acl&&!v.v&&v.giveaway===undefined&&!v.want&&Number.isFinite(v.price)&&v.price>0&&(v.q===undefined||v.q>0)&&(!v.b||p.c.gold>=v.price));
+  if(baseline===null&&!eligible){anchor=null;probe=Date.now()+60000;e.note('Merrit ausgesetzt: kein freigegebenes Standangebot');return false;}
   const safe=point=>!(p.G.maps?.main?.npcs??[]).some(n=>Array.isArray(n.position)&&distance({x:n.position[0],y:n.position[1]},point)<=(meta.npc_clearance??40))&&!Object.values(p.entities).some(x=>x!==p.c&&(x.npc||x.type==='npc'?distance(x,point)<=(meta.npc_clearance??40):x.stand&&(distance(x,point)<=(meta.stand_clearance??10)||Math.abs(xy(x).x-point.x)<(meta.front_width??10)&&Math.abs(xy(x).y-point.y)<=(meta.front_clearance??15))));
   if(!anchor){const points=[];for(const [x0,y0,x1,y1] of meta.areas.slice(0,8))for(let x=x0+24;x<x1-20;x+=48)for(let y=y0+24;y<y1-20;y+=48)points.push({map:'main',in:'main',x,y});anchor=points.sort((a,b)=>distance(p.c,a)-distance(p.c,b)).find(safe)??null;if(!anchor){e.note('Kein freier Merrit-Standplatz');probe=Date.now()+30000;return false;}}
   if(!e.travel(anchor,'Merrit',3))return true;if(!safe(anchor)){anchor=null;since=0;return false;}
@@ -72,7 +76,7 @@ export function createServices(bot){
   e.note('Merrit: Warte auf beobachtete Belohnung');return true;
  }
  function tick(){
-  if(!sliceStarted)sliceStarted=Date.now();if(record&&Date.now()-sliceStarted>=(cfg.merchant.serviceSliceMs??30000)){interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();nextGather=Date.now()+cfg.general.economyTickMs;return restore();}
+  if(record&&!sliceStarted)sliceStarted=Date.now();if(record&&Date.now()-sliceStarted>=(cfg.merchant.serviceSliceMs??30000)){interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();nextGather=Date.now()+cfg.general.economyTickMs;return restore();}
   if(cfg.merchant.massBuffs){const producing=cfg.production.enabled,exchange=bot.production?.status().steps?.[0]?.kind==='exchange',threatened=bot.monsters().some(m=>m.target===p.c.name);
    const choices=[...(threatened?['mcourage']:[]),...(bot.target?['mfrenzy']:[]),...(producing?(exchange?['massexchangepp','massexchange']:['massproductionpp','massproduction']):[])];
    for(const skill of choices){const s=p.G.skills?.[skill];if(s&&!p.c.s?.[s.condition??skill]&&p.c.level>=(s.level??0)&&p.c.mp-(s.mp??0)>=p.c.max_mp*.3&&!p.call('is_on_cooldown',skill)&&exec.run('service:'+skill,['skill','mana'],()=>bot.running,()=>p.call('use_skill',skill),{delay:10000})){bot.event?.('service.buff',{skill,reason:threatened?'Eigener Gefahrenzustand':'Aktuelle Produktionsart',exchange});return true;}}
@@ -80,7 +84,10 @@ export function createServices(bot){
   if(record&&(!kind||Date.now()<nextGather||(!cfg.merchant.fishing&&!cfg.merchant.mining)))return restore();
   const requested=bot.strategy?.status().manual?.task;
   if(!approaching&&!record&&(!requested||requested==='merrit')&&merrit())return true;if(Date.now()<nextGather)return false;
-  for(const activity of ['fishing','mining'].filter(k=>cfg.merchant[k]&&(!requested||requested===k)).sort((a,b)=>(a===lastKind?1:0)-(b===lastKind?1:0)))if(gather(activity))return true;return restore();
+  const activities=['fishing','mining'].filter(k=>cfg.merchant[k]&&(!requested||requested===k));
+  const lease=approaching?.activity??kind;
+  const ordered=lease?activities.filter(k=>k===lease):activities.sort((a,b)=>(a===lastKind?1:0)-(b===lastKind?1:0));
+  for(const activity of ordered)if(gather(activity))return true;return restore();
  }
  function interrupt(){kind=null;approaching=null;anchor=null;since=0;baseline=null;merritGift=null;sliceStarted=0;}
  return {tick,restore,merrit,observeMerrit,get active(){return !!record;},get approaching(){return !!approaching;},get waiting(){return !!anchor||baseline!==null;},status:()=>({gathering:kind,approaching:approaching?{...approaching}:null,restorePending:!!record,merritWaiting:!!anchor||baseline!==null,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt};

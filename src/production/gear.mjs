@@ -47,7 +47,7 @@ export function createGear(bot){
   if(cfg.production.offlineProfiles&&Date.now()-lastSave>60000){lastSave=Date.now();p.write(key,profiles);}
  }
  function equip(slot,r){
-  const item=p.c.items[slot],target=r.slot;if(!cfg.production.gear||!e.safe(item)||!target||target.startsWith('trade')||!Object.hasOwn(p.c.slots??{},target))return false;
+  const item=p.c.items[slot],target=r.slot;if(!cfg.production.gear||!e.safe(item)||!target||target.startsWith('trade')||!gearCompatible(p.G,{class:p.c.ctype,level:p.c.level,slots:p.c.slots??{}},item,target))return false;
   const meta=p.G.items[item.name];if(!meta||(meta.level??0)>p.c.level||meta.class&&!meta.class.includes(p.c.ctype))return false;
   const cls=p.G.classes?.[p.c.ctype]??{},type=meta.type,w=meta.wtype??type;
   if(type==='ring'&&!['ring1','ring2'].includes(target)||type==='earring'&&!['earring1','earring2'].includes(target))return false;

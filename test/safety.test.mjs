@@ -12,8 +12,8 @@ function fixture(){const cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.farming.loo
  const bot={cfg,me:{name:'A',role:'farmer',farmTargets:[]},running:true,leader:'A',farmers:['A'],p:{c,G,root:{},parent:{},read:k=>data.get(k),write:(k,v)=>{data.set(k,structuredClone(v));return true;},realm:()=> 'EUII',call:(n)=>n==='can_move_to',has:()=>true},transport:{fresh:()=>null},monsters:()=>[],allies:()=>[c],production:{farmTargets:()=>null},logistics:{reserved:false},exec:{run:()=>false},movement:{order:null,stop(){this.order=null;},local(x,y,owner){moves.push(owner);this.order={owner};},go(){}},skills:{rotation(){}},free:()=>42,event:(name,details)=>events.push({name,details}),pause(){this.running=false;}};bot.strategy=createStrategy(bot);return {bot,c,cfg,G,data,events,moves};}
 test('observed ranger team rejects Prat DPS/exposure but permits Bee and Goo',()=>{const {c,G}=fixture();const team=[c,{...c,hp:4422,max_hp:4422},{...c,attack:324,frequency:.944,hp:3884,max_hp:3884}];assert.equal(assessCombat(G.monsters.prat,team,'balanced',3).safe,false);assert.equal(assessCombat(G.monsters.bee,[c],'balanced',3).safe,true);assert.equal(assessCombat(G.monsters.goo,[c],'conservative',3).safe,true);assert.equal(assessCombat(G.monsters.bee,[{...c,frequency:undefined}]).safe,false);});
 test('death target cooldown survives restart and emits one failure instead of per-tick writes',()=>{const {bot,data,events}=fixture();bot.strategy.failActivity('Tod','bee');bot.strategy.failActivity('Tod','bee');assert.equal(events.filter(e=>e.name==='strategy.failedTarget').length,1);assert.ok(data.get('albot:risk:A').bee>Date.now());bot.strategy=createStrategy(bot);assert.deepEqual(bot.strategy.targets(),['goo']);});
-test('waiting for missing group under fire retreats even above rest threshold',()=>{const {bot,c,cfg,moves}=fixture();cfg.party.enabled=cfg.party.waitForTeam=true;bot.farmers=['A','B'];bot.monsters=()=>[{mtype:'goo',target:'A',x:1,y:0,map:'main',hp:100}];createFarmer(bot).tick();assert.deepEqual(moves,['kite']);assert.equal(bot.recovering,true);assert.equal(bot.target,null);});
-test('merchant retreats from own aggro and recovery blocks economy scheduling',()=>{const {bot,moves}=fixture();bot.me.role='merchant';bot.monsters=()=>[{mtype:'goo',target:'A',x:1,y:0,hp:100}];createFarmer(bot).tick();assert.deepEqual(moves,['kite']);assert.equal(bot.recovering,true);bot.bank={get pending(){assert.fail('Recovery must guard even bank scheduling');}};createMerchant(bot).tick();});
+test('waiting for missing group under fire retreats even above rest threshold',()=>{const {bot,c,cfg,moves}=fixture();cfg.party.enabled=cfg.party.waitForTeam=true;bot.farmers=['A','B'];bot.monsters=()=>[{mtype:'prat',target:'A',x:1,y:0,map:'main',hp:9200}];createFarmer(bot).tick();assert.deepEqual(moves,['kite']);assert.equal(bot.recovering,true);assert.equal(bot.target,null);});
+test('merchant retreats from own aggro and recovery blocks economy scheduling',()=>{const {bot,moves}=fixture();bot.me.role='merchant';bot.monsters=()=>[{mtype:'prat',target:'A',x:1,y:0,hp:9200}];createFarmer(bot).tick();assert.deepEqual(moves,['kite']);assert.equal(bot.recovering,true);bot.bank={get pending(){assert.fail('Recovery must guard even bank scheduling');}};createMerchant(bot).tick();});
 test('merchant preserves existing acquisition waypoint instead of reranking alternating purchases',()=>{const {bot,c,cfg}=fixture();bot.me.role='merchant';bot.bank={pending:false};bot.exec.busy=()=>false;bot.production.planGoals=()=>{};bot.logistics.travel=()=>{};bot.movement.order={owner:'economy',dest:{map:'main',x:10,y:10}};bot.economy={safe:()=>assert.fail('Travel must finish before jobs rerank')};cfg.merchant.mluck=false;createMerchant(bot).tick();assert.equal(bot.movement.order.owner,'economy');assert.match(bot.reason,/Unterwegs/);});
 test('merchant refuses threatened peer and dangerous Prat spawn destination',()=>{const {bot}=fixture();assert.equal(bot.strategy.canVisit({map:'main',x:10,y:0,hp:4000,max_hp:4000,threats:1}),false);assert.equal(bot.strategy.canVisit({map:'level1',x:100,y:100,hp:4000,max_hp:4000,threats:0}),false);assert.equal(bot.strategy.canVisit({map:'main',x:10,y:0,hp:4000,max_hp:4000,threats:0}),true);});
 test('unsafe Monsterhunt never selects Prat and normal farming remains available',()=>{const {bot,c,cfg}=fixture();cfg.world.quests=cfg.world.questTargets=true;c.s={monsterhunt:{id:'prat',c:10}};bot.movement.farmLocation=()=>assert.fail('Unsafe quest must not create route');bot.strategy.plan();assert.equal(bot.strategy.status().activity,null);assert.deepEqual(new Set(bot.strategy.targets()),new Set(['goo','bee']));});
@@ -26,3 +26,21 @@ test('unsafe observed farm target triggers bounded replanning instead of idle at
 
 
 test('merchant clears scarce workspace before ordinary market and production acquisition',()=>{const {bot,c,cfg}=fixture();bot.me.role='merchant';cfg.merchant.mluck=cfg.merchant.stand=false;bot.free=()=>3;c.items=[{name:'ringsj',level:0}];const r={name:'Bankregel',action:'bank',priority:-400};let stored=0;bot.bank={pending:false,store(){stored++;return true;}};bot.exec.busy=()=>false;bot.logistics.travel=()=>{};bot.production={planGoals(){},status:()=>({}),tick:()=>assert.fail('Workspace must be freed first')};bot.economy={safe:()=>true,rules:()=>r,remaining:()=>true,spare:()=>1};bot.services={active:false};createMerchant(bot).tick();assert.equal(stored,1);});
+
+test('passive monster with player-induced aggro does not cause retreat while waiting for the team',()=>{
+ const {bot,c,cfg,moves,data}=fixture();cfg.party.enabled=cfg.party.waitForTeam=true;bot.farmers=['A','B'];
+ bot.monsters=()=>[{id:'passive',mtype:'bee',target:'A',aggro:9,x:1,y:0,map:'main',hp:400,max_hp:400}];
+ createFarmer(bot).tick();
+ assert.deepEqual(moves,[]);
+ assert.equal(bot.recovering,false);
+ assert.equal(data.get('albot:risk:A'),undefined);
+});
+test('passive boss label does not cause preemptive flee; official auto-aggro still does',()=>{
+ const {bot,c,cfg,moves,G}=fixture();cfg.farming.autoTravel=false;bot.allowed=()=>false;
+ G.monsters.bee.boss=true;
+ bot.monsters=()=>[{id:'passive-boss',mtype:'bee',aggro:1,x:20,y:0,map:'main',hp:200000,max_hp:200000,range:30}];
+ createFarmer(bot).tick();assert.deepEqual(moves,[]);assert.notMatch(bot.reason??'',/Gefahrenrückzug/);
+ bot.monsters=()=>[{id:'aggressive',mtype:'prat',x:20,y:0,map:'main',hp:9200,max_hp:9200,range:30}];
+ createFarmer(bot).tick();assert.deepEqual(moves,['kite']);
+ assert.equal(bot.recovering,true);
+});

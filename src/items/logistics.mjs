@@ -23,14 +23,14 @@ export function createLogistics(bot){
     bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
     return true;
   }
-  function capacity(i){const rule=ruleFor(i);if(!rule||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(demandFor(rule,count(i)),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
+  function capacity(i,verifiedGear=false){const rule=ruleFor(i);if((!rule&&!verifiedGear)||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):0,verifiedGear?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
       counters.offersReceived++;
       if(bot.checkpoint?.durable===false||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
-      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const quantity=Math.min(d.quantity,capacity(d.item),cfg.merchant.maxDelivery);if(quantity<1)return;
+      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const quantity=Math.min(d.quantity,capacity(d.item,!!d.gear),cfg.merchant.maxDelivery);if(quantity<1)return;
       if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
       if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.

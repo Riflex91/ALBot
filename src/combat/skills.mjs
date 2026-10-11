@@ -3,7 +3,9 @@ import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 export function createSkills(bot){
-  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map();
+  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map();
+  const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
+  const diagnostics=()=>Object.fromEntries([...stats].map(([id,row])=>[id,{...row}]));
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
@@ -28,7 +30,7 @@ export function createSkills(bot){
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
     if(id==='energize'&&!cfg.party.energize||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;
-    if(!explicit&&cfg.skills.some(r=>r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype)))return false;
+    if(!explicit&&cfg.skills.some(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype))){count(id,'ruleBlocked');return false;}
     if((last.get(id)??0)+every>Date.now()||(failedUntil.get(id)??0)>Date.now()||
       !(cfg.general.testLogging!==undefined?FULL_SKILLS:SUPPORTED_SKILLS).includes(id))return false;
     // Do not spend offensive mana on a normal-attack kill while the normal
@@ -63,7 +65,7 @@ export function createSkills(bot){
     if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??1)||
       (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):
         (visible.length>limit||visible.some(e=>!eligible(e)&&!canPull(e))))||
-      neutralCount>additional)return false;
+      neutralCount>additional){count(id,'targetBlocked');return false;}
       argsTarget=aimed?selected:null;target=selected[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}
     let burstMana=0;if(id==='cburst'){const budget=Math.floor(Math.min(p.c.mp-p.c.max_mp*reserve-(s.mp??0),p.c.max_mp*(control?.manaBudget??1)));burstMana=Math.min(budget,Math.ceil((target?.hp??0)/Math.max(.001,s.ratio??.5)));if(!target||burstMana<=0)return false;argsTarget=[[target.id,burstMana]];}
@@ -72,12 +74,20 @@ export function createSkills(bot){
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
     const guard=()=>ready(id,target,reserve)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
-    if(!guard())return false;
+    if(!guard()){
+      const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
+      const cost=id==='burst'?p.c.mp:s.mp??0;
+      count(id,s.wtype&&!asArray(s.wtype).some(w=>weapons.includes(w))||s.offhand_type&&p.G.items[p.c.slots?.offhand?.name]?.wtype!==s.offhand_type?'weaponBlocked':
+        p.c.mp-cost<p.c.max_mp*reserve?'mpBlocked':target&&!bot.allowed?.(bot.entity(target.id))?'targetBlocked':p.call('is_on_cooldown',id)?'cooldownBlocked':'ruleBlocked');
+      return false;
+    }
+    count(id,'ready');
     if(consume&&(bot.inventoryBlocked||bot.logistics.reserved))return false;
     const accepted=exec.run('skill:'+id,['mana',s.share==='attack'||id==='heal'?'attack':'skill',...(consume?['inventory']:[])],guard,()=>{
+      count(id,'started');
       if(consume)bot.beginValue({kind:'consume',item:consume,before:prior});
       return id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
-    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:state=>{if(consume)bot.endValue(state);if(state==='rejected'||state==='timeout'||state==='unknown')failedUntil.set(id,Date.now()+3000);}});
+    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:state=>{if(consume)bot.endValue(state);if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
     if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve});}return accepted;
   }
   function support(){
@@ -146,5 +156,5 @@ export function createSkills(bot){
     };
     for(const [ok,id,target,delay] of choices[c.ctype]??[])if(ok&&use(id,target,.3,delay))return;
   }
-  return {ready,use,rotation};
+  return {ready,use,rotation,diagnostics};
 }

@@ -60,7 +60,7 @@ export function createFarmer(bot){
     bot.target=focus??previous??mobs.sort((a,b)=>(a.target===c.name?-10000:0)+distance(c,a)-((b.target===c.name?-10000:0)+distance(c,b)))[0]??null;
     const target=bot.target;
     bot.skills.rotation(target);
-    if(!target){bot.reason='Suche Farmziel';if(cfg.farming.autoTravel&&now-lastTravel>=10000&&!bot.movement.order){lastTravel=now;const d=bot.movement.farmLocation(bot.targets()[0]);if(d)bot.movement.go(d,'farm');else bot.reason='Kein öffentlicher Spawn für Farmziel';}return;}
+    if(!target){bot.reason='Suche Farmziel';if(cfg.farming.autoTravel&&(!cfg.party.enabled||me.name===bot.leader)&&now-lastTravel>=10000&&!bot.movement.order){lastTravel=now;const d=bot.movement.farmLocation(bot.targets()[0]);if(d)bot.movement.go(d,'farm');else bot.reason='Kein öffentlicher Spawn für Farmziel';}return;}
     bot.reason='Kampf: '+target.mtype;
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);

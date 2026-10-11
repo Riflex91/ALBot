@@ -58,7 +58,16 @@ export function createLogistics(bot){
     bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
     return true;
   }
-  function capacity(i,verifiedGear=false,verifiedElixir=false){const rule=ruleFor(i),implicit=defaultPotionDemand(i,count(i));if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit)||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):implicit,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
+  function capacity(i,verifiedGear=false,verifiedElixir=false){
+    const rule=ruleFor(i),implicit=defaultPotionDemand(i,count(i));
+    // minFreeSlots is a cleanup target, not a pickup embargo. At the live
+    // Merchant reserve (4 slots in USIV) legitimate incoming loot must still
+    // be accepted if at least one physical slot is actually available.
+    const known=!!p.G?.items?.[i?.name]&&bot.economy?.safe?.(i)!==false;
+    const pickup=me.role==='merchant'&&cfg.merchant.enabled&&cfg.merchant.pickup&&known?cfg.merchant.maxDelivery:0;
+    if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit&&!pickup)||protectedItem(i))return 0;
+    const min=me.role==='merchant'?0:cfg.farming.freeSlots;
+    if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):implicit,pickup,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
@@ -157,6 +166,9 @@ export function createLogistics(bot){
   function travel(){
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;
+    // Delivery must not cancel an in-progress gold pickup or economy order.
+    // The current owner releases the route after arrival/settlement.
+    if(route&&['gold','economy'].includes(route.owner))return;
     if(route?.owner==='logistics'){
       const h=transport.fresh(route.dest.name);
       const decision=deliveryRouteDecision(route,h,p.c,{error:cfg.merchant.servicePositionError??70});
@@ -185,9 +197,13 @@ export function createLogistics(bot){
        const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
        const elixirRequested=cfg.merchant.supply&&h.elixir?.quantity===1&&p.c.items.some((i,slot)=>{const r=i&&i.name===h.elixir.item&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;});
        const demand=requested||gearRequested||elixirRequested;
-      const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&capacity(item)>0;});
+      const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;if(bot.merchant?.claimService?.(name,urgent)===false)continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;
+        // Plan and complete inventory preparation BEFORE leaving for the
+        // farmer. A full inventory must not hide its own pickup demand.
+        if(pickup&&!urgent&&bot.merchant?.preparePickup?.(h)===false)return;
+        if(bot.merchant?.claimService?.(name,urgent)===false)continue;
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;
@@ -195,7 +211,14 @@ export function createLogistics(bot){
       }
     }
   }
-  return {receive,poll,travel,get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
+  function yieldUnsent(reason='Anderer Werttransfer hat Vorrang'){
+    if(!job||!['offered','accepted'].includes(job.state))return false;
+    const old=job;job=null;
+    nextOffer.set(old.offerKey??offerKey(old.to,old.item.name),clock()+10000);
+    cancelUnsent(old,reason);
+    return true;
+  }
+  return {receive,poll,travel,yieldUnsent,get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
     summary(){
       const rules=allRules().filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}

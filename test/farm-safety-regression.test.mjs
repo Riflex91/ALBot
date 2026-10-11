@@ -9,7 +9,7 @@ test('dangerous farm-area failure quarantines a spawn instead of instantly resel
    cfg:{general:{testLogging:true,messageTtlMs:10000},farming:{pvp:false,maxAggro:1,planHoldMs:300000,deathWindowMs:600000},world:{excludedMaps:[],cacheTtlMs:60000},party:{enabled:true}},
    me:{name:'Leader',role:'farmer',farmTargets:[]},leader:'Leader',farmers:['Leader'],transport:{fresh:()=>null},
    strategy:{safeTarget:()=>true,permittedMap:()=>true,busy:false},monsters:()=>[],event:(...x)=>events.push(x),
-   decisionEpoch:1,gear:{snapshot:()=>({})},content:{approve:()=>true},progression:{bonus:()=>0}};
+   decisionEpoch:1,movement:{order:null,stop(){}},gear:{snapshot:()=>({})},content:{approve:()=>true},progression:{bonus:()=>0}};
  const plan=createTeamPlan(bot);plan.tick();const first=plan.heartbeat();
  assert.ok(first?.key,'first viable area selected');
  plan.failed('Gefährliche Aggro');assert.ok(events.some(([type,d])=>type==='plan.quarantined'&&d.key===first.key));

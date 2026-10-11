@@ -69,7 +69,11 @@ export function createEconomy(bot){
   return perform('buy',{cost:q*price,rule:r,guard:()=>npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
  function npcSell(slot,r){const i=p.c.items[slot],q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice||!remaining(r)||!budget(0,0,r))return false;const before=count(i),gold=p.c.gold;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!npcTravel(d,'NPC-Verkauf'))return false;
-  return perform('sell',{slots:[slot],rule:r,guard:()=>spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>p.call('sell',slot,q),observe:()=>count(i)<=before-q&&p.c.gold>=gold+q*r.minPrice,details:{item:i.name,variant:identity(i),quantity:q,before,expectedGold:q*price}});
+  return perform('sell',{slots:[slot],rule:r,guard:()=>spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>p.call('sell',slot,q),observe:()=>{
+  const live=p.c.items[slot],left=(i.q??1)-q;
+  const sourceVerified=left===0?!live:identity(live)===identity(i)&&live?.q===left;
+  return sourceVerified&&p.c.gold===gold+q*price;
+ },details:{item:i.name,variant:identity(i),quantity:q,before,sourceSlot:slot,expectedGold:q*price}});
  }
  return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }

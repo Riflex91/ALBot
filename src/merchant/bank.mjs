@@ -32,6 +32,23 @@ export function createBank(bot){
   bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: Bestand weicht vom Checkpoint ab; manuell prüfen');return true;
  }
  let observed=false,stockRows=[],packEpoch=-1,packCache=null,stockObservedAt=0,stockObservedMap=null;
+ const catalogKey='albot:bank-catalog:v1:'+me.name;
+ const stored=p.read(catalogKey),realm=p.realm();
+ let catalog=stored?.version===1&&stored.owner===me.name&&stored.realm===realm&&
+   Number.isSafeInteger(stored.observedAt)&&stored.observedAt>0&&
+   stored.observedAt<=Date.now()&&Array.isArray(stored.rows)&&stored.rows.length<=512?
+   stored:{version:1,owner:me.name,realm,observedAt:0,revision:0,rows:[]};
+ let lastVerifiedFingerprint=null,lastAtBank=false;
+ // Reloaded stock is planning evidence only. Never authorize a bank mutation
+ // against this catalog: retrieve/store still demand a live pack/slot.
+ function catalogStock(maxAge=120000){
+  if(catalog.realm!==p.realm()||Date.now()-catalog.observedAt>maxAge||
+     catalog.observedAt<=0||bot.inventoryBlocked)return [];
+  return catalog.rows.filter(x=>x&&typeof x.pack==='string'&&Number.isSafeInteger(x.slot)&&
+   x.slot>=0&&x.item&&e.safe(x.item)).map(x=>({...x,owner:me.name,
+    evidence:{observedAt:catalog.observedAt,revision:catalog.revision,verified:false}}));
+ }
+
  // Server-approved plain stack candidates; require an exact item variant.
  const stackMax=i=>{const limit=bot.p.G.items?.[i?.name]?.s;return limit===true?9999:Number.isSafeInteger(limit)&&limit>1?limit:0;};
  const simple=i=>e.safe(i)&&stackMax(i)>1&&!i.data&&!i.p&&!i.title&&!i.stat_type&&!i.acc&&!i.rid&&!i.special&&!i.v;
@@ -49,9 +66,43 @@ export function createBank(bot){
   }
   return false;
  }
- const packs=()=>{if(packCache&&Number.isInteger(bot.decisionEpoch)&&packEpoch===bot.decisionEpoch)return packCache;const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},(_,n)=>items[n]??null)]);if(rows.length){observed=true;stockObservedAt=Date.now();stockObservedMap=p.c.map;stockRows=rows.flatMap(([pack,items])=>items.filter(i=>e.safe(i)&&e.explicit(i)?.action!=='keep').map(i=>({pack,item:{...i}}))).slice(0,2000);}packEpoch=bot.decisionEpoch;packCache=rows;return rows;};
- const stock=(name,level,wanted=Infinity)=>{packs();if(Date.now()-stockObservedAt>120000||!p.c.bank||stockObservedMap!==p.c.map)return 0;return stockRows.reduce((n,r)=>n+(r.item.name===name&&(r.item.level??0)===level&&(cfg.merchant.partialBank||(r.item.q??1)<=wanted)?(r.item.q??1):0),0);};
- const packFor=item=>{packs();if(Date.now()-stockObservedAt>120000||!p.c.bank||stockObservedMap!==p.c.map)return null;return stockRows.find(r=>identity(r.item)===identity(item))?.pack;};
+ const packs=()=>{
+  if(packCache&&Number.isInteger(bot.decisionEpoch)&&packEpoch===bot.decisionEpoch)return packCache;
+  const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&
+   Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},
+    (_,n)=>items[n]??null)]);
+  // Merely reading a retained p.c.bank object from outside its actual map
+  // never renews the 120-second evidence TTL.
+  const live=rows.length>0&&rows.some(([pack])=>packMap(pack)===p.c.map)&&
+   !bot.inventoryBlocked&&!bot.journal;
+  if(!live)lastAtBank=false;
+  if(live){
+   const current=rows.flatMap(([pack,items])=>packMap(pack)===p.c.map?
+    items.flatMap((item,slot)=>item&&e.safe(item)?[{pack,slot,item:{...item}}]:[]):[]).slice(0,512);
+   const fingerprintNow=JSON.stringify(rows.filter(([pack])=>packMap(pack)===p.c.map)
+    .map(([pack,items])=>[pack,items.map(item=>item?fingerprint(item):null)]));
+   if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint){
+    // New verified visit or a server-observable bank state revision.
+    const next={version:1,owner:me.name,realm:p.realm(),observedAt:Date.now(),
+     revision:(catalog.revision??0)+1,rows:current};
+    if(p.write(catalogKey,next)===true){catalog=next;observed=true;
+     stockObservedAt=next.observedAt;stockObservedMap=p.c.map;
+     stockRows=current.filter(x=>e.explicit(x.item)?.action!=='keep');
+    }
+    lastVerifiedFingerprint=fingerprintNow;
+   }
+   lastAtBank=true;
+  }
+  packEpoch=bot.decisionEpoch;packCache=rows;return rows;
+ };
+ const stock=(name,level,wanted=Infinity)=>{
+  packs();
+  return catalogStock().reduce((n,r)=>n+(r.item.name===name&&
+   (r.item.level??0)===level&&e.explicit(r.item)?.action!=='keep'&&
+   (cfg.merchant.partialBank||(r.item.q??1)<=wanted)?(r.item.q??1):0),0);
+ };
+ const packFor=item=>{packs();return catalogStock().find(r=>
+   identity(r.item)===identity(item)&&e.explicit(r.item)?.action!=='keep')?.pack??null;};
  const definitions=()=>p.G.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
@@ -202,5 +253,5 @@ export function createBank(bot){
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
  }
- return {store,retrieve,consolidate,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {store,retrieve,consolidate,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

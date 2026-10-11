@@ -18,9 +18,9 @@ test('dangerous farm-area failure quarantines a spawn instead of instantly resel
 });
 
 test('roaming overpowered hostile causes preemptive retreat before aggro',()=>{
- const calls=[],monster={id:'greenjr-1',mtype:'greenjr',type:'monster',map:'main',in:'main',x:100,y:0,real_x:100,real_y:0,hp:10000,max_hp:10000,range:40,aggro:1};
+ const calls=[],monster={id:'greenjr-1',mtype:'greenjr',type:'monster',map:'main',in:'main',x:60,y:0,real_x:60,real_y:0,hp:10000,max_hp:10000,range:40,aggro:1};
  const c={name:'Farmer',map:'main',in:'main',x:0,y:0,range:100,speed:50,hp:900,max_hp:1000,mp:100,max_mp:100,items:[],slots:{},gold:0,ctype:'ranger',rip:false};
- const bot={p:{c,G:{monsters:{greenjr:{aggro:1,range:40,boss:true}}},call:(name)=>name==='can_move_to'?true:false},
+ const bot={p:{c,G:{monsters:{greenjr:{aggro:1,range:40,boss:true}},maps:{main:{}}},parent:{is_pvp:false},call:(name)=>name==='can_move_to'?true:false},
    cfg:{farming:{enabled:true,deathWindowMs:600000,restBelow:.4,resumeAbove:.9,freeSlots:3,maxAggro:2,kiting:true,hpBelow:.7,mpBelow:.5},party:{enabled:false}},
    me:{name:'Farmer',role:'farmer'},reason:'',monsters:()=>[monster],strategy:{safeTarget:()=>false,failActivity:(...a)=>calls.push(['fail',...a])},
    movement:{order:null,stop:()=>calls.push(['stop']),local:(...a)=>calls.push(['local',...a])},

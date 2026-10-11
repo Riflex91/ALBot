@@ -211,10 +211,12 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
     // previously a blanket veto even after all these checks.
     const kind=m.compound?'compound':'upgrade',grade=(i.level??0)<(cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel)?
      p.call('item_grade',i):null;
+    const table=kind==='compound'?p.G.compounds:p.G.upgrades;
     const chance=grade===null?1:mutationChance(i.name,i.level??0,kind);
     const scroll=grade===null?0:p.G.items?.[(kind==='compound'?'cscroll':'scroll')+grade]?.g;
     if(!Number.isFinite(value)||value<0||
-       !Number.isFinite(chance)||!Number.isFinite(scroll)){
+       grade!==null&&(!table||!Number.isFinite(chance))||
+       !Number.isFinite(scroll)){
       action='bank'; // Unverified chance/cost cannot prove mutation is worse.
     }
    }

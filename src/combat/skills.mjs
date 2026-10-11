@@ -100,8 +100,16 @@ export function createSkills(bot){
     if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
   }return false;}
   function rotation(t){
-    if(custom(t)||support())return;
     const c=p.c,hp=c.hp/c.max_hp,long=t&&t.hp>c.attack*4;
+    // Highest priority for an eligible AoE, while still honoring cooldown,
+    // weapon, legal targets, mana cost and approved encounter capacity.
+    if(t&&cfg.party.aoe){
+      const shotRange=(p.G.skills['5shot']?.range??c.range)-5;
+      const safeCount=Math.min(cfg.party.aoeMaxTargets,bot.monsters().filter(m=>distance(c,m)<shotRange&&m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m)).length);
+      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
+      for(const id of ids)if(use(id,t,0,600))return;
+    }
+    if(custom(t)||support())return;
     if(c.ctype==='paladin'&&hp<.7&&use('selfheal',null,.1,1200))return;
     if(c.ctype==='warrior'&&hp<.5&&use('hardshell',null,.1,10000))return;
     if(cfg.party.advancedSkills&&c.ctype==='paladin'){
@@ -113,14 +121,6 @@ export function createSkills(bot){
     }
     if(!t)return;
     if(cfg.party.advancedSkills&&c.ctype==='mage'&&long){if(use('cburst',t,.4,700))return;const ratio=p.G.skills.burst?.ratio;if(Number.isFinite(ratio)&&t.hp>=Math.max(1200,c.attack*4)&&t.hp<=c.mp*ratio&&c.mp/c.max_mp>=.75&&!bot.allies().some(a=>a.name!==c.name&&a.mp/a.max_mp<.5)&&use('burst',t,0,6000))return;}
-    if(cfg.party.aoe){
-      // Prefer the cheaper 3-shot for a small pack; reserve 5-shot for 4-5
-      // already-engaged safe recipients (when the skill and MP are available).
-      const shotRange=(p.G.skills['5shot']?.range??c.range)-5;
-      const safeCount=Math.min(cfg.party.aoeMaxTargets,bot.monsters().filter(m=>distance(c,m)<shotRange&&m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m)).length);
-      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
-      for(const id of ids)if(use(id,t,.35,600))return;
-    }
     const choices={
       warrior:[[long&&cfg.party.buffs,'warcry',null,5000],[t.target&&t.target!==c.name&&bot.teamNames.includes(t.target),'taunt',t,1500],[distance(c,t)>c.range*1.4,'charge',null,10000]],
       ranger:[[long,'huntersmark',t,5000],[long,'poisonarrow',t,1500],[(t.armor??p.G.monsters[t.mtype]?.armor??0)>200,'piercingshot',t,700],[t.hp>c.attack*1.5,'supershot',t,1500]],

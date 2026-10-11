@@ -54,8 +54,16 @@ export function createLogistics(bot){
       }
       if(now>job.until){const expired=job;job=null;counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht vollständig bestätigt; keine Wiederholung'});if(expired.state==='sent'||expired.state==='accepted')bot.endValue('unknown');return;}
       if(job.state==='accepted'&&!bot.inventoryBlocked){
-        const j=job;
-        const guard=()=>{const current=p.c.items[j.slot],rule=current&&sendRule(current,j.to);return bot.running&&(bot.allocation?.guard(j)??true)&&near(j.to)&&!incoming&&fingerprint(current)===j.fingerprint&&availableTransfer(j.slot,rule)>=j.quantity;};
+        const j=job,peer=transport.fresh(j.to);
+        // An acceptance is bound to its receiver session. After a reload the
+        // new receiver no longer owns the old pending handoff or its receipt.
+        if(peer?.session&&peer.session!==j.session){
+          nextOffer.set(j.offerKey??offerKey(j.to,j.item.name),now+10000);
+          job=null;
+          bot.event?.('logistics.session-changed',{id:j.id,peer:j.to,reason:'Empfängersitzung nach Annahme gewechselt; vor Dispatch abgebrochen'});
+          return;
+        }
+        const guard=()=>{const current=p.c.items[j.slot],rule=current&&sendRule(current,j.to);return bot.running&&!bot.journal&&!bot.inventoryBlocked&&(bot.allocation?.guard(j)??true)&&transport.fresh(j.to)?.session===j.session&&near(j.to)&&!incoming&&fingerprint(current)===j.fingerprint&&availableTransfer(j.slot,rule)>=j.quantity;};
         if(!guard()||!(bot.allocation?.reserve(j)??true)){bot.reason='Lieferung verändert oder Gearreservierung fehlt; keine Übergabe';return;}
         exec.run('send',['inventory'],guard,()=>{
           bot.movement?.stop();bot.beginValue({kind:'send',...j});j.state='sent';counters.sendsStarted++;

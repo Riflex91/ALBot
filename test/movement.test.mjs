@@ -180,3 +180,22 @@ test('fishing without a rod does not send merchant to inaccessible worksite',asy
  assert.ok(actions.some(x=>x[0]==='note'&&x[1].includes('rod')));
  assert.ok(!actions.some(x=>x[0]==='travel'));
 });
+
+test('merchant failed smart route quarantines only that shoreline waypoint, not the main map',async()=>{
+ const old=Date.now;let now=40000;Date.now=()=>now;
+ try{
+  const events=[],c={name:'Merchant',map:'main',in:'main',x:100,y:100,moving:false};
+  const bot={running:true,me:{role:'merchant'},cfg:{merchant:{townTravel:false},world:{excludedMaps:[]},farming:{pvp:false}},event:(...a)=>events.push(a)};
+  bot.p={c,root:{},parent:{},G:{maps:{main:{}}},has:()=>false,call:kind=>kind==='smart_move'?Promise.reject(new Error('failed')):Promise.resolve()};
+  bot.exec=new Executor({now:()=>now,active:()=>bot.running,limit:4,onError(){}});
+  const m=createMovement(bot),blocked={map:'main',in:'main',x:-856,y:-396,radius:5};
+  m.go(blocked,'economy');
+  await Promise.resolve();await Promise.resolve();bot.exec.poll();
+  assert.equal(m.failedRecently(blocked),true,'Failed exact coordinate must be remembered');
+  assert.equal(m.failedRecently({...blocked,x:-832}),false,'Adjacent shore must stay available');
+  assert.equal(m.failedRecently({map:'main',x:0,y:0}),false,'Bank, NPC and exchange sites must remain routable');
+  assert.equal(m.failedRecently({map:'main'}),true,'Map-only legacy diagnostics indicate a failure somewhere');
+  assert.ok(events.some(([name,info])=>name==='movement.route-quarantined'&&info.x===-856));
+  now+=300001;assert.equal(m.failedRecently(blocked),false,'Waypoint cooldown must expire');
+ }finally{Date.now=old;}
+});

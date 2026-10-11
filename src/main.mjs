@@ -200,9 +200,13 @@ export function install(root){
       for(const name of memberNames){if(name===me.name||joined(name))continue;
         const h=bot.transport.fresh(name),e=bot.entity(name);
         if(!h?.running||h.rip||h.realm!==p.realm()||name!==cfg.party.merchant&&h.inventoryBlocked)continue;
+        // A fresh owner heartbeat is stronger than a stale local roster view.
+        // Never re-invite an already joined member just because it is offscreen.
+        if(p.c.party&&(h.party===p.c.party||e?.party===p.c.party))continue;
         if(!p.c.party||!e||e.party!==p.c.party){
           const eligible=()=>bot.running&&selectedPartyMember(bot,name)&&
-            !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm()&&!joined(name);
+            !!bot.transport.fresh(name)?.running&&bot.transport.fresh(name)?.realm===p.realm()&&!joined(name)&&
+            (!p.c.party||bot.transport.fresh(name)?.party!==p.c.party);
           exec.run('invite:'+name,['party'],eligible,()=>p.call('send_party_invite',name),{delay:10000});
         }
       }
@@ -224,7 +228,7 @@ export function install(root){
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

@@ -36,7 +36,7 @@ test('global dispatch collects producers then rechecks guards and chooses emerge
 });
 test('adaptive pulling requires measured safe baseline and forbids follower independent pulls',()=>{
  let mobs=[];const c={name:'A',hp:100,max_hp:100,mp:100,max_mp:100,xp:0};
- const bot={me:{name:'A'},leader:'A',farmers:['A'],teamNames:['A'],running:true,cfg:{general:{},party:{enabled:true,aoe:true,aoeMaxTargets:5},farming:{maxAggro:5}},p:{c,G:{monsters:{goo:{}}},read:()=>({}),write:()=>true},transport:{fresh:()=>null},capabilities:{snapshot:()=>({aoe:[{capacity:5}]})},monsters:()=>mobs,teamPlan:{target:()=> 'goo',wantsCombat:()=>true},event(){}};
+ const bot={me:{name:'A'},leader:'A',farmers:['A'],teamNames:['A'],running:true,cfg:{general:{},party:{enabled:true,aoe:true,aoeMaxTargets:5},farming:{maxAggro:5}},p:{c,G:{monsters:{goo:{}}},read:()=>({}),write:()=>true},transport:{fresh:()=>null},capabilities:{snapshot:()=>({aoe:[{capacity:5}]})},monsters:()=>mobs,teamPlan:{target:()=> 'goo',wantsCombat:()=>true,npcAt:()=>true},event(){}};
  const encounter=createEncounter(bot);encounter.tick();assert.equal(encounter.status().capacity,1);assert.equal(encounter.permit({}),true);
  mobs=[{target:'A',hp:100}];encounter.tick();assert.equal(encounter.permit({}),false);
  bot.me.name='B';assert.equal(encounter.permit({}),false);assert.equal(encounter.permit({target:'A'}),true);
@@ -98,7 +98,7 @@ test('U02 ordinary exchange remains available; inactive, unverifiable and expiri
 test('U02 execution guard rechecks event and NPC mapping after planning, without dispatch',()=>{
  const G={items:{ticket:{e:2,quest:'quest1',event:'season'},prize:{}},drops:{ticket:[[1,'prize']]},events:{season:{}},npcs:{quest_npc:{quest:'quest1'}},maps:{main:{npcs:[['quest_npc',10,20]]}}};
  let guard=null,notes=[];const p={G,c:{items:[{name:'ticket',q:4}],slots:{},s:{}},root:{S:{season:{live:true}}},parent:{},read:()=>null};
- const e={remaining:()=>true,spare:()=>4,count:()=>4,explicit:()=>null,at:()=>true,destination:()=>({map:'main',x:10,y:20}),travel:()=>true,value:()=>2,note:x=>notes.push(x),perform:(kind,args)=>{guard=args.guard;return true;}};
+ const e={remaining:()=>true,spare:()=>4,count:()=>4,explicit:()=>null,at:()=>true,npcAt:()=>true,destination:()=>({map:'main',x:10,y:20}),travel:()=>true,npcTravel:()=>true,value:()=>2,note:x=>notes.push(x),perform:(kind,args)=>{guard=args.guard;return true;}};
  const bot={p,me:{name:'M',role:'merchant'},economy:e,cfg:{general:{testLogging:1},production:{enabled:true,exchange:true,goals:[]},merchant:{minFreeSlots:0},party:{}},exec:{pending:new Set()},free:()=>6,transport:{fresh:()=>null}};
  const production=createProduction(bot),rule={keep:0,teamReserve:0,targetCount:100,maxCount:100,recipe:''};
  assert.equal(production.exchange(0,rule),true);assert.equal(guard(),true);
@@ -601,7 +601,7 @@ test('U05 craft dispatch rejects changed recipe, ingredient quantity, and protec
  const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{testLogging:undefined}};
  let guard=null,policy={action:'craft',keep:0,teamReserve:0};
  const e={remaining:()=>true,rules:()=>policy,explicit:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
-  destination:()=>({map:'main',in:'main',x:0,y:0}),perform:(kind,opts)=>{assert.equal(kind,'craft');guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
+  destination:()=>({map:'main',in:'main',x:0,y:0}),perform:(kind,opts)=>{assert.equal(kind,'craft');guard=opts.guard;return true;},travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>c.items.filter(x=>!x).length};
  const production=createProduction(bot),rule={item:'ingot',action:'craft',recipe:'ingot',targetCount:2,maxCount:2};
  assert.equal(production.craft('ingot',rule),true);
@@ -624,7 +624,7 @@ test('U05 craft dispatch rejects reselected alias and recipe-output drift',()=>{
  const p={c,G,read:()=>null},cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
  let guard=null;
  const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
-  destination:()=>({map:'main',in:'main',x:0,y:0}),perform:(kind,opts)=>{guard=opts.guard;return true;},travel:()=>true,at:()=>true,note:()=>{}};
+  destination:()=>({map:'main',in:'main',x:0,y:0}),perform:(kind,opts)=>{guard=opts.guard;return true;},travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>40},rule={item:'ingot',action:'craft',recipe:'alias',targetCount:3,maxCount:3};
  const production=createProduction(bot);
  assert.equal(production.craft('ingot',rule),true);assert.equal(guard(),true);
@@ -647,7 +647,7 @@ test('U05 upgrade preview cannot dispatch after changed chance limits, goals or 
  const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0);
  let guard=null;
  const econ={remaining:()=>true,safe:i=>!!i&&!i.l,count,rules:()=>({action:'upgrade',keep:0,teamReserve:0}),value:()=>2,
-  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(kind,opts)=>{guard=opts.guard;return true;}};
  const exec={busy:()=>false,run:(name,locks,canRun,call)=>{assert.equal(name,'production.preview');void call();return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},running:true,economy:econ,exec,free:()=>40};
@@ -677,7 +677,7 @@ test('U05 compound preview rejects a changed input group or newly reserved scrol
  const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0);
  let guard=null,scrollKeep=0;
  const econ={remaining:()=>true,safe:i=>!!i&&!i.l,count,rules:i=>({action:'compound',keep:i.name==='cscroll0'?scrollKeep:0,teamReserve:0}),value:()=>2,
-  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(kind,opts)=>{guard=opts.guard;return true;}};
  const exec={busy:()=>false,run:(name,locks,canRun,call)=>{assert.equal(name,'production.preview');void call();return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},running:true,economy:econ,exec,free:()=>40};
@@ -840,7 +840,7 @@ test('U05 craft uses three correctly ordered grid positions and confirms total r
  let action=null;
  const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0);
  const economy={remaining:()=>true,rules:()=>null,safe:i=>!!i&&!i.l&&!i.b,count,explicit:()=>null,
-  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(kind,args)=>{assert.equal(kind,'craft');action=args;return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>c.items.filter(i=>!i).length};
  const production=createProduction(bot);
@@ -863,7 +863,7 @@ test('U05 craft duplicate inputs never consume protected aggregate reserves or s
  let attempted=0,keep=1;
  const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0);
  const economy={remaining:()=>true,rules:()=>({action:'craft',keep,teamReserve:0}),safe:i=>!!i,count,explicit:()=>null,
-  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:()=>{attempted++;return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>40};
  const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
@@ -898,7 +898,7 @@ test('U05 crafting selects mixed upgrade levels in original recipe order and kee
  let posted=null,level2Keep=0;
  const economy={remaining:()=>true,rules:i=>({action:'craft',keep:(i?.level??0)===2?level2Keep:0,teamReserve:0}),safe:i=>!!i&&!i.l,
   count:i=>c.items.reduce((sum,x)=>sum+(x?.name===i?.name&&(x.level??0)===(i.level??0)?(x.q??1):0),0),
-  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(kind,details)=>{assert.equal(kind,'craft');posted=details;return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>38},production=createProduction(bot);
  const rule={item:'bundle',action:'craft',targetCount:1,maxCount:1,recipe:'bundle'};
@@ -942,7 +942,7 @@ test('U05 crafting assigns a small stack to the small recipe row despite invento
  const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
  let action=null;
  const economy={remaining:()=>true,rules:()=>null,safe:i=>!!i&&!i.l,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
-  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(kind,args)=>{assert.equal(kind,'craft');action=args;return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>40};
  const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
@@ -961,7 +961,7 @@ test('U05 craft matching restores correct three-position order and never reuses 
  const cfg={production:{enabled:true,craft:true,autonomy:false,goals:[]},merchant:{minFreeSlots:0},general:{}};
  let action=null;
  const economy={remaining:()=>true,rules:()=>null,safe:i=>!!i,count:i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
-  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  explicit:()=>null,destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(kind,args)=>{action=args;return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy,free:()=>40};
  const production=createProduction(bot),rule={item:'result',action:'craft',recipe:'result',targetCount:1,maxCount:1};
@@ -1038,7 +1038,7 @@ test('U05 craft merge builds a feasible three-stack ingredient through two safe 
  let pending=null,kind=null;
  const count=i=>c.items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0);
  const e={remaining:()=>true,rules:()=>null,explicit:()=>null,safe:i=>!!i&&!i.l,count,
-  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,at:()=>true,note:()=>{},
+  destination:()=>({map:'main',in:'main',x:0,y:0}),travel:()=>true,npcTravel:()=>true,at:()=>true,npcAt:()=>true,note:()=>{},
   perform:(k,opts)=>{kind=k;pending=opts;return true;}};
  const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,free:()=>c.items.filter(i=>!i).length};
  const production=createProduction(bot),rule={action:'craft',item:'result',recipe:'result',targetCount:1,maxCount:1};

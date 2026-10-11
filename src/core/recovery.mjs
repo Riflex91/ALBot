@@ -8,7 +8,7 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   const snap=j.evidence,items=p.c.items,pack=p.c.bank?.[j.pack];
   if(!bot.inventoryBlocked||me.name!==cfg.party.merchant||!snap||snap.realm!==p.realm()||
      !Array.isArray(snap.inventory)||!Array.isArray(items)||!Array.isArray(pack)||
-     !/^items\\d+$/.test(j.pack)||!Number.isSafeInteger(j.sourceSlot)||
+     !/^items\d+$/.test(j.pack)||!Number.isSafeInteger(j.sourceSlot)||
      !Number.isSafeInteger(j.bankSlot)||!Number.isSafeInteger(j.quantity)||
      j.quantity<1||j.sourceSlot<0||j.sourceSlot>=items.length||
      j.bankSlot<0||j.bankSlot>=pack.length||

@@ -79,6 +79,10 @@ export const DESCRIPTOR = {
     world:obj('Welt, Bosse & Entwicklung',{
       bosses:flag('Bosse'),events:flag('Events'),quests:flag('Quests'),anniversary:flag('Saisonbelohnungen'),allowedBosses:ids('Erlaubte Boss-IDs'),allowedEvents:ids('Erlaubte Event-IDs'),excludedMaps:ids('Gesperrte Karten'),
       risk:choice('Risikoprofil',{conservative:'Vorsichtig',balanced:'Ausgewogen',aggressive:'Aggressiv'}),serverHop:flag('Serverwechsel'),allowedRealms:ids('Erlaubte Realms, z. B. EUII'),hopCooldownMs:int('Serverwechsel-Cooldown (ms)',300000,60000,86400000),
+      homeRealm:text('Heimserver (optional, z. B. EUII)',''),
+      homeRetryMs:int('Heimserver frühestens erneut testen nach (ms)',600000,600000,86400000),
+      homeCheckMs:int('Heimspawn mindestens beobachten (ms)',90000,60000,3600000),
+      homePressureThreshold:num('Heimspawn überfüllt ab Druckwert',0.65,0.3,1),
       magiport:flag('Abgesprochener Magiport'),learning:flag('Begrenzte adaptive Bewertung',true),learningWeight:num('Maximales Gewicht gelernter Werte',0.15,0,0.5),cacheTtlMs:int('Planungswerte neu bewerten nach (ms)',60000,1000,3600000)
     }),
     rules:list('Wenn–dann-Regeln',obj('Verhaltensregel',{

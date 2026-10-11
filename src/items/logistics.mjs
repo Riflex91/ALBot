@@ -17,9 +17,31 @@ export function createLogistics(bot){
   const ruleFor=(item)=>bot.rule(item);
   const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
   const allRules=()=>bot.production?.effectiveRules()??cfg.items;
-  const sendRecipients=item=>[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()));return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
+  // Known standard potions supply the party by default. User item rules
+  // take precedence: one explicit merchant rule disables automatic fallback
+  // for that item, avoiding silently overriding intentional exceptions.
+  const isPotion=item=>{
+    const meta=p.G?.items?.[item?.name];
+    return !!meta&&meta.type==='pot'&&/^([hm]pot[0-9]+)$/.test(item.name)&&
+      (meta.gives??[]).some(g=>Array.isArray(g)&&['hp','mp'].includes(g[0]));
+  };
+  const potionRule=(item,to)=>{
+    if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
+       !bot.farmers.includes(to)||!isPotion(item)||bot.economy?.explicit(item))return null;
+    return {enabled:true,name:'Autoversorgung '+item.name+' → '+to,action:'send',
+      item:item.name,recipient:to,keep:200,teamReserve:0,batch:1500,ttlMs:cfg.general.messageTtlMs};
+  };
+  const sendRecipients=item=>{
+    const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
+    return configured.length?configured:(isPotion(item)&&!bot.economy?.explicit(item)?bot.farmers.filter(n=>n!==me.name):[]);
+  };
+  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
+  const defaultPotionDemand=(item,n)=>{
+    if(me.role!=='farmer'||!isPotion(item))return 0;
+    const desired=Math.min(3000,cfg.farming.potionCarryMax??3000);
+    return n<=Math.min(500,Math.floor(desired/3))?Math.max(0,desired-n):0;
+  };
   const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount,normal=n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;return Math.min(Math.max(normal,bot.behavior?.need(rule.item,n)??0),Math.max(0,rule.maxCount-n));};
   const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''});
   const matchingDemand=(d,i)=>d.item===i.name&&(!d.variant||JSON.stringify(d.variant)===JSON.stringify(signature(i)));
@@ -34,7 +56,7 @@ export function createLogistics(bot){
     bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
     return true;
   }
-  function capacity(i,verifiedGear=false,verifiedElixir=false){const rule=ruleFor(i);if((!rule&&!verifiedGear&&!verifiedElixir)||protectedItem(i))return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):0,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
+  function capacity(i,verifiedGear=false,verifiedElixir=false){const rule=ruleFor(i),implicit=defaultPotionDemand(i,count(i));if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit)||protectedItem(i)||rule&&!['consume','send'].includes(rule.action)&&!verifiedGear&&!verifiedElixir)return 0;const min=me.role==='merchant'?cfg.merchant.minFreeSlots:cfg.farming.freeSlots;if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):implicit,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
@@ -163,7 +185,7 @@ export function createLogistics(bot){
        const demand=requested||gearRequested||elixirRequested;
       const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&capacity(item)>0;});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;if(bot.merchant?.claimService?.(name,urgent)===false)continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;if(bot.merchant?.claimService?.(name,urgent)===false)continue;
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;
@@ -175,8 +197,12 @@ export function createLogistics(bot){
     summary(){
       const rules=allRules().filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}
+      if(me.role==='farmer')for(const name of ['hpot0','mpot0']){
+        const item={name,level:0,stat_type:'',p:'',title:''};
+        if(isPotion(item)&&!variants.has(JSON.stringify(item)))variants.set(JSON.stringify(item),item);
+      }
       const all=[...variants.values()],result=[];let bytes=0;
-      for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:demandFor(r,countNow),surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve-(bot.production?.reservedQuantity?.(item,r.recipient)??0)):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
+      for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:r?demandFor(r,countNow):defaultPotionDemand(item,countNow),held:isPotion(item)?countNow:undefined,surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve-(bot.production?.reservedQuantity?.(item,r.recipient)??0)):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
       summaryOffset=(summaryOffset+result.length)%Math.max(1,all.length);return result;
     },
     close(){if(incoming||job?.state==='sent')bot.endValue('unknown');else if(job)cancelUnsent(job,'Sender STOP/Pause vor Versand');job=null;incoming=null;}

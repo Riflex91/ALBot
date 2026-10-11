@@ -197,9 +197,13 @@ export function createLogistics(bot){
        const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
        const elixirRequested=cfg.merchant.supply&&h.elixir?.quantity===1&&p.c.items.some((i,slot)=>{const r=i&&i.name===h.elixir.item&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;});
        const demand=requested||gearRequested||elixirRequested;
-      const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&capacity(item)>0;});
+      const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;if(bot.merchant?.claimService?.(name,urgent)===false)continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;
+        // Plan and complete inventory preparation BEFORE leaving for the
+        // farmer. A full inventory must not hide its own pickup demand.
+        if(pickup&&!urgent&&bot.merchant?.preparePickup?.(h)===false)return;
+        if(bot.merchant?.claimService?.(name,urgent)===false)continue;
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200)return;

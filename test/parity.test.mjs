@@ -847,6 +847,8 @@ test('U05 craft uses three correctly ordered grid positions and confirms total r
  assert.equal(production.craft('result',rule),true);
  assert.deepEqual(action.slots,[0,5,2]);
  assert.equal(action.guard(),true);
+ rule.action='keep';assert.equal(action.guard(),false,'Revoking crafting policy cancels a queued craft');
+ rule.action='craft';assert.equal(action.guard(),true);
  action.call();
  c.items[0]=null;c.items[5]=null;c.items[1]={name:'result',q:1};
  assert.equal(action.observe(),false,'One of two herb stacks was not consumed');
@@ -1088,6 +1090,8 @@ test('U05 queued craft merge aborts when the authoritative recipe changes in pla
  recipe.items[0][0]=5;assert.equal(pending.guard(),true);
  rule.recipe='alias';assert.equal(pending.guard(),false,'Changing the rule recipe alias requires a new plan');
  rule.recipe='result';assert.equal(pending.guard(),true);
+ rule.action='keep';assert.equal(pending.guard(),false,'Revoking crafting cancels queued preparation');
+ rule.action='craft';assert.equal(pending.guard(),true);
  G.craft.result={...recipe,quest:'new-workplace'};assert.equal(pending.guard(),false,'New workplace definitions invalidate stale merges');
  assert.equal(posted,1,'No additional merges were scheduled during guard checks');
 });

@@ -49,7 +49,7 @@ test('a new bank.store never addresses an occupied compatible stack',()=>{
  const bot={p:{c,G:{items:{beewings:{s:true}},bank_packs:{items0:['bank',0]}},root:{},parent:{},read:()=>null,call:(key,...args)=>{if(key==='bank_store')destination=args[2];return null;}},me:{name:'M'},
   cfg:{party:{merchant:'M'},merchant:{bank:true,minFreeSlots:4,bankWorkspace:2,bankBudget:0}},
   journal:null,inventoryBlocked:false,logistics:{reserved:false},
-  economy:{safe:()=>true,spare:()=>10,travel:()=>true,count:()=>10,
+  economy:{safe:()=>true,explicit:()=>null,spare:()=>10,travel:()=>true,count:()=>10,
    perform:(kind,job)=>{assert.equal(kind,'bank.store');assert.equal(job.guard(),true);job.call();return true;}}};
  assert.equal(createBank(bot).store(0,{action:'bank'}),true);
  assert.notEqual(destination,18);

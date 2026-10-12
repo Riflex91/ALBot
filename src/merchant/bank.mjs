@@ -223,6 +223,7 @@ export function createBank(bot){
    packs().filter(([pack])=>packMap(pack)===p.c.map)
      .flatMap(([pack,items])=>items.map((item,slot)=>({pack,slot,item}))
        .filter(row=>ordinaryStand(row.item))):[];
+ let standSaleVerified=false;
  function manageStand({active=false}={}){
   if(active||!cfg.merchant.bank||me.name!==cfg.party.merchant||
      bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
@@ -233,12 +234,20 @@ export function createBank(bot){
   // are driven by the controller after the final offer has been removed.
   if(p.c.stand||Object.entries(p.c.slots??{}).some(([k,i])=>
        /^trade([1-9]|1[0-6])$/.test(k)&&!!i))return false;
+  if(standSaleVerified&&carried.length){
+   const row=carried[0],price=e.value(row.item);
+   if(!Number.isFinite(price)||price<0)return false;
+   const accepted=e.npcSell(row.slot,standRule('sell',price));
+   return !!accepted||bot.movement?.order?.owner==='economy';
+  }
+  if(standSaleVerified&&!carried.length)standSaleVerified=false;
   if(!carried.length&&p.c.map!=='bank')return false;
   if(p.c.map!=='bank'||!p.c.bank){
    ready('items0');return bot.movement?.order?.owner==='economy';
   }
   const bankStands=liveStands();
   if(bankStands.length&&carried.length){
+   standSaleVerified=true;
    const row=carried[0],price=e.value(row.item);
    if(!Number.isFinite(price)||price<0)return false;
    const accepted=e.npcSell(row.slot,standRule('sell',price));

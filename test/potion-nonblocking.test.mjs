@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Executor} from '../src/core/executor.mjs';
-import {createFarmer} from '../src/combat/farmer.mjs';
+import {createFarmer,potionResource} from '../src/combat/farmer.mjs';
 import {isPotionConsumption} from '../src/core/checkpoint.mjs';
 
 test('only verified official potion consume journals may be released without a value lock',()=>{
@@ -67,4 +67,11 @@ test('legacy potion cleanup occurs at bootstrap before inventoryBlocked is initi
  const release=source.indexOf('if(isPotionConsumption(journal,p.G))');
  const lock=source.indexOf('inventoryBlocked:!!journal');
  assert.ok(release>0&&release<lock,'legacy potion journal is released before constructing the bot');
+});
+
+test('exactly 300 missing HP or MP never consumes potions; 301 does',()=>{
+ assert.equal(potionResource({hp:700,max_hp:1000,mp:700,max_mp:1000}),null);
+ assert.equal(potionResource({hp:699,max_hp:1000,mp:700,max_mp:1000}),'hp');
+ assert.equal(potionResource({hp:700,max_hp:1000,mp:699,max_mp:1000}),'mp');
+ assert.equal(potionResource({hp:699,max_hp:1000,mp:699,max_mp:1000}),'hp');
 });

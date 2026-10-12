@@ -14,7 +14,161 @@ export function canOpenMerchantStand(bot){
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
- let standIdleSince=null,lastPickupWarning=0,pickupStatus=null;
+ let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null;
+ // A pickup is admitted only after a bounded, sequential depot cycle.
+ // Mutations use the existing durable journal and retain every user rule,
+ // safety reservation, minimum success chance and hourly budget.
+ const stages=['reconcile','materials','mutation','sale','potions','capacity','ready'];
+ function nextStage(){
+  const previous=departure.stage;departure.stage=stages[stages.indexOf(previous)+1]??'ready';
+  departure.stageAt=Date.now();
+  if(departure.stage==='ready')departure.readyAt=Date.now();
+  bot.event?.('merchant.departureStage',{from:previous,to:departure.stage,
+    free:bot.free(),elapsedMs:Date.now()-departure.started});
+ }
+ function safeMaterial(item){
+  const meta=p.G?.items?.[item?.name];
+  if(!e.safe(item)||!meta||meta.type!=='material'||
+     item.data!==undefined||item.p||item.title||item.stat_type||
+     item.acc||item.rid||item.skin||item.v||item.special)return false;
+  if(bot.production?.reservedQuantity?.(item)>0)return false;
+  const explicit=e.explicit(item),action=(explicit??e.rules(item))?.action;
+  return !explicit&&!['keep','send','consume','equip','sell','exchange','list',
+    'upgrade','compound','craft'].includes(action);
+ }
+ function workStage(action){
+  const choices=[];
+  for(let slot=0;slot<(p.c.items??[]).length;slot++){
+   const item=p.c.items[slot];if(!e.safe(item))continue;
+   const rules=action==='sell'?[e.rules(item,'inventory')]:
+     [e.rules(item,'production'),e.rules(item,'inventory')];
+   for(const r of rules){
+    if(r?.action!==action||!e.remaining(r))continue;
+    if(action==='sell'&&e.spare(slot,r)<1)continue;
+    if((action==='upgrade'||action==='compound')&&
+      (item.level??0)>=r.targetLevel)continue;
+    choices.push({slot,r,priority:(r._autoProduction?1000:0)+(r.priority??0)});
+   }
+  }
+  choices.sort((a,b)=>b.priority-a.priority||a.slot-b.slot);
+  for(const {slot,r} of choices){
+   const accepted=action==='sell'?
+     (r._autoDisposition===true&&(bot.market?.sellToBid?.(slot,r)??false))||
+       e.npcSell(slot,r):
+     bot.production?.mutate?.(slot,r);
+   if(accepted||bot.movement.order?.owner==='economy'||
+      bot.journal||exec.busy('inventory')||exec.busy('economy'))return true;
+  }
+  return false;
+ }
+ function supplyBeforePickup(){
+  const farmers=(bot.farmers??[]).map(name=>({name,peer:bot.transport?.fresh?.(name)}));
+  if(farmers.some(({peer})=>!peer?.running||peer.rip||peer.realm!==p.realm()||
+      !['hpot0','mpot0'].every(id=>Number.isSafeInteger(peer.potions?.[id])&&
+        peer.potions[id]>=0&&peer.potions[id]<=100000))){
+   bot.reason='Abfahrt wartet auf aktuelle HP-/MP-Trankbestände aller Farmer';
+   return false;
+  }
+  for(const id of ['hpot0','mpot0']){
+   if(departure.skipped.has(id))continue;
+   const shortage=farmers.reduce((total,{peer})=>
+     total+Math.max(0,3000-peer.potions[id]),0);
+   const carried=e.count({name:id,level:0}),reserve=200;
+   const missing=Math.max(0,shortage+reserve-carried);
+   if(!missing)continue;
+   const meta=p.G?.items?.[id],price=meta?.g;
+   const left=Math.max(0,cfg.merchant.maxSpendPerHour-(e.ledger?.spent??0));
+   const gold=Math.max(0,p.c.gold-Math.max(cfg.merchant.goldReserve??0,me.goldReserve??0));
+   const quantity=Number.isFinite(price)&&price>0?
+     Math.min(missing,Math.max(1,cfg.merchant.maxDelivery??3000),
+       Math.floor(left/price),Math.floor(gold/price)):0;
+   if(quantity<1||bot.free()<=cfg.merchant.minFreeSlots){
+    departure.skipped.add(id);
+    bot.event?.('merchant.potionShortfall',{item:id,remaining:missing,
+      reason:quantity<1?'Budget/Gold oder NPC-Preis':'Kein Inventarplatz'});
+    continue;
+   }
+   const rule={name:'Tourversorgung '+id,item:id,action:'buy',role:'merchant',
+     enabled:true,maxPrice:price,goldBudget:quantity*price,lossBudget:0,
+     batch:quantity,maxCount:Math.max(100000,carried+missing),
+     keep:0,teamReserve:0,targetCount:carried+missing};
+   if(e.npcBuy({name:id,level:0},rule,quantity))return true;
+   if(bot.movement.order?.owner==='economy'||bot.journal||
+      exec.busy('inventory')||exec.busy('economy'))return true;
+   // Unavailable NPC or a veto from a separate budget must be surfaced,
+   // never retried forever in a tight loop.
+   departure.skipped.add(id);
+   bot.event?.('merchant.potionShortfall',{item:id,remaining:missing,
+     reason:bot.reason||'Kauf nicht zugelassen'});
+  }
+  nextStage();return false;
+ }
+ function prepareDeparture(peer){
+  if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.pickup)return true;
+  const now=Date.now();
+  if(departure?.stage==='ready'){
+   if(now-(departure.readyAt??0)<60000)return true;
+   departure=null;
+  }
+  if(!departure){
+   departure={stage:'reconcile',started:now,stageAt:now,skipped:new Set()};
+   bot.event?.('merchant.departureStage',{from:null,to:'reconcile',free:bot.free()});
+  }
+  if(bot.inventoryBlocked||bot.journal||bot.bank?.pending||
+     bot.logistics?.reserved||bot.gold?.reserved||
+     exec.busy('inventory'))return false;
+  if(bot.services?.active||bot.services?.waiting){
+   bot.services.interrupt();
+   if(bot.services.restore())return false;
+  }
+  switch(departure.stage){
+   case 'reconcile':
+    if(cfg.merchant.bank&&!bot.bank?.ready?.('items0')){
+     bot.reason='Depotabgleich: zur Bank fahren';
+     return false;
+    }
+    if(bot.bank?.consolidateInventory?.()||
+       bot.bank?.consolidate?.()||
+       bot.bank?.consolidateAcross?.())return false;
+    nextStage();return false;
+   case 'materials':
+    for(let slot=0;slot<p.c.items.length;slot++){
+     const item=p.c.items[slot];if(!safeMaterial(item))continue;
+     const q=item.q??1;
+     const rule={name:'Depotmaterial '+item.name,item:item.name,
+       action:'bank',batch:q,keep:0,teamReserve:0,maxActions:0,
+       goldBudget:0,lossBudget:0};
+     if(bot.bank?.store?.(slot,rule)||
+        bot.movement.order?.owner==='economy'||bot.journal||
+        exec.busy('inventory'))return false;
+    }
+    nextStage();return false;
+   case 'mutation':
+    if(workStage('upgrade')||workStage('compound'))return false;
+    nextStage();return false;
+   case 'sale':
+    if(workStage('sell'))return false;
+    nextStage();return false;
+   case 'potions':
+    supplyBeforePickup();return false;
+   case 'capacity':
+    if(preparePickup(peer)===false){
+     // A bank that cannot safely accept/sell anything must not trap the
+     // Merchant forever. Take a bounded partial pickup if there is physical
+     // capacity above the four-slot working reserve.
+     if(pickupStatus?.state==='blocked'&&
+       bot.free()>Math.max(0,cfg.merchant.minFreeSlots??4)){
+      bot.event?.('merchant.pickupPartial',{peer:peer.name,
+        free:bot.free(),target:pickupStatus.target});
+      nextStage();return true;
+     }
+     return false;
+    }
+    nextStage();return true;
+   default:return true;
+  }
+ }
+
  function preparePickup(peer){
   if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.pickup)return true;
   const reserve=cfg.merchant.minFreeSlots??4;
@@ -99,6 +253,8 @@ export function createMerchant(bot){
   // coordinates here, before logistics can replan it.
   const route=bot.movement.order;if(route?.owner==='gold'){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&(!peer?.running||bot.strategy?.canVisit?.(peer)===false))bot.movement.stop();}
   bot.logistics.travel();
+  if(departure&&departure.stage!=='ready'&&!['logistics','gold'].includes(bot.movement.order?.owner))
+    return;
   // If pickup preflight could not create space, do not schedule unrelated
   // production/market work in the same frame and discard the pickup objective.
   if(pickupStatus?.missing>0&&Date.now()-(pickupStatus.at??0)<3000){
@@ -171,5 +327,5 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   openStandWhenIdle();
  }
- return {tick,preparePickup,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status(),pickup:pickupStatus}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,prepareDeparture,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

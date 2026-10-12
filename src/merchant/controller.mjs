@@ -14,7 +14,8 @@ export function canOpenMerchantStand(bot){
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
- let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null;
+ let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
+  standRequestedUntil=0;
  // A pickup is admitted only after a bounded, sequential depot cycle.
  // Mutations use the existing durable journal and retain every user rule,
  // safety reservation, minimum success chance and hourly budget.
@@ -291,6 +292,7 @@ export function createMerchant(bot){
   // Only a verified market listing/wishlist job may request a stand.
   if(!cfg.merchant.stand||me.role!=='merchant'||p.c.rip||
     bot.inventoryBlocked||bot.journal||bot.logistics?.reserved)return false;
+  standRequestedUntil=Date.now()+30000;
   if(p.c.stand)return true;
   const slot=p.c.items.findIndex(i=>i?.name==='stand0'&&!i.l&&!i.b&&
     !i.locked&&!i.data&&(i.level??0)===0);
@@ -307,6 +309,16 @@ export function createMerchant(bot){
     ()=>p.call('open_stand'),{delay:3000,timeout:10000});
  }
  function standDepot(){
+  if(Date.now()<standRequestedUntil)return false;
+  // An actionable, user-authored stand rule takes precedence over depot
+  // storage even before the Market controller has activated the stand.
+  const marketDemand=(cfg.items??[]).some(r=>r.enabled&&
+    (r.action==='list'&&(p.c.items??[]).some((i,slot)=>
+      i&&e.rules(i)?.action==='list'&&e.spare(slot,e.rules(i))>0)||
+    r.action==='wishlist'&&e.rules({name:r.item,level:r.minLevel??0},
+      'acquisition')===r&&e.count({name:r.item,level:r.minLevel??0})<
+      Math.min(r.targetCount,r.maxCount)));
+  if(marketDemand)return false;
   if(me.role!=='merchant'||!cfg.merchant.bank||bot.logistics?.reserved||
     bot.journal||bot.inventoryBlocked||bot.bank?.pending||
     bot.movement?.order)return false;

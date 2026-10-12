@@ -306,14 +306,14 @@ export function createMerchant(bot){
   // fresh-heartbeat retargeting. Do not cancel a valid route using its old
   // coordinates here, before logistics can replan it.
   const route=bot.movement.order;if(route?.owner==='gold'){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&(!peer?.running||bot.strategy?.canVisit?.(peer)===false))bot.movement.stop();}
-  bot.logistics.travel();
-  // Opportunistic buffing while already collecting loot never starts a
-  // separate journey and remains subject to normal skill cooldown/mana.
+  // Cast first at the arrived position: logistics.travel() can initiate
+  // a bank departure in the same tick and otherwise preempt the spell.
   if(!bot.movement.order&&bot.farmers?.some(n=>{
     const h=bot.transport?.fresh?.(n);
     return h?.running&&!h.rip&&samePlace(p.c,h)&&
       distance(p.c,h)<=(p.G.skills?.mluck?.range??320);
   }))buff();
+  bot.logistics.travel();
   if(departure&&departure.stage!=='ready'&&!['logistics','gold'].includes(bot.movement.order?.owner))
     return;
   // If pickup preflight could not create space, do not schedule unrelated

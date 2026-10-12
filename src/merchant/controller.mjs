@@ -1,4 +1,4 @@
-import {distance} from '../core/policy.mjs';
+import {distance,samePlace} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
 import {planPickupCapacity,pickupCleanupCandidates} from './pickup-capacity.mjs';

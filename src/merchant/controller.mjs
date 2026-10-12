@@ -76,6 +76,19 @@ export function createMerchant(bot){
    const carried=e.count({name:id,level:0}),reserve=200;
    const missing=Math.max(0,shortage+reserve-carried);
    if(!missing)continue;
+   // Prefer already-owned bank stock before spending gold at the NPC.
+   // The bank module verifies source/destination slots and handles partial
+   // withdrawal with its existing persisted checkpoint.
+   const available=bot.bank?.stock?.(id,0,missing)??0;
+   if(available>0&&bot.free()>cfg.merchant.minFreeSlots+1){
+    const take=Math.min(available,missing);
+    const retrieveRule={name:'Tourversorgung Bank '+id,item:id,action:'retrieve',
+      enabled:true,batch:take,maxCount:Math.max(100000,carried+missing),
+      keep:0,teamReserve:0,goldBudget:0,lossBudget:0};
+    if(bot.bank?.retrieve?.({name:id,level:0},retrieveRule,take))return true;
+    if(bot.bank?.pending||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('inventory'))return true;
+   }
    const meta=p.G?.items?.[id],price=meta?.g;
    const left=Math.max(0,cfg.merchant.maxSpendPerHour-(e.ledger?.spent??0));
    const gold=Math.max(0,p.c.gold-Math.max(cfg.merchant.goldReserve??0,me.goldReserve??0));

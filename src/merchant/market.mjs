@@ -20,7 +20,8 @@ export function createMarket(bot){
  }
  function listing(slot,r){
   const item=p.c.items[slot],q=e.spare(slot,r),before=e.count(item),unitPrice=price(item,r,true),tradeSlot=r.slot;
-  if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(unitPrice)||unitPrice<1||!p.c.stand||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(unitPrice)||unitPrice<1||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  if(!p.c.stand)return bot.merchant?.activateStand?.()??false;
   // A listing can remain advertised after rules/market references have changed.
   // Never publish an old ask below the currently permitted minimum price.
   return e.perform('market.list',{slots:[slot],rule:r,guard:()=>{
@@ -43,7 +44,8 @@ export function createMarket(bot){
  function wishlist(item,r){
   const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice,tradeSlot=r.slot;
   if(!Number.isSafeInteger(unitPrice)||unitPrice<1||!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(cost)||
-    !p.c.stand||!/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+    !/^trade([1-9]|1[0-6])$/.test(tradeSlot)||p.c.slots[tradeSlot])return false;
+  if(!p.c.stand)return bot.merchant?.activateStand?.()??false;
   // A passive buy order reserves real gold. Pin both its posting slot and
   // maximum exposure to the original authorized decision.
   return e.perform('market.wishlist',{cost,rule:r,guard:()=>{

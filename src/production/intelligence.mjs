@@ -50,14 +50,19 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  }
  function gearUse(i){
  const meta=p.G.items?.[i?.name];
- if(!meta||(meta.upgrade!==true&&meta.compound!==true&&
-   !meta.upgrade&&!meta.compound))return {state:'no-gear-use',reason:'not-progressive-gear',checked:0};
- const members=(cfg.characters??[]).filter(c=>c.enabled);
+ const isEquipment=!!meta&&(!!meta.upgrade||!!meta.compound||
+   !!meta.wtype||['weapon','helmet','chest','pants','shoes','ring','earring',
+   'amulet','belt','cape','gloves','orb','shield'].includes(meta.type));
+ if(!isEquipment)return {state:'no-gear-use',reason:'not-equipment',checked:0};
+ // Only selected active farmers and their merchant may reserve a gear item;
+ // enabled-but-offline account alternates must not freeze all gear sales.
+ const names=new Set([...(bot.farmers??[]),cfg.party.merchant]);
+ const members=(cfg.characters??[]).filter(c=>c.enabled&&names.has(c.name));
  if(!members.length)return {state:'unknown',reason:'no-expected-profiles',checked:0};
  if(i.data!==undefined||i.p||i.title||i.stat_type||i.acc||i.rid||i.special)
    return {state:'unknown',reason:'specific-variant-not-proven',checked:0};
  let checked=0;
- const horizon=Math.max(i.level??0,cfg.production.autoGearMaxLevel??0);
+ const horizon=meta.upgrade||meta.compound?Math.max(i.level??0,cfg.production.autoGearMaxLevel??0):(i.level??0);
  for(const member of members){
   // A stale profile is not evidence of disuse. Remote profiles must have an
   // independently fresh heartbeat even when old gear is cached locally.
@@ -196,8 +201,15 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
   // Preserve any unusual item variant; NPC sell value does not price rare
   // effects (such as cxjar with data="makeawish"). Explicit user rules win.
   if(i.data!==undefined&&i.data!==null||i.acc||i.rid||i.p||i.title||i.stat_type||i.skin||i.expires)return null;const m=p.G.items[i.name];if(!m||m.cash||m.quest||m.event||['pot','elixir','scroll','uscroll','cscroll','offering','stand','tool','booster'].includes(m.type))return null;
-  if(m.upgrade||m.compound){if(futureGear(i))return null;const value=bot.economy.value(i),choice=mutationEconomics(i),count=p.c.items.filter(x=>x&&identityVariant(x,i)).reduce((n,x)=>n+(x.q??1),0);let action=me.role==='farmer'?'send':choice.action;
-   if(me.role==='merchant'&&['upgrade','compound'].includes(action)&&(!cfg.production.enabled||!cfg.production[action]))action='bank';if(me.role==='merchant'&&m.compound&&count<3){
+  const equipment=!!(m.upgrade||m.compound||m.wtype||
+    ['weapon','helmet','chest','pants','shoes','ring','earring','amulet',
+    'belt','cape','gloves','orb','shield'].includes(m.type));
+  if(equipment){
+    if(futureGear(i))return null;
+    const value=bot.economy.value(i),progressable=!!(m.upgrade||m.compound);
+    const choice=progressable?mutationEconomics(i):{level:i.level??0,ev:value,action:'sell',reason:'non-progressive-equipment'};
+    const count=p.c.items.filter(x=>x&&identityVariant(x,i)).reduce((n,x)=>n+(x.q??1),0);let action=me.role==='farmer'?'send':choice.action;
+   if(me.role==='merchant'&&['upgrade','compound'].includes(action)&&(!cfg.production.enabled||!cfg.production[action]))action='bank';if(me.role==='merchant'&&progressable&&m.compound&&count<3){
     const hypothetical=mutationEconomics(i,{heldOverride:3});
     // Only accumulate when completing ONE bounded triple is economically
     // better than selling the inputs; otherwise preserve the sell decision.
@@ -209,13 +221,13 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
     // ONLY after fresh team-wide equipment analysis and finite-stock
     // upgrade/compound economics show that keeping or mutating it is worse.
     // autoSellMaxValue is deliberately NOT used as a blanket gear veto.
-    const kind=m.compound?'compound':'upgrade',grade=(i.level??0)<(cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel)?
+    const kind=m.compound?'compound':'upgrade',grade=progressable&&(i.level??0)<(cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel)?
      p.call('item_grade',i):null;
     const table=kind==='compound'?p.G.compounds:p.G.upgrades;
     const chance=grade===null?1:mutationChance(i.name,i.level??0,kind);
     const scroll=grade===null?0:p.G.items?.[(kind==='compound'?'cscroll':'scroll')+grade]?.g;
     if(!Number.isFinite(value)||value<0||value>(cfg.production.autoGearSellMaxValue??1000000)||
-       grade!==null&&(!table||!Number.isFinite(chance))||
+       progressable&&grade!==null&&(!table||!Number.isFinite(chance))||
        !Number.isFinite(scroll)){
       action='bank'; // Unverified chance/cost cannot prove mutation is worse.
     }

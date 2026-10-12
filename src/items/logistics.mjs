@@ -220,8 +220,11 @@ export function createLogistics(bot){
       }else return; // Active route is current; do not schedule other jobs.
     }
     const peers=(bot.farmers??[]).map(name=>transport.fresh(name));
+    // Legacy/partial configs without the new threshold keep prior pickup semantics.
+    const legacyPickup=!Number.isSafeInteger(cfg.merchant.pickupThreshold);
     const {ready:complete,slots:lootSlots,trigger}=teamPickupThreshold(
       peers,p.realm(),cfg.merchant.pickupThreshold??30);
+    if(legacyPickup)pickupCycle=true;
     if(trigger&&!pickupCycle){
       pickupCycle=true;
       bot.event?.('logistics.pickupTriggered',{slots:lootSlots,threshold:cfg.merchant.pickupThreshold??30});

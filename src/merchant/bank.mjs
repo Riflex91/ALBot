@@ -1,4 +1,12 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
+// Evaluate against live carried gold, never stale bank balances or a
+// hypothetical future deposit. Keep the independent hourly/reserve budgets.
+export function bankExpansionAffordable(cost,gold,staticBudget,fraction=.75){
+ return Number.isFinite(cost)&&cost>0&&Number.isFinite(gold)&&gold>=0&&
+   Number.isFinite(staticBudget)&&staticBudget>=cost&&
+   Number.isFinite(fraction)&&fraction>=0&&fraction<=1&&
+   cost<=Math.floor(gold*fraction);
+}
 export function createBank(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const pendingKey='albot:bank-partial:'+me.name;let pending=p.read(pendingKey)??null;
@@ -167,8 +175,9 @@ export function createBank(bot){
  }
  function expand(){
   if(!cfg.merchant.bank||!cfg.merchant.expandBank||!p.c.bank)return false;
-  for(const [pack,def] of Object.entries(definitions()).sort((a,b)=>(a[1][1]??Infinity)-(b[1][1]??Infinity))){const cost=def[1];if(def[0]!==p.c.map||p.c.bank[pack]||!Number.isFinite(cost)||cost<=0||cost>cfg.merchant.bankBudget)continue;
-   return e.perform('bank.expand',{cost,guard:()=>!!p.c.bank&&!p.c.bank[pack],call:()=>p.call('open_bank_pack',pack,'gold'),observe:()=>Array.isArray(p.c.bank?.[pack]),details:{pack}});
+  for(const [pack,def] of Object.entries(definitions()).sort((a,b)=>(a[1][1]??Infinity)-(b[1][1]??Infinity))){const cost=def[1];if(def[0]!==p.c.map||p.c.bank[pack]||!bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,cfg.merchant.bankExpandGoldFraction??.75))continue;
+   const allowed=()=>bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,cfg.merchant.bankExpandGoldFraction??.75);
+   return e.perform('bank.expand',{cost,guard:()=>!!p.c.bank&&!p.c.bank[pack]&&allowed(),call:()=>p.call('open_bank_pack',pack,'gold'),observe:()=>Array.isArray(p.c.bank?.[pack]),details:{pack}});
   }return false;
  }
  // v3-guided conservative capacity recovery: non-destructive measures

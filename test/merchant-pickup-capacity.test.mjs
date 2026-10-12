@@ -115,3 +115,39 @@ test('valid incoming gold offer can cancel only an unsent item offer and receive
  assert.equal(bot.journal.kind,'gold.receive');
  assert.equal(responses[0].type,'goldAccept');
 });
+
+test('departure phases finish bank, materials and economically authorized work before buying 3000-per-farmer potions',()=>{
+ const {bot,c,actions}=merchantFixture(),purchases=[],stock={hpot0:200,mpot0:200};
+ bot.p.realm=()=> 'EUII';bot.p.c.gold=1000000;
+ bot.p.G.items.hpot0={type:'pot',g:10};bot.p.G.items.mpot0={type:'pot',g:10};
+ bot.farmers=['F'];
+ bot.cfg.merchant.maxSpendPerHour=2000000;bot.cfg.merchant.goldReserve=0;
+ bot.transport={fresh:()=>({name:'F',running:true,rip:false,realm:'EUII',
+   potions:{hpot0:1200,mpot0:3000}})};
+ bot.economy.explicit=()=>null;bot.economy.remaining=()=>true;
+ bot.economy.count=item=>stock[item.name]??0;
+ bot.economy.ledger={spent:0};
+ bot.economy.npcBuy=(item,r,q)=>{purchases.push([item.name,q]);return true;};
+ bot.bank.ready=()=>true;bot.bank.consolidate=()=>false;
+ bot.bank.consolidateAcross=()=>false;
+ bot.production={reservedQuantity:()=>0,mutate:()=>false};
+ bot.movement={order:null};
+ const merchant=createMerchant(bot),peer={name:'F',items:[offer()]};
+ assert.equal(merchant.prepareDeparture(peer),false); // reconciliation
+ assert.equal(merchant.status().departure.phase,'materials');
+ assert.equal(merchant.prepareDeparture(peer),false); // material banked
+ assert.deepEqual(actions,[['bank.store',0,'bank']]);
+ assert.equal(merchant.prepareDeparture(peer),false); // materials complete
+ assert.equal(merchant.status().departure.phase,'mutation');
+ assert.equal(merchant.prepareDeparture(peer),false); // mutation gate
+ assert.equal(merchant.prepareDeparture(peer),false); // sale gate
+ assert.equal(merchant.status().departure.phase,'potions');
+ assert.deepEqual(purchases,[],'must not buy/supply before local inventory work');
+ assert.equal(merchant.prepareDeparture(peer),false); // first potion purchase
+ assert.deepEqual(purchases,[['hpot0',1800]]);
+ stock.hpot0+=1800; // simulated confirmed purchase
+ assert.equal(merchant.prepareDeparture(peer),false); // potions complete
+ assert.equal(merchant.status().departure.phase,'capacity');
+ assert.equal(merchant.prepareDeparture(peer),true);
+ assert.equal(merchant.status().departure.phase,'ready');
+});

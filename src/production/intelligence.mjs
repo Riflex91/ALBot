@@ -205,16 +205,16 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
        cfg.merchant.bank)action='bank';
    }
    if(me.role==='merchant'&&action==='sell'){
-    // A progressive item may be sold at *any* verified price once no team
-    // member can use it, its bounded mutation outcome is not profitable and
-    // no explicit/reserved production target needs it. autoSellMaxValue was
-    // previously a blanket veto even after all these checks.
+    // A progressive item may be sold up to one million gold per item, but
+    // ONLY after fresh team-wide equipment analysis and finite-stock
+    // upgrade/compound economics show that keeping or mutating it is worse.
+    // autoSellMaxValue is deliberately NOT used as a blanket gear veto.
     const kind=m.compound?'compound':'upgrade',grade=(i.level??0)<(cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel)?
      p.call('item_grade',i):null;
     const table=kind==='compound'?p.G.compounds:p.G.upgrades;
     const chance=grade===null?1:mutationChance(i.name,i.level??0,kind);
     const scroll=grade===null?0:p.G.items?.[(kind==='compound'?'cscroll':'scroll')+grade]?.g;
-    if(!Number.isFinite(value)||value<0||
+    if(!Number.isFinite(value)||value<0||value>(cfg.production.autoGearSellMaxValue??1000000)||
        grade!==null&&(!table||!Number.isFinite(chance))||
        !Number.isFinite(scroll)){
       action='bank'; // Unverified chance/cost cannot prove mutation is worse.

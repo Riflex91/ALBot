@@ -15,10 +15,16 @@ export function createFarmer(bot){
       if(cfg.farming.respawn&&now-deadSince>=cfg.farming.respawnDelayMs)exec.run('respawn',['lifecycle'],()=>p.c.rip,()=>p.call('respawn'),{delay:15000});return true;
     }
     deadSince=0;
-    const preparing=me.role==='farmer'&&!bot.monsters().some(m=>m.target===c.name)&&bot.encounter?.status().phase==='RECOVER';const resource=c.hp/c.max_hp<(preparing?(cfg.farming.pullHp??cfg.farming.hpBelow):cfg.farming.hpBelow)?'hp':c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
+    const preparing=me.role==='farmer'&&!bot.monsters().some(m=>m.target===c.name)&&bot.encounter?.status().phase==='RECOVER';
+    // Once recovery begins, heal all the way to resumeAbove. Checking only
+    // hpBelow leaves a character stranded between the two thresholds.
+    const hpTrigger=rest?Math.max(cfg.farming.hpBelow,cfg.farming.resumeAbove):
+      preparing?(cfg.farming.pullHp??cfg.farming.hpBelow):cfg.farming.hpBelow;
+    const resource=c.hp/c.max_hp<hpTrigger?'hp':
+      c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
     if(resource&&!p.call('is_on_cooldown','use_hp')){
       let slot=-1;
-      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===resource)?.[1]??0})).filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&r.restore>0&&bot.consumable(r.i)&&(cfg.farming.potionUtilization===undefined||c.hp/c.max_hp<cfg.farming.restBelow||(c['max_'+resource]-c[resource])/r.restore>=(cfg.farming.potionUtilization??.65))).sort((a,b)=>Math.abs(a.restore-(c['max_'+resource]-c[resource]))-Math.abs(b.restore-(c['max_'+resource]-c[resource])))[0]?.slot??-1;
+      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===resource)?.[1]??0})).filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&r.restore>0&&bot.consumable(r.i)&&(rest&&resource==='hp'||cfg.farming.potionUtilization===undefined||c.hp/c.max_hp<cfg.farming.restBelow||(c['max_'+resource]-c[resource])/r.restore>=(cfg.farming.potionUtilization??.65))).sort((a,b)=>Math.abs(a.restore-(c['max_'+resource]-c[resource]))-Math.abs(b.restore-(c['max_'+resource]-c[resource])))[0]?.slot??-1;
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
         exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&!p.call('is_on_cooldown','use_hp'),()=>{

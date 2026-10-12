@@ -33,11 +33,11 @@ export function createTeamPlan(bot){
  function tick(){if(cfg.general.testLogging===undefined||me.role!=='farmer')return;
   // Receipt is based on the actual merchant heartbeat and validated monster
   // source, rather than merely assuming send_cm reached every farmer.
-  const request=materialRequests().find(x=>x.objective&&x.item&&x.monster&&
+  const incomingOrder=materialRequests().find(x=>x.objective&&x.item&&x.monster&&
     x.quantity>0&&(!x.expires||x.expires>Date.now())&&allowed(x.monster)&&
     (!x.sourceFingerprint||x.sourceFingerprint===knowledgeFingerprint(
       [p.G.monsters[x.monster],p.G.drops?.monsters?.[x.monster]])));
-  materialAck=request?{objective:request.objective,item:request.item,monster:request.monster}:null;
+  materialAck=incomingOrder?{objective:incomingOrder.objective,item:incomingOrder.item,monster:incomingOrder.monster}:null;
   if(materialAck&&lastMaterialAck!==materialAck.objective){
     lastMaterialAck=materialAck.objective;
     bot.event('farmOrder.received',{...materialAck,merchant:cfg.party.merchant});

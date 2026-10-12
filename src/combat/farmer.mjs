@@ -3,6 +3,9 @@ import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
 export function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
+export function recoveryHpThreshold(rest,hpBelow,resumeAbove,preparing,pullHp){
+ return rest?Math.max(hpBelow,resumeAbove):(preparing?(pullHp??hpBelow):hpBelow);
+}
 export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
@@ -18,8 +21,8 @@ export function createFarmer(bot){
     const preparing=me.role==='farmer'&&!bot.monsters().some(m=>m.target===c.name)&&bot.encounter?.status().phase==='RECOVER';
     // Once recovery begins, heal all the way to resumeAbove. Checking only
     // hpBelow leaves a character stranded between the two thresholds.
-    const hpTrigger=rest?Math.max(cfg.farming.hpBelow,cfg.farming.resumeAbove):
-      preparing?(cfg.farming.pullHp??cfg.farming.hpBelow):cfg.farming.hpBelow;
+    const hpTrigger=recoveryHpThreshold(rest,cfg.farming.hpBelow,
+      cfg.farming.resumeAbove,preparing,cfg.farming.pullHp);
     const resource=c.hp/c.max_hp<hpTrigger?'hp':
       c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
     if(resource&&!p.call('is_on_cooldown','use_hp')){

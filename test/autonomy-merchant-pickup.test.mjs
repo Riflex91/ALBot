@@ -59,3 +59,32 @@ test('explicit keep and active production reservations prevent automatic pickup'
  assert.equal(logisticsFor(items,[keep]).pickupSlots(),1);
  assert.equal(logisticsFor(items,[],item=>item.name==='sword'?1:0).pickupSlots(),1);
 });
+
+test('farmer offers an unlisted gear item even when merchant did not advertise it',()=>{
+ const messages=[];
+ const peer={name:'Merchant',running:true,rip:false,realm:'EUII',session:'merchant-session',
+   map:'main',in:'main',x:10,y:0,free:10,items:[],journal:false,reserved:false};
+ const c={name:'Ranger',map:'main',in:'main',x:0,y:0,
+   items:[{name:'sword',level:0},...Array(41).fill(null)]};
+ const p={c,G:{items:{sword:{type:'weapon'}}},realm:()=> 'EUII'};
+ const cfg={items:[],merchant:{enabled:true,pickup:true,maxDelivery:100},party:{merchant:'Merchant'},
+   general:{messageTtlMs:10000},farming:{freeSlots:3}};
+ const bot={p,cfg,running:true,session:'ranger-session',me:{name:'Ranger',role:'farmer'},
+   task:()=> 'farm',rule:()=>null,
+   entity:()=>({name:'Merchant',map:'main',in:'main',x:10,y:0}),
+   production:{effectiveRules:()=>[],reservedQuantity:()=>0,matchesOutput:()=>true,
+     canRecordDelivery:()=>true},
+   economy:{explicit:()=>null},
+   checkpoint:{durable:true},gold:{reserved:false},bank:{pending:false},
+   inventoryBlocked:false,services:{active:false,waiting:false},
+   exec:{busy:()=>false},transport:{fresh:()=>peer,
+     send:(to,type,data,id)=>messages.push({to,type,data,id})}};
+ // createLogistics consumes the top-level exec/transport (not injected later)
+ bot.exec.now=()=>Date.now();
+ const logistics=createLogistics(bot);
+ logistics.poll();
+ assert.equal(messages.length,1);
+ assert.equal(messages[0].type,'offer');
+ assert.equal(messages[0].data.item.name,'sword');
+ assert.equal(messages[0].data.quantity,1);
+});

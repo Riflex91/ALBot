@@ -75,7 +75,8 @@ export function createBank(bot){
   return false;
  }
  const packs=()=>{
-  if(packCache&&Number.isInteger(bot.decisionEpoch)&&packEpoch===bot.decisionEpoch)return packCache;
+  // Live bank arrays may change between planner epochs after a confirmed
+  // transaction. Never reuse slot snapshots for authoritative mutations.
   const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&
    Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},
     (_,n)=>items[n]??null)]);
@@ -123,7 +124,10 @@ export function createBank(bot){
    if(bot.free()<=cfg.merchant.minFreeSlots)return false;const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
-  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
+  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>!i)&&
+     items.some(i=>simple(i)&&identity(i)===identity(item)&&
+       (i.q??1)<stackMax(i)))?.[0]||
+     rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
   if(!ready(preferred))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
@@ -202,6 +206,63 @@ export function createBank(bot){
       (p.c.items[dest]?.q??1)===q,
     details:{item:item.name,pack:source.pack,bankSlot:source.slot,
       inventorySlot:dest,quantity:q,reason:'cross-pack-merge'}});
+  }
+  return false;
+ }
+ // Maintain exactly ONE ordinary merchant stand, stored in the bank
+ // unless an actual marketplace listing/wishlist needs it. Extra ordinary
+ // stand0 copies are sold at NPC only when a live bank copy is verified.
+ // Never sell locked, variant-bearing, equipped or other special stands.
+ const ordinaryStand=i=>i?.name==='stand0'&&(i.level??0)===0&&e.safe(i)&&
+   !i.data&&!i.p&&!i.title&&!i.stat_type&&!i.acc&&!i.rid&&
+   !i.special&&!i.v;
+ const standRule=(action,price=0)=>({enabled:true,name:'Stand-Depot',item:'stand0',
+   action,role:'merchant',batch:1,keep:0,teamReserve:0,minPrice:price,
+   goldBudget:0,lossBudget:0,maxCount:9999});
+ const liveStands=()=>p.c.map==='bank'&&!!p.c.bank?
+   packs().filter(([pack])=>packMap(pack)===p.c.map)
+     .flatMap(([pack,items])=>items.map((item,slot)=>({pack,slot,item}))
+       .filter(row=>ordinaryStand(row.item))):[];
+ function manageStand({active=false}={}){
+  if(active||!cfg.merchant.bank||me.name!==cfg.party.merchant||
+     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     pending||reclaiming||bot.exec.busy('inventory'))return false;
+  const carried=(p.c.items??[]).map((item,slot)=>({item,slot}))
+    .filter(row=>ordinaryStand(row.item));
+  // Never interrupt live trade offers. Closing the stand and its storage
+  // are driven by the controller after the final offer has been removed.
+  if(p.c.stand||Object.entries(p.c.slots??{}).some(([k,i])=>
+       /^trade([1-9]|1[0-6])$/.test(k)&&!!i))return false;
+  if(!carried.length&&p.c.map!=='bank')return false;
+  if(p.c.map!=='bank'||!p.c.bank){
+   ready('items0');return bot.movement?.order?.owner==='economy';
+  }
+  const bankStands=liveStands();
+  if(bankStands.length&&carried.length){
+   const row=carried[0],price=e.value(row.item);
+   if(!Number.isFinite(price)||price<0)return false;
+   const accepted=e.npcSell(row.slot,standRule('sell',price));
+   return !!accepted||bot.movement?.order?.owner==='economy';
+  }
+  if(!bankStands.length&&carried.length){
+   const accepted=store(carried[0].slot,standRule('bank'));
+   return !!accepted||bot.movement?.order?.owner==='economy';
+  }
+  if(bankStands.length>1){
+   const source=bankStands[bankStands.length-1];
+   const destination=p.c.items.findIndex(i=>!i);
+   if(destination<0)return false;
+   const fp=fingerprint(source.item),item={...source.item},quantity=item.q??1;
+   return e.perform('bank.stand.surplus',{
+    guard:()=>!!p.c.bank&&!p.c.items[destination]&&
+      fingerprint(p.c.bank?.[source.pack]?.[source.slot])===fp&&
+      liveStands().length>1,
+    call:()=>p.call('bank_retrieve',source.pack,source.slot,destination),
+    observe:()=>!p.c.bank?.[source.pack]?.[source.slot]&&
+      identity(p.c.items[destination])===identity(item)&&
+      (p.c.items[destination]?.q??1)===quantity,
+    details:{item:item.name,pack:source.pack,bankSlot:source.slot,
+      sourceSlot:destination,quantity,reason:'ordinary-stand-surplus'}});
   }
   return false;
  }
@@ -296,5 +357,5 @@ export function createBank(bot){
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
  }
- return {store,retrieve,consolidate,consolidateAcross,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {store,retrieve,consolidate,consolidateAcross,consolidateInventory,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

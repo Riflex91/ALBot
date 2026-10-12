@@ -173,6 +173,38 @@ export function createBank(bot){
    return e.perform('bank.consolidate',{guard:()=>fingerprint(p.c.bank?.[pack]?.[a])===fa&&fingerprint(p.c.bank?.[pack]?.[b])===fb,call:()=>p.call('bank_swap',pack,a,b),observe:()=>{const row=p.c.bank?.[pack];return !!row&&((!row[a]&&identity(row[b])===identity(x)&&row[b]?.q===total)||(!row[b]&&identity(row[a])===identity(x)&&row[a]?.q===total));},details:{item:x.name,quantity:total,pack}});
   }return false;
  }
+ // Consolidate exact stack variants across bank packs and inventory.
+ // Each withdrawal has an independent journal; the normal inventory merger
+ // then reduces the stacks. Never place into an occupied bank slot: the
+ // server may SWAP instead of merging.
+ function consolidateAcross(){
+  if(!cfg.merchant.bank||!cfg.merchant.consolidate||!p.c.bank||
+     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     pending||reclaiming||bot.exec.busy('inventory'))return false;
+  const rows=packs().filter(([pack])=>packMap(pack)===p.c.map);
+  const dest=p.c.items.findIndex(x=>!x);if(dest<0||!rows.length)return false;
+  const sourceItems=rows.flatMap(([pack,items])=>items.map((item,slot)=>({pack,slot,item}))
+    .filter(r=>simple(r.item)));
+  for(const source of sourceItems){
+   const q=source.item.q??1,max=stackMax(source.item);
+   const carried=p.c.items.some(i=>simple(i)&&identity(i)===identity(source.item)&&
+     (i.q??1)+q<=max);
+   const cross=sourceItems.some(other=>other.pack!==source.pack&&
+     identity(other.item)===identity(source.item)&&
+     (other.item.q??1)+q<=max);
+   if(!carried&&!cross)continue;
+   const fp=fingerprint(source.item),item={...source.item};
+   return e.perform('bank.merge.retrieve',{guard:()=>!!p.c.bank&&
+     !p.c.items[dest]&&fingerprint(p.c.bank?.[source.pack]?.[source.slot])===fp,
+    call:()=>p.call('bank_retrieve',source.pack,source.slot,dest),
+    observe:()=>!p.c.bank?.[source.pack]?.[source.slot]&&
+      identity(p.c.items[dest])===identity(item)&&
+      (p.c.items[dest]?.q??1)===q,
+    details:{item:item.name,pack:source.pack,bankSlot:source.slot,
+      inventorySlot:dest,quantity:q,reason:'cross-pack-merge'}});
+  }
+  return false;
+ }
  function expand(){
   if(!cfg.merchant.bank||!cfg.merchant.expandBank||!p.c.bank)return false;
   for(const [pack,def] of Object.entries(definitions()).sort((a,b)=>(a[1][1]??Infinity)-(b[1][1]??Infinity))){const cost=def[1];if(def[0]!==p.c.map||p.c.bank[pack]||!bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,cfg.merchant.bankExpandGoldFraction??.75))continue;
@@ -264,5 +296,5 @@ export function createBank(bot){
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
  }
- return {store,retrieve,consolidate,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {store,retrieve,consolidate,consolidateAcross,consolidateInventory,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

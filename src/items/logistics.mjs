@@ -13,7 +13,7 @@ export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190
  return distance(route.dest,peer)>Math.max(45,Math.min(100,error))?'retarget':'keep';
 }
 export function createLogistics(bot){
-  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastDeliveryRetarget=0;const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
+  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastDeliveryRetarget=0,pickupCycle=false;const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
@@ -28,6 +28,15 @@ export function createLogistics(bot){
       (meta.gives??[]).some(g=>Array.isArray(g)&&['hp','mp'].includes(g[0]));
   };
   const explicitInventory=item=>chooseRule(cfg.items.filter(r=>['inventory','all'].includes(phaseOf(r.action))),item,context());
+  const autoLootRule=item=>{
+    if(me.role!=='farmer'||!cfg.merchant.pickup||!cfg.party.merchant||
+       !item||protectedItem(item)||explicitInventory(item))return null;
+    const meta=p.G?.items?.[item.name];
+    if(!meta||['pot','elixir','tool','stand'].includes(meta.type))return null;
+    return {enabled:true,name:'Beuteabgabe '+item.name,action:'send',
+      item:item.name,recipient:cfg.party.merchant,keep:0,teamReserve:0,
+      batch:cfg.merchant.maxDelivery,ttlMs:cfg.general.messageTtlMs};
+  };
   const potionRule=(item,to)=>{
     if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
        !bot.farmers?.includes(to)||!isPotion(item)||explicitInventory(item)||bot.economy?.explicit(item))return null;
@@ -36,9 +45,9 @@ export function createLogistics(bot){
   };
   const sendRecipients=item=>{
     const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-    return configured.length?configured:(isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?(bot.farmers??[]).filter(n=>n!==me.name):[]);
+    return configured.length?configured:(autoLootRule(item)?[cfg.party.merchant]:(isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?(bot.farmers??[]).filter(n=>n!==me.name):[]));
   };
-  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
+  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
   const defaultPotionDemand=(item,n)=>{
     if(me.role!=='farmer'||!isPotion(item))return 0;

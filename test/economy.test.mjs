@@ -19,6 +19,18 @@ function fixture(){
  return {bot,c,rule,data,advance:()=>{now+=30000;bot.exec.poll();}};
 }
 
+test('production integrates simultaneous ingredient reservations and preserves them during recipient delivery',()=>{
+ const {bot}=fixture();bot.cfg.production.purposeAllocation=true;
+ Object.assign(bot.p.G.items,{a:{},b:{},mat:{s:9999}});
+ bot.p.G.craft={a:{items:[[3,'mat']]},b:{items:[[4,'mat']]}};
+ bot.cfg.production.goals=[{enabled:true,name:'A',item:'a',quantity:1,level:0,recipient:'F',priority:1},{enabled:true,name:'B',item:'b',quantity:1,level:0,recipient:'F',priority:1}];
+ bot.production=createProduction(bot);
+ assert.equal(bot.production.reservedQuantity({name:'mat',level:0}),7);
+ assert.equal(bot.production.reservedQuantity({name:'mat',level:0},'F'),7);
+ bot.p.c.items[1]={name:'a'};
+ assert.equal(bot.production.reservedQuantity({name:'mat',level:0}),4);
+});
+
 test('bank workspace remains free both at selection and delayed dispatch',()=>{
  const {bot,c,rule}=fixture();bot.cfg.merchant.bankWorkspace=2;
  c.bank.items0=Array.from({length:42},(_,n)=>n<40?{name:'locked',l:true}:null);
@@ -163,7 +175,7 @@ test('upgrade refreshes chance after a changed input and dispatches only once',a
 
 test('helper comparison previews alternatives and dispatches the most profitable available scroll',async()=>{
  const {bot,c,rule,advance}=fixture();
- Object.assign(bot.cfg.production,{enabled:true,upgrade:true,autoHelpers:true,helperMaxPrice:1000,minChance:.65,minImprovement:.05,lossBudget:10000});
+ Object.assign(bot.cfg.production,{enabled:true,upgrade:true,autoHelpers:true,finiteHelpers:true,helperMaxPrice:1000,minChance:.65,minImprovement:.05,lossBudget:10000});
  Object.assign(rule,{item:'helmet',action:'upgrade',targetLevel:1,maxLevel:0,maxActions:1,lossBudget:5000,minChance:.65,_autoDisposition:true});bot.cfg.items=[rule];
  bot.account={spendAllowed:()=>true};
  c.items=[{name:'helmet',level:0},{name:'scroll0',q:2},{name:'scroll1',q:2},...Array(39).fill(null)];

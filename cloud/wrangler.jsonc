@@ -4,6 +4,7 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "observability": { "enabled": false },
+  "ai": { "binding": "AI" },
   "durable_objects": { "bindings": [{ "name": "BUDGET", "class_name": "BudgetLedger" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BudgetLedger"] }],
   "vars": {
@@ -12,6 +13,9 @@
     "CHARACTERS": "",
     "ALLOWED_ORIGINS": "https://adventure.land",
     "SUPABASE_ENABLED": "false",
-    "B2_ENABLED": "false"
+    "B2_ENABLED": "false",
+    "BOUNDED_RETENTION": "true",
+    "AI_ENABLED": "false",
+    "AI_FREE_PLAN_CONFIRMED": "false"
   }
 }

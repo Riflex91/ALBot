@@ -130,7 +130,9 @@
       "mluckTravel": true,
       "townTravel": true,
       "townMinSavingsMs": 3000,
-      "servicePositionError": 70
+      "servicePositionError": 70,
+      "autoMarket": true,
+      "listingTtlMs": 3600000
     },
     "items": [],
     "production": {
@@ -190,7 +192,9 @@
       "tokenBuy": false,
       "tokenMaxPerPurchase": 1,
       "dismantle": false,
-      "autoHelpers": false
+      "autoHelpers": false,
+      "purposeAllocation": true,
+      "finiteHelpers": true
     },
     "world": {
       "bosses": false,
@@ -214,7 +218,10 @@
       "cacheTtlMs": 60000,
       "questTargets": true,
       "autoHop": true,
-      "questPreference": 1.1
+      "questPreference": 1.1,
+      "bossTactics": true,
+      "bossMaxSeconds": 300,
+      "adaptiveLearning": true
     },
     "rules": []
   }

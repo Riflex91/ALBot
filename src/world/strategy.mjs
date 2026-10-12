@@ -19,7 +19,7 @@ export function createStrategy(bot){
  const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':activity?.kind==='quest'?'quest':me.role==='merchant'?'supply':'farm');
  const permittedMap=map=>!!p.G.maps?.[map]&&!w.excludedMaps.includes(map)&&(!p.G.maps[map].pvp||cfg.farming.pvp);
  function members(planned=false){return [p.c,...(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2)).map(h=>({...h,...h.stats,...h.gear?.stats,hp:h.hp,max_hp:h.max_hp}))].filter(c=>c.name!==cfg.party.merchant);}
- function risk(id,live,planned=false){return assessCombat({...p.G.monsters?.[id],...live,hp:Math.max(p.G.monsters?.[id]?.hp??0,live?.max_hp??live?.hp??0)},members(planned),w.risk,cfg.farming.maxAggro);}
+ function risk(id,live,planned=false){const boss=bot.bosses?.evaluate(id,live,planned||!live);if(boss)return boss;return assessCombat({...p.G.monsters?.[id],...live,hp:Math.max(p.G.monsters?.[id]?.hp??0,live?.max_hp??live?.hp??0)},members(planned),w.risk,cfg.farming.maxAggro);}
  function safeTarget(id,live,quiet=false,planned=false){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm

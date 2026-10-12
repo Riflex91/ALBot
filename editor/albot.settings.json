@@ -1332,6 +1332,18 @@
             "default": 70,
             "minimum": 10,
             "maximum": 300
+          },
+          "autoMarket": {
+            "type": "boolean",
+            "title": "Überschuss anhand bestätigter Marktumsätze anbieten",
+            "default": true
+          },
+          "listingTtlMs": {
+            "type": "integer",
+            "title": "Automatische Angebote spätestens zurücknehmen (ms)",
+            "default": 3600000,
+            "minimum": 60000,
+            "maximum": 86400000
           }
         },
         "required": [
@@ -2180,6 +2192,16 @@
             "type": "boolean",
             "title": "Vorhandene Scrolls/Offerings per Servervorschau wirtschaftlich vergleichen",
             "default": false
+          },
+          "purposeAllocation": {
+            "type": "boolean",
+            "title": "Gemeinsame Zweckallokation für alle Produktionsziele",
+            "default": true
+          },
+          "finiteHelpers": {
+            "type": "boolean",
+            "title": "Endliche Mehrschrittplanung mit vorhandenen Helfern",
+            "default": true
           }
         },
         "required": [
@@ -2392,6 +2414,23 @@
             "default": 1.1,
             "minimum": 0,
             "maximum": 100
+          },
+          "bossTactics": {
+            "type": "boolean",
+            "title": "Bossprofile und Gruppenbereitschaft prüfen",
+            "default": true
+          },
+          "bossMaxSeconds": {
+            "type": "integer",
+            "title": "Maximale Bosskampfzeit (s)",
+            "default": 300,
+            "minimum": 10,
+            "maximum": 1800
+          },
+          "adaptiveLearning": {
+            "type": "boolean",
+            "title": "Begrenzte Strategieanpassungen aus bestätigten Ergebnissen",
+            "default": true
           }
         },
         "required": [

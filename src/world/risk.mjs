@@ -4,7 +4,7 @@ export function assessCombat(monster,members,mode='balanced',aggro=1){
  const alive=members.filter(c=>!c.rip&&c.hp>0&&c.max_hp>0&&c.attack>0&&c.frequency>0);
  if(!monster||!(monster.hp>0)||!Number.isFinite(monster.attack)||!(monster.frequency>0)||!alive.length)return {safe:false,reason:'Kampfwerte fehlen'};
  const unsupported=Object.keys(monster.abilities??{}).filter(k=>!['self_healing','heal'].includes(k));
- if(unsupported.length||monster.reflection>0||monster.explosion||monster.respawn_as||monster.spawns||monster.aura||monster.rbuff==='mlifesteal')
+ if(unsupported.length||monster.reflection>0||monster.explosion||monster.respawn_as||monster.spawns||monster.aura)
   return {safe:false,reason:'Spezialmechanik benötigt validiertes Kampfprofil: '+(unsupported.join(',')||'Phasen/Reflexion/Aura'),mechanics:true};
  if(monster.s?.fullguard||monster.s?.fullguardx)return {safe:false,reason:'Aktive Schutzphase',mechanics:true};
  const weakest=Math.min(...alive.map(c=>Math.min(c.hp,c.max_hp))),armor=Math.max(0,Math.max(monster.armor??0,monster.resistance??0));

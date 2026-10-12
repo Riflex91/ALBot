@@ -1,3 +1,5 @@
+> Historischer Stand 0.9.0. Für den aktuellen Kandidaten gelten [Einrichtung 0.10.0](EINRICHTUNG-0.10.0.md) und [Implementierungsstand 0.10.0](IMPLEMENTIERUNGSSTAND-0.10.0.md).
+
 # Implementierungsstand 0.9.0-candidate
 
 Basis `d33c1a273f5c357b827f3b7ea8fa78f3e5026c1a`, Branch `codex/autonomous-merchant-20261012`. Dieser Stand implementiert konkrete Merchant-, Item-, Lern- und Cloud-Ergänzungen. **Der gesamte gewünschte autonome Bot ist noch nicht vollständig umgesetzt.** Historische Roadmap-Einträge gelten als Verlauf, nicht als Nachweis dieses Kandidaten. Einrichtung: [EINRICHTUNG-0.9.0.md](EINRICHTUNG-0.9.0.md).

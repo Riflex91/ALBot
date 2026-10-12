@@ -1,5 +1,6 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
-import {mutationContext,mutationHelpers,bestMutationHelper} from './helpers.mjs';
+import {purposeReservations} from './purpose-allocation.mjs';
+import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} from './helpers.mjs';
 import {estimateRoutes} from './costs.mjs';
 import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
@@ -28,7 +29,7 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
 }
 export function needsProductionStock(available,required){return available<required;}
 export function createProduction(bot){
- let helperSearch=null;
+ let helperSearch=null,demandBusy=false;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
@@ -44,7 +45,14 @@ export function createProduction(bot){
   if(changed){if(Object.keys(next).length>1024)return false;if(!p.write(deliveryKey,next))return false;deliveries=next;}return true;
  }
  function matchesOutput(i){const r=e.explicit(i,'production'),recipe=r?.recipe&&r.action==='craft'?findRecipe(p.G,i.name,r.recipe)?.recipe:null;return !recipe?.output?.data||JSON.stringify(i.data)===JSON.stringify(recipe.output.data);}
- function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
+ function demand(exclude=null,recipient='',recipientItem=null){
+  const nested=demandBusy;demandBusy=true;
+  try{return purposeReservations({G:p.G,goals:(nested?cfg.production.goals:goals()).filter(g=>!g.name.startsWith('Gewinnproduktion ')),exclude,recipient,recipientItem,
+   delivered:g=>deliveries[goalKey(g)]?.quantity??0,
+   stock:(name,level,variant)=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===level&&
+    (!variant||identity(i)===identity({name,level,...variant}))&&!i.l&&!i.b?(i.q??1):0),0)});}finally{demandBusy=nested;}
+ }
+ function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(cfg.production.purposeAllocation){const d=demand(g);return d.blocked?Infinity:Math.max(pending,d.rows.filter(r=>r.item===name&&r.level===level).reduce((n,r)=>n+r.quantity,0));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
  const variantMatches=(i,g)=>!g?.variant||g.item!==i.name||['stat_type','p','title','data'].every(k=>g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined)));
  const qty=(name,level,g=goal)=>{let total=0,reserve=0;const groups=new Map();for(const i of p.c.items){const r=i&&e.explicit(i);if(i?.name===name&&(i.level??0)===level&&matchesOutput(i)&&variantMatches(i,g)&&r?.action!=='keep'&&!i.l&&!i.b){total+=i.q??1;groups.set(identity(i),(groups.get(identity(i))??0)+(i.q??1));reserve=Math.max(reserve,(r?.keep??0)+(r?.teamReserve??0));}}if(p.G.items[name]?.compound&&groups.size)total=Math.max(...groups.values());return Math.max(0,total-reserve-reserveOther(name,level,g));};
  function generated(action,item,quantity,g=goal){return {...defaultsFor(ITEM_RULE),name:'Automatisch: '+(g?.name??'Material')+' / '+action+' / '+item.name,_autoProduction:true,role:bot.me.role,character:bot.me.name,item:item.name,minLevel:item.level??0,maxLevel:item.level??0,...(g?.variant&&g.item===item.name?{statType:g.variant.stat_type??'',property:g.variant.p??'',title:g.variant.title??''}:{}),action,priority:g?.priority??0,targetCount:quantity,maxCount:quantity,batch:Math.max(1,quantity),maxPrice:cfg.production.helperMaxPrice??100000,goldBudget:g?.budget??0,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,targetLevel:(item.level??0)+1};}
@@ -132,7 +140,7 @@ export function createProduction(bot){
    }
    const input=e.value(i),output=e.value({...i,level:(i.level??0)+1});
    const choice=search.quotes.length&&search.quotes.every(q=>Number.isFinite(q.chance))?
-    bestMutationHelper(search.quotes,{inputValue:input,outputValue:output,minChance:Math.max(r.minChance,cfg.production.minChance),margin:cfg.production.minImprovement,factor:inputs.length}):
+    planMutationHelpers(bot,i,search.quotes,kind,Math.max(r.minChance,cfg.production.minChance)):
     {action:'bank',ev:input,reason:'helper-preview-unverified'};
    bot.intelligence?.recordHelpers(i,choice);
    if(choice.action!==kind)return false;
@@ -146,7 +154,7 @@ export function createProduction(bot){
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
   // Bind the preview to the current mutation definitions and user's rule.
   // Slot fingerprints alone do not capture changed minimum chance or scroll policy.
-  const policyProof=()=>JSON.stringify([p.G.version,p.G.items[i.name],p.G.items[scrollName],p.G.items[r.offering],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production.minChance]);
+  const policyProof=()=>JSON.stringify([p.G.version,p.G.upgrades,p.G.compounds,p.G.items[i.name],p.G.items[scrollName],p.G.items[r.offering],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production,cfg.items]);
   const initialPolicyProof=policyProof();
   const key=kind+':'+slots.map(n=>fingerprint(p.c.items[n])).join('|')+':'+initialPolicyProof;
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
@@ -158,10 +166,10 @@ export function createProduction(bot){
   if(!Number.isFinite(chance)||chance>1||chance<Math.max(r.minChance,cfg.production.minChance)||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
   if(cfg.production.autoHelpers&&r._autoDisposition){
    const helperCost=slots.filter(n=>!inputs.includes(n)).reduce((sum,n)=>sum+Math.max(e.value(p.c.items[n]),p.G.items[p.c.items[n].name]?.g??0),0)+cost;
-   const check=bestMutationHelper([{chance,cost:helperCost,preserves:kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6}],{
+   const check=cfg.production.finiteHelpers?planMutationHelpers(bot,i,helperSearch.quotes.map(q=>q.scroll===scrollName&&q.offering===(r.offering??'')?{...q,chance,cost:helperCost}:q),kind,Math.max(r.minChance,cfg.production.minChance)):bestMutationHelper([{chance,cost:helperCost,preserves:kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6}],{
     inputValue:e.value(i),outputValue:e.value({...i,level:(i.level??0)+1}),factor:inputs.length,
     minChance:Math.max(r.minChance,cfg.production.minChance),margin:cfg.production.minImprovement});
-   if(check.action!==kind){bot.intelligence?.recordHelpers(i,check);return false;}
+   if(check.action!==kind||cfg.production.finiteHelpers&&(check.scroll!==scrollName||(check.offering??'')!==(r.offering??''))){bot.intelligence?.recordHelpers(i,check);return false;}
   }
   const loss=slots.reduce((sum,n)=>sum+e.value(p.c.items[n]),0),before=e.count(i),next={...i,level:(i.level??0)+1},after=e.count(next),scrollBefore=p.c.items[scroll].q??1;
   const mutationReady=()=>{
@@ -343,6 +351,7 @@ export function createProduction(bot){
  }
  function updateMaterials(){if(!goal||plan[0]?.kind!=='farm'){materials=[];return;}const step=plan[0];materials=materialSources(p.G,step.item,step.quantity,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]}).slice(0,5).map(r=>({...r,objective:intent?.objective??knowledgeFingerprint(goalKey(goal)),priority:goal.priority??0,utilityPerHour:goal.utilityPerHour??0,expires:Date.now()+cfg.general.messageTtlMs*2,recipient:goal.recipient,sourceFingerprint:knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])}));}
  function reservedQuantity(i,recipient=''){
+  if(cfg.production.purposeAllocation)return demand(null,recipient,i).quantity(i);
   let n=0;for(const g of goals())if(!g.recipient&&(bot.me.role==='merchant'||g.gearSlot&&g.character===bot.me.name)&&g.item===i.name&&g.level===(i.level??0))n=Math.max(n,g.quantity);
   const allocated=plan.reservations?.find(r=>r.item===i.name&&r.level===(i.level??0));n=goal&&(goal.item!==i.name||goal.level!==(i.level??0))?n+(allocated?.quantity??0):Math.max(n,allocated?.quantity??0);
   n+=Math.max(0,...[...waiting.values()].filter(w=>w.until>Date.now()).flatMap(w=>w.reservations.filter(r=>r.item===i.name&&r.level===(i.level??0)).map(r=>r.quantity)));

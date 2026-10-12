@@ -54,3 +54,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{potionCarryM
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{skillSupplies:bool('Skill-Verbrauchsmaterial automatisch nachliefern',true),skillSupplyCount:number('Zielvorrat je Skill-Verbrauchsmaterial',20,1,100)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{tokenBuy:bool('Explizite Inventarziele aus vorhandenen Token kaufen',false),tokenMaxPerPurchase:number('Token je Kauf maximal',1,1,10000),dismantle:bool('Verifizierten Verkaufsüberschuss wirtschaftlich zerlegen',false)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{autoHelpers:bool('Vorhandene Scrolls/Offerings per Servervorschau wirtschaftlich vergleichen',false)});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{purposeAllocation:bool('Gemeinsame Zweckallokation für alle Produktionsziele',true),finiteHelpers:bool('Endliche Mehrschrittplanung mit vorhandenen Helfern',true)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{bossTactics:bool('Bossprofile und Gruppenbereitschaft prüfen',true),bossMaxSeconds:number('Maximale Bosskampfzeit (s)',300,10,1800),adaptiveLearning:bool('Begrenzte Strategieanpassungen aus bestätigten Ergebnissen',true)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{autoMarket:bool('Überschuss anhand bestätigter Marktumsätze anbieten',true),listingTtlMs:number('Automatische Angebote spätestens zurücknehmen (ms)',3600000,60000,86400000)});

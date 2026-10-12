@@ -1,3 +1,5 @@
+> Historischer Stand 0.9.0. Für den aktuellen Kandidaten gelten [Einrichtung 0.10.0](EINRICHTUNG-0.10.0.md) und [Implementierungsstand 0.10.0](IMPLEMENTIERUNGSSTAND-0.10.0.md).
+
 # ALBot 0.9.0 – Einrichtung des Kandidaten
 
 Stand: 12.10.2026. Neue Projekte in **bestehenden Anbieter-Konten**, neue Schlüssel, keine Migration alter Bot-Daten. Die Laufzeit funktioniert ohne Cloud. Der aktuelle Umfang und noch offene Teile stehen in [IMPLEMENTIERUNGSSTAND-0.9.0.md](IMPLEMENTIERUNGSSTAND-0.9.0.md). Dies ist keine Behauptung eines vollständig implementierten autonomen Bots.

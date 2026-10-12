@@ -151,7 +151,27 @@ export function createMerchant(bot){
     nextStage();return false;
    case 'potions':
     supplyBeforePickup();return false;
-   case 'capacity':
+   case 'capacity':{
+    // Prepare a genuinely large pickup workspace rather than treating the
+    // minimum 4+3 slots as the objective. Never sell protected/reserved gear
+    // just to achieve the ideal. When no safe cleanup remains, depart with
+    // a bounded partial load above the physical reserve.
+    const reserve=Math.max(0,cfg.merchant.minFreeSlots??4);
+    const ideal=Math.min(p.c.items.length-reserve,
+      Math.max(20,Math.min(32,peer?.lootSlots??20)));
+    if(bot.free()<ideal){
+     const options=pickupCleanupCandidates(p.c.items,i=>e.rules(i),
+       (slot,rule)=>e.spare(slot,rule),i=>e.safe(i),
+       (item,rule)=>cfg.merchant.bank&&rule._autoDisposition===true&&
+         !e.explicit?.(item)&&!e.explicit?.(item,'production')&&
+         e.remaining(rule)&&(bot.production?.reservedQuantity?.(item)??0)===0);
+     for(const row of [...options.bank,...options.sell]){
+      const accepted=row.rule.action==='bank'?
+        bot.bank?.store?.(row.slot,row.rule):e.npcSell(row.slot,row.rule);
+      if(accepted||bot.movement.order?.owner==='economy'||bot.journal||
+         exec.busy('inventory'))return false;
+     }
+    }
     if(preparePickup(peer)===false){
      // A bank that cannot safely accept/sell anything must not trap the
      // Merchant forever. Take a bounded partial pickup if there is physical
@@ -164,7 +184,11 @@ export function createMerchant(bot){
      }
      return false;
     }
+    if(bot.free()<ideal)bot.event?.('merchant.pickupPartial',{
+      peer:peer.name,free:bot.free(),ideal,
+      reason:'Nur geschützte/reservierte oder nicht sicher verwertbare Slots verbleiben'});
     nextStage();return true;
+   }
    default:return true;
   }
  }

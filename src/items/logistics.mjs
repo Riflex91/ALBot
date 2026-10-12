@@ -243,12 +243,23 @@ export function createLogistics(bot){
     summary(){
       const rules=allRules().filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}
+      if(me.role==='farmer')for(const i of p.c.items??[]){
+        if(!i||!p.G?.items?.[i.name]||protectedItem(i))continue;
+        const sig=signature(i);variants.set(JSON.stringify(sig),sig);
+      }
       if(me.role==='farmer')for(const name of ['hpot0','mpot0']){
         const item={name,level:0,stat_type:'',p:'',title:''};
         if(isPotion(item)&&!variants.has(JSON.stringify(item)))variants.set(JSON.stringify(item),item);
       }
       const all=[...variants.values()],result=[];let bytes=0;
-      for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),countNow=count(item),row={item:item.name,variant:item,need:r?demandFor(r,countNow):defaultPotionDemand(item,countNow),held:isPotion(item)?countNow:undefined,surplus:r?.action==='send'?Math.max(0,countNow-r.keep-r.teamReserve-(bot.production?.reservedQuantity?.(item,r.recipient)??0)):0,to:r?.action==='send'?r.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
+      for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),
+        transfer=me.role==='farmer'?sendRule(item,cfg.party.merchant):null,
+        countNow=count(item),row={item:item.name,variant:item,
+        need:r?demandFor(r,countNow):defaultPotionDemand(item,countNow),
+        held:isPotion(item)?countNow:undefined,
+        surplus:transfer?Math.max(0,countNow-transfer.keep-transfer.teamReserve-
+          (bot.production?.reservedQuantity?.(item,transfer.recipient)??0)):0,
+        to:transfer?transfer.recipient:''},size=JSON.stringify(row).length;if(bytes+size>2200&&result.length)break;result.push(row);bytes+=size;}
       summaryOffset=(summaryOffset+result.length)%Math.max(1,all.length);return result;
     },
     close(){if(incoming||job?.state==='sent')bot.endValue('unknown');else if(job)cancelUnsent(job,'Sender STOP/Pause vor Versand');job=null;incoming=null;}

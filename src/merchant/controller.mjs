@@ -18,7 +18,7 @@ export function createMerchant(bot){
  // A pickup is admitted only after a bounded, sequential depot cycle.
  // Mutations use the existing durable journal and retain every user rule,
  // safety reservation, minimum success chance and hourly budget.
- const stages=['reconcile','materials','mutation','sale','potions','capacity','ready'];
+ const stages=['reconcile','materials','mutation','sale','gear','potions','capacity','ready'];
  function nextStage(){
   const previous=departure.stage;departure.stage=stages[stages.indexOf(previous)+1]??'ready';
   departure.stageAt=Date.now();
@@ -28,13 +28,17 @@ export function createMerchant(bot){
  }
  function safeMaterial(item){
   const meta=p.G?.items?.[item?.name];
-  if(!e.safe(item)||!meta||meta.type!=='material'||
+  if(!e.safe(item)||!meta||!(meta.type==='material'||
+    Number.isSafeInteger(meta.e)&&meta.e>0)||
      item.data!==undefined||item.p||item.title||item.stat_type||
      item.acc||item.rid||item.skin||item.v||item.special)return false;
   if(bot.production?.reservedQuantity?.(item)>0)return false;
   const explicit=e.explicit(item),action=(explicit??e.rules(item))?.action;
-  return !explicit&&!['keep','send','consume','equip','sell','exchange','list',
-    'upgrade','compound','craft'].includes(action);
+  // Keep all manual protection; bank exchange materials until a verified
+  // exchange job explicitly needs them.
+  return (!explicit||explicit.action==='exchange')&&
+    !['keep','send','consume','equip','sell','list',
+      'upgrade','compound','craft'].includes(action);
  }
  function workStage(action){
   const choices=[];
@@ -54,8 +58,8 @@ export function createMerchant(bot){
   for(const {slot,r} of choices){
    const accepted=action==='sell'?
      (r._autoDisposition===true&&(bot.market?.sellToBid?.(slot,r)??false))||
-       e.npcSell(slot,r):
-     bot.production?.mutate?.(slot,r);
+       e.npcSell(slot,r):action==='exchange'?
+       bot.production?.exchange?.(slot,r):bot.production?.mutate?.(slot,r);
    if(accepted||bot.movement.order?.owner==='economy'||
       bot.journal||exec.busy('inventory')||exec.busy('economy'))return true;
   }
@@ -136,6 +140,7 @@ export function createMerchant(bot){
   }
   switch(departure.stage){
    case 'reconcile':
+    if(bot.bank?.manageStand?.()||bot.movement.order?.owner==='economy')return false;
     if(cfg.merchant.bank&&!bot.bank?.ready?.('items0')){
      bot.reason='Depotabgleich: zur Bank fahren';
      return false;
@@ -157,10 +162,28 @@ export function createMerchant(bot){
     }
     nextStage();return false;
    case 'mutation':
-    if(workStage('upgrade')||workStage('compound'))return false;
+    if(workStage('exchange')||workStage('upgrade')||workStage('compound'))return false;
     nextStage();return false;
    case 'sale':
     if(workStage('sell'))return false;
+    nextStage();return false;
+   case 'gear':
+    // Items with verified or unresolved team utility are bank reserves,
+    // never arbitrary sales. Preserve direct delivery and production claims.
+    for(let slot=0;slot<(p.c.items??[]).length;slot++){
+     const item=p.c.items[slot],meta=p.G?.items?.[item?.name];
+     if(!e.safe(item)||!meta||!(meta.upgrade||meta.compound||
+       meta.wtype||['weapon','ring','earring','amulet','belt','helmet',
+         'chest','pants','shoes','gloves','shield','cape','orb'].includes(meta.type))||
+       e.explicit(item)||bot.production?.reservedQuantity?.(item)>0)continue;
+     const gear=bot.intelligence?.gearUse?.(item);
+     if(!gear||!['gear-useful','unknown'].includes(gear.state))continue;
+     const rule={enabled:true,name:'Gearreserve '+item.name,
+       item:item.name,action:'bank',batch:item.q??1,keep:0,
+       teamReserve:0,maxCount:9999,goldBudget:0,lossBudget:0};
+     if(bot.bank?.store?.(slot,rule)||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('inventory'))return false;
+    }
     nextStage();return false;
    case 'potions':
     supplyBeforePickup();return false;
@@ -264,6 +287,40 @@ export function createMerchant(bot){
   }
   return false;
  }
+ function activateStand(){
+  // Only a verified market listing/wishlist job may request a stand.
+  if(!cfg.merchant.stand||me.role!=='merchant'||p.c.rip||
+    bot.inventoryBlocked||bot.journal||bot.logistics?.reserved)return false;
+  if(p.c.stand)return true;
+  const slot=p.c.items.findIndex(i=>i?.name==='stand0'&&!i.l&&!i.b&&
+    !i.locked&&!i.data&&(i.level??0)===0);
+  if(slot<0){
+   const rule={enabled:true,name:'Stand für aktiven Handelsauftrag',
+    item:'stand0',action:'retrieve',batch:1,maxCount:99,
+    keep:0,teamReserve:0,goldBudget:0,lossBudget:0};
+   return bot.bank?.retrieve?.({name:'stand0',level:0},rule,1)??false;
+  }
+  return exec.run('stand.open',['stand'],
+    ()=>bot.running&&!p.c.rip&&!p.c.stand&&
+      p.c.items[slot]?.name==='stand0'&&!bot.movement.order&&
+      !bot.inventoryBlocked&&!bot.journal,
+    ()=>p.call('open_stand'),{delay:3000,timeout:10000});
+ }
+ function standDepot(){
+  if(me.role!=='merchant'||!cfg.merchant.bank||bot.logistics?.reserved||
+    bot.journal||bot.inventoryBlocked||bot.bank?.pending||
+    bot.movement?.order)return false;
+  const activeTrades=Object.entries(p.c.slots??{}).some(([id,item])=>
+    /^trade([1-9]|1[0-6])$/.test(id)&&!!item);
+  if(activeTrades)return false;
+  if(p.c.stand){
+   return exec.run('stand.close',['stand'],()=>bot.running&&!!p.c.stand&&
+     !Object.entries(p.c.slots??{}).some(([id,item])=>
+       /^trade([1-9]|1[0-6])$/.test(id)&&!!item),
+     ()=>p.call('close_stand'),{delay:3000,timeout:10000});
+  }
+  return bot.bank?.manageStand?.()??false;
+ }
  function openStandWhenIdle(){
   if(!canOpenMerchantStand(bot)){standIdleSince=null;return false;}
   if(standIdleSince===null){standIdleSince=Date.now();return false;}
@@ -343,6 +400,7 @@ export function createMerchant(bot){
       ?'Lieferauftrag offen: '+(intent.recipient??'Team')+' – Warte auf freigegebene Items/aktuelle Empfangsposition'
       :'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf');
   }
+  if(standDepot())return;
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
@@ -397,11 +455,11 @@ export function createMerchant(bot){
   for(const job of tasks.rank(jobs)){
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
-   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});openStandWhenIdle();return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
+   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
-  openStandWhenIdle();
+  // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareDeparture,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

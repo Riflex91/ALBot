@@ -55,11 +55,22 @@ export function createLogistics(bot){
     return n<=Math.min(500,Math.floor(desired/3))?Math.max(0,desired-n):0;
   };
   const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount,normal=n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;return Math.min(Math.max(normal,bot.behavior?.need(rule.item,n)??0),Math.max(0,rule.maxCount-n));};
-  const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''});
+  const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',
+    p:i.p??'',title:i.title??'',...(i.acc?{acc:i.acc}:{}),
+    ...(i.rid?{rid:i.rid}:{}),...(i.data!==undefined?{data:i.data}:{})});
   const matchingDemand=(d,i)=>d.item===i.name&&(!d.variant||JSON.stringify(d.variant)===JSON.stringify(signature(i)));
-  const count=i=>(p.c.items??[]).reduce((n,x)=>n+(x&&x.name===i.name&&(x.level??0)===i.level&&(x.stat_type??'')===i.stat_type&&(x.p??'')===i.p&&(x.title??'')===i.title?(x.q??1):0),0);
+  const count=i=>(p.c.items??[]).reduce((n,x)=>n+
+    (x&&JSON.stringify(signature(x))===JSON.stringify(signature(i))?(x.q??1):0),0);
   const near=name=>{const e=bot.entity(name),h=transport.fresh(name);return e&&h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,e)&&samePlace(p.c,h)&&distance(p.c,e)<300&&distance(p.c,h)<300?e:null;};
-  const safeItem=i=>i&&typeof i.name==='string'&&/^[a-zA-Z0-9_]+$/.test(i.name)&&Number.isInteger(i.level)&&i.level>=0&&i.level<100&&['stat_type','p','title'].every(k=>typeof i[k]==='string'&&i[k].length<161);
+  const safeItem=i=>i&&typeof i.name==='string'&&/^[a-zA-Z0-9_]+$/.test(i.name)&&Number.isInteger(i.level)&&i.level>=0&&i.level<100&&['stat_type','p','title'].every(k=>typeof i[k]==='string'&&i[k].length<161)&&(i.data===undefined||JSON.stringify(i.data).length<=512);
+  function pickupSlots(){
+    if(me.role!=='farmer')return 0;
+    return (p.c.items??[]).reduce((n,item,slot)=>{
+      if(!item||protectedItem(item))return n;
+      const r=sendRule(item,cfg.party.merchant);
+      return n+(r&&availableTransfer(slot,r)>0?1:0);
+    },0);
+  }
   // Only a job that never reached send_item may issue this proof. A sent or
   // uncertain value action must retain its journal for manual reconciliation.
   function cancelUnsent(j,reason){
@@ -228,7 +239,7 @@ export function createLogistics(bot){
     cancelUnsent(old,reason);
     return true;
   }
-  return {receive,poll,travel,yieldUnsent,get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
+  return {receive,poll,travel,yieldUnsent,pickupSlots,get pickupCycle(){return pickupCycle;},get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
     summary(){
       const rules=allRules().filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));
       const variants=new Map();for(const r of rules){const candidates=p.c.items.filter(i=>i?.name===r.item&&(i.level??0)>=r.minLevel&&(i.level??0)<=r.maxLevel);if(!candidates.length)candidates.push({name:r.item,level:r.minLevel,stat_type:r.statType,p:r.property,title:r.title});for(const i of candidates){const sig=signature(i);variants.set(JSON.stringify(sig),sig);}}

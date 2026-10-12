@@ -141,6 +141,8 @@ test('departure phases finish bank, materials and economically authorized work b
  assert.equal(merchant.status().departure.phase,'mutation');
  assert.equal(merchant.prepareDeparture(peer),false); // mutation gate
  assert.equal(merchant.prepareDeparture(peer),false); // sale gate
+ assert.equal(merchant.status().departure.phase,'gear');
+ assert.equal(merchant.prepareDeparture(peer),false); // bank eligible gear
  assert.equal(merchant.status().departure.phase,'potions');
  assert.deepEqual(purchases,[],'must not buy/supply before local inventory work');
  assert.equal(merchant.prepareDeparture(peer),false); // first potion purchase

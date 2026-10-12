@@ -63,7 +63,11 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  if(i.data!==undefined||i.p||i.title||i.stat_type||i.acc||i.rid||i.special)
    return {state:'unknown',reason:'specific-variant-not-proven',checked:0};
  let checked=0;
- const horizon=meta.upgrade||meta.compound?Math.max(i.level??0,cfg.production.autoGearMaxLevel??0):(i.level??0);
+ // A theoretical +5 is NOT evidence that the team can afford or safely
+ // complete those mutations. Inspect existing gear at the current level;
+ // optimized higher-level candidates are checked separately against the
+ // global chance, budget, and upgrade-cost constraints.
+ const horizon=i.level??0;
  for(const member of members){
   // A stale profile is not evidence of disuse. Remote profiles must have an
   // independently fresh heartbeat even when old gear is cached locally.
@@ -105,7 +109,16 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
    }
   }
  }
- return {state:'no-gear-use',reason:'checked-all-expected-profiles-within-horizon',checked,horizon};
+ // A feasible, already planned +level gear allocation still reserves
+ // the source, even if the item at its current level is not useful.
+ if((me.role==='merchant'||me.name===cfg.party.merchant)&&
+    targets().some(g=>g.item===i.name&&g.level>=(i.level??0)&&
+      g.sourceLevel<=(i.level??0)&&
+      (!g.variant||['stat_type','p','title'].every(k=>
+        (g.variant[k]??'')===(i[k]??'')))))
+   return {state:'gear-useful',reason:'economically-feasible-optimized-gear-goal',
+     checked,horizon};
+ return {state:'no-gear-use',reason:'verified-present-use-and-economic-gear-plan',checked,horizon};
 }
 function futureGear(i){return gearUse(i).state!=='no-gear-use';}
  // Discounted, quantity-bounded bids supplement the NPC baseline only when a

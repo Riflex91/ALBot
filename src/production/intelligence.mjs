@@ -56,7 +56,8 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  if(!isEquipment)return {state:'no-gear-use',reason:'not-equipment',checked:0};
  // Only selected active farmers and their merchant may reserve a gear item;
  // enabled-but-offline account alternates must not freeze all gear sales.
- const names=new Set([...(bot.farmers??[]),cfg.party.merchant]);
+ const selected=Array.isArray(bot.farmers)?bot.farmers:(cfg.characters??[]).filter(c=>c.enabled).map(c=>c.name);
+ const names=new Set([...selected,cfg.party.merchant]);
  const members=(cfg.characters??[]).filter(c=>c.enabled&&names.has(c.name));
  if(!members.length)return {state:'unknown',reason:'no-expected-profiles',checked:0};
  if(i.data!==undefined||i.p||i.title||i.stat_type||i.acc||i.rid||i.special)

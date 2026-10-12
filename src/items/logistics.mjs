@@ -177,8 +177,8 @@ export function createLogistics(bot){
         // enumerate every item variant in its heartbeat, so a demand-only
         // condition silently dropped virtually every equipment/item offer.
         // The receiver still validates physical capacity and the journal.
-        const collected=me.role==='farmer'&&to===cfg.party.merchant&&
-          cfg.merchant.pickup&&r.action==='send'?availableTransfer(slot,r):0;
+        const collected=me.role==='farmer'&&to===cfg.party?.merchant&&
+          cfg.merchant?.pickup&&r.action==='send'?availableTransfer(slot,r):0;
         const wanted=Math.max(demand?.need??0,gear?1:0,elixir?1:0,collected);if(!Number.isSafeInteger(wanted)||wanted<1)continue;
         const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,wanted);if(quantity<1)continue;
         if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}

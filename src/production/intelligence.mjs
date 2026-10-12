@@ -120,6 +120,34 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
      checked,horizon};
  return {state:'no-gear-use',reason:'verified-present-use-and-economic-gear-plan',checked,horizon};
 }
+// Count how many physical equipment slots could possibly consume one
+// identical unmodified copy. This is an UPPER bound, not a suggestion to
+// sell the other copies: only fresh complete profiles, verified valuations,
+// ordinary item variants and the established mutation economics authorize it.
+// A 7th identical belt cannot serve a four-character party with one belt
+// slot each, even when each belt would be useful on its own.
+function surplusEquipmentReserve(i){
+ if(me.role!=='merchant'||!bot.economy.safe(i))return null;
+ const members=new Set([...(bot.farmers??[]),cfg.party.merchant]);
+ let capacity=0;
+ for(const name of members){
+  const member=(cfg.characters??[]).find(c=>c.enabled&&c.name===name);
+  if(!member)return null;
+  const h=name===me.name?null:bot.transport?.fresh?.(name);
+  const profile=name===me.name?bot.gear?.snapshot?.():bot.gear?.profile?.(name);
+  if(!profile?.complete||!profile.slots||!profile.class||
+     name!==me.name&&(!h?.running||h.rip||h.realm!==p.realm()||
+       profile.session!==h.session||profile.realm!==p.realm()||
+       !Number.isFinite(profile.at)||Date.now()-profile.at>120000))
+   return null;
+  for(const slot of ['mainhand','offhand','helmet','chest','pants',
+   'shoes','gloves','amulet','belt','cape','ring1','ring2',
+   'earring1','earring2','orb']){
+   if(gearCompatible(p.G,profile,i,slot))capacity++;
+  }
+ }
+ return capacity>0?capacity:null;
+}
 function futureGear(i){return gearUse(i).state!=='no-gear-use';}
  // Discounted, quantity-bounded bids supplement the NPC baseline only when a
  // verified buyer is currently reachable; a future upgrade gets a larger haircut.
@@ -219,7 +247,13 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
     ['weapon','helmet','chest','pants','shoes','ring','earring','amulet',
     'belt','cape','gloves','orb','shield'].includes(m.type));
   if(equipment){
-    if(futureGear(i))return null;
+    const use=gearUse(i);
+    const reserve=surplusEquipmentReserve(i);
+    const local=p.c.items.reduce((n,x)=>n+
+      (x&&identityVariant(x,i)?(x.q??1):0),0);
+    const redundant=use.state!=='unknown'&&
+      Number.isSafeInteger(reserve)&&reserve>0&&local>reserve;
+    if(use.state!=='no-gear-use'&&!redundant)return null;
     const value=bot.economy.value(i),progressable=!!(m.upgrade||m.compound);
     const choice=progressable?mutationEconomics(i):{level:i.level??0,ev:value,action:'sell',reason:'non-progressive-equipment'};
     const count=p.c.items.filter(x=>x&&identityVariant(x,i)).reduce((n,x)=>n+(x.q??1),0);let action=me.role==='farmer'?'send':choice.action;
@@ -247,7 +281,10 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
     }
    }
    if(action==='bank'&&!cfg.merchant.bank)return null;
-   const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Kurve '+i.name,item:i.name,minLevel:i.level??0,maxLevel:i.level??0,statType:i.stat_type??'',property:i.p??'',title:i.title??'',role:me.role,character:me.name,recipient:cfg.party.merchant,action,priority:-400,_autoDisposition:true,targetLevel:choice.level,targetCount:100,maxCount:100,batch:action==='compound'?3:1,minChance:cfg.production.minChance,goldBudget:cfg.production.helperMaxPrice,lossBudget:cfg.production.lossBudget,minPrice:Math.floor(value),keep:0};noteDisposition(i,derived,choice);return derived;
+   const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Kurve '+i.name,item:i.name,minLevel:i.level??0,maxLevel:i.level??0,statType:i.stat_type??'',property:i.p??'',title:i.title??'',role:me.role,character:me.name,recipient:cfg.party.merchant,action,priority:-400,_autoDisposition:true,targetLevel:choice.level,targetCount:100,maxCount:100,batch:action==='compound'?3:1,minChance:cfg.production.minChance,goldBudget:cfg.production.helperMaxPrice,lossBudget:cfg.production.lossBudget,minPrice:Math.floor(value),keep:redundant?reserve:0};
+    noteDisposition(i,derived,{...choice,reason:redundant?
+      'sicherer Überschuss über alle kompatiblen Team-Slots':choice.reason});
+    return derived;
   }
   const recipeUsed=Object.values(p.G.craft??{}).some(r=>(r.items??[]).some(x=>x[1]===i.name)),value=bot.economy.value(i);const rewards=Number.isSafeInteger(m.e)&&m.e>0?materialDrops(p.G,p.G.drops?.[i.name]):[],returnValue=rewards.reduce((n,r)=>n+r.chance*r.quantity*bot.economy.value({name:r.item,level:0}),0),valuableProbability=Math.min(1,rewards.filter(r=>bot.economy.value({name:r.item,level:0})>0).reduce((n,r)=>n+r.chance,0)),processable=cfg.production.enabled&&cfg.production.exchange&&bot.count(i.name)>=m.e&&valuableProbability>=cfg.production.minChance&&returnValue>value*m.e*(1+cfg.production.minImprovement)&&value*m.e<=cfg.production.lossBudget;const action=me.role==='farmer'?(cfg.party.merchant&&cfg.merchant.pickup?'send':null):processable?'exchange':recipeUsed?'bank':
    Number.isFinite(value)&&value>=0?'sell':'bank';if(!action||action==='bank'&&!cfg.merchant.bank)return null;

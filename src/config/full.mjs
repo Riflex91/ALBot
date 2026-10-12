@@ -13,7 +13,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
 });
 Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{gearSynergy:bool('Ausrüstung und Klassenkombination bei Teamwahl berücksichtigen',true),advancedSkills:bool('Situationsabhängige Paladin-/Mage-Fähigkeiten',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{
- progressionAdvice:bool('Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen',true),autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',3,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
+ progressionAdvice:bool('Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen',true),autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',5,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
  autoGearItems:{type:'array',title:'Erlaubte Items für automatische Gearziele',items:{type:'string',minLength:1,maxLength:160},maxItems:2000,uniqueItems:true,default:['helmet','coat','pants','shoes','gloves','bow','staff','sword','blade','shield']}
 });
 // Opt-in exception for a deliberately stationary trading merchant.
@@ -26,10 +26,15 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{questTargets:b
 for(const section of ['general','merchant','party','production','world'])FULL_DESCRIPTOR.schema.properties[section].required=Object.keys(FULL_DESCRIPTOR.schema.properties[section].properties);
 FULL_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=FULL_SKILLS;
 
+// Full-mode defaults for new profiles; explicit imported values stay unchanged.
+FULL_DESCRIPTOR.schema.properties.merchant.properties.maxSpendPerHour.default=2000000;
+FULL_DESCRIPTOR.schema.properties.merchant.properties.expandBank.default=true;
+FULL_DESCRIPTOR.schema.properties.merchant.properties.bankBudget.default=1000000000;
+FULL_DESCRIPTOR.schema.properties.production.properties.lossBudget.default=1000000;
 // Optional additions preserve full/v1 profiles; defaults are applied on import.
 Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{autoTargets:bool('Farmmonster automatisch aus öffentlichen Spawns auswählen',true),elixirs:bool('Klassen-Elixiere beschaffen und erneuern',true),switchImprovement:{type:'number',title:'Mindestverbesserung für Standortwechsel',default:.2,minimum:0,maximum:2},planHoldMs:number('Farmplan mindestens halten (ms)',60000,1000,3600000)});
-Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{autoProfitMaxLevel:number('Maximales Level für die autonome Gewinnrechnung',3,0,12),optimizeGear:bool('Gearalternativen und Ziellevel wirtschaftlich auswählen',true),autoDisposition:bool('Ungeregelte ungeschützte Items wirtschaftlich einordnen',true),autoSellMaxValue:number('Automatischer NPC-Verkauf höchstens Itemwert',100,0,1000000),farmConfidence:{type:'string',title:'Farmzeitbudget',enum:['mean','p90'],default:'p90'}});
-Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{marketMinSamples:number('Unabhängige Marktanbieter für Preisreferenz',3,1,20),mluckTravel:bool('Für benötigte Mluck-Erneuerung sicher anreisen',true)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{autoProfitMaxLevel:number('Maximales Level für die autonome Gewinnrechnung',5,0,12),optimizeGear:bool('Gearalternativen und Ziellevel wirtschaftlich auswählen',true),autoDisposition:bool('Ungeregelte ungeschützte Items wirtschaftlich einordnen',true),autoSellMaxValue:number('Legacy-Grenze für automatischen Verkauf normaler Items',100,0,1000000),autoGearSellMaxValue:number('Automatischer Ausrüstungsverkauf: maximaler NPC-Stückwert nach Team-/Gewinnprüfung',1000000,0,1000000),farmConfidence:{type:'string',title:'Farmzeitbudget',enum:['mean','p90'],default:'p90'}});
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{pickupThreshold:number('Abholung starten ab teamweit übergabefähigen Inventarplätzen',30,1,126),bankExpandGoldFraction:{type:'number',title:'Bankerweiterung maximal als Anteil des aktuellen Merchant-Golds',default:.75,minimum:0,maximum:1},marketMinSamples:number('Unabhängige Marktanbieter für Preisreferenz',3,1,20),mluckTravel:bool('Für benötigte Mluck-Erneuerung sicher anreisen',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{autoHop:bool('Serverwechsel nach geprüftem Standortdruck',true)});
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.skills.items.properties,{minTargets:number('Mindestzahl Ziele',2,1,20),minInjured:number('Mindestzahl verletzte Mitglieder',2,1,20),hpThreshold:{type:'number',title:'HP-Schwelle für Heilung/Schutz',default:.7,minimum:0,maximum:1},manaBudget:{type:'number',title:'Maximaler MP-Anteil für Burst',default:.2,minimum:.01,maximum:1}});

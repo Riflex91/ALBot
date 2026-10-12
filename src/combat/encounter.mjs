@@ -11,7 +11,26 @@ export function createEncounter(bot){
   if(bot.recovering||ms.some(h=>h.hp/h.max_hp<(bot.cfg.farming.restBelow??.3)||h.mp/Math.max(1,h.max_mp)<.15)){phase=mobs.length?'ABORT':'RECOVER';if(active)complete(true);}else if(!mobs.length){if(active)complete(false);phase=healthy?'BUILD':'RECOVER';}else if(!healthy)phase='HOLD';else if(mobs.length<capacity)phase='BUILD';else phase=mobs.every(m=>m.hp<(bot.p.c.attack??1)*2)?'FINISH':'BURN';
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0};
  }
- function permit(m){if(m.target)return true;if(bot.me.name!==bot.leader&&bot.cfg.party.enabled)return false;return phase==='BUILD'&&bot.monsters().filter(x=>bot.teamNames.includes(x.target)).length<capacity&&(m.mtype&&m.mtype!==bot.teamPlan.target()||bot.teamPlan.wantsCombat());}
+ function permit(m){
+  if(m.target)return true;
+  if(bot.me.name!==bot.leader&&bot.cfg.party.enabled)return false;
+  const engaged=bot.monsters().filter(x=>x.target&&bot.teamNames.includes(x.target)).length;
+  const planned=m.mtype&&m.mtype===bot.teamPlan?.target();
+  if(planned&&bot.teamPlan?.wantsCombat?.()===false)return false;
+  if(phase==='BUILD')return engaged<capacity;
+  // Party-wide 50% MP is a *multi-pull* readiness threshold, not a
+  // veto on every basic solo attack. When a member is regenerating mana
+  // above the emergency floor, continue safely with ONE neutral mob.
+  // Never relax this for injured teams, existing aggro or an active retreat.
+  if(phase==='RECOVER'&&!bot.recovering&&engaged===0){
+    const team=members();
+    const hpFloor=Math.max(bot.cfg.farming.pullHp??.8,bot.cfg.farming.restBelow??.4);
+    return team.length===bot.farmers.length&&team.every(h=>
+      h.hp/Math.max(1,h.max_hp)>=hpFloor&&
+      h.mp/Math.max(1,h.max_mp)>=.15);
+  }
+  return false;
+ }
  function pull(){
   if(bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.teamPlan?.target()||!bot.teamPlan.wantsCombat())return false;
   const engaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target));

@@ -86,8 +86,15 @@ export function createSkills(bot){
     const accepted=exec.run('skill:'+id,['mana',s.share==='attack'||id==='heal'?'attack':'skill',...(consume?['inventory']:[])],guard,()=>{
       count(id,'started');
       if(consume)bot.beginValue({kind:'consume',item:consume,before:prior});
-      return id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
-    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:state=>{if(consume)bot.endValue(state);if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
+      const invoked=id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
+      if(!['3shot','5shot'].includes(id))return invoked;
+      const noTarget=x=>['no_target','not_there'].includes(String(x?.reason??x?.message??''));
+      const transient=()=>{bot.target=null;
+        bot.event?.('skill.transient',{skill:id,reason:'Ziel während Ausführung verschwunden'});
+        return {transient:'no_target'};};
+      return Promise.resolve(invoked).then(v=>noTarget(v)?transient():v,
+        err=>{if(noTarget(err))return transient();throw err;});
+    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:(state,result)=>{if(consume)bot.endValue(state);if(result?.transient==='no_target'){count(id,'targetBlocked');return;}if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
     if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve});}return accepted;
   }
   function support(){

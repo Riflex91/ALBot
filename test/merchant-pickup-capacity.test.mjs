@@ -115,3 +115,97 @@ test('valid incoming gold offer can cancel only an unsent item offer and receive
  assert.equal(bot.journal.kind,'gold.receive');
  assert.equal(responses[0].type,'goldAccept');
 });
+
+test('departure phases finish bank, materials and economically authorized work before buying 3000-per-farmer potions',()=>{
+ const {bot,c,actions}=merchantFixture(),purchases=[],stock={hpot0:200,mpot0:200};
+ bot.p.realm=()=> 'EUII';bot.p.c.gold=1000000;
+ bot.p.G.items.hpot0={type:'pot',g:10};bot.p.G.items.mpot0={type:'pot',g:10};
+ bot.farmers=['F'];
+ bot.cfg.merchant.maxSpendPerHour=2000000;bot.cfg.merchant.goldReserve=0;
+ bot.transport={fresh:()=>({name:'F',running:true,rip:false,realm:'EUII',
+   potions:{hpot0:1200,mpot0:3000}})};
+ bot.economy.explicit=()=>null;bot.economy.remaining=()=>true;
+ bot.economy.count=item=>stock[item.name]??0;
+ bot.economy.ledger={spent:0};
+ bot.economy.npcBuy=(item,r,q)=>{purchases.push([item.name,q]);return true;};
+ bot.bank.ready=()=>true;bot.bank.consolidate=()=>false;
+ bot.bank.consolidateAcross=()=>false;
+ bot.production={reservedQuantity:()=>0,mutate:()=>false};
+ bot.movement={order:null};
+ const merchant=createMerchant(bot),peer={name:'F',items:[offer()]};
+ assert.equal(merchant.prepareDeparture(peer),false); // reconciliation
+ assert.equal(merchant.status().departure.phase,'materials');
+ assert.equal(merchant.prepareDeparture(peer),false); // material banked
+ assert.deepEqual(actions,[['bank.store',0,'bank']]);
+ assert.equal(merchant.prepareDeparture(peer),false); // materials complete
+ assert.equal(merchant.status().departure.phase,'mutation');
+ assert.equal(merchant.prepareDeparture(peer),false); // mutation gate
+ assert.equal(merchant.prepareDeparture(peer),false); // sale gate
+ assert.equal(merchant.status().departure.phase,'gear');
+ assert.equal(merchant.prepareDeparture(peer),false); // bank eligible gear
+ assert.equal(merchant.status().departure.phase,'potions');
+ assert.deepEqual(purchases,[],'must not buy/supply before local inventory work');
+ assert.equal(merchant.prepareDeparture(peer),false); // first potion purchase
+ assert.deepEqual(purchases,[['hpot0',1800]]);
+ stock.hpot0+=1800; // simulated confirmed purchase
+ assert.equal(merchant.prepareDeparture(peer),false); // potions complete
+ assert.equal(merchant.status().departure.phase,'capacity');
+ assert.equal(merchant.prepareDeparture(peer),true);
+ assert.equal(merchant.status().departure.phase,'ready');
+});
+
+test('farmer accepts MP potions even when HP stack already holds 3000',()=>{
+ const {bot,c}=merchantFixture(),sent=[];
+ bot.running=true;bot.me={name:'F',role:'farmer'};
+ c.name='F';c.map='main';c.in='main';c.x=0;c.y=0;
+ c.items=[{name:'hpot0',level:0,q:3000},...Array(41).fill(null)];
+ bot.p.G.items={
+  hpot0:{type:'pot',gives:[['hp',200]]},
+  mpot0:{type:'pot',gives:[['mp',300]]}};
+ bot.p.realm=()=> 'EUII';bot.cfg.party.merchant='My_Merchant';
+ bot.cfg.farming={freeSlots:4,potionCarryMax:3000};
+ bot.cfg.general={messageTtlMs:10000};bot.cfg.items=[];
+ bot.cfg.merchant.enabled=true;bot.cfg.merchant.pickup=true;
+ bot.cfg.merchant.maxDelivery=3000;
+ bot.checkpoint={durable:true};bot.gold={reserved:false};
+ bot.exec={now:()=>Date.now(),busy:()=>false};
+ bot.services={active:false,waiting:false};
+ bot.session='farmer';bot.rule=()=>null;bot.economy.safe=()=>true;
+ bot.entity=()=>({name:'My_Merchant',map:'main',in:'main',x:10,y:0});
+ bot.transport={fresh:()=>({name:'My_Merchant',running:true,rip:false,
+    session:'merchant',realm:'EUII',map:'main',in:'main',x:10,y:0}),
+   send:(to,type,data,id)=>sent.push({to,type,data,id})};
+ bot.beginValue=j=>{bot.journal=j;};
+ const logistics=createLogistics(bot);
+ logistics.receive('My_Merchant',{type:'offer',session:'merchant',id:'mp-accept',
+   data:{item:{name:'mpot0',level:0,stat_type:'',p:'',title:''},quantity:500}});
+ assert.equal(sent[0].type,'accept');
+ assert.equal(sent[0].data.quantity,500,
+   'already held HP potions must not reduce the MP potion cap');
+});
+test('merchant offers potion top-ups using direct heartbeats without rotating item demand',()=>{
+ const {bot,c}=merchantFixture(),sent=[];
+ bot.running=true;c.map='main';c.in='main';c.x=0;c.y=0;
+ c.items=[{name:'mpot0',level:0,q:1500},...Array(41).fill(null)];
+ bot.p.G.items={mpot0:{type:'pot',gives:[['mp',300]]}};
+ bot.p.realm=()=> 'EUII';bot.cfg.items=[];
+ bot.cfg.farming={freeSlots:4,potionCarryMax:3000};
+ bot.cfg.general={messageTtlMs:10000};
+ bot.cfg.merchant.enabled=true;bot.cfg.merchant.pickup=true;
+ bot.cfg.merchant.supply=true;bot.cfg.merchant.maxDelivery=3000;
+ bot.session='merchant';bot.rule=()=>null;bot.farmers=['F'];
+ bot.checkpoint={durable:true};bot.gold={reserved:false};
+ bot.exec={now:()=>Date.now(),busy:()=>false};
+ bot.services={active:false,waiting:false};
+ bot.economy.safe=()=>true;bot.economy.explicit=()=>null;
+ bot.entity=()=>({name:'F',map:'main',in:'main',x:10,y:0});
+ bot.transport={fresh:()=>({name:'F',running:true,rip:false,
+   session:'farmer',realm:'EUII',map:'main',in:'main',x:10,y:0,
+   free:10,potions:{hpot0:3000,mpot0:2700},items:[]}),
+   send:(to,type,data,id)=>sent.push({to,type,data,id})};
+ const logistics=createLogistics(bot);
+ logistics.poll();
+ assert.equal(sent[0]?.type,'offer');
+ assert.equal(sent[0]?.data?.item?.name,'mpot0');
+ assert.equal(sent[0]?.data?.quantity,300);
+});

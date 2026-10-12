@@ -261,7 +261,7 @@ export function createLogistics(bot){
         const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&localBankBatch())continue;
         // Plan and complete inventory preparation BEFORE leaving for the
         // farmer. A full inventory must not hide its own pickup demand.
-        if(pickup&&!urgent){
+        if(pickup){
           const permission=bot.merchant?.prepareDeparture?
             bot.merchant.prepareDeparture(h):bot.merchant?.preparePickup?.(h);
           if(permission===false)return;

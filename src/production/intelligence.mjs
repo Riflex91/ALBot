@@ -1,10 +1,12 @@
 import {identity} from '../core/policy.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
-import {materialDrops} from './materials.mjs';
+import {exchangeDrops} from './materials.mjs';
+import {itemPurposes} from '../items/purposes.mjs';
+import {mutationContext,mutationHelpers} from './helpers.mjs';
 import {gearScore,gearCompatible,gearSuitability} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
-const HISTORICAL_CHANCES={upgrade:[[.9999999,.98,.95,.7,.6,.4,.25,.15,.07,.024],[.99998,.97,.94,.68,.58,.38,.24,.14,.066,.018],[.97,.94,.92,.64,.52,.32,.232,.13,.062,.015]],compound:[[.99,.75,.4,.25,.2,.1,.07,.05,.05,.05],[.9,.7,.4,.2,.15,.08,.07,.05,.05,.03],[.8,.6,.32,.16,.1,.07,.03,.03,.03,.02]]};
+const HISTORICAL_CHANCES={upgrade:[[.9999999,.98,.95,.7,.6,.4,.25,.15,.07,.024],[.99998,.97,.94,.68,.58,.38,.24,.14,.066,.018],[.97,.94,.92,.64,.52,.32,.232,.13,.062,.015]],compound:[[.99,.75,.4,.25,.2,.1,.08,.05,.05,.05],[.9,.7,.4,.2,.15,.08,.05,.05,.05,.03],[.8,.6,.32,.16,.1,.05,.03,.03,.03,.02]]};
 export function progressionChance(G,name,level,kind){
  const m=G.items?.[name],targetLevel=level+1;
  if(!m||!Number.isInteger(level)||level<0||!['upgrade','compound'].includes(kind))return null;
@@ -23,6 +25,7 @@ export function progressionChance(G,name,level,kind){
  return Number.isFinite(value)&&value>0&&value<=1?value:null;
 }
 export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluated=[],at=0,allocation=[],chances=new Map(),props=new Map(),propsVersion=p.G.version,profitAt=0,profits=[],stockEpoch=-1,stocks=null;
+ const helperQuotes=new Map();
  function chanceEvidenceKey(name,level,kind,scroll,offering=''){
   return JSON.stringify([p.G.version,p.G.items?.[name],kind,level,scroll,
    p.G.items?.[scroll],offering,offering?p.G.items?.[offering]:null]);
@@ -210,7 +213,7 @@ function futureGear(i){return gearUse(i).state!=='no-gear-use';}
    action:answer.groups?'compound':'sell',quantity:n,groups:answer.groups,
    reason:answer.groups?'finite-stock-compound':'finite-stock-sell'};
 }
-function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel;if(!Number.isFinite(current)||cfg.production.lossBudget>0&&current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};if(kind==='compound')return finiteCompoundValue(i,max,current,heldOverride);let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
+function mutationEconomics(i,{heldOverride=null}={}){if(cfg.production.autoHelpers&&heldOverride===null&&(p.G.items[i.name]?.upgrade||p.G.items[i.name]?.compound)){const key=mutationContext(bot,i),quote=helperQuotes.get(key);if(quote&&Date.now()-quote.at<30000)return {...quote.choice,level:(i.level??0)+1};const kind=p.G.items[i.name].compound?'compound':'upgrade';if((i.level??0)<cfg.production.autoProfitMaxLevel&&mutationHelpers(bot,i,kind).length)return {level:(i.level??0)+1,ev:resaleValue(i,1,false),action:kind,reason:'helper-preview-required'};}const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel;if(!Number.isFinite(current)||cfg.production.lossBudget>0&&current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};if(kind==='compound')return finiteCompoundValue(i,max,current,heldOverride);let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
   for(let l=max-1;l>=(i.level??0);l--){const c=mutationChance(i.name,l,kind),grade=p.call('item_grade',{...i,level:l}),scrollCost=p.G.items[(kind==='compound'?'cscroll':'scroll')+grade]?.g,immediate=resaleValue({...i,level:l},1,l>(i.level??0));if(!(c>=cfg.production.minChance)||!Number.isFinite(scrollCost)||!Number.isFinite(immediate)){value=immediate;continue;}const ev=(c*value-scrollCost)/factor;if(ev>immediate*(1+cfg.production.minImprovement)&&scrollCost<=cfg.production.helperMaxPrice){value=ev;if(l===(i.level??0))best={level:l+1,ev,action:kind};}else value=immediate;}
   return best;
  }
@@ -240,6 +243,13 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
   if(decisionLedger.size>24)decisionLedger.delete(decisionLedger.keys().next().value);
  }
   function disposition(i){if(cfg.production.autoDisposition!==true||!bot.economy.safe(i)||bot.production.reservedQuantity(i)>0)return null;
+  const purposes=itemPurposes(p.G,i);
+  if(purposes.protected)return null;
+  // Equipment ingredients must pass the recipe check BEFORE equipment
+  // liquidation. Active production allocations remain authoritative.
+  const recipeTarget=purposes.recipes.length?Math.max(...purposes.recipes.map(r=>r.quantity).filter(Number.isSafeInteger)):0;
+  const bankCopies=stockItems().filter(r=>r.pack&&identityVariant(r.item,i)).reduce((n,r)=>n+(r.item.q??1),0);
+  const recipeKeep=Number.isFinite(recipeTarget)?Math.max(0,recipeTarget-bankCopies):0;
   // Preserve any unusual item variant; NPC sell value does not price rare
   // effects (such as cxjar with data="makeawish"). Explicit user rules win.
   if(i.data!==undefined&&i.data!==null||i.acc||i.rid||i.p||i.title||i.stat_type||i.skin||i.expires)return null;const m=p.G.items[i.name];if(!m||m.cash||m.quest||m.event||['pot','elixir','scroll','uscroll','cscroll','offering','stand','tool','booster'].includes(m.type))return null;
@@ -281,16 +291,19 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
     }
    }
    if(action==='bank'&&!cfg.merchant.bank)return null;
-   const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Kurve '+i.name,item:i.name,minLevel:i.level??0,maxLevel:i.level??0,statType:i.stat_type??'',property:i.p??'',title:i.title??'',role:me.role,character:me.name,recipient:cfg.party.merchant,action,priority:-400,_autoDisposition:true,targetLevel:choice.level,targetCount:100,maxCount:100,batch:action==='compound'?3:1,minChance:cfg.production.minChance,goldBudget:cfg.production.helperMaxPrice,lossBudget:cfg.production.lossBudget,minPrice:Math.floor(value),keep:redundant?reserve:0};
+   // One complete recipe batch is a bounded fallback reserve. Already
+   // observed bank copies satisfy it; never increase their level by accident.
+   if(recipeKeep>=count){action=me.role==='farmer'?'send':cfg.merchant.bank?'bank':null;if(!action)return null;}
+   const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Kurve '+i.name,item:i.name,minLevel:i.level??0,maxLevel:i.level??0,statType:i.stat_type??'',property:i.p??'',title:i.title??'',role:me.role,character:me.name,recipient:cfg.party.merchant,action,priority:-400,_autoDisposition:true,targetLevel:choice.level,targetCount:100,maxCount:100,batch:action==='compound'?3:1,minChance:cfg.production.minChance,goldBudget:cfg.production.helperMaxPrice,lossBudget:cfg.production.lossBudget,minPrice:Math.floor(value),keep:Math.max(redundant?reserve:0,['bank','send'].includes(action)?0:recipeKeep)};
     noteDisposition(i,derived,{...choice,reason:redundant?
       'sicherer Überschuss über alle kompatiblen Team-Slots':choice.reason});
     return derived;
   }
-  const recipeUsed=Object.values(p.G.craft??{}).some(r=>(r.items??[]).some(x=>x[1]===i.name)),value=bot.economy.value(i);const rewards=Number.isSafeInteger(m.e)&&m.e>0?materialDrops(p.G,p.G.drops?.[i.name]):[],returnValue=rewards.reduce((n,r)=>n+r.chance*r.quantity*bot.economy.value({name:r.item,level:0}),0),valuableProbability=Math.min(1,rewards.filter(r=>bot.economy.value({name:r.item,level:0})>0).reduce((n,r)=>n+r.chance,0)),processable=cfg.production.enabled&&cfg.production.exchange&&bot.count(i.name)>=m.e&&valuableProbability>=cfg.production.minChance&&returnValue>value*m.e*(1+cfg.production.minImprovement)&&value*m.e<=cfg.production.lossBudget;const action=me.role==='farmer'?(cfg.party.merchant&&cfg.merchant.pickup?'send':null):processable?'exchange':recipeUsed?'bank':
+  const recipeUsed=Object.values(p.G.craft??{}).some(r=>(r.items??[]).some(x=>x[1]===i.name)),value=bot.economy.value(i);const rewards=Number.isSafeInteger(m.e)&&m.e>0?exchangeDrops(p.G,p.G.drops?.[i.name]):[],returnValue=rewards.reduce((n,r)=>n+r.chance*r.quantity*bot.economy.value({name:r.item,level:0}),0),valuableProbability=Math.min(1,rewards.filter(r=>bot.economy.value({name:r.item,level:0})>0).reduce((n,r)=>n+r.chance,0)),processable=cfg.production.enabled&&cfg.production.exchange&&bot.count(i.name)>=m.e&&valuableProbability>=cfg.production.minChance&&returnValue>value*m.e*(1+cfg.production.minImprovement)&&value*m.e<=cfg.production.lossBudget;const action=me.role==='farmer'?(cfg.party.merchant&&cfg.merchant.pickup?'send':null):processable?'exchange':recipeUsed&&recipeKeep>0?'bank':
    Number.isFinite(value)&&value>=0?'sell':'bank';if(!action||action==='bank'&&!cfg.merchant.bank)return null;
-  const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Disposition '+i.name,item:i.name,role:me.role,character:me.name,recipient:action==='send'?cfg.party.merchant:'',action,priority:-500,_autoDisposition:true,minLevel:0,maxLevel:0,batch:100,maxCount:100000,targetCount:100000,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,minPrice:action==='sell'?Math.floor(value):1,keep:me.role==='merchant'&&recipeUsed?10:0};noteDisposition(i,derived);return derived;
+  const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Disposition '+i.name,item:i.name,role:me.role,character:me.name,recipient:action==='send'?cfg.party.merchant:'',action,priority:-500,_autoDisposition:true,minLevel:0,maxLevel:0,batch:action==='bank'&&recipeUsed?Math.max(1,Math.min(100,recipeKeep)):100,maxCount:100000,targetCount:100000,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,minPrice:action==='sell'?Math.floor(value):1,keep:0};noteDisposition(i,derived);return derived;
  }
- function profitGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-profitAt<1000)return profits;if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoDisposition)return [];const result=[],stock=stockItems();for(const {item:i} of stock){if(bot.economy.explicit(i)||futureGear(i)||!p.G.items[i.name]?.upgrade&&!p.G.items[i.name]?.compound)continue;const sources=stock.filter(r=>identityVariant(r.item,i));
+ function profitGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-profitAt<1000)return profits;if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoDisposition)return [];const result=[],stock=stockItems();for(const {item:i} of stock){if(itemPurposes(p.G,i).protected||itemPurposes(p.G,i).recipes.length||bot.economy.explicit(i)||futureGear(i)||!p.G.items[i.name]?.upgrade&&!p.G.items[i.name]?.compound)continue;const sources=stock.filter(r=>identityVariant(r.item,i));
    const accessible=sources.reduce((n,r)=>n+(Number.isSafeInteger(r.item.q)?r.item.q:1),0);
    const choice=mutationEconomics(i,{heldOverride:accessible}),kind=choice.action;if(!['upgrade','compound'].includes(kind)||!cfg.production[kind])continue;if(kind==='compound'&&sources.reduce((n,r)=>n+(r.item.q??1),0)<3)continue;if(choice.ev<=bot.economy.value(i))continue;
    // Remote or bank acquisitions consume time and have nonzero opportunity
@@ -299,7 +312,7 @@ function mutationEconomics(i,{heldOverride=null}={}){const m=p.G.items[i.name],k
    const travelBudget=external?Math.max(0,(cfg.production.goldPerHour??0)/120):0;
    if((choice.ev-bot.economy.value(i))*accessible<=travelBudget)continue;const goal={name:'Gewinnproduktion '+i.name+' +'+choice.level,enabled:true,item:i.name,level:choice.level,quantity:1,recipient:'',priority:-100,budget:Math.min(cfg.production.lossBudget,cfg.production.helperMaxPrice),variant:{stat_type:i.stat_type,p:i.p,title:i.title,data:i.data}};if(!result.some(g=>g.item===goal.item&&g.level===goal.level&&JSON.stringify(g.variant)===JSON.stringify(goal.variant)))result.push(goal);}profitAt=Date.now();profits=result.slice(0,16);return profits;}
  function rules(){const candidates=[...p.c.items.filter(Boolean)];if(me.role==='merchant')for(const [,h] of bot.transport.peers)if(h.running&&h.realm===p.realm())for(const row of h.items??[])if(row.to===me.name&&row.surplus>0)candidates.push(row.variant??{name:row.item,level:0});return [...new Map(candidates.filter(i=>!bot.economy.explicit(i)).map(i=>[identity(i),disposition(i)])).values()].filter(Boolean).slice(0,64);}
- return {targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value,{scroll='',offering=''}={}){
+ return {recordHelpers(item,choice){if(helperQuotes.size>=32)helperQuotes.clear();helperQuotes.set(mutationContext(bot,item),{at:Date.now(),choice});},targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value,{scroll='',offering=''}={}){
   if(Number.isFinite(value)&&value>0&&value<=1&&scroll&&p.G.items?.[scroll]){
    if(chances.size>128)chances.clear();
    const key=chanceEvidenceKey(name,level,kind,scroll,offering);

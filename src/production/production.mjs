@@ -1,6 +1,8 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {purposeReservations} from './purpose-allocation.mjs';
+import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} from './helpers.mjs';
 import {estimateRoutes} from './costs.mjs';
-import {materialSources,materialDrops,exchangeSource} from './materials.mjs';
+import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
@@ -27,12 +29,13 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
 }
 export function needsProductionStock(available,required){return available<required;}
 export function createProduction(bot){
+ let helperSearch=null,demandBusy=false;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
  let deliveries=p.read(deliveryKey)??{};if(!deliveries||typeof deliveries!=='object'||Array.isArray(deliveries))deliveries={};
- const goals=()=>{if(goalsCache&&Number.isInteger(bot.decisionEpoch)&&goalsEpoch===bot.decisionEpoch)return goalsCache;const tools=cfg.production.autonomy&&bot.me.role==='merchant'?['fishing','mining'].filter(k=>cfg.merchant[k]).map(k=>({name:'Werkzeug: '+k,enabled:true,item:k==='fishing'?'rod':'pickaxe',level:0,quantity:1,recipient:'',budget:cfg.merchant.toolBudget,priority:55})).filter(g=>p.c.slots?.mainhand?.name!==g.item):[];goalsEpoch=bot.decisionEpoch;return goalsCache=[...cfg.production.goals,...(bot.gear?.goals()??[]),...(bot.elixirs?.goals()??[]),...(bot.intelligence?.profitGoals()??[]),...tools].filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority);};
+ const goals=()=>{if(goalsCache&&Number.isInteger(bot.decisionEpoch)&&goalsEpoch===bot.decisionEpoch)return goalsCache;const tools=cfg.production.autonomy&&bot.me.role==='merchant'?['fishing','mining'].filter(k=>cfg.merchant[k]).map(k=>({name:'Werkzeug: '+k,enabled:true,item:k==='fishing'?'rod':'pickaxe',level:0,quantity:1,recipient:'',budget:cfg.merchant.toolBudget,priority:55})).filter(g=>p.c.slots?.mainhand?.name!==g.item):[];goalsEpoch=bot.decisionEpoch;return goalsCache=[...cfg.production.goals,...(bot.gear?.goals()??[]),...(bot.elixirs?.goals()??[]),...(bot.supplies?.goals()??[]),...(bot.intelligence?.profitGoals()??[]),...tools].filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority);};
  function recordDelivery(j){
   if(j.kind!=='send'||!j.id||!j.to||typeof j.item!=='object')return true;if(Object.values(deliveries).some(x=>x.last?.includes(j.id)))return true;const next=structuredClone(deliveries);let changed=false,remaining=j.quantity;
   for(const g of goals().filter(g=>g.recipient===j.to&&g.item===j.item.name&&g.level===j.item.level&&variantMatches(j.item,g))){
@@ -42,7 +45,14 @@ export function createProduction(bot){
   if(changed){if(Object.keys(next).length>1024)return false;if(!p.write(deliveryKey,next))return false;deliveries=next;}return true;
  }
  function matchesOutput(i){const r=e.explicit(i,'production'),recipe=r?.recipe&&r.action==='craft'?findRecipe(p.G,i.name,r.recipe)?.recipe:null;return !recipe?.output?.data||JSON.stringify(i.data)===JSON.stringify(recipe.output.data);}
- function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
+ function demand(exclude=null,recipient='',recipientItem=null){
+  const nested=demandBusy;demandBusy=true;
+  try{return purposeReservations({G:p.G,goals:(nested?cfg.production.goals:goals()).filter(g=>!g.name.startsWith('Gewinnproduktion ')),exclude,recipient,recipientItem,
+   delivered:g=>deliveries[goalKey(g)]?.quantity??0,
+   stock:(name,level,variant)=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===level&&
+    (!variant||identity(i)===identity({name,level,...variant}))&&!i.l&&!i.b?(i.q??1):0),0)});}finally{demandBusy=nested;}
+ }
+ function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(cfg.production.purposeAllocation){const d=demand(g);return d.blocked?Infinity:Math.max(pending,d.rows.filter(r=>r.item===name&&r.level===level).reduce((n,r)=>n+r.quantity,0));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
  const variantMatches=(i,g)=>!g?.variant||g.item!==i.name||['stat_type','p','title','data'].every(k=>g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined)));
  const qty=(name,level,g=goal)=>{let total=0,reserve=0;const groups=new Map();for(const i of p.c.items){const r=i&&e.explicit(i);if(i?.name===name&&(i.level??0)===level&&matchesOutput(i)&&variantMatches(i,g)&&r?.action!=='keep'&&!i.l&&!i.b){total+=i.q??1;groups.set(identity(i),(groups.get(identity(i))??0)+(i.q??1));reserve=Math.max(reserve,(r?.keep??0)+(r?.teamReserve??0));}}if(p.G.items[name]?.compound&&groups.size)total=Math.max(...groups.values());return Math.max(0,total-reserve-reserveOther(name,level,g));};
  function generated(action,item,quantity,g=goal){return {...defaultsFor(ITEM_RULE),name:'Automatisch: '+(g?.name??'Material')+' / '+action+' / '+item.name,_autoProduction:true,role:bot.me.role,character:bot.me.name,item:item.name,minLevel:item.level??0,maxLevel:item.level??0,...(g?.variant&&g.item===item.name?{statType:g.variant.stat_type??'',property:g.variant.p??'',title:g.variant.title??''}:{}),action,priority:g?.priority??0,targetCount:quantity,maxCount:quantity,batch:Math.max(1,quantity),maxPrice:cfg.production.helperMaxPrice??100000,goldBudget:g?.budget??0,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,targetLevel:(item.level??0)+1};}
@@ -112,6 +122,30 @@ export function createProduction(bot){
   const inputs=[slot];if(kind==='compound')for(let n=0;n<p.c.items.length&&inputs.length<3;n++)if(n!==slot&&e.safe(p.c.items[n])&&identity(i)===identity(p.c.items[n]))inputs.push(n);
   if(kind==='compound'&&inputs.length!==3)return false;
   if(e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+  if(cfg.production.autoHelpers&&r._autoDisposition){
+   const context=mutationContext(bot,i);
+   if(helperSearch?.context!==context||Date.now()-helperSearch.at>30000)
+    helperSearch={context,at:Date.now(),rows:mutationHelpers(bot,i,kind),quotes:[],index:0};
+   const search=helperSearch,candidate=search.rows[search.index];
+   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
+   if(candidate){
+    if(exec.busy('economy'))return false;
+    const args=kind==='compound'?[...inputs,candidate.scrollSlot,candidate.offeringSlot]:[slot,candidate.scrollSlot,candidate.offeringSlot];
+    return exec.run('production.helper-preview',['economy'],()=>bot.running&&!bot.journal&&
+      mutationContext(bot,i)===context&&e.npcAt(d),()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{
+       if(helperSearch!==search||mutationContext(bot,i)!==context)return;
+       const chance=Number(result?.chance??result?.success_chance),fee=result?.cost??0;
+       search.quotes.push({...candidate,chance,cost:candidate.cost+(Number.isFinite(fee)&&fee>=0?fee:Infinity)});search.index++;
+      },()=>{if(helperSearch===search){search.quotes.push({...candidate,chance:NaN});search.index++;}}),{delay:1000});
+   }
+   const input=e.value(i),output=e.value({...i,level:(i.level??0)+1});
+   const choice=search.quotes.length&&search.quotes.every(q=>Number.isFinite(q.chance))?
+    planMutationHelpers(bot,i,search.quotes,kind,Math.max(r.minChance,cfg.production.minChance)):
+    {action:'bank',ev:input,reason:'helper-preview-unverified'};
+   bot.intelligence?.recordHelpers(i,choice);
+   if(choice.action!==kind)return false;
+   r={...r,scroll:choice.scroll,offering:choice.offering};
+  }
   const scrollName=r.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',i));
   const usable=x=>{const rule=x&&e.rules(x);return e.safe(x)&&rule?.action!=='keep'&&e.count(x)>(rule?rule.keep+rule.teamReserve:0)+reserveOther(x.name,x.level??0);};
   const scroll=p.c.items.findIndex(x=>x?.name===scrollName&&usable(x));const offering=r.offering?p.c.items.findIndex(x=>x?.name===r.offering&&usable(x)):null;
@@ -120,7 +154,7 @@ export function createProduction(bot){
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
   // Bind the preview to the current mutation definitions and user's rule.
   // Slot fingerprints alone do not capture changed minimum chance or scroll policy.
-  const policyProof=()=>JSON.stringify([p.G.items[i.name],p.G.items[scrollName],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production.minChance]);
+  const policyProof=()=>JSON.stringify([p.G.version,p.G.upgrades,p.G.compounds,p.G.items[i.name],p.G.items[scrollName],p.G.items[r.offering],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production,cfg.items]);
   const initialPolicyProof=policyProof();
   const key=kind+':'+slots.map(n=>fingerprint(p.c.items[n])).join('|')+':'+initialPolicyProof;
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
@@ -130,6 +164,13 @@ export function createProduction(bot){
   }
   const chance=preview.chance,cost=preview.cost;
   if(!Number.isFinite(chance)||chance>1||chance<Math.max(r.minChance,cfg.production.minChance)||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
+  if(cfg.production.autoHelpers&&r._autoDisposition){
+   const helperCost=slots.filter(n=>!inputs.includes(n)).reduce((sum,n)=>sum+Math.max(e.value(p.c.items[n]),p.G.items[p.c.items[n].name]?.g??0),0)+cost;
+   const check=cfg.production.finiteHelpers?planMutationHelpers(bot,i,helperSearch.quotes.map(q=>q.scroll===scrollName&&q.offering===(r.offering??'')?{...q,chance,cost:helperCost}:q),kind,Math.max(r.minChance,cfg.production.minChance)):bestMutationHelper([{chance,cost:helperCost,preserves:kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6}],{
+    inputValue:e.value(i),outputValue:e.value({...i,level:(i.level??0)+1}),factor:inputs.length,
+    minChance:Math.max(r.minChance,cfg.production.minChance),margin:cfg.production.minImprovement});
+   if(check.action!==kind||cfg.production.finiteHelpers&&(check.scroll!==scrollName||(check.offering??'')!==(r.offering??''))){bot.intelligence?.recordHelpers(i,check);return false;}
+  }
   const loss=slots.reduce((sum,n)=>sum+e.value(p.c.items[n]),0),before=e.count(i),next={...i,level:(i.level??0)+1},after=e.count(next),scrollBefore=p.c.items[scroll].q??1;
   const mutationReady=()=>{
    if(!cfg.production.enabled||!cfg.production[kind]||!p.G.items[i.name]?.[kind]||!e.remaining(r)||
@@ -143,10 +184,13 @@ export function createProduction(bot){
    if(offering!==null&&(p.c.items[offering]?.name!==r.offering||!usable(p.c.items[offering])))return false;
    return e.npcAt(d);
   };
+  let mutationResult=null;
   return e.perform(kind,{slots,cost,loss,rule:r,guard:mutationReady,
-   call:()=>p.call(kind,...args),observe:()=>{
+   call:()=>Promise.resolve(p.call(kind,...args)).then(result=>{mutationResult=result;return result;}),observe:()=>{
     const consumed=p.c.items[scroll]?.name!==scrollName||(p.c.items[scroll]?.q??1)<scrollBefore;
-    return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length);
+    const retainedFailure=kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6&&
+      mutationResult?.success===false&&!mutationResult.calculate&&e.count(i)===before&&identity(p.c.items[slot])===identity(i);
+    return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length||retainedFailure);
    },details:{item:i.name,before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
  }
  function craft(name,r){
@@ -228,7 +272,7 @@ export function createProduction(bot){
    const existing=p.c.items[slot];if(!existing)return false;
    const i={...existing},q=p.G.items[i.name]?.e;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.exchange||!Number.isSafeInteger(q)||q<1||e.spare(slot,r)<q)return false;
    if(e.count(i)-q<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
-   if(r.recipe){if(!materialDrops(p.G,p.G.drops?.[i.name]).some(x=>x.item===r.recipe)){e.note('Exchange-Ziel nicht in Spieldaten: '+r.recipe);return false;}if(qty(r.recipe,0)>=Math.min(r.targetCount,r.maxCount))return false;}
+   if(r.recipe){if(!exchangeDrops(p.G,p.G.drops?.[i.name]).some(x=>x.item===r.recipe)){e.note('Exchange-Ziel nicht in Spieldaten: '+r.recipe);return false;}if(qty(r.recipe,0)>=Math.min(r.targetCount,r.maxCount))return false;}
    if(!capacity([{slot,quantity:q}]))return false;
    const source=()=>exchangeSource(p.G,i.name,p.root?.S??p.parent?.S??{});
    const verified=source(),proof=x=>JSON.stringify({quest:x.quest,npc:x.npc,destination:x.destination,event:x.event});
@@ -307,6 +351,7 @@ export function createProduction(bot){
  }
  function updateMaterials(){if(!goal||plan[0]?.kind!=='farm'){materials=[];return;}const step=plan[0];materials=materialSources(p.G,step.item,step.quantity,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]}).slice(0,5).map(r=>({...r,objective:intent?.objective??knowledgeFingerprint(goalKey(goal)),priority:goal.priority??0,utilityPerHour:goal.utilityPerHour??0,expires:Date.now()+cfg.general.messageTtlMs*2,recipient:goal.recipient,sourceFingerprint:knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])}));}
  function reservedQuantity(i,recipient=''){
+  if(cfg.production.purposeAllocation)return demand(null,recipient,i).quantity(i);
   let n=0;for(const g of goals())if(!g.recipient&&(bot.me.role==='merchant'||g.gearSlot&&g.character===bot.me.name)&&g.item===i.name&&g.level===(i.level??0))n=Math.max(n,g.quantity);
   const allocated=plan.reservations?.find(r=>r.item===i.name&&r.level===(i.level??0));n=goal&&(goal.item!==i.name||goal.level!==(i.level??0))?n+(allocated?.quantity??0):Math.max(n,allocated?.quantity??0);
   n+=Math.max(0,...[...waiting.values()].filter(w=>w.until>Date.now()).flatMap(w=>w.reservations.filter(r=>r.item===i.name&&r.level===(i.level??0)).map(r=>r.quantity)));

@@ -19,7 +19,7 @@ export function createStrategy(bot){
  const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':activity?.kind==='quest'?'quest':me.role==='merchant'?'supply':'farm');
  const permittedMap=map=>!!p.G.maps?.[map]&&!w.excludedMaps.includes(map)&&(!p.G.maps[map].pvp||cfg.farming.pvp);
  function members(planned=false){return [p.c,...(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2)).map(h=>({...h,...h.stats,...h.gear?.stats,hp:h.hp,max_hp:h.max_hp}))].filter(c=>c.name!==cfg.party.merchant);}
- function risk(id,live,planned=false){return assessCombat({...p.G.monsters?.[id],...live,hp:Math.max(p.G.monsters?.[id]?.hp??0,live?.max_hp??live?.hp??0)},members(planned),w.risk,cfg.farming.maxAggro);}
+ function risk(id,live,planned=false){const boss=bot.bosses?.evaluate(id,live,planned||!live);if(boss)return boss;return assessCombat({...p.G.monsters?.[id],...live,hp:Math.max(p.G.monsters?.[id]?.hp??0,live?.max_hp??live?.hp??0)},members(planned),w.risk,cfg.farming.maxAggro);}
  function safeTarget(id,live,quiet=false,planned=false){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm
@@ -47,7 +47,8 @@ export function createStrategy(bot){
   manual={task:kind,id:id??null,until:Date.now()+ttlMs};activity=null;bot.target=null;bot.movement.stop();plannedAt=0;bot.event('strategy.request',{task:value,ttlMs});return true;
  }
  function encounter(kind,id){
-  let live=state()[id];const meta=p.G.events?.[id],visible=bot.monsters().find(m=>m.mtype===id&&p.G.monsters[id]?.boss);
+  let live=state()[id];const meta=p.G.events?.[id],visible=bot.monsters().find(m=>m.mtype===id&&p.G.monsters[id]&&
+   (kind==='boss'?w.allowedBosses:w.allowedEvents).includes(id));
   if(!live&&visible)live={live:true,type:id,map:visible.map,x:visible.real_x??visible.x,y:visible.real_y??visible.y};
   if(!live||typeof live!=='object'||!(live.live||live.active)||live.live===false||live.active===false||Number.isFinite(live.hp)&&live.hp<=0||Number.isFinite(live.expires)&&live.expires<Date.now())return null;
   const type=live.type&&p.G.monsters?.[live.type]?live.type:p.G.monsters?.[id]?id:null;

@@ -134,7 +134,7 @@ export function createBank(bot){
    // Adventure Land bank_store to an occupied slot can SWAP the stacks, not
    // combine them. Never dispatch against an occupied bank slot: the observed
    // live failure returned the previous bank stack to the inventory source.
-   const dest=items.findIndex(i=>!i);if(dest<0)continue;
+   const dest=items.findIndex(i=>!i);if(dest<0||items.filter(i=>!i).length<=(cfg.merchant.bankWorkspace??0))continue;
    const before=e.count(item),bankBefore=variantCount(items,item),q=item.q??1;
    const targetPrint=fingerprint(p.c.bank[pack][dest]);
    const targetBefore=p.c.bank[pack][dest];
@@ -143,7 +143,7 @@ export function createBank(bot){
    // the character-wide quantity while the bank request is in flight. Observe
    // the exact source slot and addressed bank stack instead of an aggregate
    // count that is unrelated to the bank transfer's success.
-   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&!p.c.bank[pack][dest]&&fingerprint(p.c.bank[pack][dest])===targetPrint&&e.spare(slot,r)>=q,
+   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&!p.c.bank[pack][dest]&&p.c.bank[pack].filter(i=>!i).length>(cfg.merchant.bankWorkspace??0)&&fingerprint(p.c.bank[pack][dest])===targetPrint&&e.spare(slot,r)>=q,
     call:()=>p.call('bank_store',slot,pack,dest),
     observe:()=>!p.c.items[slot]&&identity(p.c.bank?.[pack]?.[dest])===identity(item)&&(p.c.bank[pack][dest].q??1)===targetQuantity+q,
     details:{item:item.name,quantity:q,pack,before,sourceSlot:slot,bankSlot:dest,bankTargetBefore:targetPrint,bankTargetQuantity:targetQuantity}});
@@ -346,7 +346,7 @@ export function createBank(bot){
      !p.c.bank?.[r.pack]?.[r.slot]&&
      !p.c.items[r.dest]&&
      Number.isSafeInteger(r.expectedSaleGold)&&
-     p.c.gold===r.gold+r.expectedSaleGold){
+     r.saleConfirmed===true){
     if(p.write(reclaimKey,null))reclaiming=null;return true;
   }
   if(count===r.before&&p.c.bank&&bank===r.bankBefore&&
@@ -354,7 +354,10 @@ export function createBank(bot){
      if(p.write(reclaimKey,null))reclaiming=null;return true;
   }
   const item=p.c.items[r.dest],rule=item&&(e.explicit(item)??e.rules(item));
-  if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&!!eligibleBankSale(item)&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity});return true;}
+  if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&!!eligibleBankSale(item)&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity},{onConfirmed:()=>{
+   const next={...r,saleConfirmed:true};if(!p.write(reclaimKey,next))return false;
+   reclaiming=next;return true;
+  }});return true;}
   e.note('Bankfreigabe: Bestand oder Verkaufsregel geändert; Auftrag benötigt Prüfung');return true;
  }
  function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}

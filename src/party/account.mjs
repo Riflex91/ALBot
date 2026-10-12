@@ -1,9 +1,12 @@
-export function selectAccountTeam(members,limit,{boss=false,leader='',current=[],synergy=false,damageType='physical'}={}){
+export function selectAccountTeam(members,limit,{boss=false,leader='',current=[],synergy=false,damageType='physical',preferredClasses=[]}={}){
  const chosen=[],add=x=>{if(x&&!chosen.includes(x.name)&&chosen.length<limit)chosen.push(x.name);};
  for(const x of members)if(x.name===leader||!x.rotation&&current.includes(x.name))add(x);
  const maxLevel=Math.max(1,...members.map(x=>x.level??0));
  const ranked=members.filter(x=>(x.running||x.level>0&&x.class!=='auto')&&(x.rotation||current.includes(x.name)||x.name===leader)).map((x,index)=>({...x,index,score:(x.running?5:0)+(x.catchUp?3+10*(maxLevel-(x.level??0))/maxLevel:0)+(x.level??0)/100+(x.class==='ranger'?2:1)})).sort((a,b)=>b.score-a.score||a.index-b.index);
- if(boss){add(ranked.find(x=>x.class==='priest'));add(ranked.find(x=>['warrior','paladin'].includes(x.class)));}
+ if(boss){
+  for(const c of preferredClasses)add(ranked.find(x=>!chosen.includes(x.name)&&(x.class===c||c==='warrior'&&x.class==='paladin')));
+  add(ranked.find(x=>x.class==='priest'));add(ranked.find(x=>['warrior','paladin'].includes(x.class)));
+ }
  if(synergy){while(chosen.length<limit){const classes=chosen.map(name=>members.find(x=>x.name===name)?.class),candidates=ranked.filter(x=>!chosen.includes(x.name)).map(x=>{
    const s=x.stats??{},damage=Math.max(0,(s.attack??0)*(s.frequency??1)),defense=damageType==='magical'?s.resistance:s.armor;
    const survivability=Math.log1p(Math.max(0,s.max_hp??0))/2+Math.log1p(Math.max(0,defense??0))/3;
@@ -118,7 +121,8 @@ export function createAccount(bot){
   if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
   const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,hp:h?.hp,max_hp:h?.max_hp,stats:h?.gear?.stats??g?.stats};});
   const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();
-  const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:['boss','event'].includes(task),leader:cfg.party.leader,current:bot.farmers,synergy:!!cfg.party.gearSynergy,damageType:p.G.monsters[leaderActivity?.target??bot.target?.mtype]?.damage_type});
+  const bossObjective=bot.bosses?.objective();
+  const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),preferredClasses:bossObjective?.recommended??[],leader:cfg.party.leader,current:bot.farmers,synergy:!!cfg.party.gearSynergy,damageType:p.G.monsters[bossObjective?.id??leaderActivity?.target??bot.target?.mtype]?.damage_type});
   bot.accountChoice={names:target,reason:cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte, Catch-up und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder'};
   const elected=cfg.party.leader||chooseCombatLeader(members.filter(x=>target.includes(x.name)))||bot.leader;
   if(JSON.stringify(target)===JSON.stringify(bot.farmers)){if(elected!==bot.leader&&apply(target,elected)){sequence++;bot.event('account.leader',{leader:elected,reason:'Bekannte aktuelle Fähigkeiten, Schutz und Kampfstärke'});}return;}

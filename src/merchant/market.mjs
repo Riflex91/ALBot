@@ -26,9 +26,9 @@ export function createMarket(bot){
   // Never publish an old ask below the currently permitted minimum price.
   return e.perform('market.list',{slots:[slot],rule:r,guard:()=>{
    const currentFloor=price(item,r,true);
-   return !!p.c.stand&&r.slot===tradeSlot&&!p.c.slots[tradeSlot]&&e.spare(slot,r)>=q&&
+   return (!r._autoMarket||!!bot.marketDemand?.proposal(item,{...r,action:'sell'}))&&!!p.c.stand&&r.slot===tradeSlot&&!p.c.slots[tradeSlot]&&e.spare(slot,r)>=q&&
     Number.isSafeInteger(currentFloor)&&unitPrice>=currentFloor;
-  },call:()=>p.call('trade',slot,tradeSlot,unitPrice,q),observe:()=>{const x=p.c.slots[tradeSlot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},details:{item:item.name,variant:identity(item),quantity:q,before}});
+  },call:()=>p.call('trade',slot,tradeSlot,unitPrice,q),observe:()=>{const x=p.c.slots[tradeSlot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},onConfirmed:()=>bot.marketDemand?.posted(tradeSlot,item,r)??true,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
  function buy(item,r){
   for(const player of Object.values(p.entities)){

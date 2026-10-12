@@ -7,6 +7,14 @@ export function materialDrops(G,table,multiplier=1,seen=new Set()){
   else if(row[1]!=='open')rows.push({item:row[1],chance:row[0]*multiplier,quantity:Math.max(1,Number(row[2])||1)});
  }return rows;
 }
+// Exchange/open tables are weighted choices; monster rows are independent.
+// Normalize only the choice root. Nested `open` nodes retain their own weight.
+export function exchangeDrops(G,table){
+ if(!Array.isArray(table)||!table.length)return [];
+ if(table.some(r=>!Array.isArray(r)||!Number.isFinite(r[0])||r[0]<0))return [];
+ const total=table.reduce((sum,r)=>sum+r[0],0);
+ return total>0?materialDrops(G,table,1/total):[];
+}
 export function materialSources(G,item,quantity,allowedMonsters,maxHours,rate=()=>({value:20,source:'configured-estimate'}),context={}){
  const result=[];for(const monster of allowedMonsters){const drops=materialDrops(G,G.drops?.monsters?.[monster]).filter(x=>x.item===item),yieldPerKill=drops.reduce((n,x)=>n+x.chance*x.quantity,0);
   if(!(yieldPerKill>0))continue;const meta=G.monsters?.[monster],eventInfo=materialEvent(G,monster,context.state),event=eventInfo.id;

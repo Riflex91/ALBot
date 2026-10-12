@@ -1,3 +1,27 @@
+# Aktueller Kandidat 0.10.0 – 12.10.2026
+
+Restmodule für gemeinsame Itemreservierung, endliche Upgrade-/Compound-Planung, belegte Marktverkäufe, Bossbereitschaft, adaptives Lernen, optionale KI sowie begrenzte Cloud-Rotation und Restore sind eingebunden. **Die neue Liveabnahme steht noch aus.**
+
+- [Einrichtung und Live-Testmatrix](docs/EINRICHTUNG-0.10.0.md)
+- [Implementierung, Codezuordnung und tatsächliche Grenzen](docs/IMPLEMENTIERUNGSSTAND-0.10.0.md)
+- [Quellbelegter Bosskatalog](docs/BOSS-KATALOG.md)
+- [Draft PR #32](https://github.com/Riflex91/ALBot/pull/32), Branch `codex/autonomous-merchant-20261012`
+
+Cloud und KI bleiben standardmäßig aus. Neue Projekte in bestehenden Konten, neue Secrets, kein Altimport. Eine automatische kontoweite Abrechnungsprüfung ist nicht implementiert; Free-Tarife, Anbieter-Caps und alle sieben Tage manuell bestätigte Kontingente sind Voraussetzung. Funktionen können lokal ohne Cloud laufen.
+
+Offline-Abnahme: **481/481 Tests** auf Windows/Node 24, Runtime und Werkstatt gebaut, gemeinsames Bundle **410.613 Bytes**. Worker mit Wrangler 4.149.0 als Dry-run gebaut; kein Deployment, keine neue Spiel-/Provider-Liveabnahme.
+
+Die folgenden Einträge sind historisch und gelten nicht als aktuelle Liste offener Implementierungsarbeiten.
+
+---
+
+# Aktueller Kandidat 0.9.0 – 12.10.2026
+
+Offline-Abnahme auf Windows/Node 24: **465/465 Tests**, Runtime und Werkstatt gebaut, Bundle **387.037 Bytes**. Keine neue Linux-, Spielserver- oder Provider-Liveabnahme. Ein Regressionstest hat eine zu lange Trank-Abkühlung durch Fehlerlernen aufgedeckt; Überlebensaktionen behalten ihren bisherigen Wiederholungsabstand.
+
+Merchant-/Item-Ergänzungen, lokale Fehlerabkühlung und optionale neue Cloud-Backups sind implementiert. **Der vollständige Autonomieauftrag ist noch nicht abgeschlossen.** Einrichtung: [EINRICHTUNG-0.9.0](docs/EINRICHTUNG-0.9.0.md). Funktionen, Grenzen und konkrete Restarbeit: [IMPLEMENTIERUNGSSTAND-0.9.0](docs/IMPLEMENTIERUNGSSTAND-0.9.0.md). Cloud standardmäßig aus; neue Projekte in bestehenden Konten, keine alten Daten oder Schlüssel. Keine neuen Live-Nachweise. Die folgenden älteren Einträge beschreiben ihren jeweiligen historischen Stand.
+
+---
 ## Browser-Livetest-Vorbereitung: Smart-Move-Fix (11.10.2026)
 
 - **Auf PR #9 umgesetzt (nicht `main`):** Ein ausstehendes `smart_move` wird nicht mehr nach 12 s Positionsstillstand fälschlich beendet; maximale 120 s Wegzeit bleibt bestehen. Parent-geführte `smart.moving/searching`-Pfade werden bei STOP sowie vor `town` berücksichtigt. Bewahrte Merchant-Town-Strategie, Sicherheitsgrenzen und Executor-Ressourcen. Diagnosen nennen `movement.failed` mit `no_progress` oder `timeout`.

@@ -32,7 +32,8 @@
         "catchUp": false,
         "goldReserve": 10000,
         "gearRole": "auto",
-        "farmTargets": []
+        "farmTargets": [],
+        "merchantMobility": "mobile"
       }
     ],
     "farming": {
@@ -86,8 +87,8 @@
       "energize": true,
       "buffs": true,
       "revive": true,
-      "aoe": false,
-      "aoeMaxTargets": 3,
+      "aoe": true,
+      "aoeMaxTargets": 5,
       "rotationCooldownMs": 60000,
       "aura": "auto",
       "auraHoldMs": 30000,
@@ -98,7 +99,7 @@
     "merchant": {
       "enabled": true,
       "goldReserve": 100000,
-      "maxSpendPerHour": 1000000,
+      "maxSpendPerHour": 2000000,
       "pickup": true,
       "supply": true,
       "maxDelivery": 100,
@@ -115,8 +116,8 @@
       "massBuffs": true,
       "bank": true,
       "consolidate": false,
-      "expandBank": false,
-      "bankBudget": 0,
+      "expandBank": true,
+      "bankBudget": 1000000000,
       "bankGold": false,
       "goldTarget": 200000,
       "partialBank": false,
@@ -139,11 +140,15 @@
       "goldCollectBelow": 10000,
       "bankWorkspace": 2,
       "bankReclaim": false,
+      "pickupThreshold": 30,
+      "bankExpandGoldFraction": 0.75,
       "marketMinSamples": 3,
       "mluckTravel": true,
       "townTravel": true,
       "townMinSavingsMs": 3000,
-      "servicePositionError": 70
+      "servicePositionError": 70,
+      "autoMarket": true,
+      "listingTtlMs": 3600000
     },
     "items": [],
     "production": {
@@ -155,7 +160,7 @@
       "gear": false,
       "offlineProfiles": true,
       "minImprovement": 0.05,
-      "lossBudget": 0,
+      "lossBudget": 1000000,
       "minChance": 1,
       "maxChainDepth": 8,
       "maxFarmHours": 12,
@@ -174,8 +179,9 @@
       "travelSpeed": 50,
       "helperMaxPrice": 100000,
       "gearTargets": [],
+      "progressionAdvice": true,
       "autoGear": false,
-      "autoGearMaxLevel": 3,
+      "autoGearMaxLevel": 5,
       "autoGearBudget": 100000,
       "autoGearItems": [
         "helmet",
@@ -189,12 +195,22 @@
         "blade",
         "shield"
       ],
+      "autoProfitMaxLevel": 5,
       "optimizeGear": true,
       "autoDisposition": true,
       "autoSellMaxValue": 100,
+      "autoGearSellMaxValue": 1000000,
       "farmConfidence": "p90",
       "materialPreference": 1.25,
-      "materialXpPerGold": 10
+      "materialXpPerGold": 10,
+      "skillSupplies": true,
+      "skillSupplyCount": 20,
+      "tokenBuy": false,
+      "tokenMaxPerPurchase": 1,
+      "dismantle": false,
+      "autoHelpers": false,
+      "purposeAllocation": true,
+      "finiteHelpers": true
     },
     "world": {
       "bosses": false,
@@ -208,13 +224,20 @@
       "serverHop": false,
       "allowedRealms": [],
       "hopCooldownMs": 300000,
+      "homeRealm": "",
+      "homeRetryMs": 600000,
+      "homeCheckMs": 90000,
+      "homePressureThreshold": 0.65,
       "magiport": false,
       "learning": true,
       "learningWeight": 0.15,
       "cacheTtlMs": 60000,
       "questTargets": true,
       "autoHop": true,
-      "questPreference": 1.1
+      "questPreference": 1.1,
+      "bossTactics": true,
+      "bossMaxSeconds": 300,
+      "adaptiveLearning": true
     },
     "rules": []
   }

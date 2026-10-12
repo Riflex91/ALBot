@@ -266,6 +266,19 @@
               },
               "default": [],
               "maxItems": 500
+            },
+            "merchantMobility": {
+              "type": "string",
+              "title": "Merchant-Bewegungsprofil",
+              "enum": [
+                "mobile",
+                "stationary"
+              ],
+              "default": "mobile",
+              "x-labels": {
+                "mobile": "Mobiler Versorger: Geschwindigkeitsverlust sperren",
+                "stationary": "Stationärer Händler: Speed gegen Luck abwägen"
+              }
             }
           },
           "required": [
@@ -280,7 +293,8 @@
             "catchUp",
             "goldReserve",
             "gearRole",
-            "farmTargets"
+            "farmTargets",
+            "merchantMobility"
           ],
           "additionalProperties": false
         },
@@ -638,12 +652,12 @@
           "aoe": {
             "type": "boolean",
             "title": "AoE erlauben",
-            "default": false
+            "default": true
           },
           "aoeMaxTargets": {
             "type": "integer",
             "title": "AoE-Zielgrenze",
-            "default": 3,
+            "default": 5,
             "minimum": 1,
             "maximum": 20
           },
@@ -1031,7 +1045,7 @@
           "maxSpendPerHour": {
             "type": "integer",
             "title": "Maximale Goldausgaben pro Stunde",
-            "default": 1000000,
+            "default": 2000000,
             "minimum": 0,
             "maximum": 1000000000000
           },
@@ -1131,12 +1145,12 @@
           "expandBank": {
             "type": "boolean",
             "title": "Bankkapazität kaufen",
-            "default": false
+            "default": true
           },
           "bankBudget": {
             "type": "integer",
             "title": "Budget für Bankerweiterung",
-            "default": 0,
+            "default": 1000000000,
             "minimum": 0,
             "maximum": 1000000000000
           },
@@ -1274,6 +1288,20 @@
             "title": "Bei Bankdruck explizit verkäuflichen Bestand zum NPC freigeben",
             "default": false
           },
+          "pickupThreshold": {
+            "type": "integer",
+            "title": "Abholung starten ab teamweit übergabefähigen Inventarplätzen",
+            "default": 30,
+            "minimum": 1,
+            "maximum": 126
+          },
+          "bankExpandGoldFraction": {
+            "type": "number",
+            "title": "Bankerweiterung maximal als Anteil des aktuellen Merchant-Golds",
+            "default": 0.75,
+            "minimum": 0,
+            "maximum": 1
+          },
           "marketMinSamples": {
             "type": "integer",
             "title": "Unabhängige Marktanbieter für Preisreferenz",
@@ -1304,6 +1332,18 @@
             "default": 70,
             "minimum": 10,
             "maximum": 300
+          },
+          "autoMarket": {
+            "type": "boolean",
+            "title": "Überschuss anhand bestätigter Marktumsätze anbieten",
+            "default": true
+          },
+          "listingTtlMs": {
+            "type": "integer",
+            "title": "Automatische Angebote spätestens zurücknehmen (ms)",
+            "default": 3600000,
+            "minimum": 60000,
+            "maximum": 86400000
           }
         },
         "required": [
@@ -1762,7 +1802,7 @@
           "lossBudget": {
             "type": "integer",
             "title": "Verlustbudget pro Stunde (Goldwert)",
-            "default": 0,
+            "default": 1000000,
             "minimum": 0,
             "maximum": 1000000000000
           },
@@ -2018,6 +2058,11 @@
             "default": [],
             "maxItems": 500
           },
+          "progressionAdvice": {
+            "type": "boolean",
+            "title": "Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen",
+            "default": true
+          },
           "autoGear": {
             "type": "boolean",
             "title": "Bekannte Ausrüstung bis zum konfigurierten Level verbessern",
@@ -2026,7 +2071,7 @@
           "autoGearMaxLevel": {
             "type": "integer",
             "title": "Automatische Gear-Zielgrenze",
-            "default": 3,
+            "default": 5,
             "minimum": 0,
             "maximum": 99
           },
@@ -2060,6 +2105,13 @@
               "shield"
             ]
           },
+          "autoProfitMaxLevel": {
+            "type": "integer",
+            "title": "Maximales Level für die autonome Gewinnrechnung",
+            "default": 5,
+            "minimum": 0,
+            "maximum": 12
+          },
           "optimizeGear": {
             "type": "boolean",
             "title": "Gearalternativen und Ziellevel wirtschaftlich auswählen",
@@ -2072,8 +2124,15 @@
           },
           "autoSellMaxValue": {
             "type": "integer",
-            "title": "Automatischer NPC-Verkauf höchstens Itemwert",
+            "title": "Legacy-Grenze für automatischen Verkauf normaler Items",
             "default": 100,
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "autoGearSellMaxValue": {
+            "type": "integer",
+            "title": "Automatischer Ausrüstungsverkauf: maximaler NPC-Stückwert nach Team-/Gewinnprüfung",
+            "default": 1000000,
             "minimum": 0,
             "maximum": 1000000
           },
@@ -2099,6 +2158,50 @@
             "default": 10,
             "minimum": 0,
             "maximum": 100000
+          },
+          "skillSupplies": {
+            "type": "boolean",
+            "title": "Skill-Verbrauchsmaterial automatisch nachliefern",
+            "default": true
+          },
+          "skillSupplyCount": {
+            "type": "integer",
+            "title": "Zielvorrat je Skill-Verbrauchsmaterial",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "tokenBuy": {
+            "type": "boolean",
+            "title": "Explizite Inventarziele aus vorhandenen Token kaufen",
+            "default": false
+          },
+          "tokenMaxPerPurchase": {
+            "type": "integer",
+            "title": "Token je Kauf maximal",
+            "default": 1,
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "dismantle": {
+            "type": "boolean",
+            "title": "Verifizierten Verkaufsüberschuss wirtschaftlich zerlegen",
+            "default": false
+          },
+          "autoHelpers": {
+            "type": "boolean",
+            "title": "Vorhandene Scrolls/Offerings per Servervorschau wirtschaftlich vergleichen",
+            "default": false
+          },
+          "purposeAllocation": {
+            "type": "boolean",
+            "title": "Gemeinsame Zweckallokation für alle Produktionsziele",
+            "default": true
+          },
+          "finiteHelpers": {
+            "type": "boolean",
+            "title": "Endliche Mehrschrittplanung mit vorhandenen Helfern",
+            "default": true
           }
         },
         "required": [
@@ -2123,6 +2226,7 @@
           "travelSpeed",
           "helperMaxPrice",
           "gearTargets",
+          "progressionAdvice",
           "autoGear",
           "autoGearMaxLevel",
           "autoGearBudget",
@@ -2243,6 +2347,33 @@
             "minimum": 60000,
             "maximum": 86400000
           },
+          "homeRealm": {
+            "type": "string",
+            "title": "Heimserver (optional, z. B. EUII)",
+            "default": "",
+            "maxLength": 160
+          },
+          "homeRetryMs": {
+            "type": "integer",
+            "title": "Heimserver frühestens erneut testen nach (ms)",
+            "default": 600000,
+            "minimum": 600000,
+            "maximum": 86400000
+          },
+          "homeCheckMs": {
+            "type": "integer",
+            "title": "Heimspawn mindestens beobachten (ms)",
+            "default": 90000,
+            "minimum": 60000,
+            "maximum": 3600000
+          },
+          "homePressureThreshold": {
+            "type": "number",
+            "title": "Heimspawn überfüllt ab Druckwert",
+            "default": 0.65,
+            "minimum": 0.3,
+            "maximum": 1
+          },
           "magiport": {
             "type": "boolean",
             "title": "Abgesprochener Magiport",
@@ -2283,6 +2414,23 @@
             "default": 1.1,
             "minimum": 0,
             "maximum": 100
+          },
+          "bossTactics": {
+            "type": "boolean",
+            "title": "Bossprofile und Gruppenbereitschaft prüfen",
+            "default": true
+          },
+          "bossMaxSeconds": {
+            "type": "integer",
+            "title": "Maximale Bosskampfzeit (s)",
+            "default": 300,
+            "minimum": 10,
+            "maximum": 1800
+          },
+          "adaptiveLearning": {
+            "type": "boolean",
+            "title": "Begrenzte Strategieanpassungen aus bestätigten Ergebnissen",
+            "default": true
           }
         },
         "required": [
@@ -2297,6 +2445,10 @@
           "serverHop",
           "allowedRealms",
           "hopCooldownMs",
+          "homeRealm",
+          "homeRetryMs",
+          "homeCheckMs",
+          "homePressureThreshold",
           "magiport",
           "learning",
           "learningWeight",

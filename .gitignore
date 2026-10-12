@@ -1,1 +1,5 @@
 node_modules/
+
+cloud/.dev.vars
+cloud/.wrangler/
+cloud/wrangler.local.jsonc

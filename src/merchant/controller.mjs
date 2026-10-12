@@ -414,13 +414,15 @@ export function createMerchant(bot){
   }
   if(standDepot())return;
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
+  if(bot.conversions)add('conversions',{priority:-350},()=>bot.conversions.tick());
+  if(bot.marketDemand)add('market.expire',{priority:100},()=>bot.marketDemand.expire());
   for(let slot=0;slot<p.c.items.length;slot++){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
    for(const [phase,r] of [['inventory',inventory],['production',production]]){
     if(!r||!e.remaining(r)||['keep','send','consume'].includes(r.action))continue;
     if(['sell','bank','list','exchange'].includes(r.action)&&e.spare(slot,r)<1)continue;
     if(['upgrade','compound'].includes(r.action)&&(i.level??0)>=r.targetLevel)continue;
-    let run;if(r.action==='sell')run=()=>r._autoDisposition===true&&(bot.market?.sellToBid?.(slot,r)??false)||e.npcSell(slot,r);
+    let run;if(r.action==='sell')run=()=>{if(r._autoDisposition===true&&bot.market?.sellToBid?.(slot,r))return true;const ask=me.role==='merchant'?bot.marketDemand?.proposal(i,r):null;return ask?bot.market.listing(slot,ask):e.npcSell(slot,r);};
     if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
     if(me.role==='merchant'){
      if(r.action==='bank')run=()=>bot.bank.store(slot,r);

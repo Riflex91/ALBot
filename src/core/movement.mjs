@@ -35,6 +35,13 @@ export function createMovement(bot){
     if(bot.me?.role==='merchant'&&exec.busy('stand'))return false;
     if(p.c.stand){exec.run('stand.close',['stand'],()=>bot.running&&!!p.c.stand,()=>p.call('close_stand'),{delay:1000});return false;}
     const dest={...d,radius:d.radius??20};
+    // Reject a previously failed economy waypoint BEFORE requesting another
+    // native smart route; otherwise the same inaccessible NPC/office can
+    // trigger repeated route failures every three seconds.
+    if(failedRecently(dest,owner)){
+      bot.reason='Wegpunkt nach Smart-Move-Fehler vorübergehend gesperrt';
+      return false;
+    }
     // Smart movement can enter public maps; never attempt somebody else's instance.
     if(!samePlace(p.c,d)&&p.G.maps[d.map]?.instance){bot.reason='Zielinstanz nicht erreichbar';return false;}
     const spawn=p.G.maps[p.c.map]?.spawns?.[0];if(bot.me?.role==='merchant'&&bot.cfg.merchant.townTravel!==false&&samePlace(p.c,d)&&Array.isArray(spawn)&&p.has('town')&&!p.c.c?.town&&Date.now()-lastTown>30000&&!bot.monsters().some(m=>m.target===p.c.name)){const speed=Math.max(1,p.c.speed??40),walk=distance(p.c,d)/speed*1000,town=townMs+Math.hypot(spawn[0]-d.x,spawn[1]-d.y)/speed*1000;bot.event?.('travel.compare',{owner,walkMs:Math.round(walk),townMs:Math.round(town),savedMs:Math.round(walk-town),threshold:bot.cfg.merchant.townMinSavingsMs??3000,reason:'Town-Kanal plus Restweg gegen direkten Laufweg'});if(walk-town>(bot.cfg.merchant.townMinSavingsMs??3000)){let at=0;townQueued=true;const accepted=exec.run('travel.town',['movement'],()=>bot.running&&!bot.monsters().some(m=>m.target===p.c.name),()=>{lastTown=Date.now();at=lastTown;if(p.c.moving||smartActive())p.call('stop','move');bot.event?.('travel.town',{owner,map:p.c.map,reason:'Town spart Reisezeit; laufenden Weg vor Kanal beenden'});return p.call('town');},{priority:['logistics','gold'].includes(owner)?850:400,timeout:15000,delay:30000,waitForObservation:true,observe:()=>samePlace(p.c,d)&&!p.c.c?.town&&Math.hypot(xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])<60,onSettle(result){townQueued=false;if(result==='confirmed')townMs=(townMs+Date.now()-at)/2;}});if(!accepted)townQueued=false;return false;}}

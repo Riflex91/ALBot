@@ -109,6 +109,14 @@ export function createMerchant(bot){
   }
   if(!bot.movement.order)bot.gold?.travel();
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
+  // Do not head back to the bank/market after one received stack while a
+  // nearby farmer is still cycling its heartbeat's advertised loot variants.
+  // The on-site lease is bounded and yields immediately when inventory
+  // workspace is exhausted; it never suppresses emergency/supply travel.
+  if(bot.logistics.pickupOnSite?.()){
+    bot.reason='Beute-Abholung vor Ort: Farmer-Inventar abarbeiten';
+    return;
+  }
   if(bot.movement.order?.owner==='economy'){bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;}
   if(bot.services?.approaching){const continued=bot.services.tick();if(continued||bot.services.approaching)return;}
   if(bot.services?.active&&bot.services.status().gathering){bot.services.tick();return;}

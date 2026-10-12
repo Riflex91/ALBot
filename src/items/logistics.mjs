@@ -212,15 +212,24 @@ export function createLogistics(bot){
         return;
       }else return; // Active route is current; do not schedule other jobs.
     }
+    const peers=(bot.farmers??[]).map(name=>transport.fresh(name));
+    const complete=peers.length>0&&peers.every(h=>h?.running&&!h.rip&&
+      h.realm===p.realm()&&Number.isSafeInteger(h.lootSlots));
+    const lootSlots=complete?peers.reduce((n,h)=>n+h.lootSlots,0):0;
+    if(complete&&lootSlots>=(cfg.merchant.pickupThreshold??30)&&!pickupCycle){
+      pickupCycle=true;
+      bot.event?.('logistics.pickupTriggered',{slots:lootSlots,threshold:cfg.merchant.pickupThreshold??30});
+    }
+    if(complete&&lootSlots===0)pickupCycle=false;
     const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
     for(const [name] of [...transport.peers].sort((a,b)=>(a[0]===bot.merchant?.serviceTarget?.()?-1000:0)-(b[0]===bot.merchant?.serviceTarget?.()?-1000:0)||urgency(b[0])-urgency(a[0]))){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
       const requested=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
        const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
        const elixirRequested=cfg.merchant.supply&&h.elixir?.quantity===1&&p.c.items.some((i,slot)=>{const r=i&&i.name===h.elixir.item&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;});
        const demand=requested||gearRequested||elixirRequested;
-      const pickup=cfg.merchant.pickup&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
+      const pickup=cfg.merchant.pickup&&pickupCycle&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&localBankBatch())continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&localBankBatch())continue;
         // Plan and complete inventory preparation BEFORE leaving for the
         // farmer. A full inventory must not hide its own pickup demand.
         if(pickup&&!urgent&&bot.merchant?.preparePickup?.(h)===false)return;

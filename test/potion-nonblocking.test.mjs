@@ -17,7 +17,7 @@ test('only verified official potion consume journals may be released without a v
 
 function fixture(){
  let now=10000,consume=false;
- const c={name:'Ranger1',ctype:'ranger',map:'main',in:'main',x:0,y:0,hp:30,max_hp:100,mp:100,max_mp:100,rip:false,
+ const c={name:'Ranger1',ctype:'ranger',map:'main',in:'main',x:0,y:0,hp:200,max_hp:600,mp:100,max_mp:100,rip:false,
   items:[{name:'hpot0',level:0,q:5}],slots:{}};
  const events=[],calls=[],bot={running:true,inventoryBlocked:false,journal:null,me:{name:'Ranger1',role:'farmer'},
   cfg:{farming:{hpBelow:.5,mpBelow:.2,restBelow:.1,resumeAbove:.85,potionUtilization:.65,potions:true}},

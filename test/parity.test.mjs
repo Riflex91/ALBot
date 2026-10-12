@@ -24,7 +24,7 @@ test('craft count distinguishes dispatch batches from produced units including r
  assert.equal(plan[0].quantity,3);assert.equal(plan[1].quantity,3);assert.equal(plan[1].outputQuantity,15);
 });
 test('P90 exchange procurement plans conservative actual input after existing stock',()=>{
- const G={items:{ticket:{e:2},prize:{}},drops:{ticket:[[.1,'prize']]}};
+ const G={items:{ticket:{e:2},prize:{}},drops:{ticket:[[.1,'prize'],[.9,null]]}};
  const input=confidence=>planProduction({G,item:'prize',quantity:1,stock:n=>n==='ticket'?2:0,bank:()=>0,canBuy:()=>false,allowed:['exchange','farm'],confidence})[0].quantity;
  assert.ok(input('p90')>input('mean'));assert.equal(input('mean'),18);
 });

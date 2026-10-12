@@ -1,3 +1,10 @@
+# Aktueller Kandidat 0.9.0 – 12.10.2026
+
+Offline-Abnahme auf Windows/Node 24: **465/465 Tests**, Runtime und Werkstatt gebaut, Bundle **387.037 Bytes**. Keine neue Linux-, Spielserver- oder Provider-Liveabnahme. Ein Regressionstest hat eine zu lange Trank-Abkühlung durch Fehlerlernen aufgedeckt; Überlebensaktionen behalten ihren bisherigen Wiederholungsabstand.
+
+Merchant-/Item-Ergänzungen, lokale Fehlerabkühlung und optionale neue Cloud-Backups sind implementiert. **Der vollständige Autonomieauftrag ist noch nicht abgeschlossen.** Einrichtung: [EINRICHTUNG-0.9.0](docs/EINRICHTUNG-0.9.0.md). Funktionen, Grenzen und konkrete Restarbeit: [IMPLEMENTIERUNGSSTAND-0.9.0](docs/IMPLEMENTIERUNGSSTAND-0.9.0.md). Cloud standardmäßig aus; neue Projekte in bestehenden Konten, keine alten Daten oder Schlüssel. Keine neuen Live-Nachweise. Die folgenden älteren Einträge beschreiben ihren jeweiligen historischen Stand.
+
+---
 ## Browser-Livetest-Vorbereitung: Smart-Move-Fix (11.10.2026)
 
 - **Auf PR #9 umgesetzt (nicht `main`):** Ein ausstehendes `smart_move` wird nicht mehr nach 12 s Positionsstillstand fälschlich beendet; maximale 120 s Wegzeit bleibt bestehen. Parent-geführte `smart.moving/searching`-Pfade werden bei STOP sowie vor `town` berücksichtigt. Bewahrte Merchant-Town-Strategie, Sicherheitsgrenzen und Executor-Ressourcen. Diagnosen nennen `movement.failed` mit `no_progress` oder `timeout`.

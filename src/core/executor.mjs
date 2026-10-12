@@ -1,6 +1,6 @@
 // Bounded resource owners, no queued closures carrying obsolete inventory slots.
 export class Executor {
-  constructor({now,active,limit,onError,onEvent=()=>{}}){Object.assign(this,{now,active,limit,onError,onEvent});this.pending=new Map();this.generation=0;this.cooldowns=new Map();this.frame=null;this.waiting=new Map();}
+  constructor({now,active,limit,onError,onEvent=()=>{},retryDelay=()=>3000}){Object.assign(this,{now,active,limit,onError,onEvent,retryDelay});this.pending=new Map();this.generation=0;this.cooldowns=new Map();this.frame=null;this.waiting=new Map();}
   busy(resource){return [...this.pending.values()].some(p=>p.resources.includes(resource));}
   run(key,resources,guard,invoke,options={}){if(this.frame){if(!this.active()||this.frame.some(j=>j.key===key)||this.pending.has(key)||(this.cooldowns.get(key)||0)>this.now()||!guard())return false;if(!this.waiting.has(key))this.waiting.set(key,this.now());this.frame.push({key,resources,guard,invoke,options});return true;}return this.dispatch(key,resources,guard,invoke,options);}
   beginFrame(){this.frame=[];}
@@ -17,10 +17,16 @@ export class Executor {
     for(const [key,p] of this.pending){
       let observed=false;try{observed=p.observe?.()===true;}catch{}
       if(observed||(!p.value&&p.settled&&(!p.waitForObservation||p.error))||now>=p.deadline){
-        this.pending.delete(key);this.cooldowns.set(key,now+(p.error?3000:p.delay));
+        this.pending.delete(key);
         const result=observed?'confirmed':p.value?'unknown':p.error?'rejected':p.settled&&!p.waitForObservation?'returned':'timeout';
-        this.onEvent('action.end',{key,result,error:p.error?.message??p.error?.reason??''});
-        if(p.error||result==='timeout')this.onError(key,p.error??result);p.onSettle(result,p.error??p.result);
+        const randomFailure=observed&&['upgrade','compound'].includes(key)&&p.result?.success===false;
+        this.onEvent('action.end',{key,result,outcome:randomFailure?'randomFailure':result,error:p.error?.message??p.error?.reason??''});
+        // Survival actions retain their ordinary retry window. Potion equip
+        // uses value observation without creating an inventory journal.
+        const survival=/^(potion|regen|heal|respawn)([.:_-]|$)/.test(key);
+        const failed=!randomFailure&&(p.error||!survival&&p.value&&['unknown','timeout','rejected'].includes(result));
+        this.cooldowns.set(key,now+(failed?(survival?3000:Math.max(3000,Math.min(60000,this.retryDelay(key)||3000))):p.delay));
+        if(p.error&&!randomFailure||result==='timeout')this.onError(key,p.error??result);p.onSettle(result,p.error??p.result);
       }
     }
   }

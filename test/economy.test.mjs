@@ -19,6 +19,32 @@ function fixture(){
  return {bot,c,rule,data,advance:()=>{now+=30000;bot.exec.poll();}};
 }
 
+test('bank workspace remains free both at selection and delayed dispatch',()=>{
+ const {bot,c,rule}=fixture();bot.cfg.merchant.bankWorkspace=2;
+ c.bank.items0=Array.from({length:42},(_,n)=>n<40?{name:'locked',l:true}:null);
+ assert.equal(bot.bank.store(0,rule),false);
+ c.bank.items0[39]=null;bot.exec.beginFrame();assert.equal(bot.bank.store(0,rule),true);
+ c.bank.items0[39]={name:'locked',l:true};bot.exec.flush();assert.equal(bot.exec.pending.size,0);
+});
+test('bank reclaim records an exact sale receipt despite unrelated farm income',async()=>{
+ const {bot,c,rule,data}=fixture();bot.cfg.merchant.bankReclaim=true;bot.cfg.merchant.bankWorkspace=2;
+ bot.cfg.items=[{...rule,name:'Sale',item:'carrot',action:'sell',minPrice:1,keep:0,teamReserve:0}];
+ bot.p.G.items.carrot={g:20,s:9999};c.bank.items0=Array.from({length:42},()=>({name:'locked',l:true}));
+ c.bank.items0[3]={name:'carrot',q:2};let sales=0;
+ bot.p.call=(name,...args)=>{
+  if(name==='item_value')return 10;
+  if(name==='find_npc')return {map:'bank',in:'bank',x:0,y:-100};
+  if(name==='bank_retrieve'){c.items[args[2]]=c.bank[args[0]][args[1]];c.bank[args[0]][args[1]]=null;return Promise.resolve();}
+  if(name==='sell'){sales++;const item={...c.items[args[0]]};c.items[args[0]]=null;c.gold+=1020;return Promise.resolve({success:true,gold:20,item});}
+  assert.fail(name);
+ };
+ bot.decisionEpoch=1;bot.bank.reclaim();bot.decisionEpoch=2;assert.equal(bot.bank.reclaim(),true);
+ await Promise.resolve();bot.exec.poll();c.gold+=50;
+ bot.bank.recoverCapacity();await Promise.resolve();await Promise.resolve();bot.exec.poll();
+ assert.equal(bot.journal,null);assert.equal(data.get('albot:bank-reclaim:M').saleConfirmed,true);
+ bot.bank=createBank(bot);bot.bank.recoverCapacity();assert.equal(bot.bank.pending,false);assert.equal(sales,1);
+});
+
 test('production recipient goal remembers confirmed quantity and transfer ID across reload',()=>{
  const {bot}=fixture();bot.cfg.production.goals=[{name:'Eine Lieferung',enabled:true,item:'helmet',level:1,quantity:2,recipient:'A',budget:1000,priority:0}];bot.production=createProduction(bot);
  const j={kind:'send',id:'first',to:'A',item:{name:'helmet',level:1},quantity:1};assert.equal(bot.production.recordDelivery(j),true);assert.equal(bot.production.recordDelivery(j),true);bot.production=createProduction(bot);assert.equal(bot.production.recordDelivery(j),true);assert.equal(bot.production.status().deliveries[0].quantity,1);assert.equal(bot.production.recordDelivery({...j,id:'second'}),true);assert.equal(bot.production.status().deliveries[0].quantity,2);
@@ -133,6 +159,28 @@ test('upgrade refreshes chance after a changed input and dispatches only once',a
  c.items[1].q=3;assert.equal(bot.production.mutate(0,rule),false);assert.equal(mutations,0);advance();assert.equal(bot.production.mutate(0,rule),true);assert.equal(previews,2);
  await new Promise(r=>setImmediate(r));bot.exec.poll();assert.equal(bot.production.mutate(0,rule),true);
  await new Promise(r=>setImmediate(r));bot.exec.poll();assert.equal(mutations,1);assert.equal(bot.journal,null);assert.equal(bot.production.mutate(0,rule),false);
+});
+
+test('helper comparison previews alternatives and dispatches the most profitable available scroll',async()=>{
+ const {bot,c,rule,advance}=fixture();
+ Object.assign(bot.cfg.production,{enabled:true,upgrade:true,autoHelpers:true,helperMaxPrice:1000,minChance:.65,minImprovement:.05,lossBudget:10000});
+ Object.assign(rule,{item:'helmet',action:'upgrade',targetLevel:1,maxLevel:0,maxActions:1,lossBudget:5000,minChance:.65,_autoDisposition:true});bot.cfg.items=[rule];
+ bot.account={spendAllowed:()=>true};
+ c.items=[{name:'helmet',level:0},{name:'scroll0',q:2},{name:'scroll1',q:2},...Array(39).fill(null)];
+ Object.assign(bot.p.G.items,{helmet:{upgrade:{}},scroll0:{type:'uscroll',grade:0,g:100},scroll1:{type:'uscroll',grade:1,g:600}});
+ const previews=[],mutations=[];
+ bot.p.call=(name,...args)=>{
+  if(name==='find_npc')return {map:'bank',in:'bank',x:0,y:-100};if(name==='item_grade')return 0;
+  if(name==='item_value')return args[0].name==='helmet'?(args[0].level?2000:1000):bot.p.G.items[args[0].name].g;
+  assert.equal(name,'upgrade');const scroll=args[1];
+  if(args.at(-1)===true){previews.push(scroll);return Promise.resolve({chance:scroll===1?.7:.9,cost:0});}
+  mutations.push(scroll);c.items[0].level=1;c.items[scroll].q--;return Promise.resolve({success:true});
+ };
+ bot.production=createProduction(bot);
+ for(let n=0;n<6&&!mutations.length;n++){
+  bot.production.mutate(0,rule);await new Promise(r=>setImmediate(r));bot.exec.poll();advance();
+ }
+ assert.ok(previews.includes(1)&&previews.includes(2));assert.deepEqual(mutations,[1]);assert.equal(bot.journal,null);
 });
 
 test('craft rejects protected ingredients and output beyond the target quantity',()=>{

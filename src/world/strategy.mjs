@@ -47,7 +47,8 @@ export function createStrategy(bot){
   manual={task:kind,id:id??null,until:Date.now()+ttlMs};activity=null;bot.target=null;bot.movement.stop();plannedAt=0;bot.event('strategy.request',{task:value,ttlMs});return true;
  }
  function encounter(kind,id){
-  let live=state()[id];const meta=p.G.events?.[id],visible=bot.monsters().find(m=>m.mtype===id&&p.G.monsters[id]?.boss);
+  let live=state()[id];const meta=p.G.events?.[id],visible=bot.monsters().find(m=>m.mtype===id&&p.G.monsters[id]&&
+   (kind==='boss'?w.allowedBosses:w.allowedEvents).includes(id));
   if(!live&&visible)live={live:true,type:id,map:visible.map,x:visible.real_x??visible.x,y:visible.real_y??visible.y};
   if(!live||typeof live!=='object'||!(live.live||live.active)||live.live===false||live.active===false||Number.isFinite(live.hp)&&live.hp<=0||Number.isFinite(live.expires)&&live.expires<Date.now())return null;
   const type=live.type&&p.G.monsters?.[live.type]?live.type:p.G.monsters?.[id]?id:null;

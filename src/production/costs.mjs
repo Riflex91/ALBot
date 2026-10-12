@@ -1,6 +1,6 @@
 import {killQuantile} from './probability.mjs';
 import {findRecipe,recipeIngredients} from './recipes.mjs';
-import {materialDrops,exchangeSource} from './materials.mjs';
+import {exchangeDrops,exchangeSource} from './materials.mjs';
 // Estimated route economics, never an execution guarantee. Unknown prices/rates
 // cannot be turned into a free or instantaneous purchase.
 export function estimateRoutes({G,item,level=0,quantity=1,stock=()=>0,bank=()=>0,allowed,permit=()=>true,npcPrice,marketPrice,farmHours,travelHours=()=>0,helpers=()=>[],chance=()=>1,recipeFor=()=>'',strategy='balanced',goldPerHour=100000,maxDepth=8,confidence='mean',state={}}){
@@ -24,7 +24,7 @@ export function estimateRoutes({G,item,level=0,quantity=1,stock=()=>0,bank=()=>0
    }
   }
   if(!l&&allowed.includes('exchange'))for(const [source,m] of Object.entries(G.items??{}))if(Number.isSafeInteger(m.e)&&m.e>0&&permit(source,0,'exchange')&&exchangeSource(G,source,state).ready){
-   const drops=materialDrops(G,G.drops?.[source]).filter(x=>x.item===name),yieldCount=drops.reduce((n,x)=>n+x.chance*x.quantity,0);if(!(yieldCount>0))continue;const attempts=confidence==='p90'?killQuantile(Math.min(1,drops.reduce((n,x)=>n+x.chance,0)),Math.ceil(q/Math.min(...drops.map(x=>x.quantity))),.9):Math.ceil(q/yieldCount),estimate=best(source,0,attempts*m.e),gold=estimate.gold,hours=estimate.hours+travelHours('exchange',source)+attempts*6/3600;
+   const drops=exchangeDrops(G,G.drops?.[source]).filter(x=>x.item===name),yieldCount=drops.reduce((n,x)=>n+x.chance*x.quantity,0);if(!(yieldCount>0))continue;const attempts=confidence==='p90'?killQuantile(Math.min(1,drops.reduce((n,x)=>n+x.chance,0)),Math.ceil(q/Math.min(...drops.map(x=>x.quantity))),.9):Math.ceil(q/yieldCount),estimate=best(source,0,attempts*m.e),gold=estimate.gold,hours=estimate.hours+travelHours('exchange',source)+attempts*6/3600;
    const verified=exchangeSource(G,source,state);if((!verified.eventExpires||Date.now()+hours*3600000<verified.eventExpires)&&Number.isFinite(gold)&&Number.isFinite(hours))rows.push({kind:'exchange',source,gold,hours,score:weight({gold,hours}),probabilistic:true});
   }
   return rows.sort((a,b)=>a.score-b.score);

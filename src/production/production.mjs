@@ -1,6 +1,7 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {mutationContext,mutationHelpers,bestMutationHelper} from './helpers.mjs';
 import {estimateRoutes} from './costs.mjs';
-import {materialSources,materialDrops,exchangeSource} from './materials.mjs';
+import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
@@ -27,12 +28,13 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
 }
 export function needsProductionStock(available,required){return available<required;}
 export function createProduction(bot){
+ let helperSearch=null;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
  let deliveries=p.read(deliveryKey)??{};if(!deliveries||typeof deliveries!=='object'||Array.isArray(deliveries))deliveries={};
- const goals=()=>{if(goalsCache&&Number.isInteger(bot.decisionEpoch)&&goalsEpoch===bot.decisionEpoch)return goalsCache;const tools=cfg.production.autonomy&&bot.me.role==='merchant'?['fishing','mining'].filter(k=>cfg.merchant[k]).map(k=>({name:'Werkzeug: '+k,enabled:true,item:k==='fishing'?'rod':'pickaxe',level:0,quantity:1,recipient:'',budget:cfg.merchant.toolBudget,priority:55})).filter(g=>p.c.slots?.mainhand?.name!==g.item):[];goalsEpoch=bot.decisionEpoch;return goalsCache=[...cfg.production.goals,...(bot.gear?.goals()??[]),...(bot.elixirs?.goals()??[]),...(bot.intelligence?.profitGoals()??[]),...tools].filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority);};
+ const goals=()=>{if(goalsCache&&Number.isInteger(bot.decisionEpoch)&&goalsEpoch===bot.decisionEpoch)return goalsCache;const tools=cfg.production.autonomy&&bot.me.role==='merchant'?['fishing','mining'].filter(k=>cfg.merchant[k]).map(k=>({name:'Werkzeug: '+k,enabled:true,item:k==='fishing'?'rod':'pickaxe',level:0,quantity:1,recipient:'',budget:cfg.merchant.toolBudget,priority:55})).filter(g=>p.c.slots?.mainhand?.name!==g.item):[];goalsEpoch=bot.decisionEpoch;return goalsCache=[...cfg.production.goals,...(bot.gear?.goals()??[]),...(bot.elixirs?.goals()??[]),...(bot.supplies?.goals()??[]),...(bot.intelligence?.profitGoals()??[]),...tools].filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority);};
  function recordDelivery(j){
   if(j.kind!=='send'||!j.id||!j.to||typeof j.item!=='object')return true;if(Object.values(deliveries).some(x=>x.last?.includes(j.id)))return true;const next=structuredClone(deliveries);let changed=false,remaining=j.quantity;
   for(const g of goals().filter(g=>g.recipient===j.to&&g.item===j.item.name&&g.level===j.item.level&&variantMatches(j.item,g))){
@@ -112,6 +114,30 @@ export function createProduction(bot){
   const inputs=[slot];if(kind==='compound')for(let n=0;n<p.c.items.length&&inputs.length<3;n++)if(n!==slot&&e.safe(p.c.items[n])&&identity(i)===identity(p.c.items[n]))inputs.push(n);
   if(kind==='compound'&&inputs.length!==3)return false;
   if(e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+  if(cfg.production.autoHelpers&&r._autoDisposition){
+   const context=mutationContext(bot,i);
+   if(helperSearch?.context!==context||Date.now()-helperSearch.at>30000)
+    helperSearch={context,at:Date.now(),rows:mutationHelpers(bot,i,kind),quotes:[],index:0};
+   const search=helperSearch,candidate=search.rows[search.index];
+   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
+   if(candidate){
+    if(exec.busy('economy'))return false;
+    const args=kind==='compound'?[...inputs,candidate.scrollSlot,candidate.offeringSlot]:[slot,candidate.scrollSlot,candidate.offeringSlot];
+    return exec.run('production.helper-preview',['economy'],()=>bot.running&&!bot.journal&&
+      mutationContext(bot,i)===context&&e.npcAt(d),()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{
+       if(helperSearch!==search||mutationContext(bot,i)!==context)return;
+       const chance=Number(result?.chance??result?.success_chance),fee=result?.cost??0;
+       search.quotes.push({...candidate,chance,cost:candidate.cost+(Number.isFinite(fee)&&fee>=0?fee:Infinity)});search.index++;
+      },()=>{if(helperSearch===search){search.quotes.push({...candidate,chance:NaN});search.index++;}}),{delay:1000});
+   }
+   const input=e.value(i),output=e.value({...i,level:(i.level??0)+1});
+   const choice=search.quotes.length&&search.quotes.every(q=>Number.isFinite(q.chance))?
+    bestMutationHelper(search.quotes,{inputValue:input,outputValue:output,minChance:Math.max(r.minChance,cfg.production.minChance),margin:cfg.production.minImprovement,factor:inputs.length}):
+    {action:'bank',ev:input,reason:'helper-preview-unverified'};
+   bot.intelligence?.recordHelpers(i,choice);
+   if(choice.action!==kind)return false;
+   r={...r,scroll:choice.scroll,offering:choice.offering};
+  }
   const scrollName=r.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',i));
   const usable=x=>{const rule=x&&e.rules(x);return e.safe(x)&&rule?.action!=='keep'&&e.count(x)>(rule?rule.keep+rule.teamReserve:0)+reserveOther(x.name,x.level??0);};
   const scroll=p.c.items.findIndex(x=>x?.name===scrollName&&usable(x));const offering=r.offering?p.c.items.findIndex(x=>x?.name===r.offering&&usable(x)):null;
@@ -120,7 +146,7 @@ export function createProduction(bot){
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
   // Bind the preview to the current mutation definitions and user's rule.
   // Slot fingerprints alone do not capture changed minimum chance or scroll policy.
-  const policyProof=()=>JSON.stringify([p.G.items[i.name],p.G.items[scrollName],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production.minChance]);
+  const policyProof=()=>JSON.stringify([p.G.version,p.G.items[i.name],p.G.items[scrollName],p.G.items[r.offering],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production.minChance]);
   const initialPolicyProof=policyProof();
   const key=kind+':'+slots.map(n=>fingerprint(p.c.items[n])).join('|')+':'+initialPolicyProof;
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
@@ -130,6 +156,13 @@ export function createProduction(bot){
   }
   const chance=preview.chance,cost=preview.cost;
   if(!Number.isFinite(chance)||chance>1||chance<Math.max(r.minChance,cfg.production.minChance)||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
+  if(cfg.production.autoHelpers&&r._autoDisposition){
+   const helperCost=slots.filter(n=>!inputs.includes(n)).reduce((sum,n)=>sum+Math.max(e.value(p.c.items[n]),p.G.items[p.c.items[n].name]?.g??0),0)+cost;
+   const check=bestMutationHelper([{chance,cost:helperCost,preserves:kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6}],{
+    inputValue:e.value(i),outputValue:e.value({...i,level:(i.level??0)+1}),factor:inputs.length,
+    minChance:Math.max(r.minChance,cfg.production.minChance),margin:cfg.production.minImprovement});
+   if(check.action!==kind){bot.intelligence?.recordHelpers(i,check);return false;}
+  }
   const loss=slots.reduce((sum,n)=>sum+e.value(p.c.items[n]),0),before=e.count(i),next={...i,level:(i.level??0)+1},after=e.count(next),scrollBefore=p.c.items[scroll].q??1;
   const mutationReady=()=>{
    if(!cfg.production.enabled||!cfg.production[kind]||!p.G.items[i.name]?.[kind]||!e.remaining(r)||
@@ -143,10 +176,13 @@ export function createProduction(bot){
    if(offering!==null&&(p.c.items[offering]?.name!==r.offering||!usable(p.c.items[offering])))return false;
    return e.npcAt(d);
   };
+  let mutationResult=null;
   return e.perform(kind,{slots,cost,loss,rule:r,guard:mutationReady,
-   call:()=>p.call(kind,...args),observe:()=>{
+   call:()=>Promise.resolve(p.call(kind,...args)).then(result=>{mutationResult=result;return result;}),observe:()=>{
     const consumed=p.c.items[scroll]?.name!==scrollName||(p.c.items[scroll]?.q??1)<scrollBefore;
-    return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length);
+    const retainedFailure=kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6&&
+      mutationResult?.success===false&&!mutationResult.calculate&&e.count(i)===before&&identity(p.c.items[slot])===identity(i);
+    return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length||retainedFailure);
    },details:{item:i.name,before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
  }
  function craft(name,r){
@@ -228,7 +264,7 @@ export function createProduction(bot){
    const existing=p.c.items[slot];if(!existing)return false;
    const i={...existing},q=p.G.items[i.name]?.e;if(!e.remaining(r)||!cfg.production.enabled||!cfg.production.exchange||!Number.isSafeInteger(q)||q<1||e.spare(slot,r)<q)return false;
    if(e.count(i)-q<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
-   if(r.recipe){if(!materialDrops(p.G,p.G.drops?.[i.name]).some(x=>x.item===r.recipe)){e.note('Exchange-Ziel nicht in Spieldaten: '+r.recipe);return false;}if(qty(r.recipe,0)>=Math.min(r.targetCount,r.maxCount))return false;}
+   if(r.recipe){if(!exchangeDrops(p.G,p.G.drops?.[i.name]).some(x=>x.item===r.recipe)){e.note('Exchange-Ziel nicht in Spieldaten: '+r.recipe);return false;}if(qty(r.recipe,0)>=Math.min(r.targetCount,r.maxCount))return false;}
    if(!capacity([{slot,quantity:q}]))return false;
    const source=()=>exchangeSource(p.G,i.name,p.root?.S??p.parent?.S??{});
    const verified=source(),proof=x=>JSON.stringify({quest:x.quest,npc:x.npc,destination:x.destination,event:x.event});

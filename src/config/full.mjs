@@ -13,6 +13,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
 });
 Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{gearSynergy:bool('Ausrüstung und Klassenkombination bei Teamwahl berücksichtigen',true),advancedSkills:bool('Situationsabhängige Paladin-/Mage-Fähigkeiten',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{
+
  progressionAdvice:bool('Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen',true),autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',5,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
  autoGearItems:{type:'array',title:'Erlaubte Items für automatische Gearziele',items:{type:'string',minLength:1,maxLength:160},maxItems:2000,uniqueItems:true,default:['helmet','coat','pants','shoes','gloves','bow','staff','sword','blade','shield']}
 });
@@ -49,3 +50,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{questPreferenc
 
 FULL_DESCRIPTOR.schema.properties.skills.items.properties.maxTargets.default=5;
 Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{potionCarryMax:number('Gemeinsame HP-/MP-Trank-Obergrenze je Farmer',10000,1,1000000)});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{skillSupplies:bool('Skill-Verbrauchsmaterial automatisch nachliefern',true),skillSupplyCount:number('Zielvorrat je Skill-Verbrauchsmaterial',20,1,100)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{tokenBuy:bool('Explizite Inventarziele aus vorhandenen Token kaufen',false),tokenMaxPerPurchase:number('Token je Kauf maximal',1,1,10000),dismantle:bool('Verifizierten Verkaufsüberschuss wirtschaftlich zerlegen',false)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{autoHelpers:bool('Vorhandene Scrolls/Offerings per Servervorschau wirtschaftlich vergleichen',false)});

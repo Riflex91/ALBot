@@ -16,7 +16,7 @@ function fixture({inventory=[],bankStandCount=2,bankPartials=false}={}){
   p:{c,G:{items:{stand0:{stand:true,g:10000},mat:{type:'material',s:100}}},
    read:()=>null,write:()=>true,realm:()=> 'EUII',root:{},parent:{},call:()=>null},
   me:{name:'Merchant',role:'merchant'},running:true,cfg:{
-   merchant:{enabled:true,stand:true,bank:true,consolidate:true,minFreeSlots:4,
+   merchant:{enabled:true,pickup:true,stand:true,bank:true,consolidate:true,minFreeSlots:4,
     taskHoldMs:30000,starvationMs:120000},
    party:{merchant:'Merchant'},items:[],production:{goals:[]}},
   checkpoint:{durable:true},movement:{order:null},

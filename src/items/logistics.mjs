@@ -12,6 +12,13 @@ export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190
  if(!samePlace(route.dest,peer))return 'retarget';
  return distance(route.dest,peer)>Math.max(45,Math.min(100,error))?'retarget':'keep';
 }
+export function teamPickupThreshold(peers,realm,threshold=30){
+ if(!Array.isArray(peers)||!peers.length||peers.some(h=>
+    !h?.running||h.rip||h.realm!==realm||!Number.isSafeInteger(h.lootSlots)||
+    h.lootSlots<0||h.lootSlots>42))return {ready:false,slots:0,trigger:false};
+ const slots=peers.reduce((sum,h)=>sum+h.lootSlots,0);
+ return {ready:true,slots,trigger:slots>=threshold};
+}
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastDeliveryRetarget=0,pickupCycle=false;const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
@@ -213,10 +220,9 @@ export function createLogistics(bot){
       }else return; // Active route is current; do not schedule other jobs.
     }
     const peers=(bot.farmers??[]).map(name=>transport.fresh(name));
-    const complete=peers.length>0&&peers.every(h=>h?.running&&!h.rip&&
-      h.realm===p.realm()&&Number.isSafeInteger(h.lootSlots));
-    const lootSlots=complete?peers.reduce((n,h)=>n+h.lootSlots,0):0;
-    if(complete&&lootSlots>=(cfg.merchant.pickupThreshold??30)&&!pickupCycle){
+    const {ready:complete,slots:lootSlots,trigger}=teamPickupThreshold(
+      peers,p.realm(),cfg.merchant.pickupThreshold??30);
+    if(trigger&&!pickupCycle){
       pickupCycle=true;
       bot.event?.('logistics.pickupTriggered',{slots:lootSlots,threshold:cfg.merchant.pickupThreshold??30});
     }

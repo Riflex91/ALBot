@@ -24,7 +24,7 @@ function fixture({inventory=[],bankStandCount=2,bankPartials=false}={}){
   free:()=>items.filter(i=>!i).length,
   exec:{busy:()=>false},
   event:()=>{},reason:'',
-  economy:{safe:i=>!!i&&!i.l,spare:(slot,r)=>r?.action==='bank'||r?.action==='sell'?1:0,
+  economy:{safe:i=>!!i&&!i.l,spare:(slot,r)=>r?.action==='bank'||r?.action==='sell'?(c.items[slot]?.q??1):0,
    value:()=>200,explicit:()=>null,rules:()=>null,
    npcSell:(slot,r)=>{actions.push(['sell',slot,r.item,r.minPrice]);return true;},
    perform:(kind,d)=>{actions.push([kind,d.details]);return true;},

@@ -59,7 +59,9 @@ export function createLogistics(bot){
   const defaultPotionDemand=(item,n)=>{
     if(me.role!=='farmer'||!isPotion(item))return 0;
     const desired=Math.min(3000,cfg.farming.potionCarryMax??3000);
-    return n<=Math.min(500,Math.floor(desired/3))?Math.max(0,desired-n):0;
+    // Report deficits for the full 3000-per-kind supply target. Waiting until
+    // only 500 remain caused routine depot deliveries to be skipped.
+    return Math.max(0,desired-n);
   };
   const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount,normal=n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;return Math.min(Math.max(normal,bot.behavior?.need(rule.item,n)??0),Math.max(0,rule.maxCount-n));};
   const signature=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',
@@ -95,7 +97,15 @@ export function createLogistics(bot){
     const pickup=me.role==='merchant'&&cfg.merchant.enabled&&cfg.merchant.pickup&&known?cfg.merchant.maxDelivery:0;
     if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit&&!pickup)||protectedItem(i))return 0;
     const min=me.role==='merchant'?0:cfg.farming.freeSlots;
-    if(bot.free()<=min)return 0;const pot=p.G?.items?.[i.name]?.type==='pot'&&(p.G?.items?.[i.name].gives??[]).some(g=>['hp','mp'].includes(g[0])),held=p.c.items.reduce((n,x)=>n+(x&&p.G?.items?.[x.name]?.type==='pot'&&(p.G?.items?.[x.name].gives??[]).some(g=>['hp','mp'].includes(g[0]))?(x.q??1):0),0);return Math.min(Math.max(rule?demandFor(rule,count(i)):implicit,pickup,verifiedGear?1:0,verifiedElixir?1:0),pot&&me.role==='farmer'?Math.max(0,(cfg.farming.potionCarryMax??1000000)-held):Infinity);}
+    if(bot.free()<=min)return 0;
+    const pot=isPotion(i),held=count(i);
+    const demand=pot&&me.role==='farmer'?
+      Math.max(implicit,rule?demandFor(rule,held):0):
+      Math.max(rule?demandFor(rule,held):implicit,pickup,verifiedGear?1:0,verifiedElixir?1:0);
+    // The carrying target applies independently to HP and MP potions.
+    // Aggregating both types wrongly rejected all MP after 3000 HP.
+    return Math.min(demand,pot&&me.role==='farmer'?
+      Math.max(0,Math.min(3000,cfg.farming.potionCarryMax??3000)-held):Infinity);}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
@@ -179,7 +189,10 @@ export function createLogistics(bot){
         // The receiver still validates physical capacity and the journal.
         const collected=me.role==='farmer'&&to===cfg.party?.merchant&&
           cfg.merchant?.pickup&&r.action==='send'?availableTransfer(slot,r):0;
-        const wanted=Math.max(demand?.need??0,gear?1:0,elixir?1:0,collected);if(!Number.isSafeInteger(wanted)||wanted<1)continue;
+        const potionNeed=me.role==='merchant'&&isPotion(item)&&
+          bot.farmers?.includes(to)&&Number.isSafeInteger(peer.potions?.[item.name])?
+          Math.max(0,Math.min(3000,cfg.farming.potionCarryMax??3000)-peer.potions[item.name]):0;
+        const wanted=Math.max(demand?.need??0,potionNeed,gear?1:0,elixir?1:0,collected);if(!Number.isSafeInteger(wanted)||wanted<1)continue;
         const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,wanted);if(quantity<1)continue;
         if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
         job={id:bot.session+':'+(++serial),state:'offered',to,session:peer.session,slot,item:signature(item),fingerprint:fingerprint(item),quantity,gear,elixir,before:count(signature(item)),offerKey:key,lastOffer:now,until:now+Math.min(r.ttlMs,cfg.general.messageTtlMs)};
@@ -255,7 +268,12 @@ export function createLogistics(bot){
       const requested=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
        const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
        const elixirRequested=cfg.merchant.supply&&h.elixir?.quantity===1&&p.c.items.some((i,slot)=>{const r=i&&i.name===h.elixir.item&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;});
-       const demand=requested||gearRequested||elixirRequested;
+       const directPotions=cfg.merchant.supply&&['hpot0','mpot0'].some(id=>
+         Number.isSafeInteger(h.potions?.[id])&&h.potions[id]>=0&&
+         h.potions[id]<Math.min(3000,cfg.farming.potionCarryMax??3000)&&
+         p.c.items.some(i=>i?.name===id&&!!sendRule(i,name)&&
+           availableTransfer(p.c.items.indexOf(i),sendRule(i,name))>0));
+       const demand=requested||directPotions||gearRequested||elixirRequested;
       const pickup=cfg.merchant.pickup&&pickupCycle&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
         const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&localBankBatch())continue;

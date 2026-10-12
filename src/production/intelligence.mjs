@@ -135,8 +135,8 @@ function surplusEquipmentReserve(i){
   if(!member)return null;
   const h=name===me.name?null:bot.transport?.fresh?.(name);
   const profile=name===me.name?bot.gear?.snapshot?.():bot.gear?.profile?.(name);
-  if(!profile?.complete||!profile.slots||!profile.class||
-     name!==me.name&&(!h?.running||h.rip||h.realm!==p.realm()||
+  if(!profile?.slots||!profile.class||
+     name!==me.name&&(!profile.complete||!h?.running||h.rip||h.realm!==p.realm()||
        profile.session!==h.session||profile.realm!==p.realm()||
        !Number.isFinite(profile.at)||Date.now()-profile.at>120000))
    return null;

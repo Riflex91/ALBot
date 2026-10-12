@@ -198,6 +198,15 @@ export function createLogistics(bot){
    });
   }
   function travel(){
+    // Keep the ongoing pickup at this location for one bounded batch.
+    // Replanning against a rotating 12-item heartbeat must not redirect
+    // the Merchant to another farmer between two valid offers.
+    if(pickupOnSiteAt&&Date.now()-pickupOnSiteAt<30000&&
+      bot.free()>cfg.merchant.minFreeSlots){
+      const peer=transport.fresh(pickupOnSiteName);
+      if(peer?.running&&!peer.rip&&peer.realm===p.realm()&&
+        peer.lootSlots>0&&samePlace(p.c,peer)&&distance(p.c,peer)<=200)return;
+    }
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;
     // Delivery must not cancel an in-progress gold pickup or economy order.

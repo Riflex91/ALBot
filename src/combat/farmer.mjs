@@ -6,6 +6,13 @@ export function combatApproach(character,target,range,canMove){const a=xy(charac
 export function recoveryHpThreshold(rest,hpBelow,resumeAbove,preparing,pullHp){
  return rest?Math.max(hpBelow,resumeAbove):(preparing?(pullHp??hpBelow):hpBelow);
 }
+// Potion activation uses absolute missing resource, not a percent of max.
+// At precisely 300 missing HP/MP no potion is consumed.
+export function potionResource(c,threshold=300){
+ const hp=Math.max(0,(c.max_hp??0)-(c.hp??0));
+ const mp=Math.max(0,(c.max_mp??0)-(c.mp??0));
+ return hp>threshold?'hp':mp>threshold?'mp':null;
+}
 export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
@@ -25,20 +32,29 @@ export function createFarmer(bot){
       cfg.farming.resumeAbove,preparing,cfg.farming.pullHp);
     const resource=c.hp/c.max_hp<hpTrigger?'hp':
       c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
-    if(resource&&!p.call('is_on_cooldown','use_hp')){
+    const potionWanted=cfg.farming.potions?potionResource(c):null;
+    if((resource||potionWanted)&&!p.call('is_on_cooldown','use_hp')){
       let slot=-1;
-      if(cfg.farming.potions&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===resource)?.[1]??0})).filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&r.restore>0&&bot.consumable(r.i)&&(rest&&resource==='hp'||cfg.farming.potionUtilization===undefined||c.hp/c.max_hp<cfg.farming.restBelow||(c['max_'+resource]-c[resource])/r.restore>=(cfg.farming.potionUtilization??.65))).sort((a,b)=>Math.abs(a.restore-(c['max_'+resource]-c[resource]))-Math.abs(b.restore-(c['max_'+resource]-c[resource])))[0]?.slot??-1;
+      if(potionWanted&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)
+        slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===potionWanted)?.[1]??0}))
+          .filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&
+            r.restore>0&&bot.consumable(r.i))
+          .sort((a,b)=>Math.abs(a.restore-(c['max_'+potionWanted]-c[potionWanted]))-
+            Math.abs(b.restore-(c['max_'+potionWanted]-c[potionWanted])))[0]?.slot??-1;
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
-        exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&!p.call('is_on_cooldown','use_hp'),()=>{
-          // Consumable potions are deliberately non-journaled: ambiguous use
-          // can never freeze inventory, while executor still owns inventory
-          // until consumption is observed or the bounded attempt expires.
+        exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&
+          potionResource(c)===potionWanted&&
+          fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&
+          !p.call('is_on_cooldown','use_hp'),()=>{
           bot.event('inventory.intent',{kind:'consume',item:item.name,before,journaled:false});
           return p.call('equip',slot);
         },{delay:2000,value:true,observe:()=>bot.count(item.name)<before,
          onSettle:state=>bot.event('inventory.result',{kind:'consume',result:state,journaled:false,valueActionsBlocked:false})});
-      }else exec.run('regen',['potion'],()=>!p.call('is_on_cooldown','use_hp'),()=>p.call('use_skill','regen_'+resource),{delay:4000});
+      }else if(resource){
+        exec.run('regen',['potion'],()=>!p.call('is_on_cooldown','use_hp'),
+          ()=>p.call('use_skill','regen_'+resource),{delay:4000});
+      }
     }
     if(c.hp/c.max_hp<cfg.farming.restBelow)rest=true;
     if(rest&&c.hp/c.max_hp>=cfg.farming.resumeAbove)rest=false;

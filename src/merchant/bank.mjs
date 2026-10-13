@@ -198,10 +198,10 @@ export function createBank(bot){
    const q=source.item.q??1,max=stackMax(source.item);
    const carried=p.c.items.some(i=>simple(i)&&identity(i)===identity(source.item)&&
      (i.q??1)+q<=max);
-   const cross=sourceItems.some(other=>other.pack!==source.pack&&
-     identity(other.item)===identity(source.item)&&
-     (other.item.q??1)+q<=max);
-   if(!carried&&!cross)continue;
+   // Bank-only cross-pack candidates have no *carried* merge partner.
+   // Retrieving them only causes the storage task to put them back unchanged.
+   // An eventual two-retrieval cross-pack merge needs its own durable journal.
+   if(!carried)continue;
    const fp=fingerprint(source.item),item={...source.item};
    return e.perform('bank.merge.retrieve',{guard:()=>!!p.c.bank&&
      !p.c.items[dest]&&fingerprint(p.c.bank?.[source.pack]?.[source.slot])===fp,

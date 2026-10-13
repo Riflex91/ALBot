@@ -448,10 +448,11 @@ export function createMerchant(bot){
   });
  }
  function relieveInventoryPressure(){
+  const minimum=Math.max(0,cfg.merchant.minFreeSlots??4);
   if(me.role!=='merchant'||!cfg.merchant.enabled||
     // Bank workspace is an optimization target, NOT a reason to interrupt
     // a valid NPC sale or mutation when free slots still exceed the reserve.
-    bot.free()>cfg.merchant.minFreeSlots||
+    bot.free()>minimum||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
   // This is a capacity-recovery transaction, NOT a general merchant task.
@@ -494,11 +495,36 @@ export function createMerchant(bot){
     saleCandidates:sell.length,
     reason:'Kein bestätigter unreservierter Ganzstapel für Bank/Verkauf'});
   }
-  // Never select exchange / new acquisition with less than the required
-  // physical workspace: doing so reopens the bank-main-bank ping-pong.
-  // At exactly the configured free-slot reserve, do not starve the
-  // existing depot preflight forever; only a deficit is a hard stop.
-  return bot.free()<cfg.merchant.minFreeSlots;
+  // Exactly at the configured reserve, normal work can continue, as before.
+  // Only a real deficit needs the special, guarded low-slot recovery path.
+  if(bot.free()>=minimum)return false;
+  // minFreeSlots is a preferred reserve for production, not a global veto.
+  // All ordinary bank and sale recovery options have been exhausted. Let
+  // existing, physically feasible production work proceed under its own
+  // per-action capacity, budget, reservation and journal checks.
+  const free=bot.free();
+  if(free>0){
+   const first=bot.production?.status?.()?.steps?.[0];
+   const safeKinds=['exchange','upgrade','compound','craft','retrieve','buy'];
+   if(cfg.production?.enabled&&safeKinds.includes(first?.kind)){
+    const accepted=bot.production?.tick?.();
+    if(accepted||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('economy')||exec.busy('inventory')){
+     bot.event?.('merchant.inventoryPressureProgress',{
+      free,minimum,kind:first.kind,
+      item:first.item,reason:'Physische Aktion trotz unterschrittener Slotreserve ausführbar'});
+     return true;
+    }
+   }
+   // Direct rules can clear slots even when the current production goal
+   // is waiting. These paths also perform independent safety checks.
+   if(workStage('compound')||workStage('upgrade')||workStage('exchange'))return true;
+   // Pickup and unrelated acquisition still require the configured
+   // reserve. Do not turn failed recovery into a dangerous collection trip.
+   return true;
+  }
+  // Without any physical slot, do not initiate unrelated acquisition travel.
+  return true;
  }
  function tick(){
   if(bot.recovering)return;

@@ -88,3 +88,38 @@ test('bank workspace margin does not preempt NPC work while above reserve',()=>{
  assert.equal(routed,true,'normal work resumes when above absolute reserve');
  assert.deepEqual(f.calls,[],'must not immediately return to bank for optional workspace');
 });
+
+test('merchant at 39/42 occupied slots executes its safely guarded exchange plan',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ for(let i=39;i<42;i++)f.items[i]=null; // log: 3 real free slots, configured reserve 4
+ let attempted=0;
+ f.bot.production={
+  status:()=>({steps:[{kind:'exchange',item:'anniversarygift',quantity:221}]}),
+  tick:()=>{attempted++;f.calls.push('production.exchange');return true;}
+ };
+ createMerchant(f.bot).tick();
+ assert.equal(f.bot.free(),3);
+ assert.equal(attempted,1,'minFreeSlots is not a veto when output physically fits');
+ assert.deepEqual(f.calls,['production.exchange']);
+ assert.equal(f.events.some(e=>e.type==='merchant.inventoryPressureProgress'&&
+  e.kind==='exchange'&&e.free===3),true);
+});
+test('merchant below reserve rejects unsafe farm and pickup despite 3 physical slots',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ for(let i=39;i<42;i++)f.items[i]=null;
+ let farms=0,pickups=0;
+ f.bot.production={status:()=>({steps:[{kind:'farm',item:'blocked'}]}),
+  tick:()=>{farms++;return true;}};
+ f.bot.logistics.travel=()=>{pickups++;f.bot.movement.order={owner:'logistics'};};
+ createMerchant(f.bot).tick();
+ assert.equal(farms,0,'no uncontrolled acquisition is authorized by pressure fallback');
+ assert.equal(pickups,0,'pickup still needs configured reserve');
+});
+test('with no physical free slot merchant still does not initiate a remote exchange',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ let exchanges=0;
+ f.bot.production={status:()=>({steps:[{kind:'exchange',item:'anniversarygift'}]}),
+  tick:()=>{exchanges++;return true;}};
+ createMerchant(f.bot).tick();
+ assert.equal(exchanges,0);
+});

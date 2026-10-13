@@ -494,7 +494,10 @@ export function createMerchant(bot){
     saleCandidates:sell.length,
     reason:'Kein bestätigter unreservierter Ganzstapel für Bank/Verkauf'});
   }
-  // minFreeSlots is a preferred reserve, not a stop-the-world limit.
+  // Exactly at the configured reserve, normal work can continue, as before.
+  // Only a real deficit needs the special, guarded low-slot recovery path.
+  if(bot.free()>=cfg.merchant.minFreeSlots)return false;
+  // minFreeSlots is a preferred reserve for production, not a global veto.
   // All ordinary bank and sale recovery options have been exhausted. Let
   // existing, physically feasible production work proceed under its own
   // per-action capacity, budget, reservation and journal checks.

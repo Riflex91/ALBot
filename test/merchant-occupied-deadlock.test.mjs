@@ -78,3 +78,13 @@ test('gear priority favors class weapons, then armor, then jewelry',()=>{
  assert.ok(gearSlotPriority('chest','ranger')>gearSlotPriority('ring1','ranger'));
  assert.equal(gearSlotPriority('mainhand','merchant'),12);
 });
+
+test('bank workspace margin does not preempt NPC work while above reserve',()=>{
+ const f=merchantFixture({location:'main',sale:false,bank:true});
+ for(let slot=36;slot<42;slot++)f.items[slot]=null; // 6 free, reserve 4
+ let routed=false;
+ f.bot.logistics.travel=()=>{routed=true;f.bot.movement.order={owner:'logistics'};};
+ createMerchant(f.bot).tick();
+ assert.equal(routed,true,'normal work resumes when above absolute reserve');
+ assert.deepEqual(f.calls,[],'must not immediately return to bank for optional workspace');
+});

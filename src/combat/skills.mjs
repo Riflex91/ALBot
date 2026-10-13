@@ -44,7 +44,8 @@ export function createSkills(bot){
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
     if(id==='energize'&&!cfg.party.energize&&!(bot.me?.role==='farmer'&&p.c.ctype==='mage')||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;
-    if(!explicit&&cfg.skills.some(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype))){count(id,'ruleBlocked');return false;}
+    if(!explicit&&!(id==='energize'&&bot.me?.role==='farmer'&&p.c.ctype==='mage')&&
+        cfg.skills.some(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype))){count(id,'ruleBlocked');return false;}
     if((last.get(id)??0)+every>Date.now()||(failedUntil.get(id)??0)>Date.now()||
       !(cfg.general.testLogging!==undefined?FULL_SKILLS:SUPPORTED_SKILLS).includes(id))return false;
     // Do not spend offensive mana on a normal-attack kill while the normal
@@ -124,10 +125,12 @@ export function createSkills(bot){
         // to have the lowest MP ratio. Keep feeding them during combat whenever
         // they have meaningful missing mana and are in casting range.
         const candidates=alive.filter(a=>bot.farmers?.includes(a.name)&&
-          a.name!==p.c.name&&a.mp/a.max_mp<.9&&a.max_mp-a.mp>=30&&
-          samePlace(p.c,a)&&distance(p.c,a)<=(p.G.skills?.energize?.range??0));
+          a.name!==p.c.name&&samePlace(p.c,a)&&
+          distance(p.c,a)<=(p.G.skills?.energize?.range??0));
         const strongest=highestDpsFarmer(bot,candidates);
-        if(strongest&&use('energize',strongest,.4,1500))return true;
+        if(strongest&&strongest.mp/strongest.max_mp<.9&&
+          strongest.max_mp-strongest.mp>=30&&
+          use('energize',strongest,.4,1500))return true;
        }
       if(cfg.party.buffs){const tank=alive.find(e=>e.ctype==='warrior');if(tank&&use('reflection',tank,.5,5000))return true;}
     }
@@ -141,7 +144,9 @@ export function createSkills(bot){
     }
     return false;
   }
-  function custom(target){for(const r of cfg.skills.filter(r=>r.enabled&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype)).sort((a,b)=>b.priority-a.priority)){
+  function custom(target){for(const r of cfg.skills.filter(r=>r.enabled&&
+     !(r.skill==='energize'&&bot.me?.role==='farmer'&&p.c.ctype==='mage')&&
+     (!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype)).sort((a,b)=>b.priority-a.priority)){
     const s=bot.measure(target);if(!matches(r.conditions,s))continue;
     const allies=bot.allies().filter(e=>!e.rip);const t=r.target==='enemy'?target:r.target==='self'?p.c:r.target==='leader'?bot.entity(bot.leader):allies.sort((a,b)=>r.target==='lowestHp'?a.hp/a.max_hp-b.hp/b.max_hp:a.mp/a.max_mp-b.mp/b.max_mp)[0];
     if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
@@ -164,7 +169,8 @@ export function createSkills(bot){
       const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
       for(const id of ids)if(use(id,t,0,600))return;
     }
-    if(custom(t)||support())return;
+    if(p.c.ctype==='mage'&&bot.me?.role==='farmer'?
+      support()||custom(t):custom(t)||support())return;
     if(c.ctype==='paladin'&&hp<.7&&use('selfheal',null,.1,1200))return;
     if(c.ctype==='warrior'&&hp<.5&&use('hardshell',null,.1,10000))return;
     if(cfg.party.advancedSkills&&c.ctype==='paladin'){

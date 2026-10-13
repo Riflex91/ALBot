@@ -31,6 +31,7 @@ export function needsProductionStock(available,required){return available<requir
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
+ const helperRequests=new Map();
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
@@ -351,14 +352,53 @@ export function createProduction(bot){
  }
  function updateMaterials(){if(!goal||plan[0]?.kind!=='farm'){materials=[];return;}const step=plan[0];materials=materialSources(p.G,step.item,step.quantity,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]}).slice(0,5).map(r=>({...r,objective:intent?.objective??knowledgeFingerprint(goalKey(goal)),priority:goal.priority??0,utilityPerHour:goal.utilityPerHour??0,expires:Date.now()+cfg.general.messageTtlMs*2,recipient:goal.recipient,sourceFingerprint:knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])}));}
  function reservedQuantity(i,recipient=''){
-  if(cfg.production.purposeAllocation)return demand(null,recipient,i).quantity(i);
+  // This is the GROSS physical demand. purposeReservations consumes observed
+   // stock in recursion; subtracting it once more would release team gear.
+   if(cfg.production.purposeAllocation)return demand(null,recipient,i).quantity(i);
   let n=0;for(const g of goals())if(!g.recipient&&(bot.me.role==='merchant'||g.gearSlot&&g.character===bot.me.name)&&g.item===i.name&&g.level===(i.level??0))n=Math.max(n,g.quantity);
   const allocated=plan.reservations?.find(r=>r.item===i.name&&r.level===(i.level??0));n=goal&&(goal.item!==i.name||goal.level!==(i.level??0))?n+(allocated?.quantity??0):Math.max(n,allocated?.quantity??0);
   n+=Math.max(0,...[...waiting.values()].filter(w=>w.until>Date.now()).flatMap(w=>w.reservations.filter(r=>r.item===i.name&&r.level===(i.level??0)).map(r=>r.quantity)));
   if(goal?.recipient&&goal.recipient!==recipient&&goal.item===i.name&&goal.level===(i.level??0))n=Math.max(n,goal.quantity-(deliveries[goalKey(goal)]?.quantity??0));return Math.max(0,n);
  }
+ function requestHelper(item,quantity=1){
+  if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||
+    !cfg.production.autoHelpers||!cfg.production.acquireBy?.includes('npc')||
+    !/^(?:uscroll|cscroll)[0-3]$/.test(item)||
+    !['uscroll','cscroll'].includes(p.G.items?.[item]?.type)||
+    !Number.isSafeInteger(quantity)||quantity<1||quantity>3)return false;
+  const now=Date.now();for(const [name,r] of helperRequests)
+   if(r.until<=now)helperRequests.delete(name);
+  if(!helperRequests.has(item)&&helperRequests.size>=8)return false;
+  const old=helperRequests.get(item);
+  helperRequests.set(item,{quantity:Math.max(quantity,old?.quantity??0),
+   until:now+300000,next:old?.next??0});return true;
+ }
+ function helperSupply(){
+  if(me.role!=='merchant'||!bot.running||bot.journal||bot.inventoryBlocked||
+    bot.logistics?.reserved||bot.free()<=cfg.merchant.minFreeSlots||
+    !cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoHelpers)return false;
+  const now=Date.now();
+  for(const [name,r] of helperRequests){
+   if(r.until<=now||e.count({name,level:0})>=r.quantity){
+    helperRequests.delete(name);continue;
+   }
+   if(r.next>now)continue;
+   const price=p.G.items?.[name]?.g;
+   if(!e.npcFor(name)||!Number.isSafeInteger(price)||price<=0||
+      price>cfg.production.helperMaxPrice){r.next=now+60000;continue;}
+   const rule={enabled:true,name:'Autonomer Scroll-Helper '+name,item:name,
+    action:'buy',batch:1,maxCount:3,maxPrice:cfg.production.helperMaxPrice,
+    goldBudget:cfg.production.helperMaxPrice,lossBudget:0,keep:0,teamReserve:0};
+   r.next=now+30000;
+   const accepted=e.npcBuy({name,level:0},rule,1,
+     ()=>cfg.production.enabled&&cfg.production.autoHelpers&&
+       r.until>Date.now()&&e.count({name,level:0})<r.quantity);
+   if(accepted||bot.movement.order?.owner==='economy'||bot.journal)return true;
+  }
+  return false;
+ }
  function canRecordDelivery(item,to){const matching=goals().filter(g=>g.recipient===to&&g.item===item.name&&g.level===(item.level??0));if(Object.keys(deliveries).length+matching.filter(g=>!Object.hasOwn(deliveries,goalKey(g))).length<=1024)return true;e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');return false;}
- return {invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(cfg.general.testLogging===undefined)return materials;const first=materials[0];if(!first)return [];const holders=bot.farmers.map(name=>({name,held:(()=>{const h=bot.transport.fresh(name);return h?.running&&h.realm===p.realm()?h.materialProgress?.find(x=>x.objective===first.objective)?.quantity??0:0;})()}));const total=holders.reduce((n,h)=>n+h.held,0),remaining=Math.max(0,first.quantity-total),share=Math.ceil(remaining/Math.max(1,holders.length));return [{...first,remaining,quotas:holders.map(h=>({name:h.name,quantity:h.held+share}))}];},
+ return {invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(cfg.general.testLogging===undefined)return materials;const first=materials[0];if(!first)return [];const holders=bot.farmers.map(name=>({name,held:(()=>{const h=bot.transport.fresh(name);return h?.running&&h.realm===p.realm()?h.materialProgress?.find(x=>x.objective===first.objective)?.quantity??0:0;})()}));const total=holders.reduce((n,h)=>n+h.held,0),remaining=Math.max(0,first.quantity-total),share=Math.ceil(remaining/Math.max(1,holders.length));return [{...first,remaining,quotas:holders.map(h=>({name:h.name,quantity:h.held+share}))}];},
  reserved:i=>reservedQuantity(i)>0,
  farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.teamPlan?.candidates()??(bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets);for(const request of merchant.materials){if(request.expires&&request.expires<Date.now()||!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.explicit({name:request.item,level:0},'acquisition');if((r?.action==='farm'||!r&&cfg.production.autonomy)&&qty(request.item,0)<Math.min(r?.targetCount??request.quantity,request.quotas?.find(x=>x.name===bot.me.name)?.quantity??request.quantity))return [request.monster];}return null;},
  status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,autonomy:!!cfg.production.autonomy,waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialRequests:materials.slice(0,5).map(x=>({item:x.item,monster:x.monster,quantity:x.quantity})),farmOrderReceipts:materials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===materials[0].objective&&h.materialAck.item===materials[0].item&&h.materialAck.monster===materials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];planningReason=null;}};

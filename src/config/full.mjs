@@ -30,7 +30,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{
 
 
 
- progressionAdvice:bool('Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen',true),autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',5,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
+ progressionAdvice:bool('Offiziellen Progression Guide als unverbindliche Planungsquelle nutzen',true),autoGear:bool('Bekannte Ausrüstung bis zum konfigurierten Level verbessern'),autoGearMaxLevel:number('Automatische Gear-Zielgrenze',8,0,99),autoGearBudget:number('Budget je automatischem Gearziel',100000),
 
  autoGearItems:{type:'array',title:'Erlaubte Items für automatische Gearziele',items:{type:'string',minLength:1,maxLength:160},maxItems:2000,uniqueItems:true,default:['helmet','coat','pants','shoes','gloves','bow','staff','sword','blade','shield']}
 

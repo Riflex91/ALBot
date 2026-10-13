@@ -1,9 +1,9 @@
-import {knowledgeFingerprint} from './knowledge.mjs';
+import {knowledgeFingerprint,semanticGear} from './knowledge.mjs';
 // Measured, context-bound adjustments only. Never changes action permissions.
 export function createAdaptive(bot){
  const {p}=bot,key='albot:adaptive:v1:'+bot.me.name;let rows=[],faults=[],proposals=[],lastSave=0,dirty=false,cachedEpoch=-1,cachedContext='',lastAdvice='';
  const context=()=>{if(bot.running&&Number.isInteger(bot.decisionEpoch)&&cachedEpoch===bot.decisionEpoch)return cachedContext;
-  cachedEpoch=bot.decisionEpoch;return cachedContext=knowledgeFingerprint([p.G.version,p.G.monsters,p.realm(),bot.cfg.farming?.mode,bot.farmers?.map(n=>[n,n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear])]);};
+  cachedEpoch=bot.decisionEpoch;return cachedContext=knowledgeFingerprint([p.G.version,p.G.monsters,p.realm(),bot.cfg.farming?.mode,bot.farmers?.map(n=>[n,semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear)])]);};
  const valid=r=>r&&typeof r.target==='string'&&typeof r.context==='string'&&
   ['samples','failures','seconds','reward','at'].every(k=>Number.isFinite(r[k])&&r[k]>=0)&&r.samples<=10000&&r.failures<=r.samples&&r.at<=Date.now();
  const saved=p.read(key);if(saved?.version===1&&Array.isArray(saved.rows))rows=saved.rows.filter(valid).slice(-32);

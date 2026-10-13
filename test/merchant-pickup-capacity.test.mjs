@@ -160,8 +160,8 @@ test('farmer accepts MP potions even when HP stack already holds 3000',()=>{
  c.name='F';c.map='main';c.in='main';c.x=0;c.y=0;
  c.items=[{name:'hpot0',level:0,q:3000},...Array(41).fill(null)];
  bot.p.G.items={
-  hpot0:{type:'pot',gives:[['hp',200]]},
-  mpot0:{type:'pot',gives:[['mp',300]]}};
+  hpot0:{type:'pot',s:9999,gives:[['hp',200]]},
+  mpot0:{type:'pot',s:9999,gives:[['mp',300]]}};
  bot.p.realm=()=> 'EUII';bot.cfg.party.merchant='My_Merchant';
  bot.cfg.farming={freeSlots:4,potionCarryMax:3000};
  bot.cfg.general={messageTtlMs:10000};bot.cfg.items=[];

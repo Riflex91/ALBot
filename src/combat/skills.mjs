@@ -128,8 +128,8 @@ export function createSkills(bot){
           a.name!==p.c.name&&samePlace(p.c,a)&&
           distance(p.c,a)<=(p.G.skills?.energize?.range??0));
         const strongest=highestDpsFarmer(bot,candidates);
-        if(strongest&&strongest.mp/strongest.max_mp<.9&&
-          strongest.max_mp-strongest.mp>=30&&
+        // Refill the priority DPS farmer once at least 2% of maximum MP is missing.
+        if(strongest&&(strongest.max_mp-strongest.mp)/strongest.max_mp>=.02&&
           use('energize',strongest,.4,1500))return true;
        }
       if(cfg.party.buffs){const tank=alive.find(e=>e.ctype==='warrior');if(tank&&use('reflection',tank,.5,5000))return true;}

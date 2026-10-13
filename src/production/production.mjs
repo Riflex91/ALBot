@@ -42,6 +42,36 @@ export function gearInputReady(g,stock,meta){
    (Number.isSafeInteger(i.q)&&i.q>0?i.q:1):0),0);
  return n>=needed;
 }
+// A multi-level goal can be actionable starting with a lower-level batch.
+export function gearChainReady(g,stock,meta){
+ if(!g?.gearSlot||!Number.isInteger(g.level)||g.level<1||
+   !(meta?.upgrade||meta?.compound))return false;
+ for(let level=g.level-1;level>=0;level--)
+  if(gearInputReady({...g,level:level+1},stock,meta))return true;
+ return false;
+}
+// Every action needs physical output space, not an arbitrary gap ABOVE the
+// Merchant's configured reserve. Reusing a stack or freeing consumed input
+// slots can satisfy the requirement even if the inventory is full.
+export function actionCapacity(items,consumed=[],output=null,G={},outputs=1){
+ if(!Array.isArray(items)||!Number.isSafeInteger(outputs)||outputs<0)return false;
+ let empty=items.filter(i=>!i).length;
+ const seen=new Set();
+ for(const row of consumed){
+  if(!Number.isInteger(row?.slot)||row.slot<0||row.slot>=items.length||
+    seen.has(row.slot)||!Number.isSafeInteger(row.quantity)||row.quantity<1)return false;
+  seen.add(row.slot);
+  const i=items[row.slot],q=i?.q??1;
+  if(!i||!Number.isSafeInteger(q)||row.quantity>q)return false;
+  if(row.quantity===q)empty++;
+ }
+ if(output&&G.items?.[output.name]?.s){
+  const raw=G.items[output.name].s,max=raw===true?9999:raw;
+  if(Number.isSafeInteger(max)&&max>1&&items.some(i=>i&&identity(i)===identity(output)&&(i.q??1)<max))
+    outputs=Math.max(0,outputs-1);
+ }
+ return empty>=outputs;
+}
 // Release only the part of other goals' gross demand already backed by
 // verified, non-protected bank inventory. Keep sale reservations gross: this
 // exemption is for a current production step's inputs, never liquidation.
@@ -155,9 +185,9 @@ export function createProduction(bot){
    details:{item:item.name,quantity:sum,required}});
  }
  function capacity(consumed=[],output=null){
-  if(bot.free()>cfg.merchant.minFreeSlots||consumed.some(({slot,quantity})=>(p.c.items[slot]?.q??1)===quantity))return true;
-  if(output&&p.c.items.some(i=>i&&identity(i)===identity(output)&&(i.q??1)<(p.G.items[i.name]?.s??1)))return true;
-  e.note('Arbeitsplätze fehlen: freigegebene Bank-/Verkaufsregeln oder freie Slots erforderlich');return false;
+  if(actionCapacity(p.c.items,consumed,output,p.G))return true;
+  e.note('Produktionsschritt blockiert: keine freien Ausgabeplätze; physisch frei='+bot.free());
+  return false;
  }
  function outputCount(name,r){const data=findRecipe(p.G,name,r.recipe)?.recipe.output?.data;return p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===0&&(data===undefined||JSON.stringify(i.data)===JSON.stringify(data))?(i.q??1):0),0);}
  function mutate(slot,r){
@@ -194,6 +224,7 @@ export function createProduction(bot){
   const scroll=p.c.items.findIndex(x=>x?.name===scrollName&&usable(x));const offering=r.offering?p.c.items.findIndex(x=>x?.name===r.offering&&usable(x)):null;
   // Merchant-only helper request: only for a rule explicitly asking for it.
   if(r.offering&&offering<0)requestHelper(r.offering,1);
+  if(scroll<0)requestHelper(scrollName,1);
   if(scroll<0||(r.offering&&offering<0)){e.note('Produktion benötigt '+scrollName+(r.offering?' / '+r.offering:''));return false;}
   const slots=[...inputs,scroll,...(offering===null?[]:[offering])];if(new Set(slots).size!==slots.length)return false;
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
@@ -324,20 +355,28 @@ export function createProduction(bot){
    if(!verified.ready||step?.sourceProof&&proof(verified)!==JSON.stringify(step.sourceProof)){e.note('Exchange-Quelle nicht verifiziert: '+i.name+' / '+(verified.reason??'Quellenwechsel'));return false;}
    const d=verified.quest?verified.destination:e.destination('exchange');
    if(!e.npcTravel(d,'Exchange '+i.name))return false;const before=e.count(i),initialProof=proof(verified);
-   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.npcAt(d)&&e.spare(slot,r)>=q;},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},timeout:45000});
+   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.npcAt(d)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G);},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},timeout:45000});
   }
+ function availabilityFingerprint(step){
+  return JSON.stringify([step?.item,step?.level,step?.kind,
+   p.c.items.map(i=>i?[i.name,i.level??0,i.q??1,i.stat_type??'']:null),
+   (bot.bank?.catalogStock?.()??[]).map(r=>[r.item?.name,r.item?.level??0,r.item?.q??1,r.item?.stat_type??'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),p.c.gold,
+   cfg.production.enabled,cfg.production.autoHelpers,cfg.production.minChance]);
+ }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
   const readyStock=[...p.c.items.filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep'),
    ...(bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep')];
-  const fastGear=g=>gearInputReady(g,readyStock,p.G.items?.[g.item]);
+  const fastGear=g=>gearChainReady(g,readyStock,p.G.items?.[g.item]);
   const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<Math.max(cfg.merchant.taskHoldMs??30000,45000);
     const effective=g=>(g.priority??0)+(fastGear(g)?65:0);
     // A five-minute remote-exchange hold must not starve ready local gear.
     return effective(b)-effective(a)||Number(held(b))-Number(held(a))||
       (bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||
       b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
-   const wait=waiting.get(goalKey(g));if(wait?.until>Date.now())continue;if(wait)waiting.delete(goalKey(g));
+   const wait=waiting.get(goalKey(g));
+   if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step))continue;
+   if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient
    // must not monopolize the production slot while out of transfer range.
@@ -392,7 +431,11 @@ export function createProduction(bot){
   const r=e.rules(item,['buy','retrieve','farm','marketBuy'].includes(step.kind)?'acquisition':'production');
   if(!r||r.action!==step.kind){const reason='Produktionskette benötigt passende '+step.kind+'-Regel für '+step.item;e.note(reason);bot.event?.('production.blocked',{goal:goal.name,item:step.item,step:step.kind,reason});return false;}
   if(!e.remaining(r))return false;
-  const attempt=fn=>{const accepted=fn();if(cfg.general.testLogging!==undefined&&!accepted&&!bot.movement.order&&!bot.journal&&!exec.pending.size){const entry={goal:goal.name,item:step.item,kind:step.kind,reservations:structuredClone(plan.reservations??[]),reason:bot.reason||'Voraussetzungen/Angebot fehlen',until:Date.now()+30000};waiting.set(goalKey(goal),entry);if(waiting.size>64)waiting.delete(waiting.keys().next().value);bot.event('production.wait',entry);}return accepted;};
+  const attempt=fn=>{const accepted=fn();if(cfg.general.testLogging!==undefined&&!accepted&&!bot.movement.order&&!bot.journal&&!exec.pending.size){const entry={goal:goal.name,item:step.item,kind:step.kind,
+   step:{item:step.item,level:step.level,kind:step.kind},
+   fingerprint:availabilityFingerprint(step),
+   reservations:structuredClone(plan.reservations??[]),
+   reason:bot.reason||'Voraussetzungen/Angebot fehlen',until:Date.now()+120000};waiting.set(goalKey(goal),entry);if(waiting.size>64)waiting.delete(waiting.keys().next().value);bot.event('production.wait',entry);}return accepted;};
   if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));
   if(step.kind==='retrieve')return attempt(()=>bot.bank.retrieve(item,r,step.quantity));
   if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));return attempt(()=>slot>=0&&exchange(slot,r,step));}
@@ -427,7 +470,7 @@ export function createProduction(bot){
  }
  function helperSupply(){
   if(me.role!=='merchant'||!bot.running||bot.journal||bot.inventoryBlocked||
-    bot.logistics?.reserved||bot.free()<=cfg.merchant.minFreeSlots||
+    bot.logistics?.reserved||bot.free()<1||
     !cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoHelpers)return false;
   const now=Date.now();
   for(const [name,r] of helperRequests){

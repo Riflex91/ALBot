@@ -12,6 +12,16 @@ export function saleReceiptMatches(receipt,item,quantity,gold){
    receipt.gold===gold&&identity(receipt.item)===identity(item)&&
    (receipt.item?.q??1)===quantity;
 }
+// NPC purchase uses actual stack capacity. One free slot permits a normal
+// scroll or potion purchase even at the Merchant's preferred 4-slot reserve.
+export function purchaseFits(items,item,quantity,meta){
+ if(!Array.isArray(items)||!Number.isSafeInteger(quantity)||quantity<1||!meta)return false;
+ const max=meta.s===true?9999:Number.isSafeInteger(meta.s)&&meta.s>1?meta.s:1;
+ let space=items.filter(i=>!i).length*max;
+ if(max>1)for(const i of items)if(i&&identity(i)===identity(item))
+  space+=Math.max(0,max-(i.q??1));
+ return space>=quantity;
+}
 export function createEconomy(bot){
  const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0,npcEpoch=-1;const npcCache=new Map();const ruleActions=new Map();
  const actionKey=r=>JSON.stringify([r.name,r.item,r._originalAction??r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
@@ -95,8 +105,13 @@ export function createEconomy(bot){
   const meta=p.G.items[item.name];if(!meta||item.level||item.p||item.stat_type||item.title)return false;
   const price=meta.g;if(!Number.isFinite(price)||price<=0||price>r.maxPrice)return false;
   const before=count(item),q=Math.floor(Math.min(quantity,r.batch,r.maxCount-before,Math.floor(r.goldBudget/price)));
-  if(q<1||!extraGuard()||bot.free()<=cfg.merchant.minFreeSlots||!budget(q*price,0,r)||!npcTravel(npcFor(item.name),'NPC '+item.name))return false;
-  return perform('buy',{cost:q*price,rule:r,guard:()=>extraGuard()&&npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
+  if(q<1||!extraGuard())return false;
+  if(!purchaseFits(p.c.items,item,q,meta)){
+   note('NPC-Kauf '+item.name+': physische Inventarplätze fehlen (frei: '+bot.free()+')');
+   return false;
+  }
+  if(!budget(q*price,0,r)||!npcTravel(npcFor(item.name),'NPC '+item.name))return false;
+  return perform('buy',{cost:q*price,rule:r,guard:()=>extraGuard()&&purchaseFits(p.c.items,item,q,meta)&&npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
  function npcSell(slot,r,{onConfirmed=()=>true}={}){const i=p.c.items[slot],sourceBefore=i?.q??1,q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice||!remaining(r)||!budget(0,0,r))return false;const before=count(i),gold=p.c.gold;let receipt=null;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!npcTravel(d,'NPC-Verkauf'))return false;
   return perform('sell',{slots:[slot],rule:r,onConfirmed,guard:()=>spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>Promise.resolve(p.call('sell',slot,q)).then(result=>{receipt=result;return result;}),observe:()=>{

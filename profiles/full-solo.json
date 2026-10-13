@@ -17,7 +17,8 @@
       "ui": true,
       "pauseOnUnknown": false,
       "testLogging": true,
-      "transferIntervalMs": 250
+      "transferIntervalMs": 250,
+      "autonomousSetup": true
     },
     "characters": [
       {
@@ -147,6 +148,9 @@
       "townTravel": true,
       "townMinSavingsMs": 3000,
       "servicePositionError": 70,
+      "discoverOwnFarmers": true,
+      "hpPotionTarget": 3000,
+      "mpPotionTarget": 300,
       "autoMarket": true,
       "listingTtlMs": 3600000
     },

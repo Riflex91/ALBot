@@ -1,3 +1,11 @@
+# Automatischer Betrieb und Gruppenwahl 0.10.1 – 13.10.2026
+
+Lokale Automatik aktiviert Produktions-/Merchant-/Lernfunktionen und unterstützte Bossprofile innerhalb bestehender Budgets und Schutzregeln. Eigene Online-Farmer werden automatisch erkannt und auf 3.000 HP-/300 MP-Tränke aufgefüllt. Die Farmwahl berücksichtigt individuellen AoE-Beitrag, Priest-Heilung, Tankkontrolle, Rüstung/Resistenz, aktive Paladin-Auren und begrenzte Schutzressourcen.
+
+[Einrichtung, Codezuordnung, Grenzen und Liveabnahme](docs/EINRICHTUNG-0.10.1.md). **503/503 Offline-Tests bestanden**, Runtime/Werkstatt gebaut; neue Spiel-Liveabnahme steht aus. Cloud/KI bleiben aus, keine Anbieteränderungen. Die folgenden älteren Statusblöcke sind historisch.
+
+---
+
 ## Aktueller Arbeitsstand 0.10.0-candidate (12.10.2026)
 
 Der Nutzer hat die Umsetzung der in 0.9.0 dokumentierten Restmodule ausdrÃ¼cklich beauftragt und wird neue Cloudflare-/Supabase-/Backblaze-Projekte in bestehenden Konten selbst einrichten und live testen. Gemeinsame Itemallokation, endliche Mutationsplanung, Marktabsatz, Bossadapter, strategisches Lernen, optionale deklarative KI, B2-Rotation und Restore sind auf dem Branch `codex/autonomous-merchant-20261012` / Draft PR #32 implementiert. Aktueller Einstieg: [Implementierungsstand](docs/IMPLEMENTIERUNGSSTAND-0.10.0.md), [Einrichtung und Liveabnahme](docs/EINRICHTUNG-0.10.0.md), [Bosskatalog](docs/BOSS-KATALOG.md). Ã„ltere offene Statuslisten unten sind historisch; vor Arbeit den tatsÃ¤chlichen Code abgleichen.

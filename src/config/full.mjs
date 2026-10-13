@@ -49,7 +49,8 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{materialP
 Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{questPreference:{type:'number',title:'Nutzengewicht für Monsterhunt',default:1.1,minimum:0,maximum:100}});
 
 FULL_DESCRIPTOR.schema.properties.skills.items.properties.maxTargets.default=5;
-Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{potionCarryMax:number('Gemeinsame HP-/MP-Trank-Obergrenze je Farmer',10000,1,1000000)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{potionCarryMax:number('Trank-Obergrenze je Sorte und Farmer',10000,1,1000000)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{discoverOwnFarmers:bool('Eigene Online-Farmer automatisch erkennen (ALBot-Bestandsmeldung erforderlich)',true),hpPotionTarget:number('HP-Tränke je Online-Farmer (Zielbestand)',3000,0,100000),mpPotionTarget:number('MP-Tränke je Online-Farmer (Zielbestand)',300,0,100000)});
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{skillSupplies:bool('Skill-Verbrauchsmaterial automatisch nachliefern',true),skillSupplyCount:number('Zielvorrat je Skill-Verbrauchsmaterial',20,1,100)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{tokenBuy:bool('Explizite Inventarziele aus vorhandenen Token kaufen',false),tokenMaxPerPurchase:number('Token je Kauf maximal',1,1,10000),dismantle:bool('Verifizierten Verkaufsüberschuss wirtschaftlich zerlegen',false)});
@@ -58,3 +59,7 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{autoHelpe
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{purposeAllocation:bool('Gemeinsame Zweckallokation für alle Produktionsziele',true),finiteHelpers:bool('Endliche Mehrschrittplanung mit vorhandenen Helfern',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{bossTactics:bool('Bossprofile und Gruppenbereitschaft prüfen',true),bossMaxSeconds:number('Maximale Bosskampfzeit (s)',300,10,1800),adaptiveLearning:bool('Begrenzte Strategieanpassungen aus bestätigten Ergebnissen',true)});
 Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{autoMarket:bool('Überschuss anhand bestätigter Marktumsätze anbieten',true),listingTtlMs:number('Automatische Angebote spätestens zurücknehmen (ms)',3600000,60000,86400000)});
+FULL_DESCRIPTOR.schema.properties.general.properties.autonomousSetup={...bool('Automatischer Betrieb: Produktion, Merchant, Lernen und Bosswahl selbst steuern',true),description:'Aktiviert die unterstützten Produktionswege, Helferwahl, Tokenkäufe, Zerlegen, Bankentlastung und adaptive Teamwahl. Gold-/Verlustbudgets, Itemschutz und feste Charakterregeln bleiben verbindlich. Cloud wird separat eingerichtet.'};
+
+FULL_DESCRIPTOR.schema.properties.production.properties.acquireBy.description="Im automatischen Betrieb werden bank, npc, market, farm, craft und exchange freigegeben. Itemschutz, Preise und Budgets bleiben verbindlich.";
+FULL_DESCRIPTOR.schema.properties.world.properties.allowedBosses.description="Im automatischen Betrieb erg�nzt die Runtime alle vom aktuellen Bossadapter unterst�tzten Gegner. Bereitschaft, Karten-/Instanzgrenzen und Mechanikpr�fungen bleiben verbindlich.";

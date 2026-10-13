@@ -113,6 +113,12 @@
             "default": 250,
             "minimum": 250,
             "maximum": 10000
+          },
+          "autonomousSetup": {
+            "type": "boolean",
+            "title": "Automatischer Betrieb: Produktion, Merchant, Lernen und Bosswahl selbst steuern",
+            "default": true,
+            "description": "Aktiviert die unterstützten Produktionswege, Helferwahl, Tokenkäufe, Zerlegen, Bankentlastung und adaptive Teamwahl. Gold-/Verlustbudgets, Itemschutz und feste Charakterregeln bleiben verbindlich. Cloud wird separat eingerichtet."
           }
         },
         "required": [
@@ -529,7 +535,7 @@
           },
           "potionCarryMax": {
             "type": "integer",
-            "title": "Gemeinsame HP-/MP-Trank-Obergrenze je Farmer",
+            "title": "Trank-Obergrenze je Sorte und Farmer",
             "default": 10000,
             "minimum": 1,
             "maximum": 1000000
@@ -1333,6 +1339,25 @@
             "minimum": 10,
             "maximum": 300
           },
+          "discoverOwnFarmers": {
+            "type": "boolean",
+            "title": "Eigene Online-Farmer automatisch erkennen (ALBot-Bestandsmeldung erforderlich)",
+            "default": true
+          },
+          "hpPotionTarget": {
+            "type": "integer",
+            "title": "HP-Tränke je Online-Farmer (Zielbestand)",
+            "default": 3000,
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "mpPotionTarget": {
+            "type": "integer",
+            "title": "MP-Tränke je Online-Farmer (Zielbestand)",
+            "default": 300,
+            "minimum": 0,
+            "maximum": 100000
+          },
           "autoMarket": {
             "type": "boolean",
             "title": "Überschuss anhand bestätigter Marktumsätze anbieten",
@@ -1830,7 +1855,7 @@
           "acquireBy": {
             "type": "array",
             "title": "Erlaubte Beschaffungswege (bank, npc, market, farm, craft, exchange)",
-            "description": "",
+            "description": "Im automatischen Betrieb werden bank, npc, market, farm, craft und exchange freigegeben. Itemschutz, Preise und Budgets bleiben verbindlich.",
             "items": {
               "type": "string",
               "title": "ID",
@@ -2262,7 +2287,7 @@
           "allowedBosses": {
             "type": "array",
             "title": "Erlaubte Boss-IDs",
-            "description": "",
+            "description": "Im automatischen Betrieb erg�nzt die Runtime alle vom aktuellen Bossadapter unterst�tzten Gegner. Bereitschaft, Karten-/Instanzgrenzen und Mechanikpr�fungen bleiben verbindlich.",
             "items": {
               "type": "string",
               "title": "ID",

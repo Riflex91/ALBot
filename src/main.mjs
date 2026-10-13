@@ -1,5 +1,6 @@
+import {automaticSupplyReceiver,onlineSupplyFarmers} from './items/potion-supply.mjs';
 import {createAdaptive} from './world/adaptive.mjs';
-import {createBosses} from './combat/bosses.mjs';
+import {createBosses,bossProfile} from './combat/bosses.mjs';
 import {createMarketDemand} from './merchant/market-demand.mjs';
 import {createCombatNavigation} from './combat/navigation.mjs';
 import {createLearning} from './world/learning.mjs';
@@ -37,7 +38,7 @@ import {createGear} from './production/gear.mjs';
 import {createMerchant} from './merchant/controller.mjs';
 import {VERSION} from './version.mjs';
 import {DESCRIPTOR} from '../editor/lib/schema.mjs';
-import {parseData,validateSchema,validateProfile,addMissingDefaults} from '../editor/lib/contract.mjs';
+import {parseData,validateSchema,validateProfile,addMissingDefaults,applyAutonomousMode} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from './config/live-a.mjs';
 import {chooseRule,variantCount,protectedItem,distance,samePlace,fingerprint} from './core/policy.mjs';
 import {Executor} from './core/executor.mjs';
@@ -103,8 +104,8 @@ export function install(root){
     if(value.items.some(r=>r.enabled&&r.action==='send'&&(!r.recipient||!value.characters.some(c=>c.enabled&&c.name===r.recipient))))errors.push('Lieferempfänger muss aktiv konfiguriert sein.');
     return errors;
   }
-  let cfg;try{cfg=parseData(JSON.stringify(root.ALBotConfig));const errors=validate(cfg);if(errors.length)throw Error(errors.join('; '));}catch(e){p.log('Konfiguration ungültig: '+e.message);failed('invalid',e.message);return;}
-  const me=cfg.characters.find(c=>c.name===p.c?.name&&c.enabled);
+  let cfg;try{cfg=parseData(JSON.stringify(root.ALBotConfig));if(cfg.general?.testLogging!==undefined&&cfg.general.autonomousSetup===undefined)cfg.general.autonomousSetup=true;cfg=applyAutonomousMode(cfg);if(cfg.general?.autonomousSetup===true&&cfg.world){cfg.world.allowedBosses=[...new Set([...(cfg.world.allowedBosses??[]),...Object.keys(p.G.monsters??{}).filter(id=>bossProfile(p.G,id)?.supported)])];}const errors=validate(cfg);if(errors.length)throw Error(errors.join('; '));}catch(e){p.log('Konfiguration ungültig: '+e.message);failed('invalid',e.message);return;}
+  const configuredMe=cfg.characters.find(c=>c.name===p.c?.name&&c.enabled),me=configuredMe??automaticSupplyReceiver(cfg,p),supplyOnly=!!me&&!configuredMe;
   if(!me){p.log('Eigenen Namen zuerst in der Werkstatt aktivieren.');failed('unconfigured','Eigenen Namen zuerst aktivieren');return;}
   report.configure?.({continuous:cfg.general.testLogging===true});
   const team=cfg.characters.filter(c=>c.enabled&&c.group===me.group),farmers=team.filter(c=>c.role==='farmer').map(c=>c.name);if(cfg.general.testLogging===undefined)farmers.sort();
@@ -121,7 +122,7 @@ export function install(root){
      journal=null;
    }
   if(journal?.kind==='quest.monsterhunt'&&journal.quest==='monsterhunt'&&journal.cost===0&&journal.loss===0&&Array.isArray(journal.slots)&&journal.slots.length===0&&!p.G.skills?.monsterhunt){if(checkpoint.clear(journal)){report.event('checkpoint.repaired',{kind:journal.kind,reason:'Alter ungültiger use_skill(monsterhunt)-Aufruf ohne Inventarwirkung'});journal=null;}}
-  const bot={p,cfg,me,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
+  const bot={p,cfg,me,supplyOnly,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
     checkpoint,
     event(type,data){report.event(type,data);bot.adaptive?.fault(type,data);},
     report(message){if(message!==reportText||now()-reportTime>10000){reportText=message;reportTime=now();p.log(message);report.event('message',{message});}},
@@ -184,6 +185,7 @@ export function install(root){
     if(now()<retryAfter)return;
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
+    if(supplyOnly){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}bot.logistics.poll(true);exec.flush();return;}
     bot.teamTravel?.tick();if(!bot.running)return;
     if(bot.teamTravel?.blocked)return;
     bot.behavior?.tick();if(!bot.running)return;
@@ -230,7 +232,7 @@ export function install(root){
       if(me.region+me.server!==p.realm()&&!(cfg.world?.serverHop&&cfg.world.allowedRealms.includes(p.realm())))return deny('Falscher Realm: erwartet '+me.region+me.server);
       if(cfg.general.transport==='ipc'&&!p.ipc)return deny('Lokale IPC nicht verfügbar');
       bot.recovery?.reconcile();if(cfg.production?.autoDisposition===true&&bot.inventoryBlocked&&/^gather\./.test(bot.journal?.kind??''))return deny('AutoDisposition gesperrt: offenes Inventarjournal zuerst nach Bestandsabgleich bestaetigen');if(bot.inventoryBlocked)report.event('runtime.warning',{where:'start',reason:'Offene Inventaraktion: Wertaktionen gesperrt, übriger Betrieb läuft',continued:true});
-      bot.cloud.resume();bot.economy?.resume();report.event('start');bot.running=true;bot.reason='Start';generation++;bot.progression?.refresh();tick(generation);return bot.running;
+      bot.cloud.resume();bot.economy?.resume();report.event('start');bot.running=true;bot.reason=supplyOnly?'Automatischer Trankempfänger (kein Farmprofil)':'Start';generation++;if(!supplyOnly)bot.progression?.refresh();tick(generation);return bot.running;
     },
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),
     restoreLearning:()=>bot.cloud.restore(),
@@ -238,7 +240,7 @@ export function install(root){
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

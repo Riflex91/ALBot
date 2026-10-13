@@ -1,3 +1,4 @@
+import {potionTarget,onlineSupplyFarmers} from '../items/potion-supply.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
@@ -15,7 +16,7 @@ export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
-  standRequestedUntil=0;
+  standRequestedUntil=0,lastSupplyCheck=0;
  // A pickup is admitted only after a bounded, sequential depot cycle.
  // Mutations use the existing durable journal and retain every user rule,
  // safety reservation, minimum success chance and hourly budget.
@@ -66,18 +67,17 @@ export function createMerchant(bot){
   }
   return false;
  }
- function supplyBeforePickup(){
-  const farmers=(bot.farmers??[]).map(name=>({name,peer:bot.transport?.fresh?.(name)}));
-  if(farmers.some(({peer})=>!peer?.running||peer.rip||peer.realm!==p.realm()||
-      !['hpot0','mpot0'].every(id=>Number.isSafeInteger(peer.potions?.[id])&&
-        peer.potions[id]>=0&&peer.potions[id]<=100000))){
-   bot.reason='Abfahrt wartet auf aktuelle HP-/MP-Trankbestände aller Farmer';
-   return false;
-  }
+ function supplyBeforePickup(advance=true){
+  if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply){if(advance)nextStage();return false;}
+  const farmers=onlineSupplyFarmers(bot).filter(({peer})=>['hpot0','mpot0'].every(id=>Number.isSafeInteger(peer.potions?.[id])&&peer.potions[id]>=0&&peer.potions[id]<=1000000));
+  if(!farmers.length){if(advance)nextStage();return false;}
   for(const id of ['hpot0','mpot0']){
-   if(departure.skipped.has(id))continue;
+   if(advance&&departure.skipped.has(id))continue;
+   const explicit=e.explicit?.({name:id,level:0});if(explicit&&explicit.action!=='send')continue;
+   const target=potionTarget(cfg,id);if(!target)continue;
    const shortage=farmers.reduce((total,{peer})=>
-     total+Math.max(0,3000-peer.potions[id]),0);
+     total+Math.max(0,target-peer.potions[id]),0);
+   if(!shortage)continue;
    const carried=e.count({name:id,level:0}),reserve=200;
    const missing=Math.max(0,shortage+reserve-carried);
    if(!missing)continue;
@@ -101,7 +101,7 @@ export function createMerchant(bot){
      Math.min(missing,Math.max(1,cfg.merchant.maxDelivery??3000),
        Math.floor(left/price),Math.floor(gold/price)):0;
    if(quantity<1||bot.free()<=cfg.merchant.minFreeSlots){
-    departure.skipped.add(id);
+    if(advance)departure.skipped.add(id);
     bot.event?.('merchant.potionShortfall',{item:id,remaining:missing,
       reason:quantity<1?'Budget/Gold oder NPC-Preis':'Kein Inventarplatz'});
     continue;
@@ -110,16 +110,17 @@ export function createMerchant(bot){
      enabled:true,maxPrice:price,goldBudget:quantity*price,lossBudget:0,
      batch:quantity,maxCount:Math.max(100000,carried+missing),
      keep:0,teamReserve:0,targetCount:carried+missing};
-   if(e.npcBuy({name:id,level:0},rule,quantity))return true;
+   const stillNeeded=()=>{const liveNeed=onlineSupplyFarmers(bot).filter(({peer})=>Number.isSafeInteger(peer.potions?.[id])).reduce((n,{peer})=>n+Math.max(0,target-peer.potions[id]),0);return cfg.merchant.supply&&potionTarget(cfg,id)===target&&liveNeed>0&&liveNeed+reserve-e.count({name:id,level:0})>=quantity;};
+   if(e.npcBuy({name:id,level:0},rule,quantity,stillNeeded))return true;
    if(bot.movement.order?.owner==='economy'||bot.journal||
       exec.busy('inventory')||exec.busy('economy'))return true;
    // Unavailable NPC or a veto from a separate budget must be surfaced,
    // never retried forever in a tight loop.
-   departure.skipped.add(id);
+   if(advance)departure.skipped.add(id);
    bot.event?.('merchant.potionShortfall',{item:id,remaining:missing,
      reason:bot.reason||'Kauf nicht zugelassen'});
   }
-  nextStage();return false;
+  if(advance)nextStage();return false;
  }
  function prepareDeparture(peer){
   if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.pickup)return true;
@@ -411,6 +412,9 @@ export function createMerchant(bot){
     bot.reason=progress.blocked??(intent?.phase==='delivery'
       ?'Lieferauftrag offen: '+(intent.recipient??'Team')+' – Warte auf freigegebene Items/aktuelle Empfangsposition'
       :'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf');
+  }
+  if(me.role==='merchant'&&cfg.merchant.supply&&Date.now()-lastSupplyCheck>=10000){
+   lastSupplyCheck=Date.now();if(supplyBeforePickup(false))return;
   }
   if(standDepot())return;
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});

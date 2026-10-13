@@ -62,6 +62,33 @@ function harness(name='A',sharedParent=null){
   setTimeout:f=>{timers.set(++next,f);return next;},clearTimeout:id=>timers.delete(id),game_log:m=>calls.push(['log',m]),set_message(){},get:k=>storage.get(k),set:(k,v)=>{storage.set(k,structuredClone(v));return true;},is_on_cooldown:()=>false,can_attack:()=>true,can_move_to:()=>true,attack:e=>{calls.push(['attack',e.id]);return Promise.resolve({success:true});},change_target:e=>{c.target=e.id;},stop:()=>Promise.resolve(),move:()=>Promise.resolve()};
  const context=vm.createContext(root);const load=()=>vm.runInContext(code,context);return {root,cfg,c,calls,timers,storage,listeners,load};
 }
+
+test('shared bundle boots an owned unconfigured farmer as a receiver in browser and headless',()=>{
+ for(const browser of [false,true]){
+  const a=harness('F'),cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+  cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'M',class:'merchant',role:'merchant'}];
+  cfg.party.merchant='M';cfg.general.ui=false;a.root.ALBotConfig=cfg;
+  a.root.get_characters=()=>[{name:'M',type:'merchant'},{name:'F',type:'ranger'}];
+  if(browser){delete a.root.parent.headless;delete a.root.parent.caracAL;a.root.performance_trick=()=>{};a.root.send_cm=()=>true;}
+  a.load();assert.equal(a.root.ALBot.status().running,true,JSON.stringify(a.root.ALBot.status()));
+  assert.equal(a.root.ALBot.status().supplyOnly,true);assert.equal(a.calls.some(x=>x[0]==='attack'),false);
+  a.root.ALBot.dispose();assert.equal(a.timers.size,0);
+ }
+});
+
+test('automatic runtime activates guarded production and derives supported bosses without manual flags',()=>{
+ const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+ cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A',class:'ranger'}];
+ cfg.general.autostart=false;cfg.general.ui=false;cfg.party.enabled=false;
+ cfg.production.autoHelpers=false;cfg.production.dismantle=false;cfg.world.allowedBosses=[];
+ a.root.ALBotConfig=cfg;a.root.G.monsters.phoenix={hp:10000,attack:100,frequency:1};
+ a.root.G.monsters.unknown={boss:true,hp:1000,abilities:{new_mechanic:{}}};
+ a.load();const report=JSON.parse(a.root.ALBot.testReport());
+ assert.equal(report.settings.production.autoHelpers,true);assert.equal(report.settings.production.dismantle,true);
+ assert.equal(report.settings.production.lossBudget,cfg.production.lossBudget);
+ assert.ok(report.settings.world.allowedBosses.includes('phoenix'));assert.equal(report.settings.world.allowedBosses.includes('unknown'),false);
+ a.root.ALBot.dispose();
+});
 test('same artifact keeps contexts independent, one timer and cleans listeners on reload',()=>{
  const a=harness('A');a.load();assert.equal(a.root.ALBot.status().running,false);assert.equal(a.listeners.size,1);assert.equal(a.root.ALBot.start(),true);assert.equal(a.timers.size,1);a.root.ALBot.start();assert.equal(a.timers.size,1);
  const b=harness('B',a.root.parent);b.load();b.root.ALBot.start();assert.equal(a.root.ALBot.status().running,true);

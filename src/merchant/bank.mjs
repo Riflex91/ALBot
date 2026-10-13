@@ -126,7 +126,7 @@ export function createBank(bot){
  function store(slot,r){
   const item=p.c.items[slot];if(!e.safe(item)||e.spare(slot,r)<1)return false;
   const allowed=e.spare(slot,r);if(allowed<(item.q??1)){
-   if(bot.free()<1)return false;const before=item.q,dest=p.c.items.findIndex(x=>!x);
+   if(bot.free()<1){e.note('Bank-Split '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
   const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>!i)&&
@@ -156,7 +156,8 @@ export function createBank(bot){
  }
  function retrieve(item,r,wanted){
   if(pending)return recover();
-  if(!ready(r.pack||packFor(item)||'items0')||bot.free()<1)return false;
+  if(bot.free()<1){e.note('Bankentnahme '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}
+  if(!ready(r.pack||packFor(item)||'items0'))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));

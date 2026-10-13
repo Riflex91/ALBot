@@ -101,3 +101,47 @@ test('eligible 3shot uses all available mana instead of requiring 35-percent MP 
  assert.deepEqual(casts.map(x=>x.skill),['3shot']);
  assert.equal(casts[0].targets.length,2);
 });
+
+test('at 42/42, capacity parking preserves reserved gear and consumes only a verified empty bank slot',()=>{
+ const gear={name:'ringsj',level:0},items=Array.from({length:42},()=>({...gear}));
+ const bank=Array.from({length:42},()=>({name:'already-stored',level:0}));
+ bank[18]=null;
+ const calls=[];
+ const c={name:'M',map:'bank',in:'bank',items,bank:{items0:bank}};
+ const bot={
+  p:{c,G:{items:{ringsj:{type:'ring'},'already-stored':{type:'material'}},
+   bank_packs:{items0:['bank',0]}},root:{},parent:{},read:()=>null,
+   realm:()=> 'EUII',call:(method,...args)=>calls.push([method,...args])},
+  me:{name:'M'},running:true,journal:null,inventoryBlocked:false,free:()=>0,
+  cfg:{party:{merchant:'M'},merchant:{bank:true,minFreeSlots:4,bankWorkspace:2},
+   production:{autoDisposition:true}},
+  logistics:{reserved:false},
+  production:{status:()=>({steps:[{item:'poker',kind:'upgrade',level:0}]}),
+   reservedQuantity:()=>36},
+  economy:{safe:()=>true,explicit:()=>null,spare:()=>0,travel:()=>true,
+   count:()=>42,perform:(kind,job)=>{assert.equal(kind,'bank.store');
+    assert.equal(job.guard(),true);job.call();return true;}}
+ };
+ const b=createBank(bot);
+ assert.equal(b.park(0),true);
+ assert.deepEqual(calls,[['bank_store',0,'items0',18]]);
+ assert.equal(items.length,42,'the operation is journaled, not applied optimistically');
+ assert.equal(bank[18],null,'bank completion must be observed by the real executor');
+});
+
+test('capacity parking never overrides an explicit keep or active production input',()=>{
+ const gear={name:'ringsj',level:0},items=[gear];
+ const c={name:'M',map:'bank',in:'bank',items,bank:{items0:Array(42).fill(null)}};
+ const bot={p:{c,G:{items:{ringsj:{type:'ring'}},bank_packs:{items0:['bank',0]}},
+   root:{},parent:{},read:()=>null,realm:()=> 'EUII'},
+  me:{name:'M'},cfg:{party:{merchant:'M'},merchant:{bank:true},
+   production:{autoDisposition:true}},
+  logistics:{reserved:false},journal:null,inventoryBlocked:false,
+  production:{status:()=>({steps:[]})},
+  economy:{safe:()=>true,explicit:()=>({action:'keep'}),spare:()=>0,
+   perform:()=>{throw Error('must not dispatch');}}};
+ assert.equal(createBank(bot).park(0),false);
+ bot.economy.explicit=()=>null;
+ bot.production.status=()=>({steps:[{item:'ringsj',level:0,kind:'compound'}]});
+ assert.equal(createBank(bot).park(0),false);
+});

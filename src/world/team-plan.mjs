@@ -2,7 +2,7 @@ import {combatMembers,compositionOptions,farmThroughput} from './composition.mjs
 import {materialEvent} from '../production/probability.mjs';
 import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {distance,samePlace,xy} from '../core/policy.mjs';
-import {spawnLocations,knowledgeFingerprint,mapGraph,mapHops} from './knowledge.mjs';
+import {spawnLocations,knowledgeFingerprint,semanticGear,mapGraph,mapHops} from './knowledge.mjs';
 export function createTeamPlan(bot){
  const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
@@ -17,7 +17,7 @@ export function createTeamPlan(bot){
   return materialRequests().some(r=>r.objective===plan.objective&&(!r.expires||r.expires>Date.now())&&r.monster===plan.target);
  }
  function observe(){if(me.name!==bot.leader)return;const now=Date.now(),dt=Math.max(0,Math.min(5000,now-previous));previous=now;if(!current||!samePlace(p.c,current)||distance(p.c,current)>220){area=null;lastXp=p.c.xp??0;lastGold=p.c.gold??0;return;}
-  const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear)),old=history[id]??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
+  const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>semanticGear(n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))),old=history[id]??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
   old.seconds+=dt/1000;old.xp+=Math.max(0,(p.c.xp??0)-lastXp);lastXp=p.c.xp??0;if(!bot.journal&&!bot.logistics.reserved&&!bot.gold?.reserved)old.gold=(old.gold??0)+Math.max(0,(p.c.gold??0)-lastGold);lastGold=p.c.gold??0;old.empty+=visible.length?0:dt/1000;old.foreign+=foreign*dt/1000;old.samples++;old.at=now;history[id]=old;area=id;
   // A crowded spawn is often NOT empty: other players claim monsters before
   // us. Count sustained foreign presence as pressure, not just empty time.

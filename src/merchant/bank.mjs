@@ -123,9 +123,34 @@ export function createBank(bot){
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
  function ready(pack='items0',recovery=false){const map=packMap(pack);return !!map&&(cfg.merchant.bank||recovery)&&me.name===cfg.party.merchant&&e.travel(location(map),'Bank')&&!!p.c.bank;}
- function store(slot,r){
-  const item=p.c.items[slot];if(!e.safe(item)||e.spare(slot,r)<1)return false;
-  const allowed=e.spare(slot,r);if(allowed<(item.q??1)){
+ // Non-destructive capacity parking is a private, single-operation bank path.
+ // Speculative production reservations remain intact: no sale, split or release.
+ // The live bank destination and original item fingerprint are rechecked at dispatch.
+ function parkable(slot){
+  const item=p.c.items?.[slot],meta=p.G.items?.[item?.name];
+  if(!cfg.merchant.bank||!cfg.production?.autoDisposition||!e.safe(item)||
+     !meta||!['ring','earring','belt','amulet','helmet','chest','pants','shoes','gloves',
+      'cape','orb','weapon','shield','source','quiver','misc_offhand','material'].includes(meta.type)||
+     e.explicit(item)||e.explicit(item,'production')||e.explicit(item,'acquisition')||
+     item.data!==undefined||item.acc||item.rid||item.p||item.title||item.stat_type||
+     item.skin||item.special||item.expires||item.v||
+     !Number.isSafeInteger(item.q??1)||(item.q??1)<1)return false;
+  // Do not shuttle the inputs of the very production step currently executing.
+  const steps=bot.production?.status?.()?.steps??[];
+  return !steps.some(s=>s.item===item.name&&(s.level??0)===(item.level??0));
+ }
+ function park(slot){
+  if(!parkable(slot))return false;
+  const item=p.c.items[slot],q=item.q??1;
+  const rule={name:'Bankentlastung '+item.name,item:item.name,action:'bank',
+   enabled:true,batch:q,keep:0,teamReserve:0,maxActions:0,
+   goldBudget:0,lossBudget:0,_capacityRecovery:true};
+  return store(slot,rule,true);
+ }
+ function store(slot,r,parking=false){
+  const item=p.c.items[slot],parkVerified=parking&&parkable(slot);
+  if(!e.safe(item)||(!parkVerified&&e.spare(slot,r)<1))return false;
+  const allowed=parkVerified?(item.q??1):e.spare(slot,r);if(allowed<(item.q??1)){
    if(bot.free()<1){e.note('Bank-Split '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
@@ -139,7 +164,10 @@ export function createBank(bot){
    // Adventure Land bank_store to an occupied slot can SWAP the stacks, not
    // combine them. Never dispatch against an occupied bank slot: the observed
    // live failure returned the previous bank stack to the inventory source.
-   const dest=items.findIndex(i=>!i);if(dest<0||items.filter(i=>!i).length<=(cfg.merchant.bankWorkspace??0))continue;
+   // The configured bank workspace is a preference, not a prohibition on
+   // reversible emergency parking. Only a private verified park may use it.
+   const workspace=parkVerified?0:(cfg.merchant.bankWorkspace??0);
+   const dest=items.findIndex(i=>!i);if(dest<0||items.filter(i=>!i).length<=workspace)continue;
    const before=e.count(item),bankBefore=variantCount(items,item),q=item.q??1;
    const targetPrint=fingerprint(p.c.bank[pack][dest]);
    const targetBefore=p.c.bank[pack][dest];
@@ -148,10 +176,12 @@ export function createBank(bot){
    // the character-wide quantity while the bank request is in flight. Observe
    // the exact source slot and addressed bank stack instead of an aggregate
    // count that is unrelated to the bank transfer's success.
-   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&!p.c.bank[pack][dest]&&p.c.bank[pack].filter(i=>!i).length>(cfg.merchant.bankWorkspace??0)&&fingerprint(p.c.bank[pack][dest])===targetPrint&&e.spare(slot,r)>=q,
+   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&!p.c.bank[pack][dest]&&p.c.bank[pack].filter(i=>!i).length>workspace&&fingerprint(p.c.bank[pack][dest])===targetPrint&&
+     (parkVerified?parkable(slot)&&fingerprint(p.c.items[slot])===fingerprint(item):e.spare(slot,r)>=q),
     call:()=>p.call('bank_store',slot,pack,dest),
     observe:()=>!p.c.items[slot]&&identity(p.c.bank?.[pack]?.[dest])===identity(item)&&(p.c.bank[pack][dest].q??1)===targetQuantity+q,
-    details:{item:item.name,quantity:q,pack,before,sourceSlot:slot,bankSlot:dest,bankTargetBefore:targetPrint,bankTargetQuantity:targetQuantity}});
+    details:{item:item.name,quantity:q,pack,before,sourceSlot:slot,bankSlot:dest,bankTargetBefore:targetPrint,bankTargetQuantity:targetQuantity,
+     capacityRecovery:parkVerified}});
   }if(consolidate()||!r.pack&&expand()||reclaim())return true;e.note('Bank voll: kein freier erlaubter Platz; erlaubte Konsolidierung, Verkauf und Erweiterungsbudget geprüft');return false;
  }
  function retrieve(item,r,wanted){
@@ -315,7 +345,7 @@ export function createBank(bot){
   return {r,price,lossScore:price+rarity*1000000+difficulty*100000+1000/Math.max(1,item.q??1)};
  }
  function reclaim(){
-  if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<=cfg.merchant.minFreeSlots)return false;
+  if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<1)return false;
   const rows=packs().filter(([pack])=>packMap(pack)===p.c.map);
   const free=rows.reduce((n,[,items])=>n+items.filter(i=>!i).length,0);
   const pressed=rows.length>0&&free<(cfg.merchant.bankWorkspace??2);
@@ -387,5 +417,5 @@ export function createBank(bot){
  // Safe consolidation precedes evidence-based, rule-bound bank reclaim.
  function audit(){if(!cfg.merchant.bank||!p.c.bank||bot.inventoryBlocked||bot.journal)return false;
   return consolidateInventory()||consolidate()||consolidateAcross()||reclaim();}
- return {store,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

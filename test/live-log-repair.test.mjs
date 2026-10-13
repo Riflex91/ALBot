@@ -41,7 +41,7 @@ test('merchant keeps staged depot reconciliation across ticks and checkpoints',(
   minFreeSlots:4,taskHoldMs:30000,starvationMs:120000},party:{merchant:'Merchant'}};
  const c={name:'Merchant',map:'main',in:'main',items:[],slots:{},stand:false,rip:false,gold:1000000};
  let atBank=false,auditCount=0;
- const bot={p:{c,G:{items:{},skills:{}},read:()=>null,write:(...args)=>{writes.push(args);return true;}},
+ const bot={p:{c,G:{items:{},skills:{}},read:()=>({stage:'complete',completedAt:Date.now()-700000}),write:(...args)=>{writes.push(args);return true;}},
  cfg,me:{name:'Merchant',role:'merchant'},running:true,recovering:false,inventoryBlocked:false,journal:null,
  logistics:{reserved:false,travel:()=>false},movement:{order:null},gold:null,services:null,
  farmers:[],production:{status:()=>({intent:null}),tick:()=>false},bank:{pending:false,

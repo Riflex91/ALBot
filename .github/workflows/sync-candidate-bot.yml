@@ -1,0 +1,30 @@
+name: Temporary candidate bot.js synchronization
+on:
+  push:
+    branches:
+      - codex/albot-merchant-deadlock-gear-20261013
+permissions:
+  contents: write
+jobs:
+  publish-candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: node --check bot.js
+      - name: Commit synchronized bundle to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js
+          if ! git diff --cached --quiet; then
+            git commit -m "Sync personal bot.js to verified modular runtime"
+            git push origin HEAD:refs/heads/codex/albot-merchant-deadlock-gear-20261013
+          fi

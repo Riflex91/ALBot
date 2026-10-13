@@ -127,6 +127,7 @@ test('with no physical free slot merchant still does not initiate a remote excha
 test('full Merchant parks reversible gear at the bank instead of idling without sale rules',()=>{
  const f=merchantFixture({sale:false,bank:false});
  f.bot.cfg.production.autoDisposition=true;
+ f.bot.cfg.merchant.bank=true;
  f.bot.bank.park=slot=>{if(slot!==2)return false;f.calls.push('park:2');return true;};
  createMerchant(f.bot).tick();
  assert.deepEqual(f.calls,['park:2']);
@@ -136,6 +137,7 @@ test('full Merchant parks reversible gear at the bank instead of idling without 
 test('capacity recovery continues past the four-slot reserve until a working margin exists',()=>{
  const f=merchantFixture({sale:false,bank:false});
  f.bot.cfg.production.autoDisposition=true;
+ f.bot.cfg.merchant.bank=true;
  let parked=0;
  f.bot.bank.park=()=>{parked++;return true;};
  const merchant=createMerchant(f.bot);
@@ -153,6 +155,7 @@ test('capacity recovery continues past the four-slot reserve until a working mar
 test('unrecoverable full inventory reports an explicit safe-capacity blocker',()=>{
  const f=merchantFixture({sale:false,bank:false});
  f.bot.cfg.production.autoDisposition=true;
+ f.bot.cfg.merchant.bank=true;
  f.bot.bank.park=()=>false;
  createMerchant(f.bot).tick();
  assert.ok(f.events.some(e=>e.type==='merchant.inventoryPressure'&&

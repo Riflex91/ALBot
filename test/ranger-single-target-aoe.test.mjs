@@ -28,19 +28,20 @@ function fixture(targetCount,{explicit=false,level=80}={}){
  const bot={me:{name:'Ranger1',role:'farmer'},farmers:['Ranger1'],
   cfg,p:{c:char,G,parent:{is_pvp:false},call(method,...args){
    if(method==='is_on_cooldown')return false;
+   if(method==='can_attack')return true;
    if(method==='use_skill'){calls.push({id:args[0],targets:args[1],extra:args[2]});return Promise.resolve({success:true});}
    return false;
   }},teamNames:['Ranger1'],target:null,
   monsters:()=>monsters,allies:()=>[],allowed:()=>true,
   entity:id=>monsters.find(m=>m.id===id),
-  teamPlan:{target:()=> 'goo',wantsCombat:()=>true},
-  strategy:{safeTarget:()=>true},event:()=>{},
+  teamPlan:{target:()=> 'goo',wantsCombat:()=>true,roles:()=>({})},
+  strategy:{safeTarget:()=>true},event:()=>{},measure:()=>({}),
   exec:{run(name,resources,guard,fn){scheduled.push({name,resources});if(!guard())return false;fn();return true;}}};
  bot.skills=createSkills(bot);
  return {bot,monsters,calls,scheduled,run(){bot.skills.rotation(monsters[0]??null);}};
 }
-test('single normal target never spends default Ranger 3shot attack and mana',()=>{
- const f=fixture(1);f.run();
+test('single target in verified one-hit normal attack range does not waste Ranger 3shot mana',()=>{
+ const f=fixture(1);f.monsters[0].hp=100;f.run();
  assert.deepEqual(f.calls,[]);
  assert.deepEqual(f.scheduled,[]);
 });
@@ -61,9 +62,15 @@ test('four engaged targets at level 65 fallback from locked 5shot to 3shot',()=>
  assert.equal(f.calls[0]?.id,'3shot');
  assert.equal(f.calls[0]?.targets.length,3);
 });
-test('an explicit one-target 3shot rule is respected despite default economy gate',()=>{
- const f=fixture(1,{explicit:true});f.run();
+test('an explicit one-target 3shot rule is respected despite verified normal one-hit range',()=>{
+ const f=fixture(1,{explicit:true});f.monsters[0].hp=100;f.run();
  assert.equal(f.calls[0]?.id,'3shot');
  assert.equal(f.calls[0]?.targets.length,1);
  assert.ok(f.scheduled[0].resources.includes('attack'));
+});
+
+test('single higher-health engaged mob retains verified Ranger 3shot opener',()=>{
+ const f=fixture(1);f.run();
+ assert.equal(f.calls[0]?.id,'3shot');
+ assert.equal(f.calls[0]?.targets.length,1);
 });

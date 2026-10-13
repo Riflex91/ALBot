@@ -4,6 +4,7 @@ import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} 
 import {estimateRoutes} from './costs.mjs';
 import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
+import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
@@ -54,23 +55,10 @@ export function gearChainReady(g,stock,meta){
 // Merchant's configured reserve. Reusing a stack or freeing consumed input
 // slots can satisfy the requirement even if the inventory is full.
 export function actionCapacity(items,consumed=[],output=null,G={},outputs=1){
- if(!Array.isArray(items)||!Number.isSafeInteger(outputs)||outputs<0)return false;
- let empty=items.filter(i=>!i).length;
- const seen=new Set();
- for(const row of consumed){
-  if(!Number.isInteger(row?.slot)||row.slot<0||row.slot>=items.length||
-    seen.has(row.slot)||!Number.isSafeInteger(row.quantity)||row.quantity<1)return false;
-  seen.add(row.slot);
-  const i=items[row.slot],q=i?.q??1;
-  if(!i||!Number.isSafeInteger(q)||row.quantity>q)return false;
-  if(row.quantity===q)empty++;
- }
- if(output&&G.items?.[output.name]?.s){
-  const raw=G.items[output.name].s,max=raw===true?9999:raw;
-  if(Number.isSafeInteger(max)&&max>1&&items.some(i=>i&&identity(i)===identity(output)&&(i.q??1)<max))
-    outputs=Math.max(0,outputs-1);
- }
- return empty>=outputs;
+ if(!Number.isSafeInteger(outputs)||outputs<0)return false;
+ const planned=capacityAfterConsumption(items,consumed,output,
+   output?G.items?.[output.name]:null);
+ return !!planned&&(output?planned.units>=outputs:planned.free>=outputs);
 }
 // Release only the part of other goals' gross demand already backed by
 // verified, non-protected bank inventory. Keep sale reservations gross: this
@@ -184,8 +172,8 @@ export function createProduction(bot){
    observe:()=>e.count(item)===before&&((p.c.items[a.n]?.q===sum&&!p.c.items[b.n])||(p.c.items[b.n]?.q===sum&&!p.c.items[a.n])),
    details:{item:item.name,quantity:sum,required}});
  }
- function capacity(consumed=[],output=null){
-  if(actionCapacity(p.c.items,consumed,output,p.G))return true;
+ function capacity(consumed=[],output=null,outputQuantity=1){
+  if(actionCapacity(p.c.items,consumed,output,p.G,outputQuantity))return true;
   e.note('Produktionsschritt blockiert: keine freien Ausgabeplätze; physisch frei='+bot.free());
   return false;
  }
@@ -321,7 +309,7 @@ export function createProduction(bot){
   if(!Number.isFinite(recipe.cost)||recipe.cost<0)return false;
   const questNpc=recipe.quest&&(p.G.npcs?.[recipe.quest]?recipe.quest:Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===recipe.quest)?.[0]),d=e.destination(questNpc||'craftsman');if(recipe.quest&&!questNpc){e.note('Rezept-Arbeitsplatz fehlt: '+recipe.quest);return false;}
   const item={name,level:0,data:recipe.output?.data},total=()=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===(item.level??0)&&(item.data===undefined||JSON.stringify(i.data)===JSON.stringify(item.data))?i.q??1:0),0),before=total();
-  if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item)||!e.npcTravel(d,'Craft '+name))return false;
+  if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item,yieldCount)||!e.npcTravel(d,'Craft '+name))return false;
   // The game chooses the craft outcome from the live recipe/ingredients. Recheck
   // that contract at dispatch: an inventory fingerprint alone cannot detect a
   // changed recipe, keep rule, reserve, output cap or crafting permission.
@@ -337,7 +325,7 @@ export function createProduction(bot){
     const i=p.c.items[slots[n]],policy=i&&e.rules(i),aggregate=materialTotals.find(x=>x.item===req.item&&x.level===req.level);
     return i?.name===req.item&&(i.level??0)===req.level&&e.safe(i)&&(i.q??1)>=req.quantity&&
      policy?.action!=='keep'&&e.count(i)-aggregate.quantity>=(policy?policy.keep+policy.teamReserve:0)+reserveOther(req.item,req.level);
-   })&&capacity(slots.map((slot,n)=>({slot,quantity:ingredients[n].quantity})),item);
+   })&&capacity(slots.map((slot,n)=>({slot,quantity:ingredients[n].quantity})),item,produced);
   };
   // Observe the *aggregate* consumption. Looking at each repeated row alone
   // would falsely confirm a two-position recipe after consuming only one.

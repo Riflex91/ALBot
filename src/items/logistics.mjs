@@ -1,7 +1,8 @@
 import {potionTarget,onlineSupplyFarmers} from './potion-supply.mjs';
-import {protectedItem,variantCount,transferable,fingerprint,identity,distance,samePlace,chooseRule} from '../core/policy.mjs';
+import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
+import {capacityAfterConsumption} from './physical-capacity.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
 // map or a frozen kite position after the recipient has moved away.
 export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190}={}){
@@ -24,19 +25,10 @@ export function teamPickupThreshold(peers,realm,threshold=30){
 // units without allocating a new inventory slot. An offer acknowledgement
 // never frees a slot or guarantees later delivery.
 export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity}={}){
- if(!Array.isArray(items)||!item?.name||!meta)return 0;
- const raw=meta.s===true?9999:meta.s;
- const stackLimit=Number.isSafeInteger(raw)&&raw>1?raw:1;
- const matches=x=>!!x&&!protectedItem(x)&&identity(x)===identity(item);
- const stackSpace=stackLimit>1?items.reduce((sum,x)=>{
-  if(!matches(x))return sum;
-  const held=x.q??1;
-  return sum+(Number.isSafeInteger(held)&&held>=1&&held<=stackLimit?stackLimit-held:0);
- },0):0;
- const free=items.filter(x=>!x).length;
- // A single send_item invocation is not a proved multi-slot batch allocator.
- const newSlots=Math.min(1,Number.isFinite(maxNewSlots)?Math.max(0,Math.min(free,Math.floor(maxNewSlots))):free);
- return Math.min(Number.MAX_SAFE_INTEGER,stackSpace+newSlots*stackLimit);
+ // A single send_item is only credited with one new physical stack; the
+ // shared planner also checks exact compatible-stack headroom.
+ const limit=Number.isFinite(maxNewSlots)?Math.max(0,Math.min(1,Math.floor(maxNewSlots))):1;
+ return capacityAfterConsumption(items,[],item,meta,{maxNewSlots:limit})?.units??0;
 }
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();

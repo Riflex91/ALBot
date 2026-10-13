@@ -131,9 +131,10 @@ export function createLogistics(bot){
     // client always supplies G.items. Unknown definitions in a real G must
     // fail closed rather than be treated as unbounded stack capacity.
     if(!p.G?.items)return nominal;
+    // The coordinator owns the hysteretic operating state. An ordinary
+    // exactly-four-slot fallback is still allowed until that state starts.
     const pressure=me.role==='merchant'&&cfg.merchant.enabled&&
-      (bot.free()<=Math.max(0,cfg.merchant.minFreeSlots??4)||
-       bot.merchant?.status?.()?.capacityRecovery===true);
+      bot.merchant?.status?.()?.capacityRecovery===true;
     const maxNewSlots=pressure&&!verifiedGear&&!verifiedElixir?0:Infinity;
     return Math.min(nominal,physicalReceiveCapacity(p.c.items,i,
       p.G.items[i.name],{maxNewSlots}));}

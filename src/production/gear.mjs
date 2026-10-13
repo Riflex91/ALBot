@@ -31,6 +31,15 @@ export function gearCompatible(G,profile,item,target){
  if(['shield','source','quiver','misc_offhand'].includes(type))return target==='offhand'&&Object.hasOwn(cls.offhand??{},type)&&!Object.hasOwn(cls.doublehand??{},G.items[profile.slots.mainhand?.name]?.wtype??'');
  return type==='ring'?['ring1','ring2'].includes(target):type==='earring'?['earring1','earring2'].includes(target):target===type;
 }
+// Ordinal scheduling only; spending, success-chance and user level caps
+// remain governed by their existing production and gear contracts.
+export function gearSlotPriority(slot,characterClass){
+ const weights={mainhand:12,offhand:10,helmet:8,chest:8,pants:8,shoes:7,
+  gloves:7,amulet:5,belt:5,ring1:4,ring2:4,earring1:3,earring2:3,
+  cape:2,orb:2};
+ return (weights[slot]??5)+(['ranger','mage','priest'].includes(characterClass)&&
+  slot==='mainhand'?4:0);
+}
 export function createGear(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
@@ -94,7 +103,7 @@ export function createGear(bot){
     priority:1000});
   }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=cfg.production.autoGearMaxLevel||result.some(g=>g.character===member.name&&g.slot===slot))continue;
-   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:member.catchUp?30:10});
+   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)});
   }}return result;
  }
  function goals(){if(!cfg.production.gear)return [];return targets().flatMap(g=>{

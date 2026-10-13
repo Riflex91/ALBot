@@ -169,6 +169,55 @@ test('departure phases finish bank, materials and economically authorized work b
  assert.equal(merchant.status().departure.phase,'ready');
 });
 
+// Depot reconciliation is intentionally separate from pickup-only capacity
+// preparation. A peer with no accepted offers is not permission to bank or
+// sell 20 arbitrary carried stacks just to establish a pickup workspace.
+function departureAtCapacity(peerItems){
+ const {bot,c,actions,events}=merchantFixture();
+ c.items[0]={name:'misc',level:0,q:1};
+ bot.p.G.items.misc={type:'misc'};
+ bot.economy.rules=i=>i.name==='misc'?{action:'bank',batch:1,
+   keep:0,teamReserve:0,priority:0}: {action:'keep'};
+ bot.economy.remaining=()=>true;
+ bot.cfg.merchant.bank=true;
+ bot.bank.ready=()=>true;
+ bot.bank.manageStand=()=>false;
+ bot.bank.consolidate=()=>false;
+ bot.bank.consolidateAcross=()=>false;
+ bot.production={reservedQuantity:()=>0};
+ const merchant=createMerchant(bot),peer={name:'F',items:peerItems};
+ for(let step=0;step<6;step++)merchant.prepareDeparture(peer);
+ assert.equal(merchant.status().departure.phase,'capacity');
+ return {bot,c,actions,events,peer,merchant};
+}
+test('no advertised pickup items skips speculative capacity banking and selling',()=>{
+ const f=departureAtCapacity([]);
+ assert.equal(f.bot.free(),4);
+ assert.equal(f.merchant.prepareDeparture(f.peer),true);
+ assert.equal(f.merchant.status().departure.phase,'ready');
+ assert.equal(f.bot.free(),4);
+ assert.deepEqual(f.actions,[],'no invented pickup batch may trigger banking');
+ assert.equal(f.merchant.status().pickup.offers,0);
+});
+test('unknown, zero-quantity or misaddressed offers cannot authorize pickup cleanup',()=>{
+ const bad=[
+  {...offer('misc'),surplus:0},
+  {...offer('misc'),to:'OtherMerchant'},
+  offer('missing-item')
+ ];
+ const f=departureAtCapacity(bad);
+ assert.equal(f.merchant.prepareDeparture(f.peer),true);
+ assert.deepEqual(f.actions,[]);
+ assert.equal(f.merchant.status().pickup.offers,0);
+});
+test('genuine positive offer still prepares free space for pickup',()=>{
+ const f=departureAtCapacity([offer('misc')]);
+ assert.equal(f.merchant.prepareDeparture(f.peer),false);
+ assert.deepEqual(f.actions,[['bank.store',0,'bank']]);
+ assert.equal(f.bot.free(),5);
+ assert.equal(f.merchant.status().departure.phase,'capacity');
+});
+
 test('farmer accepts MP potions even when HP stack already holds 3000',()=>{
  const {bot,c}=merchantFixture(),sent=[];
  bot.running=true;bot.me={name:'F',role:'farmer'};

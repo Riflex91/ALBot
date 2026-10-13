@@ -1,3 +1,9 @@
+# ALBot 0.10.2-candidate – Livetest-Reparaturen (13.10.2026)
+
+Auf Basis der Farmer-/Merchant-Logs vom 13.10.2026: alter Farmregel-Konflikt, zu großer Spawn-Ankunftsradius und waffenloser Mage korrigiert; sequenzielle Merchant-Depotpflege mit persistierten Phasen ergänzt. Produktionsziel-Haltezeit verlängert und Diagnostik erweitert. Standard für Merchant maxSpendPerHour: **5.000.000 Gold/Stunde**. Für bereits exportierte persönliche Profile wird der Wert ausdrücklich nicht ohne einen neuen Export überschrieben. **Offline-CI erfolgreich; Spiel-Liveabnahme noch offen.** Geschützte Items, Transaktionsjournale, Account-Budget- und Erfolgschancenprüfungen bleiben gültig. Siehe [PR #34](https://github.com/Riflex91/ALBot/pull/34).
+
+---
+
 # Automatischer Betrieb und Gruppenwahl 0.10.1 – 13.10.2026
 
 Lokale Automatik aktiviert Produktions-/Merchant-/Lernfunktionen und unterstützte Bossprofile innerhalb bestehender Budgets und Schutzregeln. Eigene Online-Farmer werden automatisch erkannt und auf 3.000 HP-/300 MP-Tränke aufgefüllt. Die Farmwahl berücksichtigt individuellen AoE-Beitrag, Priest-Heilung, Tankkontrolle, Rüstung/Resistenz, aktive Paladin-Auren und begrenzte Schutzressourcen.

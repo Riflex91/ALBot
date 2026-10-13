@@ -1,3 +1,11 @@
+# ALBot 0.10.2-candidate – aktuell (13.10.2026)
+
+**Direkt einsetzbare [bot.js](bot.js)** mit automatischer Account-Erkennung und dem aktualisierten Merchant-Limit von **5.000.000 Gold pro Stunde**. Die Datei kombiniert das 0.10.2-Runtime-Bundle mit dem geprüften, namelosen Autokonfigurationsprofil. Sie kann nach einer Sicherung der bisherigen CODE-Datei in Adventure Land eingesetzt werden. Das Profil enthält keine fest konfigurierten Charakternamen oder Zugangsdaten.
+
+Die modularen Quellcodes unter `src/` sind die Wartungsgrundlage; `npm ci && npm run build` erzeugt die allgemeine `dist/albot.js` und `npm run build:editor` die Werkstatt. Die Datei `bot.js` ist dagegen der zuletzt vom Nutzer ausgewählte **persönliche** Export. Änderungen aus PR #34 wurden unter Linux und Windows offline getestet (510/510 Tests pro System); echte Spiel-/Wertaktionen müssen noch live überprüft werden.
+
+---
+
 # Automatischer Betrieb und Gruppenwahl 0.10.1 – 13.10.2026
 
 Lokale Automatik aktiviert Produktions-/Merchant-/Lernfunktionen und unterstützte Bossprofile innerhalb bestehender Budgets und Schutzregeln. Eigene Online-Farmer werden automatisch erkannt und auf 3.000 HP-/300 MP-Tränke aufgefüllt. Die Farmwahl berücksichtigt individuellen AoE-Beitrag, Priest-Heilung, Tankkontrolle, Rüstung/Resistenz, aktive Paladin-Auren und begrenzte Schutzressourcen.

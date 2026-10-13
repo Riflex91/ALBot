@@ -283,7 +283,7 @@ export function createProduction(bot){
   }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
-  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<cfg.merchant.taskHoldMs;return Number(held(b))-Number(held(a))||b.priority-a.priority||(bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
+  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<Math.max(cfg.merchant.taskHoldMs??30000,300000);return Number(held(b))-Number(held(a))||b.priority-a.priority||(bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
    const wait=waiting.get(goalKey(g));if(wait?.until>Date.now())continue;if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient
@@ -337,7 +337,7 @@ export function createProduction(bot){
   if(cfg.production.autonomy&&cfg.merchant.bank&&cfg.production.acquireBy.includes('bank')&&!bot.bank.observed){bot.bank.inspect();return true;}
   const step=plan[0],item={name:step.item,level:step.level,...(step.item===goal.item?goal.variant:{})};
   const r=e.rules(item,['buy','retrieve','farm','marketBuy'].includes(step.kind)?'acquisition':'production');
-  if(!r||r.action!==step.kind){e.note('Produktionskette benötigt explizite '+step.kind+'-Regel für '+step.item);return false;}
+  if(!r||r.action!==step.kind){const reason='Produktionskette benötigt passende '+step.kind+'-Regel für '+step.item;e.note(reason);bot.event?.('production.blocked',{goal:goal.name,item:step.item,step:step.kind,reason});return false;}
   if(!e.remaining(r))return false;
   const attempt=fn=>{const accepted=fn();if(cfg.general.testLogging!==undefined&&!accepted&&!bot.movement.order&&!bot.journal&&!exec.pending.size){const entry={goal:goal.name,item:step.item,kind:step.kind,reservations:structuredClone(plan.reservations??[]),reason:bot.reason||'Voraussetzungen/Angebot fehlen',until:Date.now()+30000};waiting.set(goalKey(goal),entry);if(waiting.size>64)waiting.delete(waiting.keys().next().value);bot.event('production.wait',entry);}return accepted;};
   if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));

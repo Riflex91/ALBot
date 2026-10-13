@@ -58,7 +58,7 @@ FULL_DESCRIPTOR.schema.properties.skills.items.properties.skill.enum=FULL_SKILLS
 
 // Full-mode defaults for new profiles; explicit imported values stay unchanged.
 
-FULL_DESCRIPTOR.schema.properties.merchant.properties.maxSpendPerHour.default=2000000;
+FULL_DESCRIPTOR.schema.properties.merchant.properties.maxSpendPerHour.default=5000000;
 
 FULL_DESCRIPTOR.schema.properties.merchant.properties.expandBank.default=true;
 

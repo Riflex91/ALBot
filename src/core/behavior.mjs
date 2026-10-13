@@ -10,7 +10,10 @@ export function createBehavior(bot){
    let accepted=false;
    if(r.action==='notify'){bot.report(r.target);accepted=true;}
    if(r.action==='pause'){bot.pause(r.target||r.name);accepted=true;}
-   if(r.action==='farm')accepted=bot.strategy.requestTask('farm:'+r.target,Math.min(3600000,r.everyMs+r.cooldownMs+1000));
+   // The verified autonomous team plan owns normal farming. Legacy recurring
+   // rules must not create manual targets that conflict with its spawn choice.
+   if(r.action==='farm')accepted=bot.teamPlan&&cfg.farming.autoTargets!==false?false:
+     bot.strategy.requestTask('farm:'+r.target,Math.min(3600000,r.everyMs+r.cooldownMs+1000));
    if(r.action==='task')accepted=bot.strategy.requestTask(r.target,Math.max(10000,r.cooldownMs));
    if(r.action==='skill'){const s=p.G.skills?.[r.target];accepted=!!s&&bot.skills.use(r.target,s.hostile?bot.target:s.target?p.c:null,.2,Math.max(1000,r.cooldownMs),cfg.party.aoeMaxTargets,true);}
    if(r.action==='supply')accepted=requestSupply(r.target,r.amount);

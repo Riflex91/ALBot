@@ -1,6 +1,11 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 // Evaluate against live carried gold, never stale bank balances or a
 // hypothetical future deposit. Keep the independent hourly/reserve budgets.
+export function emergencyMaterialSaleAllowed(meta,price,quantity,maxUnitValue){
+ return meta?.type==='material'&&Number.isSafeInteger(quantity)&&quantity>0&&quantity<=9999&&
+  Number.isFinite(price)&&price>=0&&Number.isFinite(maxUnitValue)&&maxUnitValue>=0&&
+  price<=maxUnitValue&&Number.isSafeInteger(price*quantity)&&price*quantity<=10000;
+}
 export function bankExpansionAffordable(cost,gold,staticBudget,fraction=.75){
  return Number.isFinite(cost)&&cost>0&&Number.isFinite(gold)&&gold>=0&&
    Number.isFinite(staticBudget)&&staticBudget>=cost&&
@@ -286,13 +291,22 @@ export function createBank(bot){
  // first, then the least-loss eligible item only.
  function eligibleBankSale(item){
   if(!e.safe(item)||item.data!==undefined||item.p||item.title||item.stat_type||item.acc||item.rid||item.skin||item.expires||item.special||item.v||(item.level??0)>0)return null;
-  const meta=p.G.items?.[item.name],price=e.value(item),explicit=e.explicit(item),r=explicit??e.rules(item);
+  const meta=p.G.items?.[item.name],price=e.value(item),explicit=e.explicit(item),original=explicit??e.rules(item);
+  // Under confirmed bank pressure, allow only a bounded, plain low-value
+  // material to be sold even if autonomous disposition normally stores it.
+  // An explicit user bank/keep/protection rule always wins.
+  const autoSale=!explicit&&cfg.production.autoDisposition&&
+   (!original||original._autoDisposition===true)&&stackMax(item)>1&&
+   emergencyMaterialSaleAllowed(meta,price,item.q??1,cfg.production.autoSellMaxValue??0);
+  const r=autoSale?{...original,enabled:true,name:'Banknotverkauf '+item.name,
+   item:item.name,action:'sell',batch:item.q??1,keep:0,teamReserve:0,
+   minPrice:0,maxCount:999999,goldBudget:0,lossBudget:0,maxActions:0,_autoDisposition:true}:original;
   if(meta&&(meta.quest||meta.q||meta.e||meta.exchange||meta.event||meta.cash||meta.cash_item||meta.soulbound||meta.compound||meta.upgrade||meta.rare||meta.rarity||meta.action||meta.onclick||meta.offering||meta.throw||meta.ignore||meta.wtype||meta.class||meta.grades||meta.tier))return null;
   if(!meta||!Number.isFinite(price)||price<0||r?.action!=='sell'||!e.remaining(r)||r.keep||r.teamReserve||(item.q??1)>r.batch||e.count(item)+(item.q??1)>r.maxCount||price<r.minPrice)return null;
   if(bot.production?.reserved(item)||bot.production?.reservedQuantity?.(item)>0||bot.production?.status()?.steps?.some(step=>step.item===item.name)||(cfg.production.goals??[]).some(g=>g.enabled&&g.item===item.name)||(cfg.production.gearTargets??[]).some(g=>g.enabled&&g.item===item.name)||bot.intelligence?.futureGear?.(item))return null;
   if(!explicit){
    // Synthetic permission only for one plain, stackable, low-risk material.
-   if(!cfg.production.autoDisposition||!r._autoDisposition||(item.q??1)!==1||meta.type!=='material'||stackMax(item)<2)return null;
+   if(!cfg.production.autoDisposition||!r._autoDisposition||meta.type!=='material'||stackMax(item)<2||!autoSale)return null;
    if(meta.quest||meta.q||meta.e||meta.exchange||meta.event||meta.cash||meta.cash_item||meta.soulbound||meta.compound||meta.upgrade||meta.rare||meta.rarity||meta.action||meta.onclick||meta.offering||meta.throw||meta.ignore||meta.wtype||meta.class||meta.grades||meta.tier)return null;
   }
   const rarity=Number(meta.rarity??meta.rare??0),difficulty=Number(meta.difficulty??0);
@@ -353,7 +367,7 @@ export function createBank(bot){
      fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&!p.c.items[r.dest]){
      if(p.write(reclaimKey,null))reclaiming=null;return true;
   }
-  const item=p.c.items[r.dest],rule=item&&(e.explicit(item)??e.rules(item));
+  const item=p.c.items[r.dest],rule=item?eligibleBankSale(item)?.r:null;
   if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&!!eligibleBankSale(item)&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity},{onConfirmed:()=>{
    const next={...r,saleConfirmed:true};if(!p.write(reclaimKey,next))return false;
    reclaiming=next;return true;
@@ -369,5 +383,8 @@ export function createBank(bot){
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
  }
- return {store,retrieve,consolidate,consolidateAcross,consolidateInventory,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ // Safe consolidation precedes evidence-based, rule-bound bank reclaim.
+ function audit(){if(!cfg.merchant.bank||!p.c.bank||bot.inventoryBlocked||bot.journal)return false;
+  return consolidateInventory()||consolidate()||consolidateAcross()||reclaim();}
+ return {store,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

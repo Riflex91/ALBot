@@ -1,4 +1,4 @@
-import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace} from '../core/policy.mjs';
+import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace,surplusQuantity} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 // Adventure Land server (node/server.js) uses B.sell_dist = 400 for the
 // ordinary NPC buy/sell/upgrade/compound/craft distance gate. Some checks are
@@ -27,7 +27,7 @@ export function createEconomy(bot){
   return count({...item,level:production.targetLevel})>=Math.min(production.targetCount,production.maxCount);
  };
  const safe=i=>!protectedItem(i)&&typeof i.name==='string'&&i.name!=='placeholder';
- const spare=(slot,r)=>{const i=p.c.items[slot];if(!safe(i)||!r)return 0;const reserved=['sell','bank','list','send'].includes(r.action)?bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??(bot.production?.reserved(i)?count(i):0):0;return Math.max(0,Math.min(i.q??1,r.batch,count(i)-r.keep-r.teamReserve-reserved));};
+ const spare=(slot,r)=>{const i=p.c.items[slot];if(!safe(i)||!r)return 0;const reserved=['sell','bank','list','send'].includes(r.action)?bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??(bot.production?.reserved(i)?count(i):0):0;return Math.min(i.q??1,r.batch,surplusQuantity(count(i),reserved,r.keep??0,r.teamReserve??0));};
  const value=i=>{try{const v=p.call('item_value',i);return Number.isFinite(v)&&v>=0?v:Infinity;}catch{return Infinity;}};
  const goalId=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,g.gearSlot??'']);
  function goalSpent(g){const index=cfg.production.goals.indexOf(g);return Math.max(ledger.goals[goalId(g)]??0,index>=0?ledger.goals[String(index)]??0:0);}

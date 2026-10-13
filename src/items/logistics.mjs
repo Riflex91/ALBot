@@ -221,7 +221,13 @@ export function createLogistics(bot){
       for(const to of sendRecipients(item)){
         const r=sendRule(item,to);if(!r)continue;
         const key=offerKey(to,item.name);if(nextOffer.has(key))continue;
-        const peer=transport.fresh(to);if(!near(to)||!peerReadyForHandoff(peer,{requiresSlot:true}))continue;
+        const peer=transport.fresh(to);
+        // A zero-free-slot heartbeat does not prove a compatible stack is
+        // full. Offer only stackable types for a live receiver recheck;
+        // never dispatch until its session-bound accept actually arrives.
+        const stack=p.G?.items?.[item.name]?.s;
+        const stackable=stack===true||Number.isSafeInteger(stack)&&stack>1;
+        if(!near(to)||!peerReadyForHandoff(peer,{requiresSlot:!stackable}))continue;
         const demand=(peer.items??[]).find(x=>matchingDemand(x,item)&&Number.isFinite(x.need)&&x.need>0);
         const gear=bot.allocation?.offer(signature(item),to);if(gear===false)continue;
         const elixir=peer.elixir?.item===item.name&&peer.elixir?.quantity===1;// The merchant is a universal destination for farmer loot. It does not

@@ -515,8 +515,9 @@ export function createMerchant(bot){
    // Direct rules can clear slots even when the current production goal
    // is waiting. These paths also perform independent safety checks.
    if(workStage('compound')||workStage('upgrade')||workStage('exchange'))return true;
-   // No permitted action was admitted: avoid blocking the entire scheduler.
-   return false;
+   // Pickup and unrelated acquisition still require the configured
+   // reserve. Do not turn failed recovery into a dangerous collection trip.
+   return true;
   }
   // Without any physical slot, do not initiate unrelated acquisition travel.
   return true;

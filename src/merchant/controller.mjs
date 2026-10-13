@@ -207,6 +207,20 @@ export function createMerchant(bot){
    case 'potions':
     supplyBeforePickup();return false;
    case 'capacity':{
+    // Do not clear a speculative 20-slot pickup workspace when the peer has
+    // no actionable, known offers. Inventory clean-up, NPC sale and banking
+    // here are for an actual pickup batch; ordinary depot housekeeping has
+    // already run in the preceding stages.
+    const offers=planPickupCapacity(peer?.items,{
+      merchant:me.name,free:bot.free(),
+      reserve:cfg.merchant.minFreeSlots??4,
+      known:i=>!!p.G?.items?.[i.name]
+    });
+    if(offers.offers===0){
+      preparePickup(peer);
+      nextStage();
+      return true;
+    }
     // Prepare a genuinely large pickup workspace rather than treating the
     // minimum 4+3 slots as the objective. Never sell protected/reserved gear
     // just to achieve the ideal. When no safe cleanup remains, depart with

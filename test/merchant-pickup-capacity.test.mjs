@@ -32,6 +32,25 @@ test('pickup preflight counts data/acc/rid as separate physical variants',()=>{
  assert.equal(plan.ready,false);
  assert.equal(plan.missing,3);
 });
+test('pickup preflight admits exact existing-stack offers with zero empty inventory slots',()=>{
+ const offerRow=offer('mat',1);
+ const blocked=planPickupCapacity([offerRow],{
+  merchant:'My_Merchant',free:0,reserve:4,known:()=>true});
+ assert.equal(blocked.ready,false,'default preflight never assumes stack space');
+ assert.deepEqual([blocked.slotOffers,blocked.stackOffers,blocked.target],[1,0,5]);
+ const ready=planPickupCapacity([offerRow,offerRow],{
+  merchant:'My_Merchant',free:0,reserve:4,known:()=>true,
+  canStack:i=>i.name==='mat'});
+ assert.deepEqual([ready.offers,ready.stackOffers,ready.slotOffers,
+  ready.target,ready.missing,ready.ready],[1,1,0,0,0,true]);
+});
+test('mixed pickup batch still requires physical slots for unmergeable variants',()=>{
+ const plan=planPickupCapacity([offer('mat'),offer('gear')],{
+  merchant:'My_Merchant',free:0,reserve:4,known:()=>true,
+  canStack:i=>i.name==='mat'});
+ assert.deepEqual([plan.offers,plan.stackOffers,plan.slotOffers,plan.target,
+  plan.missing,plan.ready],[2,1,1,5,5,false]);
+});
 test('preflight considers only whole-stack bank/sell actions and never protected/keep entries',()=>{
  const items=[{name:'bank',q:3},{name:'sell',q:1},{name:'partial',q:5},{name:'locked',q:1,l:true},{name:'keep',q:1}];
  const rules=i=>({action:i.name==='bank'?'bank':i.name==='sell'?'sell':i.name==='partial'?'bank':'keep'});
@@ -68,6 +87,43 @@ test('no safe cleanup means no arbitrary sale and no false pickup admission',()=
  assert.equal(merchant.status().pickup.missing,1);
  assert.equal(merchant.status().pickup.state,'blocked');
  assert.deepEqual(actions,[]);
+});
+test('Merchant pickup accepts zero-free-slot stack headroom without banking',()=>{
+ const {bot,c,actions}=merchantFixture();
+ c.items=[{name:'mat',level:0,q:9998},...Array.from({length:41},()=>
+  ({name:'locked',l:true}))];
+ bot.p.G.items.mat.s=9999;
+ const merchant=createMerchant(bot);
+ assert.equal(bot.free(),0);
+ assert.equal(merchant.preparePickup({name:'F',items:[offer('mat',3)]}),true);
+ assert.deepEqual(actions,[]);
+ assert.deepEqual([merchant.status().pickup.stackOffers,
+  merchant.status().pickup.slotOffers,merchant.status().pickup.target],
+  [1,0,0]);
+});
+test('locked, full or mismatched stacks cannot bypass the zero-slot pickup guard',()=>{
+ for(const mode of ['locked','full','variant']){
+  const {bot,c,actions}=merchantFixture();
+  const stack={name:'mat',level:0,q:mode==='full'?9999:9998};
+  if(mode==='locked')stack.l=true;
+  if(mode==='variant')stack.stat_type='int';
+  c.items=[stack,...Array.from({length:41},()=>({name:'locked',l:true}))];
+  bot.p.G.items.mat.s=9999;
+  const merchant=createMerchant(bot);
+  assert.equal(merchant.preparePickup({name:'F',items:[offer('mat',1)]}),false,mode);
+  assert.equal(merchant.status().pickup.state,'blocked',mode);
+  assert.equal(merchant.status().pickup.slotOffers,1,mode);
+  assert.deepEqual(actions,[]);
+ }
+});
+test('merge-only pickup skips destructive extra departure workspace cleanup',()=>{
+ const f=departureAtCapacity([offer('mat',1)]);
+ f.c.items[1]={name:'mat',level:0,q:9998};
+ f.bot.p.G.items.mat.s=9999;
+ assert.equal(f.merchant.prepareDeparture(f.peer),true);
+ assert.equal(f.merchant.status().departure.phase,'ready');
+ assert.deepEqual(f.actions,[],'no unrelated banking needed for exact merge-only pickup');
+ assert.equal(f.merchant.status().pickup.stackOffers,1);
 });
 test('merchant can accept a farmer item at its configured soft four-slot reserve',()=>{
  const {bot,c}=merchantFixture(),messages=[];

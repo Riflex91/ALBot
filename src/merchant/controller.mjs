@@ -19,7 +19,7 @@ export function createMerchant(bot){
   standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0;
  // Resumable phase metadata, never a replacement for durable value journals.
  const depotKey='albot:merchant-depot:'+me.name;
- const depotStages=['reconcile','mutation','sale','storage','capacity','complete'];
+ const depotStages=['reconcile','mutation','sale','storage','capacity','exchange','complete'];
  const savedDepot=p.read?.(depotKey);
  let depot=savedDepot&&depotStages.includes(savedDepot.stage)&&savedDepot.stage!=='complete'&&
   Number.isFinite(savedDepot.started)&&Date.now()-savedDepot.started<3600000?
@@ -172,7 +172,8 @@ export function createMerchant(bot){
     }
     nextStage();return false;
    case 'mutation':
-    if(workStage('exchange')||workStage('upgrade')||workStage('compound'))return false;
+    // Do not initiate a remote exchange before local gear mutations and sales.
+    if(workStage('upgrade')||workStage('compound'))return false;
     nextStage();return false;
    case 'sale':
     if(workStage('sell'))return false;
@@ -402,8 +403,7 @@ export function createMerchant(bot){
    advanceDepot();return true;
   }
   if(depot.stage==='mutation'){
-   if(workStage('upgrade')||workStage('compound')||workStage('exchange')||
-      bot.production?.tick?.())return true;
+   if(workStage('upgrade')||workStage('compound'))return true;
    advanceDepot();return true;
   }
   if(depot.stage==='sale'){
@@ -422,6 +422,11 @@ export function createMerchant(bot){
   if(depot.stage==='capacity'){
    if(!bot.bank.ready('items0'))return true;
    if(bot.bank.audit()||bot.bank.gold())return true;
+   advanceDepot();return true;
+  }
+  if(depot.stage==='exchange'){
+   // Cross-map exchanges run only after local sale and consolidation work.
+   if(workStage('exchange'))return true;
    advanceDepot();return true;
   }
   lastDepot=now;depot=null;

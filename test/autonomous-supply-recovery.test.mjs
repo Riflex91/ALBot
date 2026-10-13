@@ -71,16 +71,21 @@ function pair(){
 }
 test('merchant supplies an empty MP-potion farmer without any manually configured item rule',()=>{
  const {M,R,sent}=pair();
- assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,3000);
+ assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,300);
  M.logistics.poll();M.logistics.poll();
- assert.deepEqual(sent,[{to:'R',quantity:1500}]);
- assert.equal(R.p.c.items[0].q,1500);
+ assert.deepEqual(sent,[{to:'R',quantity:300}]);
+ assert.equal(R.p.c.items[0].q,300);
+});
+test('lowered potion target cancels an accepted unsent handoff without stranding the receiver journal',()=>{
+ const {M,R,cfg,sent}=pair();M.logistics.poll();assert.ok(R.journal);
+ cfg.merchant.mpPotionTarget=0;M.logistics.poll();
+ assert.equal(sent.length,0);assert.equal(M.journal,null);assert.equal(R.journal,null);assert.equal(R.inventoryBlocked,false);
 });
 test('explicit keep rule blocks automatic supply, even if the farmer needs MP',()=>{
  const {M,R,cfg,sent}=pair();
  const rule=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
  cfg.items=[{...rule,item:'mpot0',name:'MP-Reserve',action:'keep',role:'merchant'}];
- assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,3000);
+ assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,300);
  M.logistics.poll();M.logistics.poll();
  assert.equal(sent.length,0);
 });
@@ -89,7 +94,7 @@ test('merchant acquisition-only potion rule does not suppress automatic MP deliv
  const {M,R,cfg,sent}=pair();
  const rule=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
  cfg.items=[{...rule,item:'mpot0',name:'Merchant-Nachkauf mpot0',action:'buy',role:'merchant',targetCount:5000}];
- assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,3000);
+ assert.equal(R.logistics.summary().find(row=>row.item==='mpot0')?.need,300);
  M.logistics.poll();M.logistics.poll();
- assert.deepEqual(sent,[{to:'R',quantity:1500}], 'automatically resupply while keeping the merchant buy rule');
+ assert.deepEqual(sent,[{to:'R',quantity:300}], 'automatically resupply while keeping the merchant buy rule');
 });

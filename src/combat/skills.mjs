@@ -7,11 +7,11 @@ export function createSkills(bot){
   const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
   const diagnostics=()=>Object.fromEntries([...stats].map(([id,row])=>[id,{...row}]));
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
-  function ready(id,target,reserve=.2){
+  function ready(id,target,reserve=.2,ignoreCooldown=false){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
     if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp)return false;
     if(asArray(s.class).length&&!asArray(s.class).includes(c.ctype)||c.level<(s.level??0))return false;
-    if(p.call('is_on_cooldown',id))return false;
+    if(!ignoreCooldown&&p.call('is_on_cooldown',id))return false;
     const cost=id==='burst'?c.mp:s.mp??(['attack','heal'].includes(id)?c.mp_cost??0:0);
     if(c.mp-cost<c.max_mp*reserve)return false;
     if(Object.entries(s.requirements??{}).some(([k,v])=>!Number.isFinite(c[k])||c[k]<v))return false;

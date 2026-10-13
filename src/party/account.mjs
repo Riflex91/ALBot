@@ -38,7 +38,7 @@ export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conse
  return {mode,wealth,liquidFloor,complete,riskLimit,reason:complete?'account-liquid-gold':'account-wealth-partial'};
 }
 export function createAccount(bot){
- const {p,cfg,me,exec}=bot,coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
+ const {p,cfg,me,exec}=bot;let coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
  const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative';
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
  const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
@@ -84,6 +84,11 @@ export function createAccount(bot){
  function safe(name){const h=name===me.name?{running:bot.running,rip:p.c.rip,journal:!!bot.journal||!!bot.bank?.pending,pending:exec.pending.size,inventoryBlocked:bot.inventoryBlocked,reserved:!!bot.logistics.reserved,threats:bot.monsters().filter(m=>m.target===me.name).length}:bot.transport.fresh(name);return h?.running&&!h.rip&&!h.journal&&!h.pending&&!h.reserved&&!h.inventoryBlocked&&!h.threats;}
  function receive(from,data){if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
+  if(cfg.general.autoRoster){
+   const online=cfg.characters.filter(c=>c.enabled&&(c.name===me.name?bot.running:bot.transport.fresh(c.name)?.running&&bot.transport.fresh(c.name)?.realm===p.realm())).map(c=>c.name).sort();
+   const next=online.includes(cfg.party.merchant)?cfg.party.merchant:online[0]??me.name;
+   if(next!==coordinator){coordinator=next;sequence=0;}
+  }
   if(blocked)return;
   if(cfg.party.selection!=='adaptive'){if(cfg.party.leader)return;if(me.name!==coordinator){const h=bot.transport.fresh(coordinator);if(h?.team)receive(coordinator,h.team);return;}const current=bot.farmers.map(name=>name===me.name?{name,running:bot.running,rip:p.c.rip,class:p.c.ctype,hp:p.c.hp,max_hp:p.c.max_hp,stats:{attack:p.c.attack,frequency:p.c.frequency,armor:p.c.armor}}:{name,...bot.transport.fresh(name)});const leader=chooseCombatLeader(current.filter(h=>!h.journal&&!h.reserved&&!h.threats));if(leader&&leader!==bot.leader&&apply(bot.farmers,leader)){sequence++;bot.movement.stop();bot.event('account.leader',{leader,reason:'Bekannte lebende Fähigkeiten; feste Farmerliste bleibt erhalten'});}return;}
 
@@ -106,7 +111,7 @@ export function createAccount(bot){
   // prevent choosing another already running teammate. This does not call
   // start_character/stop_character and does not alter any value operation.
   const online=validNames.filter(name=>{
-   const h=bot.transport.fresh(name);
+   const h=cfg.general.autoRoster&&name===me.name?{...p.c,running:bot.running,realm:p.realm(),inventoryBlocked:bot.inventoryBlocked}:bot.transport.fresh(name);
    return h?.running&&!h.rip&&h.realm===p.realm()&&!h.inventoryBlocked;
   }),available=new Set(online);
   if((bot.farmers.some(n=>!available.has(n))||!available.has(bot.leader)||bot.farmers.length<Math.min(cfg.party.maxFarmers,online.length))&&online.length&&Date.now()-changed>=Math.min(15000,cfg.party.rotationCooldownMs)){

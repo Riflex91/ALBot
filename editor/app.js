@@ -10,7 +10,7 @@ checkDescriptor(descriptor);
 try{const raw=localStorage.getItem(STORAGE);if(raw){const d=parseData(raw);checkDescriptor(d.descriptor);if(!d.config||typeof d.config!=='object'||Array.isArray(d.config))throw Error('Entwurf unvollständig.');if(d.descriptor.schemaId===INITIAL_DESCRIPTOR.schemaId){descriptor=structuredClone(INITIAL_DESCRIPTOR);config=addMissingDefaults(descriptor.schema,d.config);draftMessages.push('Lokalen Entwurf übernommen; aktuelles Schema und Bot-Paket sind geladen.');}else{descriptor=d.descriptor;config=d.config;draftMessages.push('Lokalen Entwurf wiederhergestellt. Passendes Bot-Paket bei Bedarf laden.');}}}catch(e){draftMessages.push('Lokaler Entwurf nicht geladen: '+e.message);}
 function feedback(text){$('feedback').textContent=text;}
 function remember(){history.push(JSON.stringify(config));if(history.length>30)history.shift();future=[];}
-function change(fn,redraw=false){remember();fn();dirty=true;update();if(redraw)render();}
+function change(fn,redraw=false){remember();fn();applyAutonomousMode(config);dirty=true;update();if(redraw)render();}
 function scheduleSave(){clearTimeout(draftTimer);draftTimer=setTimeout(()=>{try{localStorage.setItem(STORAGE,JSON.stringify({descriptor,config}));$('draft-status').textContent='Entwurf lokal gesichert. JSON-Export ist deine portable Sicherung.';}catch{$('draft-status').textContent='Browserspeicher nicht verfügbar/voll. Bitte Profil als JSON speichern.';}},300);}
 function pathGet(path){return path.reduce((x,k)=>x?.[k],config);}
 function pathSet(path,value){let node=config;for(const k of path.slice(0,-1))node=node[k];node[path.at(-1)]=value;}
@@ -41,6 +41,7 @@ function schemaField(parent,s,path){
   }
   if(s.type==='array'){
     parent.append(el('h3',s.title||path.at(-1)));if(s.description)parent.append(el('p',s.description,'small'));
+    if(config.general?.autonomousSetup===true&&path.join('.')==='production.acquireBy'){parent.append(el('p',(value??[]).join(', ')+' · Automatisch freigegeben; Ausführung nach Bedarf, Itemschutz und Budget.','notice'));return;}
     if(!Array.isArray(value)){parent.append(el('p','Ungültige Liste – Profil korrigieren oder importieren.','error'));return;}
     const entries=el('div');let page=0,filter='';
     const search=el('input');search.placeholder='Einträge durchsuchen …';search.setAttribute('aria-label',(s.title||'Liste')+' durchsuchen');
@@ -63,7 +64,8 @@ function schemaField(parent,s,path){
   const title=el('span',s.title||path.at(-1));let input;
   if(s.enum){input=el('select');for(const v of s.enum){const o=el('option',s['x-labels']?.[v]||v);o.value=v;input.append(o);}input.value=value;}
   else {input=el('input');input.type=s.type==='boolean'?'checkbox':['number','integer'].includes(s.type)?'number':'text';if(s.type==='boolean')input.checked=value===true;else input.value=value??'';if(s.minimum!==undefined)input.min=s.minimum;if(s.maximum!==undefined)input.max=s.maximum;if(s.maxLength)input.maxLength=s.maxLength;input.step=s.type==='integer'?'1':'any';}
-  input.id=id;input.oninput=()=>change(()=>pathSet(path,s.type==='boolean'?input.checked:['number','integer'].includes(s.type)?(input.value===''?null:Number(input.value)):input.value));
+  if(config.general?.autonomousSetup===true&&path.length===2&&(AUTONOMOUS_SWITCHES[path[0]]?.includes(path[1])||path.join('.')==='party.selection')){input.disabled=true;input.title='Wird durch automatischen Betrieb gesteuert. Unter Projekt & Betrieb kann auf manuelle Freigaben umgestellt werden.';}
+  input.id=id;input.oninput=()=>change(()=>pathSet(path,s.type==='boolean'?input.checked:['number','integer'].includes(s.type)?(input.value===''?null:Number(input.value)):input.value),path.join('.')==='general.autonomousSetup');
   if(s['x-catalog']){const datalist=el('datalist');datalist.id=id+'-choices';const choices=s['x-catalog']==='items'?catalog.items.map(x=>[x.id,x.name]):s['x-catalog']==='characters'?(config.characters??[]).map(x=>[x.name,x.name]):[];for(const [v,n] of choices){const o=el('option');o.value=v;o.label=n;datalist.append(o);}input.setAttribute('list',datalist.id);label.append(datalist);}
   if(s.type==='boolean')label.append(input,title);else label.append(title,input);if(s.description)label.append(el('span',s.description,'help'));parent.append(label);
 }
@@ -90,6 +92,7 @@ function preview(parent){
   function draw(){result.replaceChildren();const errors=validateProfile(descriptor,config);if(errors.length){result.append(el('p','Erst Profilfehler beheben: '+errors[0],'error'));return;}const r=resolveItem(config,query);result.append(el('p',r.reason,'notice'));if(r.rule)result.append(el('p','Aktion: '+ACTIONS[r.rule.action]+(['send','sell','bank','list'].includes(r.rule.action)?' · Überschussmenge: '+r.quantity:'')+' · Empfänger: '+(r.rule.recipient||'—')));for(const c of r.candidates)result.append(el('p',c.name+' · Spezifität '+c.rank+' · Priorität '+c.priority,'small'));}parent.append(grid,result);draw();
 }
 function render(){
+  applyAutonomousMode(config);
   const nav=$('nav');nav.replaceChildren();const filter=$('nav-search').value.toLowerCase();const sections=Object.entries(descriptor.schema.properties);
   for(const [key,s] of [...sections,['preview',{title:'Regelvorschau'}],['json',{title:'Import & JSON'}]]){if(key==='preview'&&!hasItemRules())continue;if(filter&&!JSON.stringify(s).toLowerCase().includes(filter))continue;const b=el('button',s.title||key);if(section===key)b.setAttribute('aria-current','page');b.onclick=()=>{section=key;render();};nav.append(b);}
   const main=$('content');main.replaceChildren();if(section==='preview'){preview(main);}else if(section==='json'){

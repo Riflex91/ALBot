@@ -61,7 +61,7 @@ test('merchant can accept a farmer item at its configured soft four-slot reserve
  bot.p.call=()=>null;bot.entity=()=>({name:'F',map:'main',in:'main',x:10,y:0});
  bot.cfg.merchant.maxDelivery=3000;bot.cfg.merchant.supply=true;
  bot.cfg.general={messageTtlMs:10000};bot.cfg.farming={freeSlots:4,potionCarryMax:3000};
- bot.checkpoint={durable:true};bot.transport={fresh:()=>({name:'F',running:true,rip:false,realm:'USIV',session:'F',map:'main',in:'main',x:10,y:0}),peers:new Map(),
+ bot.checkpoint={durable:true};bot.transport={ownCharacters:()=>[{name:'F',class:'ranger'}],fresh:()=>({name:'F',class:'ranger',running:true,rip:false,realm:'USIV',session:'F',map:'main',in:'main',x:10,y:0}),peers:new Map(),
   send:(to,type,data,id)=>messages.push({to,type,data,id})};
  bot.exec={now:()=>Date.now(),busy:()=>false};
  bot.rule=()=>null;bot.beginValue=j=>{bot.journal=j;};
@@ -81,7 +81,7 @@ test('logistics starts pickup preparation despite full inventory, without depart
  bot.p.realm=()=> 'USIV';bot.p.G.items.mat={type:'material'};
  bot.p.call=()=>null;bot.cfg.items=[];bot.economy.explicit=()=>null;bot.cfg.merchant.maxDelivery=3000;bot.cfg.merchant.supply=true;
  bot.cfg.general={messageTtlMs:10000};bot.cfg.farming={freeSlots:4,hpBelow:0.4,mpBelow:0.4};
- bot.transport={fresh:()=>({name:'F',running:true,rip:false,realm:'USIV',session:'F',map:'main',in:'main',x:1000,y:0,items:[offer()],hp:100,max_hp:100,mp:100,max_mp:100}),
+ bot.transport={ownCharacters:()=>[{name:'F',class:'ranger'}],fresh:()=>({name:'F',class:'ranger',running:true,rip:false,realm:'USIV',session:'F',map:'main',in:'main',x:1000,y:0,items:[offer()],hp:100,max_hp:100,mp:100,max_mp:100}),
   peers:new Map([['F',{}]])};
  bot.exec={now:()=>Date.now(),busy:()=>false};
  bot.entity=()=>null;bot.rule=()=>null;bot.gold={reserved:false};
@@ -117,12 +117,12 @@ test('valid incoming gold offer can cancel only an unsent item offer and receive
 });
 
 test('departure phases finish bank, materials and economically authorized work before buying 3000-per-farmer potions',()=>{
- const {bot,c,actions}=merchantFixture(),purchases=[],stock={hpot0:200,mpot0:200};
+ const {bot,c,actions}=merchantFixture(),purchases=[],stock={hpot0:200,mpot0:200};bot.cfg.merchant.supply=true;
  bot.p.realm=()=> 'EUII';bot.p.c.gold=1000000;
  bot.p.G.items.hpot0={type:'pot',g:10};bot.p.G.items.mpot0={type:'pot',g:10};
  bot.farmers=['F'];
  bot.cfg.merchant.maxSpendPerHour=2000000;bot.cfg.merchant.goldReserve=0;
- bot.transport={fresh:()=>({name:'F',running:true,rip:false,realm:'EUII',
+ bot.transport={ownCharacters:()=>[{name:'F',class:'ranger'}],fresh:()=>({name:'F',class:'ranger',running:true,rip:false,realm:'EUII',
    potions:{hpot0:1200,mpot0:3000}})};
  bot.economy.explicit=()=>null;bot.economy.remaining=()=>true;
  bot.economy.count=item=>stock[item.name]??0;
@@ -180,10 +180,25 @@ test('farmer accepts MP potions even when HP stack already holds 3000',()=>{
  logistics.receive('My_Merchant',{type:'offer',session:'merchant',id:'mp-accept',
    data:{item:{name:'mpot0',level:0,stat_type:'',p:'',title:''},quantity:500}});
  assert.equal(sent[0].type,'accept');
- assert.equal(sent[0].data.quantity,500,
+ assert.equal(sent[0].data.quantity,300,
    'already held HP potions must not reduce the MP potion cap');
 });
-test('merchant offers potion top-ups using direct heartbeats without rotating item demand',()=>{
+
+test('offline selected farmers do not block supply and a late disappearance vetoes NPC spending',()=>{
+ const {bot}=merchantFixture();let peer={name:'F',running:true,realm:'EUII',potions:{hpot0:3000,mpot0:200}},guard;
+ bot.cfg.merchant.supply=true;bot.cfg.merchant.maxSpendPerHour=100000;bot.cfg.merchant.goldReserve=0;
+ bot.farmers=['F','Offline'];bot.p.realm=()=> 'EUII';bot.p.c.gold=100000;
+ bot.p.G.items.mpot0={type:'pot',g:10};bot.p.G.items.hpot0={type:'pot',g:10};
+ bot.transport={fresh:n=>n==='F'?peer:null};bot.movement={order:null};
+ bot.economy.explicit=()=>null;bot.economy.count=()=>200;bot.economy.ledger={spent:0};
+ bot.economy.npcBuy=(item,r,q,g)=>{assert.equal(item.name,'mpot0');assert.equal(q,100);guard=g;return true;};
+ bot.bank.ready=()=>true;bot.bank.consolidate=()=>false;bot.bank.consolidateAcross=()=>false;
+ bot.p.c.items=Array(42).fill(null);
+ const merchant=createMerchant(bot);for(let n=0;n<12&&!guard;n++)merchant.prepareDeparture({name:'F',items:[offer()]});
+ assert.equal(typeof guard,'function');assert.equal(guard(),true);
+ peer=null;assert.equal(guard(),false);
+});
+test('merchant discovers an unconfigured own online farmer and offers only its MP deficit',()=>{
  const {bot,c}=merchantFixture(),sent=[];
  bot.running=true;c.map='main';c.in='main';c.x=0;c.y=0;
  c.items=[{name:'mpot0',level:0,q:1500},...Array(41).fill(null)];
@@ -193,19 +208,19 @@ test('merchant offers potion top-ups using direct heartbeats without rotating it
  bot.cfg.general={messageTtlMs:10000};
  bot.cfg.merchant.enabled=true;bot.cfg.merchant.pickup=true;
  bot.cfg.merchant.supply=true;bot.cfg.merchant.maxDelivery=3000;
- bot.session='merchant';bot.rule=()=>null;bot.farmers=['F'];
+ bot.session='merchant';bot.rule=()=>null;bot.farmers=[];bot.cfg.merchant.discoverOwnFarmers=true;
  bot.checkpoint={durable:true};bot.gold={reserved:false};
  bot.exec={now:()=>Date.now(),busy:()=>false};
  bot.services={active:false,waiting:false};
  bot.economy.safe=()=>true;bot.economy.explicit=()=>null;
  bot.entity=()=>({name:'F',map:'main',in:'main',x:10,y:0});
- bot.transport={fresh:()=>({name:'F',running:true,rip:false,
+ bot.transport={ownCharacters:()=>[{name:'F',class:'ranger'}],fresh:()=>({name:'F',class:'ranger',running:true,rip:false,
    session:'farmer',realm:'EUII',map:'main',in:'main',x:10,y:0,
-   free:10,potions:{hpot0:3000,mpot0:2700},items:[]}),
+   free:10,potions:{hpot0:3000,mpot0:200},items:[]}),
    send:(to,type,data,id)=>sent.push({to,type,data,id})};
  const logistics=createLogistics(bot);
  logistics.poll();
  assert.equal(sent[0]?.type,'offer');
  assert.equal(sent[0]?.data?.item?.name,'mpot0');
- assert.equal(sent[0]?.data?.quantity,300);
+ assert.equal(sent[0]?.data?.quantity,100);
 });

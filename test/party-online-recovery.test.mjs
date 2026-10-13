@@ -47,6 +47,14 @@ test('adaptive team elects online fallback when configured combat leader disappe
   assert.deepEqual(bot.farmers,['My_Ranger2','My_Rogue']);
  }finally{Date.now=old;}
 });
+test('automatic roster can select the local farmer while the merchant is offline',()=>{
+ const old=Date.now;let now=10000;Date.now=()=>now;
+ try{
+  const {bot,calls}=accountFixture([]);bot.cfg.general.autoRoster=true;bot.cfg.party.leader='';bot.me={name:'My_Rogue'};bot.p.c={name:'My_Rogue',hp:100,max_hp:100,ctype:'rogue',attack:70,frequency:1};
+  const account=createAccount(bot);now+=15001;account.tick();
+  assert.deepEqual(bot.farmers,['My_Rogue']);assert.equal(bot.leader,'My_Rogue');assert.deepEqual(calls,[]);
+ }finally{Date.now=old;}
+});
 
 test('follower receives updated team roster from coordinator heartbeat',()=>{
  const {bot}=accountFixture(['My_Ranger1','My_Ranger2','My_Rogue']);

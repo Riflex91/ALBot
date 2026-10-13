@@ -83,7 +83,7 @@ export function validateProfile(descriptor,c){
   const ref=(v,where)=>{if(v&&!names.includes(v))errors.push(where+': unbekannter Charakter '+v);};
   ref(c.party.leader,'Kampf-Leader');ref(c.party.merchant,'Merchant');
   if(c.party.merchant&&!c.characters.some(x=>x.name===c.party.merchant&&x.role==='merchant'&&x.enabled))errors.push('Zuständiger Merchant muss ein aktiver Merchant sein.');
-  if(c.general.autostart&&!c.characters.some(x=>x.enabled))errors.push('Autostart benötigt mindestens einen aktiven Charakter.');
+  if(c.general.autostart&&!c.general.autoRoster&&!c.characters.some(x=>x.enabled))errors.push('Autostart benötigt mindestens einen aktiven Charakter.');
   if(c.farming.restBelow>=c.farming.resumeAbove)errors.push('Farmer: Weiter-Schwelle muss über Ruhe-Schwelle liegen.');
   if(c.merchant.expandBank&&c.merchant.bankBudget<=0)errors.push('Bankerweiterung benötigt ein positives Budget.');
   for(const [i,r] of c.items.entries()){
@@ -122,6 +122,16 @@ export function resolveItem(c,query){
   return {rule:r??null,candidates:rows.map(x=>({name:x.r.name,rank:ruleRank(x.r),priority:x.r.priority})),reason:r?'„'+r.name+'“ gewinnt: Spezifität '+ruleRank(r)+', Priorität '+r.priority+'. Explizite Regel vor automatischer Zielplanung.':c.production?.enabled&&c.production.autonomy?'Keine explizite Regel. Ein konfiguriertes Ziel kann beim tatsächlichen Bedarf eine begrenzte Regel ableiten; diese Vorschau führt keinen Produktionsplan aus.':'Keine passende Regel: behalten.',quantity:!r||r.action==='keep'?0:Math.max(0,Math.min(r.batch,(query.quantity??0)-r.keep-r.teamReserve))};
 }
 export function envelope(descriptor,config){return {format:'albot-profile',formatVersion:1,schemaId:descriptor.schemaId,config};}
+export const AUTONOMOUS_SWITCHES={production:['enabled','autonomy','upgrade','compound','craft','exchange','gear','autoGear','optimizeGear','autoDisposition','purposeAllocation','finiteHelpers','autoHelpers','skillSupplies','tokenBuy','dismantle','progressionAdvice'],merchant:['supply','discoverOwnFarmers','autoMarket','bankReclaim'],world:['bosses','bossTactics','adaptiveLearning'],party:['gearSynergy','advancedSkills']};
+// Enable capabilities, never raise monetary/risk limits or weaken item rules.
+// The same policy drives the workshop display and the runtime's effective config.
+export function applyAutonomousMode(config){
+ if(config.general?.autonomousSetup!==true)return config;
+ for(const [section,keys] of Object.entries(AUTONOMOUS_SWITCHES))for(const key of keys)if(config[section])config[section][key]=true;
+ if(config.party)config.party.selection='adaptive';
+ if(Array.isArray(config.production?.acquireBy))config.production.acquireBy=[...new Set([...config.production.acquireBy,'bank','npc','market','farm','craft','exchange'])];
+ return config;
+}
 export function addMissingDefaults(schema,value,path='',changes=[]){
   if(schema.type==='object'&&value&&typeof value==='object'&&!Array.isArray(value)){
     const next=structuredClone(value);

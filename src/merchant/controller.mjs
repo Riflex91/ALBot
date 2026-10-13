@@ -435,7 +435,9 @@ export function createMerchant(bot){
  }
  function relieveInventoryPressure(){
   if(me.role!=='merchant'||!cfg.merchant.enabled||
-    bot.free()>cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0)||
+    // Bank workspace is an optimization target, NOT a reason to interrupt
+    // a valid NPC sale or mutation when free slots still exceed the reserve.
+    bot.free()>cfg.merchant.minFreeSlots||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
   // This is a capacity-recovery transaction, NOT a general merchant task.
@@ -548,7 +550,7 @@ export function createMerchant(bot){
   }
   if(standDepot())return;
   if(depotTick())return;
-  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
+  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots,add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   if(bot.conversions)add('conversions',{priority:-350},()=>bot.conversions.tick());
   if(bot.marketDemand)add('market.expire',{priority:100},()=>bot.marketDemand.expire());
   for(let slot=0;slot<p.c.items.length;slot++){

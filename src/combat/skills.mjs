@@ -99,6 +99,16 @@ export function createSkills(bot){
     const additional=Math.floor(extraAllowance());
     const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
     const selected=multi?candidates.slice(0,limit):[];
+    // Retain an approved one-target opener when it has a real purpose.
+    // Only avoid spending 200/320 MP and the shared attack opportunity if
+    // an immediately available normal attack can already finish that mob.
+    // An explicit one-target AoE rule is authoritative.
+    if(!explicit&&aimed&&selected.length===1&&
+      Number.isFinite(selected[0].hp)&&
+      selected[0].hp<=Math.max(1,p.c.attack??0)&&
+      distance(p.c,selected[0])<=p.c.range&&
+      p.call('can_attack',selected[0])===true&&
+      !p.call('is_on_cooldown','attack'))return false;
     const neutralCount=selected.filter(e=>!e.target).length;
     if(multi){if(!aoePermitted(bot)||selected.length<(control?.minTargets??1)||
       (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):
@@ -189,7 +199,7 @@ export function createSkills(bot){
         (!m.target&&remaining>0&&m.mtype===bot.teamPlan?.target()&&bot.allowed(m)&&
          bot.strategy?.safeTarget?.(m.mtype,m)!==false)));
       const safeCount=Math.min(cfg.party.aoeMaxTargets,engaged+Math.min(remaining,safe.filter(m=>!m.target).length));
-      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:safeCount>=2?['3shot']:[]):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
+      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
       for(const id of ids)if(use(id,t,0,600))return;
     }
     if(p.c.ctype==='mage'&&bot.me?.role==='farmer'?

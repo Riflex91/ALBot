@@ -1,4 +1,4 @@
-import {identity,surplusQuantity} from '../core/policy.mjs';
+import {identity,variantCount,surplusQuantity} from '../core/policy.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
 import {itemPurposes} from '../items/purposes.mjs';
@@ -269,7 +269,7 @@ function mutationEconomics(i,{heldOverride=null}={}){
    if(cfg.production.autoDisposition!==true||!bot.economy.safe(i))return null;
    // A goal only protects its exact-variant allocation; other held copies
    // remain available for normal economic decision making.
-   if(!surplusQuantity(bot.economy.count(i),bot.production?.reservedQuantity?.(i)??0))return null;
+   if(!surplusQuantity(variantCount(p.c.items??[],i),bot.production?.reservedQuantity?.(i)??0))return null;
   const purposes=itemPurposes(p.G,i);
   if(purposes.protected)return null;
   // Equipment ingredients must pass the recipe check BEFORE equipment

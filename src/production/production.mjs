@@ -28,6 +28,42 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
  return [...grouped.values()];
 }
 export function needsProductionStock(available,required){return available<required;}
+// Prefer already actionable Gear upgrades to a long, remote exchange queue.
+// This only changes ordering: server-proven chances, budgets and user rules
+// still decide if an actual mutation may execute.
+export function gearInputReady(g,stock,meta){
+ if(!g?.gearSlot||!Number.isInteger(g.level)||g.level<1||
+   !(meta?.upgrade||meta?.compound))return false;
+ const needed=meta.compound?3:1;
+ const n=(stock??[]).reduce((sum,i)=>sum+(i?.name===g.item&&
+   (i.level??0)===g.level-1&&!i.l&&!i.b&&
+   (!g.variant||['stat_type','p','title','data'].every(k=>
+     g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined))))?
+   (Number.isSafeInteger(i.q)&&i.q>0?i.q:1):0),0);
+ return n>=needed;
+}
+// Release only the part of other goals' gross demand already backed by
+// verified, non-protected bank inventory. Keep sale reservations gross: this
+// exemption is for a current production step's inputs, never liquidation.
+export function unbankedDemand(rows,bankItems,name,level){
+ const demand=(rows??[]).filter(r=>r.item===name&&r.level===level)
+  .sort((a,b)=>Number(!!b.variant)-Number(!!a.variant));
+ const available=(bankItems??[]).filter(i=>i?.name===name&&(i.level??0)===level)
+  .map(item=>({item,left:Number.isSafeInteger(item.q)&&item.q>0?item.q:1}));
+ let remaining=0;
+ for(const row of demand){
+  let need=row.quantity;
+  if(!Number.isSafeInteger(need)||need<0)return Infinity;
+  for(const source of available){
+   if(!need)break;
+   if(row.variant&&identity({name,level,...row.variant})!==identity(source.item))continue;
+   const take=Math.min(need,source.left);
+   source.left-=take;need-=take;
+  }
+  remaining+=need;
+ }
+ return remaining;
+}
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
@@ -55,7 +91,9 @@ export function createProduction(bot){
    stock:(name,level,variant)=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===level&&
     (!variant||identity(i)===identity({name,level,...variant}))&&!i.l&&!i.b?(i.q??1):0),0)});}finally{demandBusy=nested;}
  }
- function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(cfg.production.purposeAllocation){const d=demand(g);return d.blocked?Infinity:Math.max(pending,d.rows.filter(r=>r.item===name&&r.level===level).reduce((n,r)=>n+r.quantity,0));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
+ function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(cfg.production.purposeAllocation){const d=demand(g);return d.blocked?Infinity:Math.max(pending,unbankedDemand(d.rows,
+     (bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>e.safe(i)&&
+      e.explicit(i)?.action!=='keep'),name,level));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
  const variantMatches=(i,g)=>!g?.variant||g.item!==i.name||['stat_type','p','title','data'].every(k=>g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined)));
  const qty=(name,level,g=goal)=>{let total=0,reserve=0;const groups=new Map();for(const i of p.c.items){const r=i&&e.explicit(i);if(i?.name===name&&(i.level??0)===level&&matchesOutput(i)&&variantMatches(i,g)&&r?.action!=='keep'&&!i.l&&!i.b){total+=i.q??1;groups.set(identity(i),(groups.get(identity(i))??0)+(i.q??1));reserve=Math.max(reserve,(r?.keep??0)+(r?.teamReserve??0));}}if(p.G.items[name]?.compound&&groups.size)total=Math.max(...groups.values());return Math.max(0,total-reserve-reserveOther(name,level,g));};
  function generated(action,item,quantity,g=goal){return {...defaultsFor(ITEM_RULE),name:'Automatisch: '+(g?.name??'Material')+' / '+action+' / '+item.name,_autoProduction:true,role:bot.me.role,character:bot.me.name,item:item.name,minLevel:item.level??0,maxLevel:item.level??0,...(g?.variant&&g.item===item.name?{statType:g.variant.stat_type??'',property:g.variant.p??'',title:g.variant.title??''}:{}),action,priority:g?.priority??0,targetCount:quantity,maxCount:quantity,batch:Math.max(1,quantity),maxPrice:cfg.production.helperMaxPrice??100000,goldBudget:g?.budget??0,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,targetLevel:(item.level??0)+1};}
@@ -290,7 +328,15 @@ export function createProduction(bot){
   }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
-  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<Math.max(cfg.merchant.taskHoldMs??30000,300000);return Number(held(b))-Number(held(a))||b.priority-a.priority||(bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
+  const readyStock=[...p.c.items.filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep'),
+   ...(bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep')];
+  const fastGear=g=>gearInputReady(g,readyStock,p.G.items?.[g.item]);
+  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<Math.max(cfg.merchant.taskHoldMs??30000,45000);
+    const effective=g=>(g.priority??0)+(fastGear(g)?65:0);
+    // A five-minute remote-exchange hold must not starve ready local gear.
+    return effective(b)-effective(a)||Number(held(b))-Number(held(a))||
+      (bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||
+      b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
    const wait=waiting.get(goalKey(g));if(wait?.until>Date.now())continue;if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient

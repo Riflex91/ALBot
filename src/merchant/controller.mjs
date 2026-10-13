@@ -19,7 +19,7 @@ export function createMerchant(bot){
   standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0;
  // Resumable phase metadata, never a replacement for durable value journals.
  const depotKey='albot:merchant-depot:'+me.name;
- const depotStages=['reconcile','mutation','sale','storage','capacity','complete'];
+ const depotStages=['reconcile','mutation','sale','storage','capacity','exchange','complete'];
  const savedDepot=p.read?.(depotKey);
  let depot=savedDepot&&depotStages.includes(savedDepot.stage)&&savedDepot.stage!=='complete'&&
   Number.isFinite(savedDepot.started)&&Date.now()-savedDepot.started<3600000?
@@ -172,7 +172,8 @@ export function createMerchant(bot){
     }
     nextStage();return false;
    case 'mutation':
-    if(workStage('exchange')||workStage('upgrade')||workStage('compound'))return false;
+    // Do not initiate a remote exchange before local gear mutations and sales.
+    if(workStage('upgrade')||workStage('compound'))return false;
     nextStage();return false;
    case 'sale':
     if(workStage('sell'))return false;
@@ -402,8 +403,7 @@ export function createMerchant(bot){
    advanceDepot();return true;
   }
   if(depot.stage==='mutation'){
-   if(workStage('upgrade')||workStage('compound')||workStage('exchange')||
-      bot.production?.tick?.())return true;
+   if(workStage('upgrade')||workStage('compound'))return true;
    advanceDepot();return true;
   }
   if(depot.stage==='sale'){
@@ -424,13 +424,20 @@ export function createMerchant(bot){
    if(bot.bank.audit()||bot.bank.gold())return true;
    advanceDepot();return true;
   }
+  if(depot.stage==='exchange'){
+   // Cross-map exchanges run only after local sale and consolidation work.
+   if(workStage('exchange'))return true;
+   advanceDepot();return true;
+  }
   lastDepot=now;depot=null;
   p.write?.(depotKey,{stage:'complete',completedAt:now});
   bot.event?.('merchant.depotComplete',{at:now});return false;
  }
  function relieveInventoryPressure(){
   if(me.role!=='merchant'||!cfg.merchant.enabled||
-    bot.free()>cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0)||
+    // Bank workspace is an optimization target, NOT a reason to interrupt
+    // a valid NPC sale or mutation when free slots still exceed the reserve.
+    bot.free()>cfg.merchant.minFreeSlots||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
   // This is a capacity-recovery transaction, NOT a general merchant task.
@@ -543,7 +550,7 @@ export function createMerchant(bot){
   }
   if(standDepot())return;
   if(depotTick())return;
-  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
+  const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots,add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   if(bot.conversions)add('conversions',{priority:-350},()=>bot.conversions.tick());
   if(bot.marketDemand)add('market.expire',{priority:100},()=>bot.marketDemand.expire());
   for(let slot=0;slot<p.c.items.length;slot++){

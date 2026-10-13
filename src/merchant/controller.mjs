@@ -16,7 +16,7 @@ export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
-  standRequestedUntil=0,lastSupplyCheck=0;
+  standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0;
  // Resumable phase metadata, never a replacement for durable value journals.
  const depotKey='albot:merchant-depot:'+me.name;
  const depotStages=['reconcile','mutation','sale','storage','capacity','complete'];
@@ -428,11 +428,47 @@ export function createMerchant(bot){
   p.write?.(depotKey,{stage:'complete',completedAt:now});
   bot.event?.('merchant.depotComplete',{at:now});return false;
  }
+ function relieveInventoryPressure(){
+  if(me.role!=='merchant'||!cfg.merchant.enabled||
+    bot.free()>cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0)||
+    bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
+    bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
+  if(bot.bank?.consolidateInventory?.())return true;
+  if(p.c.bank&&bot.bank?.consolidate?.())return true;
+  const bank=[],sell=[];
+  for(let slot=0;slot<p.c.items.length;slot++){
+   const item=p.c.items[slot];if(!e.safe(item))continue;
+   const rule=e.rules(item);
+   if(!rule||!e.remaining(rule)||e.spare(slot,rule)<1)continue;
+   if(rule.action==='bank')bank.push({slot,rule});
+   else if(rule.action==='sell')sell.push({slot,rule,value:e.value(item)});
+  }
+  for(const {slot,rule} of bank){
+   if(bot.bank?.store?.(slot,rule)||bot.movement.order?.owner==='economy'||
+      bot.journal||exec.busy('inventory'))return true;
+  }
+  sell.sort((a,b)=>a.value-b.value||a.slot-b.slot);
+  for(const {slot,rule} of sell){
+   if(e.npcSell(slot,rule)||bot.movement.order?.owner==='economy'||
+      bot.journal||exec.busy('inventory'))return true;
+  }
+  if(bot.free()>cfg.merchant.minFreeSlots+2&&bot.conversions?.tick?.())return true;
+  if(Date.now()-lastPressureNote>30000){
+   lastPressureNote=Date.now();
+   bot.event?.('merchant.inventoryPressure',{free:bot.free(),minimum:cfg.merchant.minFreeSlots,
+    reason:'Keine unreservierten, freigegebenen Bank-/Verkaufsstapel'});
+  }
+  return false;
+ }
  function tick(){
   if(bot.recovering)return;
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;
+  if(bot.movement.order?.owner==='economy'){
+   bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
+  }
+  if(relieveInventoryPressure())return;
 // Production planning runs in the slower planning loop (src/main.mjs).
 // Do not replan while an admitted merchant job is still executing.
   // Delivery routes are owned by logistics.travel(): that controller owns
@@ -530,7 +566,7 @@ export function createMerchant(bot){
       }
       return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);
      });
-   add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
+   add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production.helpers',{priority:-125},()=>bot.production.helperSupply?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>{buff();return bot.services.tick();});
   }

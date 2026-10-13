@@ -9,6 +9,13 @@ export function chooseRule(rules,item,context){
   return rules.filter(r=>r.enabled&&r.item===item.name&&(item.level??0)>=r.minLevel&&(item.level??0)<=r.maxLevel&&(r.role==='all'||r.role===context.role)&&['character','map','server','task'].every(k=>!r[k]||r[k]===context[k])&&(!r.statType||r.statType===(item.stat_type??''))&&(!r.property||r.property===(item.p??''))&&(!r.title||r.title===(item.title??''))).sort((a,b)=>ruleRank(b)-ruleRank(a)||b.priority-a.priority)[0]??null;
 }
 export function variantCount(items,item){return items.reduce((n,i)=>n+(i&&identity(i)===identity(item)?(i.q??1):0),0);}
+// A reservation is gross committed demand, not a deficit. Never subtract
+// existing stock from it again when deciding which copies may be discarded.
+export function surplusQuantity(held,reserved=0,keep=0,teamReserve=0){
+ if(![held,reserved,keep,teamReserve].every(Number.isSafeInteger)||
+    [held,reserved,keep,teamReserve].some(n=>n<0))return 0;
+ return Math.max(0,held-reserved-keep-teamReserve);
+}
 export function transferable(items,slot,rule){const i=items[slot];if(protectedItem(i)||!rule||rule.action!=='send')return 0;return Math.max(0,Math.min(i.q??1,rule.batch,variantCount(items,i)-rule.keep-rule.teamReserve));}
 export function arrived(c,d){return samePlace(c,d)&&distance(c,d)<=d.radius&&!c.moving;}
 export function matches(conditions,s){return conditions.every(c=>{const actual=c.field==='itemCount'?s.count(c.item):s[c.field];if(actual===undefined||actual===null||(typeof actual==='number'&&!Number.isFinite(actual)))return false;const wanted=typeof actual==='boolean'?c.value==='true':typeof actual==='number'?Number(c.value):c.value;return {lt:()=>actual<wanted,lte:()=>actual<=wanted,eq:()=>actual===wanted,neq:()=>actual!==wanted,gte:()=>actual>=wanted,gt:()=>actual>wanted}[c.operator]?.()===true;});}

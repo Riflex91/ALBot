@@ -1,3 +1,11 @@
+# Produktions- und Dispositionskorrektur 0.10.3-candidate (13.10.2026)
+
+Aus der externen ALFinal-Analyse werden die Ursachen Reservierungsüberdeckung, Inventardruck und fehlende Mutation-Helper übernommen. Der vorgeschlagene rechnerische Schritt `reservation - localStock` wäre für eine bereits erfüllte Zielmenge gefährlich und wurde **nicht** übernommen: `reservedQuantity()` bleibt der konservative Bruttobedarf; `surplusQuantity(held,reserved,keep,teamReserve)` lässt nur physisch überschüssige identische Varianten frei. Alte persönliche Einstellungen einschließlich `maxSpendPerHour=5000000` und die öffentliche API bleiben unverändert. Ein Merchant mit zu wenig Arbeitsplätzen versucht zuerst sichere Stapelkonsolidierung, danach freigegebene Bankablage und zuletzt unreservierte NPC-Verkäufe. Wirtschaftlich sinnvolle Upgrades ohne Scroll werden als `no-helper-available` erfasst; mögliche Standard-Helper-Käufe bleiben begrenzt und sämtlichen bestehenden Kosten-/Inventar-Guards unterworfen. Bank-Reclaim und alle vorhandenen Wertjournale bleiben unangetastet.
+
+Vollständige Offline-CI und tatsächlicher 10-Minuten-Team-Livetest müssen getrennt bewertet werden. Im Spiel sind keine echten Gold-/Bank-/Mutationsaktionen bestätigt; ein erfolgreicher Node-Test ist hierfür kein Beweis. [PR #35](https://github.com/Riflex91/ALBot/pull/35).
+
+---
+
 # ALBot 0.10.2-candidate – Livetest-Reparaturen (13.10.2026)
 
 Auf Basis der Farmer-/Merchant-Logs vom 13.10.2026: alter Farmregel-Konflikt, zu großer Spawn-Ankunftsradius und waffenloser Mage korrigiert; sequenzielle Merchant-Depotpflege mit persistierten Phasen ergänzt. Produktionsziel-Haltezeit verlängert und Diagnostik erweitert. Standard für Merchant maxSpendPerHour: **5.000.000 Gold/Stunde**. Für bereits exportierte persönliche Profile wird der Wert ausdrücklich nicht ohne einen neuen Export überschrieben. **Offline-CI erfolgreich; Spiel-Liveabnahme noch offen.** Geschützte Items, Transaktionsjournale, Account-Budget- und Erfolgschancenprüfungen bleiben gültig. Siehe [PR #34](https://github.com/Riflex91/ALBot/pull/34).

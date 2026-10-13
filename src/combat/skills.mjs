@@ -24,7 +24,7 @@ export function highestDpsFarmer(bot,allies){
    })[0]??null;
 }
 export function createSkills(bot){
-  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map();
+  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map(),invalidAoENotices=new Set();
   const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
   const diagnostics=()=>Object.fromEntries([...stats].map(([id,row])=>[id,{...row}]));
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
@@ -62,6 +62,22 @@ export function createSkills(bot){
        Number.isFinite(target.hp)&&target.hp<=Math.max(1,p.c.attack??0)&&
        !p.call('is_on_cooldown','attack'))return false;
     const s=p.G.skills[id];if(!s)return false;const control=cfg.skills.find(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype));
+    // Imported or previously persisted profiles can predate the workshop
+    // validator. Never silently reinterpret an impossible AoE rule.
+    if(['3shot','5shot','fanofknives','cleave','stomp'].includes(id)&&
+      Number.isSafeInteger(control?.minTargets)&&Number.isSafeInteger(control?.maxTargets)&&
+      control.minTargets>control.maxTargets){
+      count(id,'ruleBlocked');
+      const key=JSON.stringify([control.name,id,control.minTargets,control.maxTargets]);
+      if(!invalidAoENotices.has(key)){
+        if(invalidAoENotices.size>=64)invalidAoENotices.clear();
+        invalidAoENotices.add(key);
+        bot.event?.('skill.invalidRule',{skill:id,name:control.name,code:'INVALID_AOE_TARGET_RANGE',
+          minTargets:control.minTargets,maxTargets:control.maxTargets,
+          reason:'minTargets größer als maxTargets; Regel muss explizit korrigiert werden'});
+      }
+      return false;
+    }
     let extra,argsTarget=target;
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
     const aimed=['3shot','5shot'].includes(id);

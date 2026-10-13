@@ -1,4 +1,4 @@
-import {fingerprint} from '../core/policy.mjs';
+import {fingerprint,surplusQuantity} from '../core/policy.mjs';
 import {finiteMutationPlan} from './mutation-plan.mjs';
 export function mutationContext(bot,item){
  const G=bot.p.G;
@@ -11,7 +11,7 @@ export function mutationHelpers(bot,item,kind){
  if(!Number.isFinite(grade)||grade>=4)return [];
  const usable=(i,n)=>{
   const r=e.rules(i);return e.safe(i)&&r?.action!=='keep'&&
-   e.count(i)>(r?.keep??0)+(r?.teamReserve??0)+(bot.production?.reservedQuantity?.(i)??0);
+   surplusQuantity(e.count(i),bot.production?.reservedQuantity?.(i)??0,r?.keep??0,r?.teamReserve??0)>0;
  };
  const rows=p.c.items.map((i,slot)=>({i,slot,m:p.G.items?.[i?.name]})).filter(r=>r.i&&r.m&&['uscroll','cscroll','offering'].includes(r.m.type)&&usable(r.i,r.slot));
  const scrolls=rows.filter(r=>r.m.type===(kind==='compound'?'cscroll':'uscroll')&&r.m.grade>=grade);
@@ -41,11 +41,11 @@ export function planMutationHelpers(bot,item,quotes,kind,minChance){
  const {p,cfg}=bot,start=item.level??0,max=Math.min(12,cfg.production.autoProfitMaxLevel??start+1),counts=Array(max+1).fill(0);
  if(start>=max)return {action:'sell',ev:bot.economy.value(item)};
  for(let l=start;l<=max;l++){const candidate={...item,level:l},rule=bot.economy.explicit(candidate);
-  counts[l]=rule?.action==='keep'?0:Math.min(42,Math.max(0,bot.economy.count(candidate)-(rule?.keep??0)-(rule?.teamReserve??0)-(bot.production?.reservedQuantity(candidate)??0)));
+  counts[l]=rule?.action==='keep'?0:Math.min(42,surplusQuantity(bot.economy.count(candidate),bot.production?.reservedQuantity(candidate)??0,rule?.keep??0,rule?.teamReserve??0));
  }
  const slots=[...new Set(quotes.flatMap(q=>[q.scrollSlot,...(q.offeringSlot===null?[]:[q.offeringSlot])]))];
  const resources=slots.map(n=>{const i=p.c.items[n],rule=i&&bot.economy.rules(i);return !i||rule?.action==='keep'?0:
-  Math.max(0,Math.min(8,i.q??1,bot.economy.count(i)-(rule?.keep??0)-(rule?.teamReserve??0)-(bot.production?.reservedQuantity(i)??0)));});
+  Math.min(8,i.q??1,surplusQuantity(bot.economy.count(i),bot.production?.reservedQuantity(i)??0,rule?.keep??0,rule?.teamReserve??0));});
  const helpers=quotes.map(q=>({...q,uses:[[slots.indexOf(q.scrollSlot),1],...(q.offeringSlot===null?[]:[[slots.indexOf(q.offeringSlot),1]])]}));
  const plan=finiteMutationPlan({counts,resources,helpers,maxLevel:max,minChance,compound:kind==='compound',
   price:l=>bot.economy.value({...item,level:l}),budget:cfg.production.helperMaxPrice,margin:cfg.production.minImprovement,

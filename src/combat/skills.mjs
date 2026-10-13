@@ -130,7 +130,7 @@ export function createSkills(bot){
         const strongest=highestDpsFarmer(bot,candidates);
         // Refill the priority DPS farmer once at least 2% of maximum MP is missing.
         if(strongest&&(strongest.max_mp-strongest.mp)/strongest.max_mp>=.02&&
-          use('energize',strongest,.4,1500))return true;
+          use('energize',strongest,.4,250))return true;
        }
       if(cfg.party.buffs){const tank=alive.find(e=>e.ctype==='warrior');if(tank&&use('reflection',tank,.5,5000))return true;}
     }

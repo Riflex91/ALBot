@@ -18,7 +18,8 @@
       "pauseOnUnknown": false,
       "testLogging": true,
       "transferIntervalMs": 250,
-      "autonomousSetup": true
+      "autonomousSetup": true,
+      "autoRoster": false
     },
     "characters": [
       {

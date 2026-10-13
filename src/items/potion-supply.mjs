@@ -1,4 +1,15 @@
 const FARMER_CLASSES=['warrior','mage','priest','ranger','rogue','paladin'];
+export function discoverAccountRoster(cfg,p,template){
+ if(cfg.general?.autoRoster!==true)return cfg;
+ const rows=ownSupplyCharacters(p).sort((a,b)=>a.name.localeCompare(b.name)),realm=p.realm().match(/^([A-Z]{2})([A-Za-z0-9]+)$/);
+ if(!realm||!rows.some(c=>c.name===p.c?.name))throw Error('Accountliste/Realm noch nicht verfügbar. Bot nach dem Laden erneut ausführen.');
+ const merchant=rows.find(c=>c.class==='merchant'),farmers=rows.filter(c=>FARMER_CLASSES.includes(c.class));
+ if(farmers.length>20)throw Error('Automatische Charaktererkennung: höchstens 20 Farmer unterstützt.');
+ cfg.characters=[...farmers,...(merchant?[merchant]:[])].map(c=>({...structuredClone(template),name:c.name,class:c.class,role:c.class==='merchant'?'merchant':'farmer',enabled:true,group:cfg.party.group,region:realm[1],server:realm[2],rotation:false}));
+ if(!cfg.characters.some(c=>c.name===p.c.name))throw Error('Unbekannte Klasse oder weiterer Merchant. Der alphabetisch erste Merchant ist zuständig.');
+ cfg.party.merchant=merchant?.name??'';cfg.party.leader='';cfg.party.selection='adaptive';
+ return cfg;
+}
 export function ownSupplyCharacters(p){
  try{if(!p.has?.('get_characters'))return [];const rows=p.call('get_characters');
   if(!Array.isArray(rows)||rows.length>128)return [];

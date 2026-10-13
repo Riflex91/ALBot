@@ -1,8 +1,8 @@
-# Automatischer Betrieb und Gruppenwahl 0.10.1 – 13.10.2026
+# Automatischer Betrieb und Gruppenwahl 0.10.1 â€“ 13.10.2026
 
-Lokale Automatik aktiviert Produktions-/Merchant-/Lernfunktionen und unterstützte Bossprofile innerhalb bestehender Budgets und Schutzregeln. Eigene Online-Farmer werden automatisch erkannt und auf 3.000 HP-/300 MP-Tränke aufgefüllt. Die Farmwahl berücksichtigt individuellen AoE-Beitrag, Priest-Heilung, Tankkontrolle, Rüstung/Resistenz, aktive Paladin-Auren und begrenzte Schutzressourcen.
+Lokale Automatik aktiviert Produktions-/Merchant-/Lernfunktionen und unterstÃ¼tzte Bossprofile innerhalb bestehender Budgets und Schutzregeln. Eigene Online-Farmer werden automatisch erkannt und auf 3.000 HP-/300 MP-TrÃ¤nke aufgefÃ¼llt. Die Farmwahl berÃ¼cksichtigt individuellen AoE-Beitrag, Priest-Heilung, Tankkontrolle, RÃ¼stung/Resistenz, aktive Paladin-Auren und begrenzte Schutzressourcen.
 
-[Einrichtung, Codezuordnung, Grenzen und Liveabnahme](docs/EINRICHTUNG-0.10.1.md). **503/503 Offline-Tests bestanden**, Runtime/Werkstatt gebaut; neue Spiel-Liveabnahme steht aus. Cloud/KI bleiben aus, keine Anbieteränderungen. Die folgenden älteren Statusblöcke sind historisch.
+[Einrichtung, Codezuordnung, Grenzen und Liveabnahme](docs/EINRICHTUNG-0.10.1.md). **503/503 Offline-Tests bestanden**, Runtime/Werkstatt gebaut; neue Spiel-Liveabnahme steht aus. Cloud/KI bleiben aus, keine AnbieterÃ¤nderungen. Die folgenden Ã¤lteren StatusblÃ¶cke sind historisch.
 
 ---
 

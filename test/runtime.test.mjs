@@ -63,6 +63,20 @@ function harness(name='A',sharedParent=null){
  const context=vm.createContext(root);const load=()=>vm.runInContext(code,context);return {root,cfg,c,calls,timers,storage,listeners,load};
 }
 
+test('nameless automatic profile boots full farmer and merchant roles in both runtimes',()=>{
+ for(const browser of [false,true])for(const [name,type] of [['Archer','ranger'],['Shop','merchant']]){
+  const a=harness(name),cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.characters=[];cfg.party.leader='';cfg.party.merchant='';cfg.general.autoRoster=true;cfg.general.autostart=false;cfg.general.ui=false;
+  a.root.ALBotConfig=cfg;a.c.ctype=type;a.root.get_characters=()=>[{name:'Shop',type:'merchant'},{name:'Archer',type:'ranger'},{name:'Healer',type:'priest'}];
+  if(browser)delete a.root.parent.headless;
+  a.load();const status=a.root.ALBot.status();assert.equal(status.supplyOnly,false);assert.equal(status.role,type==='merchant'?'merchant':'farmer');
+  const settings=JSON.parse(a.root.ALBot.testReport()).settings;assert.equal(settings.party.merchant,'Shop');assert.equal(settings.characters.length,3);assert.ok(settings.characters.every(c=>c.rotation===false));assert.equal(cfg.characters.length,0);
+  a.root.ALBot.dispose();assert.equal(a.timers.size,0);
+ }
+});
+test('automatic roster refuses missing account identity instead of guessing names',()=>{
+ const a=harness('Stranger'),cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.characters=[];cfg.general.autoRoster=true;a.root.ALBotConfig=cfg;a.root.get_characters=()=>[{name:'Owned',type:'ranger'}];a.load();assert.equal(a.root.ALBot.status().state,'invalid');assert.equal(a.calls.some(c=>c[0]==='attack'),false);
+});
+
 test('shared bundle boots an owned unconfigured farmer as a receiver in browser and headless',()=>{
  for(const browser of [false,true]){
   const a=harness('F'),cfg=defaultsFor(FULL_DESCRIPTOR.schema);

@@ -119,6 +119,12 @@
             "title": "Automatischer Betrieb: Produktion, Merchant, Lernen und Bosswahl selbst steuern",
             "default": true,
             "description": "Aktiviert die unterstützten Produktionswege, Helferwahl, Tokenkäufe, Zerlegen, Bankentlastung und adaptive Teamwahl. Gold-/Verlustbudgets, Itemschutz und feste Charakterregeln bleiben verbindlich. Cloud wird separat eingerichtet."
+          },
+          "autoRoster": {
+            "type": "boolean",
+            "title": "Eigene Charaktere und Rollen beim Start automatisch erkennen",
+            "default": false,
+            "description": "Namenloses Profil: Accountliste und aktueller Realm; online durch Heartbeats bestaetigt. Keine automatischen Charakterstarts. Bei mehreren Merchants ist der alphabetisch erste zustaendig."
           }
         },
         "required": [
@@ -2287,7 +2293,7 @@
           "allowedBosses": {
             "type": "array",
             "title": "Erlaubte Boss-IDs",
-            "description": "Im automatischen Betrieb erg�nzt die Runtime alle vom aktuellen Bossadapter unterst�tzten Gegner. Bereitschaft, Karten-/Instanzgrenzen und Mechanikpr�fungen bleiben verbindlich.",
+            "description": "Im automatischen Betrieb ergänzt die Runtime alle vom aktuellen Bossadapter unterstützten Gegner. Bereitschaft, Karten-/Instanzgrenzen und Mechanikprüfungen bleiben verbindlich.",
             "items": {
               "type": "string",
               "title": "ID",

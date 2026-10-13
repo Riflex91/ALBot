@@ -72,3 +72,12 @@ Gezielte Tests: `test/composition.test.mjs`, `test/autonomy.test.mjs`, `test/pot
 Offene Liveabnahme: tatsächliche Account-Erkennung, Tranklieferung mit Verbrauch während der Fahrt, Farmer-Disconnect, drei Ranger an dichtem Spawn, Priest-Ausfall, Paladin-Aurawechsel, Tankzielwechsel und Verbrauch der Schutzressourcen in beiden Laufzeitumgebungen. Vor und nach dem Lauf Testbericht und Journale sichern; keine Budgets erhöhen, um eine Verweigerung zu umgehen.
 
 Mechanikquellen: [offizielle Spieldokumentation](https://adventure.land/docs) und offizieller Quellstand `kaansoral/adventureland` Commit `2148cf25d01060f54bcab01dfa7c2cf5b7baf374`, insbesondere `design/skills.js`, `design/conditions.js`, `node/server.js` und `js/old_common_functions.js` (`damage_multiplier`). Runtimewerte stammen weiterhin aus dem tatsächlich geladenen `G` und den Charakteren.
+
+
+## Namenlose bot.js (automatische Accountrollen)
+
+Die separat ausgegebene `bot.js` verwendet `general.autoRoster=true`, eine leere Charakterliste und keine festen Leader-/Merchantnamen. Bei Ausführung werden eigene Charaktere über `get_characters()` erkannt und anhand der Klasse als Farmer oder Merchant eingerichtet; der aktuelle Realm wird übernommen. Die Erkennung übernimmt keine Account-Secrets. Alle gewünschten Charaktere müssen denselben Export ausführen. Onlinezustand und Gruppenauswahl benötigen frische Heartbeats; offline gelistete Charaktere werden nicht als verfügbare Kampfkraft behandelt. Falls der Merchant offline ist, übernimmt ein online gemeldeter Farmer die Teamkoordination. Neue Accountcharaktere nach Erstellung durch erneutes Ausführen des Exports auf den beteiligten Clients einlesen.
+
+Automatisch erkannte Farmer sind in diesem Modus vollständige Farmer, keine reinen Trankempfänger. Maximal die konfigurierte Farmerzahl kämpft gemeinsam; weitere eigene Online-Farmer können dennoch versorgt werden. Es werden keine Charaktere automatisch eingeloggt, gestartet oder gestoppt. Bei mehreren Merchants ist deterministisch der alphabetisch erste Account-Merchant zuständig. Bei fehlender Accountliste verweigert der Bot den Start; nach vollständigem Laden erneut ausführen. Für manuelle feste Charakterzuweisungen `autoRoster` deaktivieren.
+
+Offline-Prüfung nach Ergänzung: 506 Tests, einschließlich Browser-/Headless-Start als Farmer und Merchant sowie Farmerbetrieb bei offline Merchant.

@@ -1,4 +1,4 @@
-import {automaticSupplyReceiver,onlineSupplyFarmers} from './items/potion-supply.mjs';
+import {automaticSupplyReceiver,onlineSupplyFarmers,discoverAccountRoster} from './items/potion-supply.mjs';
 import {createAdaptive} from './world/adaptive.mjs';
 import {createBosses,bossProfile} from './combat/bosses.mjs';
 import {createMarketDemand} from './merchant/market-demand.mjs';
@@ -38,7 +38,7 @@ import {createGear} from './production/gear.mjs';
 import {createMerchant} from './merchant/controller.mjs';
 import {VERSION} from './version.mjs';
 import {DESCRIPTOR} from '../editor/lib/schema.mjs';
-import {parseData,validateSchema,validateProfile,addMissingDefaults,applyAutonomousMode} from '../editor/lib/contract.mjs';
+import {defaultsFor,parseData,validateSchema,validateProfile,addMissingDefaults,applyAutonomousMode} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from './config/live-a.mjs';
 import {chooseRule,variantCount,protectedItem,distance,samePlace,fingerprint} from './core/policy.mjs';
 import {Executor} from './core/executor.mjs';
@@ -104,7 +104,7 @@ export function install(root){
     if(value.items.some(r=>r.enabled&&r.action==='send'&&(!r.recipient||!value.characters.some(c=>c.enabled&&c.name===r.recipient))))errors.push('Lieferempfänger muss aktiv konfiguriert sein.');
     return errors;
   }
-  let cfg;try{cfg=parseData(JSON.stringify(root.ALBotConfig));if(cfg.general?.testLogging!==undefined&&cfg.general.autonomousSetup===undefined)cfg.general.autonomousSetup=true;cfg=applyAutonomousMode(cfg);if(cfg.general?.autonomousSetup===true&&cfg.world){cfg.world.allowedBosses=[...new Set([...(cfg.world.allowedBosses??[]),...Object.keys(p.G.monsters??{}).filter(id=>bossProfile(p.G,id)?.supported)])];}const errors=validate(cfg);if(errors.length)throw Error(errors.join('; '));}catch(e){p.log('Konfiguration ungültig: '+e.message);failed('invalid',e.message);return;}
+  let cfg;try{cfg=parseData(JSON.stringify(root.ALBotConfig));if(cfg.general?.testLogging!==undefined&&cfg.general.autonomousSetup===undefined)cfg.general.autonomousSetup=true;cfg=applyAutonomousMode(cfg);cfg=discoverAccountRoster(cfg,p,defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items));if(cfg.general?.autonomousSetup===true&&cfg.world){cfg.world.allowedBosses=[...new Set([...(cfg.world.allowedBosses??[]),...Object.keys(p.G.monsters??{}).filter(id=>bossProfile(p.G,id)?.supported)])];}const errors=validate(cfg);if(errors.length)throw Error(errors.join('; '));}catch(e){p.log('Konfiguration ungültig: '+e.message);failed('invalid',e.message);return;}
   const configuredMe=cfg.characters.find(c=>c.name===p.c?.name&&c.enabled),me=configuredMe??automaticSupplyReceiver(cfg,p),supplyOnly=!!me&&!configuredMe;
   if(!me){p.log('Eigenen Namen zuerst in der Werkstatt aktivieren.');failed('unconfigured','Eigenen Namen zuerst aktivieren');return;}
   report.configure?.({continuous:cfg.general.testLogging===true});

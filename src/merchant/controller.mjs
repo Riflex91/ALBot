@@ -210,7 +210,7 @@ export function createMerchant(bot){
        (slot,rule)=>e.spare(slot,rule),i=>e.safe(i),
        (item,rule)=>cfg.merchant.bank&&rule._autoDisposition===true&&
          !e.explicit?.(item)&&!e.explicit?.(item,'production')&&
-         e.remaining(rule)&&e.spare(p.c.items.indexOf(item),rule)>=(item.q??1));
+         e.remaining(rule)&&(bot.production?.reservedQuantity?.(item)??0)===0);
      for(const row of [...options.bank,...options.sell]){
       const accepted=row.rule.action==='bank'?
         bot.bank?.store?.(row.slot,row.rule):e.npcSell(row.slot,row.rule);
@@ -265,7 +265,7 @@ export function createMerchant(bot){
     (slot,rule)=>e.spare(slot,rule),i=>e.safe(i),
     (item,rule)=>cfg.merchant.bank&&rule._autoDisposition===true&&
       !e.explicit?.(item)&&!e.explicit?.(item,'production')&&e.remaining(rule)&&
-      e.spare(p.c.items.indexOf(item),rule)>=(item.q??1));
+      (bot.production?.reservedQuantity?.(item)??0)===0);
   for(const x of options.bank){
    // Persist preparation across the trip to the bank and every subsequent
    // confirmed slot release. Never start a farmer pickup from here.
@@ -465,7 +465,9 @@ export function createMerchant(bot){
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;
-  if(bot.movement.order?.owner==='economy')return;
+  if(bot.movement.order?.owner==='economy'){
+   bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
+  }
   if(relieveInventoryPressure())return;
 // Production planning runs in the slower planning loop (src/main.mjs).
 // Do not replan while an admitted merchant job is still executing.

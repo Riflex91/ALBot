@@ -2,6 +2,20 @@ import {distance,samePlace,matches} from '../core/policy.mjs';
 import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
+// AoE is a normal farmer capability. Limits on hostile targets, pulls,
+// mana, PVP, weapons and cooldowns are still enforced in use().
+export const aoePermitted=bot=>bot.me?.role==='farmer'||bot.cfg?.party?.aoe===true;
+export function highestDpsFarmer(bot,allies){
+ const selected=new Set(bot.farmers??[]);
+ return (allies??[]).filter(a=>a&&selected.has(a.name)&&
+   a.name!==bot.p.c.name&&!a.rip&&a.hp>0&&
+   Number.isFinite(a.attack)&&a.attack>0&&
+   Number.isFinite(a.mp)&&Number.isFinite(a.max_mp)&&a.max_mp>0)
+   .sort((a,b)=>{
+    const dps=x=>x.attack*(Number.isFinite(x.frequency)&&x.frequency>0?x.frequency:1);
+    return dps(b)-dps(a)||a.name.localeCompare(b.name);
+   })[0]??null;
+}
 export function createSkills(bot){
   const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map();
   const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
@@ -28,7 +42,7 @@ export function createSkills(bot){
   function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false){
     const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro',agitate:'aggro',huntersmark:'mark'}[id];if(!explicit&&role){let owner=roles?.[role];if(bot.capabilities){if(!owner||!bot.capabilities.available(owner,id,target))owner=(bot.farmers??[]).filter(n=>bot.capabilities.available(n,id,target)).sort()[0];}if(owner&&owner!==p.c.name)return false;}
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
-    if(id==='energize'&&!cfg.party.energize||id==='revive'&&!cfg.party.revive)return false;
+    if(id==='energize'&&!cfg.party.energize&&!(bot.me?.role==='farmer'&&p.c.ctype==='mage')||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;
     if(!explicit&&cfg.skills.some(r=>r.enabled&&r.skill===id&&(!r.character||r.character===p.c.name)&&(r.class==='auto'||r.class===p.c.ctype))){count(id,'ruleBlocked');return false;}
     if((last.get(id)??0)+every>Date.now()||(failedUntil.get(id)??0)>Date.now()||
@@ -62,7 +76,7 @@ export function createSkills(bot){
     const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
     const selected=multi?candidates.slice(0,limit):[];
     const neutralCount=selected.filter(e=>!e.target).length;
-    if(multi){if(!cfg.party.aoe||selected.length<(control?.minTargets??1)||
+    if(multi){if(!aoePermitted(bot)||selected.length<(control?.minTargets??1)||
       (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):
         (visible.length>limit||visible.some(e=>!eligible(e)&&!canPull(e))))||
       neutralCount>additional){count(id,'targetBlocked');return false;}
@@ -105,7 +119,16 @@ export function createSkills(bot){
       if(cfg.party.healing){if(hurt.filter(e=>e.hp/e.max_hp<.65).length>=2&&use('partyheal',null,.2,1000))return true;if(hurt[0]?.hp/hurt[0]?.max_hp<.85&&use('heal',hurt[0],.05,250))return true;}
     }
     if(p.c.ctype==='mage'){
-      if(cfg.party.energize){const low=alive.filter(e=>e.name!==p.c.name&&e.mp/e.max_mp<.5).sort((a,b)=>a.mp/a.max_mp-b.mp/b.max_mp)[0];if(low&&use('energize',low,.4,1500))return true;}
+      {
+        // Serve the highest observable DPS farmer, not whichever ally happens
+        // to have the lowest MP ratio. Keep feeding them during combat whenever
+        // they have meaningful missing mana and are in casting range.
+        const candidates=alive.filter(a=>bot.farmers?.includes(a.name)&&
+          a.name!==p.c.name&&a.mp/a.max_mp<.9&&a.max_mp-a.mp>=30&&
+          samePlace(p.c,a)&&distance(p.c,a)<=(p.G.skills?.energize?.range??0));
+        const strongest=highestDpsFarmer(bot,candidates);
+        if(strongest&&use('energize',strongest,.4,1500))return true;
+       }
       if(cfg.party.buffs){const tank=alive.find(e=>e.ctype==='warrior');if(tank&&use('reflection',tank,.5,5000))return true;}
     }
     if(cfg.party.buffs&&p.c.ctype==='rogue')for(const a of alive)if(use('rspeed',a,.4,1500))return true;
@@ -127,7 +150,7 @@ export function createSkills(bot){
     const c=p.c,hp=c.hp/c.max_hp,long=t&&t.hp>c.attack*4;
     // Highest priority for an eligible AoE, while still honoring cooldown,
     // weapon, legal targets, mana cost and approved encounter capacity.
-    if(t&&cfg.party.aoe){
+    if(t&&aoePermitted(bot)){
       const shotRange=(p.G.skills['5shot']?.range??c.range)-5;
       const phase=bot.encounter?.status?.();
       const engaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target)).length;

@@ -189,7 +189,7 @@ export function createSkills(bot){
         (!m.target&&remaining>0&&m.mtype===bot.teamPlan?.target()&&bot.allowed(m)&&
          bot.strategy?.safeTarget?.(m.mtype,m)!==false)));
       const safeCount=Math.min(cfg.party.aoeMaxTargets,engaged+Math.min(remaining,safe.filter(m=>!m.target).length));
-      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
+      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:safeCount>=2?['3shot']:[]):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
       for(const id of ids)if(use(id,t,0,600))return;
     }
     if(p.c.ctype==='mage'&&bot.me?.role==='farmer'?

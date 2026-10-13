@@ -664,5 +664,5 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

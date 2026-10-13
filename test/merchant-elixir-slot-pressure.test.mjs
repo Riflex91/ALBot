@@ -75,7 +75,7 @@ test('Mage energize at 2% missing mana and not at less than 2%',()=>{
     call:(fn,...args)=>{if(fn==='is_on_cooldown')return false;if(fn==='use_skill'){calls.push(args);return true;}}},
    cfg:{general:{},party:{enabled:true,energize:true,buffs:false,aoe:false},
     farming:{pvp:false},skills:[]},farmers:['Mage','Ranger1'],
-   teamPlan:{roles:()=>({energize:'Mage'})},allies:()=>[friend],
+   teamPlan:{roles:()=>({energize:'Mage'})},allies:()=>[friend],monsters:()=>[],
    exec:{run:(_k,_r,g,fn)=>{if(!g())return false;fn();return true;}},event:()=>{}};
   createSkills(bot).rotation(null);return calls;
  };

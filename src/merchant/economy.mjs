@@ -8,6 +8,15 @@ import {MUTATION_RISK_WINDOW_MS,mutationRiskLimit,mutationRiskAllowed} from './m
 export const NPC_INTERACTION_LIMIT=400;
 export const NPC_INTERACTION_BUFFER=25;
 export const NPC_WORK_RADIUS=NPC_INTERACTION_LIMIT-NPC_INTERACTION_BUFFER;
+// A bank-expansion budget caps cumulative purchases across reloads and
+// hourly accounting periods, not merely the price of one new pack. Legacy
+// budgets without a bankSpent field start at zero; malformed persisted values
+// cannot be interpreted as an unspent budget.
+export function bankExpansionRemaining(bankBudget,bankSpent=0){
+ if(!Number.isSafeInteger(bankBudget)||bankBudget<0||
+    !Number.isSafeInteger(bankSpent)||bankSpent<0)return 0;
+ return Math.max(0,bankBudget-bankSpent);
+}
 export function saleReceiptMatches(receipt,item,quantity,gold){
  return !!receipt&&receipt.success!==false&&!receipt.failed&&
    receipt.gold===gold&&identity(receipt.item)===identity(item)&&
@@ -42,6 +51,8 @@ export function createEconomy(bot){
  function goalSpent(g){const index=cfg.production.goals.indexOf(g);return Math.max(ledger.goals[goalId(g)]??0,index>=0?ledger.goals[String(index)]??0:0);}
  function goalBudget(cost,loss,item){const goal=bot.production?.activeGoal;return cost+loss===0||!goal||!(bot.production.owns?.(item)??true)||(Object.hasOwn(ledger.goals,goalId(goal))||Object.keys(ledger.goals).length<1024)&&goalSpent(goal)+cost+loss<=goal.budget;}
  function note(s){bot.reason=s;if(lastMessage!==s||Date.now()-lastMessageAt>30000){lastMessage=s;lastMessageAt=Date.now();bot.report(s);}}
+ const bankExpansionAvailable=cost=>Number.isSafeInteger(cost)&&cost>0&&
+   cost<=bankExpansionRemaining(cfg.merchant.bankBudget,ledger.bankSpent??0);
  function budget(cost,loss=0,r=null){
   if(Date.now()-ledger.hour>=3600000)ledger={...ledger,hour:Date.now(),spent:0,loss:0};
   const reserve=Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
@@ -72,16 +83,22 @@ export function createEconomy(bot){
    next.itemRisk={...current,[key]:(current[key]??0)+loss};
   }
   const goal=bot.production?.activeGoal;if(goal&&cost+loss>0&&(bot.production.owns?.(details.item)??true)){const spent=goalSpent(goal)+cost+loss;if(spent>goal.budget)return false;next.goals[goalId(goal)]=spent;}
-  if(kind==='bank.expand'){next.bankSpent=(ledger.bankSpent??0)+cost;if(next.bankSpent>cfg.merchant.bankBudget)return false;}
+  if(kind==='bank.expand'){
+   if(!bankExpansionAvailable(cost))return false;
+   next.bankSpent=(ledger.bankSpent??0)+cost;
+  }
   if(!p.write(ledgerKey,next))return false;ledger=next;return true;
  }
  function perform(kind,{slots=[],cost=0,loss=0,rule=null,guard=()=>true,call,observe,details={},timeout=20000,onConfirmed=()=>true}){
   if(bot.recovery?.authorize(kind)===false)return false;const definitions=[...new Set(slots.map(n=>p.c.items[n]?.name).filter(Boolean)),...(rule?.item?[rule.item]:[])];if(definitions.some(name=>bot.content?.approve('item:'+name,[p.G.items[name],p.G.craft?.[name],p.G.drops?.[name]])===false))return false;
+  if(kind==='bank.expand'&&!bankExpansionAvailable(cost))return false;
   if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!budget(cost,loss,rule)||!remaining(rule))return false;
   if(!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
   if(!riskAllowed(kind,rule,details,loss)){note('Autonome Mutation: 24h-Risikolimit für Itemvariante ausgeschöpft');return false;}
   const prints=slots.map(s=>[s,fingerprint(p.c.items[s])]);
-  const valid=()=>bot.running&&!closed&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&riskAllowed(kind,rule,details,loss)&&guard();
+  const valid=()=>bot.running&&!closed&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
+    (kind!=='bank.expand'||bankExpansionAvailable(cost))&&
+    riskAllowed(kind,rule,details,loss)&&guard();
   return exec.run(kind,['inventory','gold','economy'],valid,()=>{
    if(!valid())throw Error('Economy-Zustand verändert');
    if(!charge(cost,loss,rule,kind,details))throw Error('Budget konnte nicht reserviert werden');
@@ -118,5 +135,5 @@ export function createEconomy(bot){
   return sourceVerified&&(saleReceiptMatches(receipt,i,q,q*price)||p.c.gold===gold+q*price);
  },details:{item:i.name,variant:identity(i),quantity:q,before,sourceSlot:slot,expectedGold:q*price}});
  }
- return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
+ return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,bankExpansionAvailable,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }

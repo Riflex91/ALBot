@@ -448,10 +448,11 @@ export function createMerchant(bot){
   });
  }
  function relieveInventoryPressure(){
+  const minimum=Math.max(0,cfg.merchant.minFreeSlots??4);
   if(me.role!=='merchant'||!cfg.merchant.enabled||
     // Bank workspace is an optimization target, NOT a reason to interrupt
     // a valid NPC sale or mutation when free slots still exceed the reserve.
-    bot.free()>cfg.merchant.minFreeSlots||
+    bot.free()>minimum||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
   // This is a capacity-recovery transaction, NOT a general merchant task.
@@ -496,7 +497,7 @@ export function createMerchant(bot){
   }
   // Exactly at the configured reserve, normal work can continue, as before.
   // Only a real deficit needs the special, guarded low-slot recovery path.
-  if(bot.free()>=cfg.merchant.minFreeSlots)return false;
+  if(bot.free()>=minimum)return false;
   // minFreeSlots is a preferred reserve for production, not a global veto.
   // All ordinary bank and sale recovery options have been exhausted. Let
   // existing, physically feasible production work proceed under its own
@@ -510,7 +511,7 @@ export function createMerchant(bot){
     if(accepted||bot.movement.order?.owner==='economy'||
        bot.journal||exec.busy('economy')||exec.busy('inventory')){
      bot.event?.('merchant.inventoryPressureProgress',{
-      free,minimum:cfg.merchant.minFreeSlots,kind:first.kind,
+      free,minimum,kind:first.kind,
       item:first.item,reason:'Physische Aktion trotz unterschrittener Slotreserve ausführbar'});
      return true;
     }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {aoePermitted,highestDpsFarmer,createSkills} from '../src/combat/skills.mjs';
-import {gearInputReady} from '../src/production/production.mjs';
+import {gearInputReady,unbankedDemand} from '../src/production/production.mjs';
 
 function testBot(klass,skill,allies=[]){
  const calls=[];
@@ -72,4 +72,31 @@ test('ready mutation inputs can promote Gear goals without manufacturing materia
  assert.equal(gearInputReady({...goal,item:'staff'},
    [{name:'staff',level:0}],{upgrade:true}),true);
  assert.equal(gearInputReady(goal,[{name:'ringsj',level:0,q:3,l:true}],{compound:true}),false);
+});
+
+test('verified bank reserves unblock only production consumption, not gross sale reserves',()=>{
+ const otherGoals=[{item:'ringsj',level:0,quantity:9,variant:null}];
+ const carried=[{name:'ringsj',level:0,q:7}];
+ const bank=[{name:'ringsj',level:0,q:6}];
+ assert.equal(unbankedDemand(otherGoals,[], 'ringsj',0),9);
+ assert.equal(unbankedDemand(otherGoals,bank, 'ringsj',0),3);
+ assert.equal(unbankedDemand(otherGoals,[{name:'ringsj',level:0,q:12}], 'ringsj',0),0);
+ // The kept carried inventory is still separately checked against this
+ // net requirement, and the gross demand is untouched for sale decisions.
+ assert.equal(carried[0].q-3>=unbankedDemand(otherGoals,bank,'ringsj',0),true);
+ assert.equal(otherGoals[0].quantity,9);
+});
+test('bank reservation offsets never count a mismatched exact item variant twice',()=>{
+ const rows=[
+  {item:'hpamulet',level:0,quantity:3,variant:{stat_type:'str'}},
+  {item:'hpamulet',level:0,quantity:3,variant:null}
+ ];
+ const bank=[
+  {name:'hpamulet',level:0,stat_type:'int',q:4},
+  {name:'hpamulet',level:0,stat_type:'str',q:2}
+ ];
+ assert.equal(unbankedDemand(rows,bank,'hpamulet',0),1);
+ assert.equal(unbankedDemand(rows,bank,'ringsj',0),0);
+ assert.equal(unbankedDemand(rows,[{name:'hpamulet',level:0,stat_type:'int',q:6}],
+   'hpamulet',0),3,'bank stock of wrong variant must not satisfy specific need');
 });

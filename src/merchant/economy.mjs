@@ -1,5 +1,6 @@
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace,surplusQuantity} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
+import {MUTATION_RISK_WINDOW_MS,mutationRiskLimit,mutationRiskAllowed} from './mutation-risk.mjs';
 // Adventure Land server (node/server.js) uses B.sell_dist = 400 for the
 // ordinary NPC buy/sell/upgrade/compound/craft distance gate. Some checks are
 // strict (<400). Leave 25 units inside the boundary for movement jitter.
@@ -39,9 +40,29 @@ export function createEconomy(bot){
   const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
   return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-cost-commitments>=reserve)&&ledger.spent+cost<=cfg.merchant.maxSpendPerHour&&ledger.loss+loss<=cfg.production.lossBudget&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget))&&(!(r?._autoProduction||r?._autoDisposition)||bot.account?.spendAllowed?.(ledger.spent+cost,ledger.loss+loss)===true);
  }
+ // Persist worst-case per-variant mutation exposure over a 24-hour window,
+ // without weakening hourly or per-goal budgets. A reload does not erase it.
+ const riskApplies=(kind,r)=>['upgrade','compound'].includes(kind)&&
+   (r?._autoDisposition===true||r?._autoProduction===true);
+ const riskRows=()=>Date.now()-(ledger.riskStart??0)<MUTATION_RISK_WINDOW_MS&&
+   ledger.itemRisk&&typeof ledger.itemRisk==='object'&&!Array.isArray(ledger.itemRisk)?
+   ledger.itemRisk:{};
+ function riskAllowed(kind,r,details,loss){
+  if(!riskApplies(kind,r))return true;
+  return mutationRiskAllowed(riskRows(),details.riskVariant,loss,
+   mutationRiskLimit(details.item,p.G.items?.[details.item],
+    cfg.production.lossBudget));
+ }
  // Charge the maximum exposure BEFORE dispatch. A reload or ambiguous result cannot reset a budget.
  function charge(cost,loss,r,kind,details){
-  if(!budget(cost,loss,r))return false;const next={...ledger,goals:{...ledger.goals},spent:ledger.spent+cost,loss:ledger.loss+loss};
+  if(!budget(cost,loss,r)||!riskAllowed(kind,r,details,loss))return false;
+  const next={...ledger,goals:{...ledger.goals},spent:ledger.spent+cost,loss:ledger.loss+loss};
+  if(riskApplies(kind,r)){
+   const current=riskRows(),key=details.riskVariant;
+   if(!Object.hasOwn(current,key)&&Object.keys(current).length>=128)return false;
+   next.riskStart=current===ledger.itemRisk?ledger.riskStart:Date.now();
+   next.itemRisk={...current,[key]:(current[key]??0)+loss};
+  }
   const goal=bot.production?.activeGoal;if(goal&&cost+loss>0&&(bot.production.owns?.(details.item)??true)){const spent=goalSpent(goal)+cost+loss;if(spent>goal.budget)return false;next.goals[goalId(goal)]=spent;}
   if(kind==='bank.expand'){next.bankSpent=(ledger.bankSpent??0)+cost;if(next.bankSpent>cfg.merchant.bankBudget)return false;}
   if(!p.write(ledgerKey,next))return false;ledger=next;return true;
@@ -50,8 +71,9 @@ export function createEconomy(bot){
   if(bot.recovery?.authorize(kind)===false)return false;const definitions=[...new Set(slots.map(n=>p.c.items[n]?.name).filter(Boolean)),...(rule?.item?[rule.item]:[])];if(definitions.some(name=>bot.content?.approve('item:'+name,[p.G.items[name],p.G.craft?.[name],p.G.drops?.[name]])===false))return false;
   if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!budget(cost,loss,rule)||!remaining(rule))return false;
   if(!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
+  if(!riskAllowed(kind,rule,details,loss)){note('Autonome Mutation: 24h-Risikolimit für Itemvariante ausgeschöpft');return false;}
   const prints=slots.map(s=>[s,fingerprint(p.c.items[s])]);
-  const valid=()=>bot.running&&!closed&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&guard();
+  const valid=()=>bot.running&&!closed&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&riskAllowed(kind,rule,details,loss)&&guard();
   return exec.run(kind,['inventory','gold','economy'],valid,()=>{
    if(!valid())throw Error('Economy-Zustand verändert');
    if(!charge(cost,loss,rule,kind,details))throw Error('Budget konnte nicht reserviert werden');

@@ -40,6 +40,13 @@ export function gearSlotPriority(slot,characterClass){
  return (weights[slot]??5)+(['ranger','mage','priest'].includes(characterClass)&&
   slot==='mainhand'?4:0);
 }
+// A level cap never supersedes the user's limit. Weapons may reach +8,
+// other equipment +7 only if the wearer has progressed far enough.
+export function autoGearTargetLevel(configured,characterLevel,slot){
+ const userCap=Number.isInteger(configured)?configured:8;
+ const progressionCap=Math.floor(Math.max(1,Number(characterLevel)||1)/10)+3;
+ return Math.max(0,Math.min(userCap,slot==='mainhand'?8:7,progressionCap));
+}
 export function createGear(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
@@ -102,7 +109,7 @@ export function createGear(bot){
     slot:'mainhand',item:'staff',level:0,budget:Math.max(10000,cfg.production.autoGearBudget??100000),
     priority:1000});
   }
-  if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=cfg.production.autoGearMaxLevel||result.some(g=>g.character===member.name&&g.slot===slot))continue;
+  if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
    result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)});
   }}return result;
  }

@@ -313,10 +313,26 @@ export function createBank(bot){
  }
  function expand(){
   if(!cfg.merchant.bank||!cfg.merchant.expandBank||!p.c.bank)return false;
-  for(const [pack,def] of Object.entries(definitions()).sort((a,b)=>(a[1][1]??Infinity)-(b[1][1]??Infinity))){const cost=def[1];if(def[0]!==p.c.map||p.c.bank[pack]||!bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,cfg.merchant.bankExpandGoldFraction??.75))continue;
-   const allowed=()=>bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,cfg.merchant.bankExpandGoldFraction??.75);
-   return e.perform('bank.expand',{cost,guard:()=>!!p.c.bank&&!p.c.bank[pack]&&allowed(),call:()=>p.call('open_bank_pack',pack,'gold'),observe:()=>Array.isArray(p.c.bank?.[pack]),details:{pack}});
-  }return false;
+  let cumulativeBudgetBlocked=false;
+  for(const [pack,def] of Object.entries(definitions()).sort((a,b)=>(a[1]?.[1]??Infinity)-(b[1]?.[1]??Infinity))){
+   const cost=def?.[1];
+   if(def?.[0]!==p.c.map||p.c.bank[pack]||
+      !bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,
+       cfg.merchant.bankExpandGoldFraction??.75))continue;
+   // Selecting an individually affordable pack after earlier expansions
+   // would otherwise enqueue an action that fails only on the durable charge.
+   if(e.bankExpansionAvailable?.(cost)!==true){
+    cumulativeBudgetBlocked=true;continue;
+   }
+   const allowed=()=>bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,
+    cfg.merchant.bankExpandGoldFraction??.75)&&e.bankExpansionAvailable(cost);
+   return e.perform('bank.expand',{cost,guard:()=>!!p.c.bank&&!p.c.bank[pack]&&
+    definitions()[pack]?.[0]===p.c.map&&definitions()[pack]?.[1]===cost&&allowed(),
+    call:()=>p.call('open_bank_pack',pack,'gold'),
+    observe:()=>Array.isArray(p.c.bank?.[pack]),details:{pack}});
+  }
+  if(cumulativeBudgetBlocked)e.note('Bankerweiterung: kumulatives Goldbudget ausgeschöpft; keine kostenpflichtige Erweiterung einplanen');
+  return false;
  }
  // v3-guided conservative capacity recovery: non-destructive measures
  // first, then the least-loss eligible item only.

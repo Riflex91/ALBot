@@ -24,7 +24,7 @@ export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
-  standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0;
+  standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0,capacityRecovery=false;
  // Resumable phase metadata, never a replacement for durable value journals.
  const depotKey='albot:merchant-depot:'+me.name;
  const depotStages=['reconcile','mutation','sale','storage','capacity','exchange','complete'];
@@ -448,11 +448,12 @@ export function createMerchant(bot){
   });
  }
  function relieveInventoryPressure(){
-  const minimum=Math.max(0,cfg.merchant.minFreeSlots??4);
-  if(me.role!=='merchant'||!cfg.merchant.enabled||
-    // Bank workspace is an optimization target, NOT a reason to interrupt
-    // a valid NPC sale or mutation when free slots still exceed the reserve.
-    bot.free()>minimum||
+  const minimum=Math.max(0,cfg.merchant.minFreeSlots??4),freeSlots=bot.free();
+  // Hysteresis: once slots reach the emergency threshold, finish opening a
+  // useful working margin before admitting more nonessential acquisitions.
+  if(freeSlots<=minimum)capacityRecovery=true;
+  if(freeSlots>=Math.min(p.c.items.length,Math.max(8,minimum+4)))capacityRecovery=false;
+  if(me.role!=='merchant'||!cfg.merchant.enabled||!capacityRecovery||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
   // This is a capacity-recovery transaction, NOT a general merchant task.
@@ -488,12 +489,23 @@ export function createMerchant(bot){
    return false;
   };
   if(p.c.map==='bank'?(tryBank()||trySell()):(trySell()||tryBank()))return true;
+  // When every carried gear copy is provisionally reserved for future
+  // goals, its bank location can still be changed without selling it or
+  // releasing the reservation. The bank's private park() validates user
+  // rules, current production inputs, item identity and live destination.
+  // This is also executable at zero free inventory slots.
+  if(cfg.merchant.bank&&cfg.production?.autoDisposition){
+   for(let slot=0;slot<p.c.items.length;slot++){
+    if(bot.bank?.park?.(slot)||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('inventory')||exec.busy('economy'))return true;
+   }
+  }
   if(Date.now()-lastPressureNote>30000){
    lastPressureNote=Date.now();
    bot.event?.('merchant.inventoryPressure',{free:bot.free(),
-    minimum:cfg.merchant.minFreeSlots,bankCandidates:bank.length,
-    saleCandidates:sell.length,
-    reason:'Kein bestätigter unreservierter Ganzstapel für Bank/Verkauf'});
+    minimum,bankCandidates:bank.length,saleCandidates:sell.length,
+    code:bot.free()===0?'NO_SAFE_CAPACITY':'CAPACITY_RECOVERY_WAIT',
+    reason:'Keine ausführbare sichere Ganzstapelablage, Direktveräußerung oder Bankentlastung; kein Schutz/Journal wird gelockert'});
   }
   // Exactly at the configured reserve, normal work can continue, as before.
   // Only a real deficit needs the special, guarded low-slot recovery path.

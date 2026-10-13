@@ -42,6 +42,28 @@ export function gearInputReady(g,stock,meta){
    (Number.isSafeInteger(i.q)&&i.q>0?i.q:1):0),0);
  return n>=needed;
 }
+// Release only the part of other goals' gross demand already backed by
+// verified, non-protected bank inventory. Keep sale reservations gross: this
+// exemption is for a current production step's inputs, never liquidation.
+export function unbankedDemand(rows,bankItems,name,level){
+ const demand=(rows??[]).filter(r=>r.item===name&&r.level===level)
+  .sort((a,b)=>Number(!!b.variant)-Number(!!a.variant));
+ const available=(bankItems??[]).filter(i=>i?.name===name&&(i.level??0)===level)
+  .map(item=>({item,left:Number.isSafeInteger(item.q)&&item.q>0?item.q:1}));
+ let remaining=0;
+ for(const row of demand){
+  let need=row.quantity;
+  if(!Number.isSafeInteger(need)||need<0)return Infinity;
+  for(const source of available){
+   if(!need)break;
+   if(row.variant&&identity({name,level,...row.variant})!==identity(source.item))continue;
+   const take=Math.min(need,source.left);
+   source.left-=take;need-=take;
+  }
+  remaining+=need;
+ }
+ return remaining;
+}
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
@@ -69,7 +91,9 @@ export function createProduction(bot){
    stock:(name,level,variant)=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===level&&
     (!variant||identity(i)===identity({name,level,...variant}))&&!i.l&&!i.b?(i.q??1):0),0)});}finally{demandBusy=nested;}
  }
- function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(cfg.production.purposeAllocation){const d=demand(g);return d.blocked?Infinity:Math.max(pending,d.rows.filter(r=>r.item===name&&r.level===level).reduce((n,r)=>n+r.quantity,0));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
+ function reserveOther(name,level,g=goal){const pending=Math.max(0,...[...waiting.entries()].filter(([key,w])=>key!==goalKey(g??{})&&w.until>Date.now()).flatMap(([,w])=>w.reservations.filter(r=>r.item===name&&r.level===level).map(r=>r.quantity)));if(cfg.production.purposeAllocation){const d=demand(g);return d.blocked?Infinity:Math.max(pending,unbankedDemand(d.rows,
+     (bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>e.safe(i)&&
+      e.explicit(i)?.action!=='keep'),name,level));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
  const variantMatches=(i,g)=>!g?.variant||g.item!==i.name||['stat_type','p','title','data'].every(k=>g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined)));
  const qty=(name,level,g=goal)=>{let total=0,reserve=0;const groups=new Map();for(const i of p.c.items){const r=i&&e.explicit(i);if(i?.name===name&&(i.level??0)===level&&matchesOutput(i)&&variantMatches(i,g)&&r?.action!=='keep'&&!i.l&&!i.b){total+=i.q??1;groups.set(identity(i),(groups.get(identity(i))??0)+(i.q??1));reserve=Math.max(reserve,(r?.keep??0)+(r?.teamReserve??0));}}if(p.G.items[name]?.compound&&groups.size)total=Math.max(...groups.values());return Math.max(0,total-reserve-reserveOther(name,level,g));};
  function generated(action,item,quantity,g=goal){return {...defaultsFor(ITEM_RULE),name:'Automatisch: '+(g?.name??'Material')+' / '+action+' / '+item.name,_autoProduction:true,role:bot.me.role,character:bot.me.name,item:item.name,minLevel:item.level??0,maxLevel:item.level??0,...(g?.variant&&g.item===item.name?{statType:g.variant.stat_type??'',property:g.variant.p??'',title:g.variant.title??''}:{}),action,priority:g?.priority??0,targetCount:quantity,maxCount:quantity,batch:Math.max(1,quantity),maxPrice:cfg.production.helperMaxPrice??100000,goldBudget:g?.budget??0,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,targetLevel:(item.level??0)+1};}

@@ -126,7 +126,7 @@ export function createBank(bot){
  function store(slot,r){
   const item=p.c.items[slot];if(!e.safe(item)||e.spare(slot,r)<1)return false;
   const allowed=e.spare(slot,r);if(allowed<(item.q??1)){
-   if(bot.free()<=cfg.merchant.minFreeSlots)return false;const before=item.q,dest=p.c.items.findIndex(x=>!x);
+   if(bot.free()<1)return false;const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
   const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>!i)&&
@@ -156,7 +156,7 @@ export function createBank(bot){
  }
  function retrieve(item,r,wanted){
   if(pending)return recover();
-  if(!ready(r.pack||packFor(item)||'items0')||bot.free()<=cfg.merchant.minFreeSlots)return false;
+  if(!ready(r.pack||packFor(item)||'items0')||bot.free()<1)return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
@@ -164,7 +164,7 @@ export function createBank(bot){
    return e.perform('bank.retrieve',{rule:r,guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(actual)&&(p.c.items[dest]?.q??1)===q,details:{item:actual.name,quantity:q,pack,before}});
   }
   if(!cfg.merchant.partialBank)return false;
-  const take=Math.floor(Math.min(wanted,r.batch,r.maxCount-e.count(item)));if(take<1||!e.remaining(r)||bot.journal||bot.logistics.reserved||bot.inventoryBlocked||bot.exec.busy('inventory')||bot.free()<cfg.merchant.minFreeSlots+2)return false;
+  const take=Math.floor(Math.min(wanted,r.batch,r.maxCount-e.count(item)));if(take<1||!e.remaining(r)||bot.journal||bot.logistics.reserved||bot.inventoryBlocked||bot.exec.busy('inventory')||bot.free()<2)return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const bankSlot=items.findIndex(i=>e.safe(i)&&identity(i)===identity(item)&&Number.isSafeInteger(i.q)&&i.q>take&&i.q<=(cfg.merchant.partialBankMaxStack??9999));if(bankSlot<0)continue;

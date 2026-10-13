@@ -53,7 +53,7 @@ function pair(){
  for(const [name,role,q] of [['M','merchant',2100],['R','farmer',0]]){
   const c={name,map:'main',in:'main',x:0,y:0,items:[q?{name:'mpot0',level:0,q}:null,...Array(41).fill(null)]};
   const bot={cfg,me:{name,role},session:name,running:true,inventoryBlocked:false,journal:null,
-   farmers:['R'],p:{c,G:{items:{mpot0:{type:'pot',gives:[['mp',200]]}}},realm:()=> 'USIV'},
+   farmers:['R'],p:{c,G:{items:{mpot0:{type:'pot',s:9999,gives:[['mp',200]]}}},realm:()=> 'USIV'},
    entity:n=>bots[n]?.p.c,free:()=>c.items.filter(i=>!i).length,
    rule:i=>chooseRule(cfg.items,i,{role,character:name,map:'main',server:'USIV',task:'farm'}),
    beginValue(j){assert.equal(this.journal,null);this.journal=j;},endValue(result){if(result==='confirmed')this.journal=null;else this.inventoryBlocked=true;}};

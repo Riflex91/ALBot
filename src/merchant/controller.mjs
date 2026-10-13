@@ -475,7 +475,9 @@ export function createMerchant(bot){
   }
   // Never select exchange / new acquisition with less than the required
   // physical workspace: doing so reopens the bank-main-bank ping-pong.
-  return bot.free()<=cfg.merchant.minFreeSlots;
+  // At exactly the configured free-slot reserve, do not starve the
+  // existing depot preflight forever; only a deficit is a hard stop.
+  return bot.free()<cfg.merchant.minFreeSlots;
  }
  function tick(){
   if(bot.recovering)return;
@@ -486,6 +488,11 @@ export function createMerchant(bot){
    bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
   }
   if(relieveInventoryPressure())return;
+  // Deliver a missing starter weapon before another pickup journey takes
+  // control. The usual user rules, per-goal budgets and slot limits apply.
+  if(me.role==='merchant'&&!bot.movement.order&&
+     bot.production?.activeGoal?.name?.startsWith('Gear: Startwaffe ')&&
+     bot.free()>cfg.merchant.minFreeSlots&&bot.production.tick())return;
 // Production planning runs in the slower planning loop (src/main.mjs).
 // Do not replan while an admitted merchant job is still executing.
   // Delivery routes are owned by logistics.travel(): that controller owns

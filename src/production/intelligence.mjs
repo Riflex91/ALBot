@@ -1,4 +1,4 @@
-import {identity} from '../core/policy.mjs';
+import {identity,surplusQuantity} from '../core/policy.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
 import {itemPurposes} from '../items/purposes.mjs';
@@ -25,7 +25,7 @@ export function progressionChance(G,name,level,kind){
  return Number.isFinite(value)&&value>0&&value<=1?value:null;
 }
 export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluated=[],at=0,allocation=[],chances=new Map(),props=new Map(),propsVersion=p.G.version,profitAt=0,profits=[],stockEpoch=-1,stocks=null;
- const helperQuotes=new Map();
+ const helperQuotes=new Map(),missingHelperEvents=new Map();
  function chanceEvidenceKey(name,level,kind,scroll,offering=''){
   return JSON.stringify([p.G.version,p.G.items?.[name],kind,level,scroll,
    p.G.items?.[scroll],offering,offering?p.G.items?.[offering]:null]);
@@ -166,7 +166,7 @@ function futureGear(i){return gearUse(i).state!=='no-gear-use';}
    .reduce((n,x)=>n+(Number.isSafeInteger(x.q)&&x.q>0?x.q:1),0);
  const held=Number.isSafeInteger(heldOverride)&&heldOverride>=local?heldOverride:local;
  const reserved=bot.production?.reservedQuantity?.(i)??0;
- const n=Math.max(0,Math.min(42,held-Math.max(0,reserved)));
+ const n=Math.min(42,surplusQuantity(held,reserved));
  if(n<1)return {level:i.level??0,ev:current,action:'bank',reason:'no-unreserved-copies'};
  const start=i.level??0,memo=new Map(),priceCache=new Map();
  const saleTotal=(level,quantity)=>{
@@ -213,9 +213,32 @@ function futureGear(i){return gearUse(i).state!=='no-gear-use';}
    action:answer.groups?'compound':'sell',quantity:n,groups:answer.groups,
    reason:answer.groups?'finite-stock-compound':'finite-stock-sell'};
 }
-function mutationEconomics(i,{heldOverride=null}={}){if(cfg.production.autoHelpers&&heldOverride===null&&(p.G.items[i.name]?.upgrade||p.G.items[i.name]?.compound)){const key=mutationContext(bot,i),quote=helperQuotes.get(key);if(quote&&Date.now()-quote.at<30000)return {...quote.choice,level:(i.level??0)+1};const kind=p.G.items[i.name].compound?'compound':'upgrade';if((i.level??0)<cfg.production.autoProfitMaxLevel&&mutationHelpers(bot,i,kind).length)return {level:(i.level??0)+1,ev:resaleValue(i,1,false),action:kind,reason:'helper-preview-required'};}const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',factor=kind==='compound'?3:1,current=resaleValue(i,1,false),max=cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel;if(!Number.isFinite(current)||cfg.production.lossBudget>0&&current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};if(kind==='compound')return finiteCompoundValue(i,max,current,heldOverride);let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
+function mutationEconomics(i,{heldOverride=null}={}){
+ const m=p.G.items[i.name],kind=m?.compound?'compound':'upgrade',
+  max=cfg.production.autoProfitMaxLevel??cfg.production.autoGearMaxLevel,
+  grade=p.call('item_grade',i),scroll=(kind==='compound'?'cscroll':'uscroll')+grade;
+ let missingHelper=false;
+ if(cfg.production.autoHelpers&&heldOverride===null&&(m?.upgrade||m?.compound)){
+  const key=mutationContext(bot,i),quote=helperQuotes.get(key);
+  if(quote&&Date.now()-quote.at<30000)return {...quote.choice,level:(i.level??0)+1};
+  if((i.level??0)<max&&mutationHelpers(bot,i,kind).length)
+   return {level:(i.level??0)+1,ev:resaleValue(i,1,false),action:kind,reason:'helper-preview-required'};
+  missingHelper=Number.isFinite(grade)&&grade>=0&&grade<4&&
+   (i.level??0)<max&&!!p.G.items?.[scroll];
+ }
+ const fallback=choice=>{
+  if(!missingHelper||!['upgrade','compound'].includes(choice.action))return choice;
+  bot.production?.requestHelper?.(scroll,1);
+  const key=identity(i)+':'+scroll,now=Date.now();
+  if(now-(missingHelperEvents.get(key)??0)>60000){
+   missingHelperEvents.set(key,now);if(missingHelperEvents.size>64)missingHelperEvents.clear();
+   bot.event?.('production.helperMissing',{item:i.name,level:i.level??0,action:kind,scroll});
+  }
+  return {...choice,action:'bank',reason:'no-helper-available'};
+ };
+ const factor=kind==='compound'?3:1,current=resaleValue(i,1,false);if(!Number.isFinite(current)||cfg.production.lossBudget>0&&current>cfg.production.lossBudget)return {level:i.level??0,ev:current,action:'bank',reason:'auto-mutation-exposure'};if(kind==='compound')return fallback(finiteCompoundValue(i,max,current,heldOverride));let best={level:i.level??0,ev:current,action:'sell'},value=resaleValue({...i,level:max},1,true);if(!Number.isFinite(value))return best;
   for(let l=max-1;l>=(i.level??0);l--){const c=mutationChance(i.name,l,kind),grade=p.call('item_grade',{...i,level:l}),scrollCost=p.G.items[(kind==='compound'?'cscroll':'scroll')+grade]?.g,immediate=resaleValue({...i,level:l},1,l>(i.level??0));if(!(c>=cfg.production.minChance)||!Number.isFinite(scrollCost)||!Number.isFinite(immediate)){value=immediate;continue;}const ev=(c*value-scrollCost)/factor;if(ev>immediate*(1+cfg.production.minImprovement)&&scrollCost<=cfg.production.helperMaxPrice){value=ev;if(l===(i.level??0))best={level:l+1,ev,action:kind};}else value=immediate;}
-  return best;
+  return fallback(best);
  }
  const decisionLedger=new Map();
  function noteDisposition(item,rule,choice=null){
@@ -242,7 +265,11 @@ function mutationEconomics(i,{heldOverride=null}={}){if(cfg.production.autoHelpe
   decisionLedger.delete(key);decisionLedger.set(key,entry);
   if(decisionLedger.size>24)decisionLedger.delete(decisionLedger.keys().next().value);
  }
-  function disposition(i){if(cfg.production.autoDisposition!==true||!bot.economy.safe(i)||bot.production.reservedQuantity(i)>0)return null;
+  function disposition(i){
+   if(cfg.production.autoDisposition!==true||!bot.economy.safe(i))return null;
+   // A goal only protects its exact-variant allocation; other held copies
+   // remain available for normal economic decision making.
+   if(!surplusQuantity(bot.economy.count(i),bot.production?.reservedQuantity?.(i)??0))return null;
   const purposes=itemPurposes(p.G,i);
   if(purposes.protected)return null;
   // Equipment ingredients must pass the recipe check BEFORE equipment

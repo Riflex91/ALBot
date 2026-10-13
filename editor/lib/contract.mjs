@@ -102,6 +102,11 @@ export function validateProfile(descriptor,c){
   for(let i=0;i<active.length;i++)for(let j=i+1;j<active.length;j++)if(ruleRank(active[i])===ruleRank(active[j])&&active[i].priority===active[j].priority&&overlap(active[i],active[j])&&outcome(active[i])!==outcome(active[j]))errors.push('Regelkonflikt: „'+active[i].name+'“ / „'+active[j].name+'“. Priorität oder Filter unterscheiden.');
   for(const r of [...c.skills,...c.rules]){
     ref(r.character,r.name);
+    if(r.enabled&&['3shot','5shot','cleave','stomp','fanofknives'].includes(r.skill)&&
+      Number.isSafeInteger(r.minTargets)&&Number.isSafeInteger(r.maxTargets)&&
+      r.minTargets>r.maxTargets)
+      errors.push('Skill-Regel '+r.name+' ('+r.skill+'): Mindestzahl Ziele ('+
+        r.minTargets+') darf nicht größer als maximale Ziele ('+r.maxTargets+') sein.');
     if(r.enabled&&own(r,'match')&&!r.conditions.length)errors.push(r.name+': mindestens eine Wenn-Bedingung erforderlich.');
     for(const x of r.conditions){if(!['map','task','rip'].includes(x.field)&&!Number.isFinite(Number(x.value)))errors.push(r.name+': Vergleichswert muss eine Zahl sein.');if(x.field==='rip'&&!['true','false'].includes(x.value))errors.push(r.name+': Tot-Wert muss true oder false sein.');if(['map','task','rip'].includes(x.field)&&!['eq','neq'].includes(x.operator))errors.push(r.name+': für Text/Ja-Nein nur Gleich/Ungleich verwenden.');if(x.field==='itemCount'&&!x.item)errors.push(r.name+': Item-ID in Bedingung fehlt.');}
   }

@@ -99,6 +99,16 @@ export function createSkills(bot){
     const additional=Math.floor(extraAllowance());
     const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
     const selected=multi?candidates.slice(0,limit):[];
+    // Retain an approved one-target opener when it has a real purpose.
+    // Only avoid spending 200/320 MP and the shared attack opportunity if
+    // an immediately available normal attack can already finish that mob.
+    // An explicit one-target AoE rule is authoritative.
+    if(!explicit&&aimed&&selected.length===1&&
+      Number.isFinite(selected[0].hp)&&
+      selected[0].hp<=Math.max(1,p.c.attack??0)&&
+      distance(p.c,selected[0])<=p.c.range&&
+      p.call('can_attack',selected[0])===true&&
+      !p.call('is_on_cooldown','attack'))return false;
     const neutralCount=selected.filter(e=>!e.target).length;
     if(multi){if(!aoePermitted(bot)||selected.length<(control?.minTargets??1)||
       (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):

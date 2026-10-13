@@ -433,32 +433,49 @@ export function createMerchant(bot){
     bot.free()>cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0)||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
+  // This is a capacity-recovery transaction, NOT a general merchant task.
+  // In particular, do not leave for an exchange while inventory is full.
   if(bot.bank?.consolidateInventory?.())return true;
   if(p.c.bank&&bot.bank?.consolidate?.())return true;
   const bank=[],sell=[];
   for(let slot=0;slot<p.c.items.length;slot++){
    const item=p.c.items[slot];if(!e.safe(item))continue;
-   const rule=e.rules(item);
-   if(!rule||!e.remaining(rule)||e.spare(slot,rule)<1)continue;
-   if(rule.action==='bank')bank.push({slot,rule});
-   else if(rule.action==='sell')sell.push({slot,rule,value:e.value(item)});
+   const rule=e.rules(item),spare=rule&&e.remaining(rule)?e.spare(slot,rule):0;
+   if(!spare)continue;
+   if(rule.action==='bank')bank.push({slot,rule,whole:spare>=(item.q??1)});
+   else if(rule.action==='sell'&&spare>=(item.q??1)&&
+     Number.isFinite(e.value(item))&&e.value(item)>=rule.minPrice)
+    sell.push({slot,rule,value:e.value(item)});
   }
-  for(const {slot,rule} of bank){
-   if(bot.bank?.store?.(slot,rule)||bot.movement.order?.owner==='economy'||
-      bot.journal||exec.busy('inventory'))return true;
-  }
+  // A sale frees a real inventory slot; a partial sale does not. Away from
+  // the bank, complete an authorized sale before opening another bank route.
   sell.sort((a,b)=>a.value-b.value||a.slot-b.slot);
-  for(const {slot,rule} of sell){
-   if(e.npcSell(slot,rule)||bot.movement.order?.owner==='economy'||
-      bot.journal||exec.busy('inventory'))return true;
-  }
-  if(bot.free()>cfg.merchant.minFreeSlots+2&&bot.conversions?.tick?.())return true;
+  const trySell=()=>{
+   for(const {slot,rule} of sell){
+    if(e.npcSell(slot,rule)||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('inventory'))return true;
+   }
+   return false;
+  };
+  const tryBank=()=>{
+   for(const {slot,rule,whole} of bank){
+    if(!whole)continue; // A split needs an additional free slot.
+    if(bot.bank?.store?.(slot,rule)||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('inventory'))return true;
+   }
+   return false;
+  };
+  if(p.c.map==='bank'?(tryBank()||trySell()):(trySell()||tryBank()))return true;
   if(Date.now()-lastPressureNote>30000){
    lastPressureNote=Date.now();
-   bot.event?.('merchant.inventoryPressure',{free:bot.free(),minimum:cfg.merchant.minFreeSlots,
-    reason:'Keine unreservierten, freigegebenen Bank-/Verkaufsstapel'});
+   bot.event?.('merchant.inventoryPressure',{free:bot.free(),
+    minimum:cfg.merchant.minFreeSlots,bankCandidates:bank.length,
+    saleCandidates:sell.length,
+    reason:'Kein bestätigter unreservierter Ganzstapel für Bank/Verkauf'});
   }
-  return false;
+  // Never select exchange / new acquisition with less than the required
+  // physical workspace: doing so reopens the bank-main-bank ping-pong.
+  return bot.free()<=cfg.merchant.minFreeSlots;
  }
  function tick(){
   if(bot.recovering)return;

@@ -104,16 +104,16 @@ test('merchant at 39/42 occupied slots executes its safely guarded exchange plan
  assert.equal(f.events.some(e=>e.type==='merchant.inventoryPressureProgress'&&
   e.kind==='exchange'&&e.free===3),true);
 });
-test('merchant with three free slots does not launch a blocked farm plan from pressure recovery',()=>{
+test('merchant below reserve rejects unsafe farm and pickup despite 3 physical slots',()=>{
  const f=merchantFixture({sale:false,bank:false});
  for(let i=39;i<42;i++)f.items[i]=null;
- let farms=0,normal=0;
+ let farms=0,pickups=0;
  f.bot.production={status:()=>({steps:[{kind:'farm',item:'blocked'}]}),
   tick:()=>{farms++;return true;}};
- f.bot.logistics.travel=()=>{normal++;f.bot.movement.order={owner:'logistics'};};
+ f.bot.logistics.travel=()=>{pickups++;f.bot.movement.order={owner:'logistics'};};
  createMerchant(f.bot).tick();
  assert.equal(farms,0,'no uncontrolled acquisition is authorized by pressure fallback');
- assert.equal(normal,1,'normal scheduler is not starved by preferred slot reserve');
+ assert.equal(pickups,0,'pickup still needs configured reserve');
 });
 test('with no physical free slot merchant still does not initiate a remote exchange',()=>{
  const f=merchantFixture({sale:false,bank:false});

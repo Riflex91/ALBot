@@ -94,3 +94,18 @@ test('merchant depot accepts ordinary exchangeable materials for storage',()=>{
  assert.equal(m.prepareDeparture({name:'Farmer',items:[]}),false);
  assert.equal(actions.some(x=>x[0]==='bank.store'),true);
 });
+
+test('cross-pack bank-only matching stacks never cause a retrieve/store cycle',()=>{
+ const {bot,c,actions}=fixture({bankStandCount:0,bankPartials:true});
+ c.bank.items1[4]={name:'mat',level:0,q:4};
+ assert.equal(bot.bank.consolidateAcross(),false,
+   'without a carried merge partner the withdrawal is not actionable');
+ assert.equal(bot.bank.consolidateAcross(),false,'repeated ticks remain idle');
+ assert.equal(actions.filter(x=>x[0]==='bank.merge.retrieve').length,0);
+});
+test('a bank stack is withdrawn only when it can merge into an inventory stack',()=>{
+ const {bot,actions}=fixture({inventory:[{name:'mat',level:0,q:12}],bankStandCount:0,bankPartials:true});
+ assert.equal(bot.bank.consolidateAcross(),true);
+ assert.equal(actions[0][0],'bank.merge.retrieve');
+ assert.equal(actions[0][1].quantity,9);
+});

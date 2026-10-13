@@ -1,3 +1,4 @@
+import {identity} from '../core/policy.mjs';
 // Pickup preflight derives a conservative number of free inventory slots
 // from authenticated peer heartbeat summaries. It is planning evidence only;
 // actual transfer still requires the existing offer/accept/receipt journal.
@@ -7,7 +8,9 @@ export function planPickupCapacity(rows,{merchant,free,reserve=4,maxBatchSlots=3
   if(!row||row.to!==merchant||!Number.isSafeInteger(row.surplus)||row.surplus<=0)continue;
   const i=row.variant??{name:row.item,level:0,stat_type:'',p:'',title:''};
   if(!i||typeof i.name!=='string'||!i.name||!Number.isInteger(i.level)||i.level<0||!known(i))continue;
-  variants.add(JSON.stringify([i.name,i.level,i.stat_type??'',i.p??'',i.title??'']));
+  // Pickup preflight must not collapse distinct payloads, special stats or
+  // acc/rid variants into one assumed receiving stack.
+  variants.add(identity(i));
  }
  const offers=variants.size;
  const target=offers?Math.min(42,Math.max(0,reserve)+Math.min(maxBatchSlots,offers)):0;

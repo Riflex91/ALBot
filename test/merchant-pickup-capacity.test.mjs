@@ -17,6 +17,21 @@ test('pickup preparation respects reserve and distinct advertised variants, not 
  assert.equal(planPickupCapacity([offer('mat')],{...opts,free:5}).ready,true);
  assert.equal(planPickupCapacity([offer('unknown')],{...opts,known:()=>false}).offers,0);
 });
+test('pickup preflight counts data/acc/rid as separate physical variants',()=>{
+ const opts={merchant:'My_Merchant',free:4,reserve:4,known:()=>true};
+ const variant=(fields)=>({...offer('reward'),variant:{...offer('reward').variant,...fields}});
+ const base=variant({data:{mode:1}});
+ const duplicate=variant({data:{mode:1}});
+ const differentData=variant({data:{mode:2}});
+ const differentAcc=variant({acc:'A'});
+ const differentRid=variant({rid:'B'});
+ const old=variant({});
+ const plan=planPickupCapacity([base,duplicate,differentData,differentAcc,differentRid,old],opts);
+ assert.equal(plan.offers,5,'only exact variants can share a receiving stack');
+ assert.equal(plan.target,7,'maxBatchSlots caps a single pickup batch at three extra slots');
+ assert.equal(plan.ready,false);
+ assert.equal(plan.missing,3);
+});
 test('preflight considers only whole-stack bank/sell actions and never protected/keep entries',()=>{
  const items=[{name:'bank',q:3},{name:'sell',q:1},{name:'partial',q:5},{name:'locked',q:1,l:true},{name:'keep',q:1}];
  const rules=i=>({action:i.name==='bank'?'bank':i.name==='sell'?'sell':i.name==='partial'?'bank':'keep'});

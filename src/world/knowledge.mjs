@@ -2,3 +2,18 @@ export function knowledgeFingerprint(value){const raw=JSON.stringify(value??null
 export function spawnLocations(G,types,excluded=[],pvp=false){const rows=[];for(const [map,data] of Object.entries(G.maps??{})){if(data.ignore||data.instance||excluded.includes(map)||data.pvp&&!pvp)continue;for(const [index,pack] of (data.monsters??[]).entries()){if(!types.includes(pack.type))continue;for(const range of pack.boundaries??(pack.boundary?[[map,...pack.boundary]]:[])){const [place,x1,y1,x2,y2]=range;if(!G.maps[place]||G.maps[place].instance||excluded.includes(place)||G.maps[place].pvp&&!pvp||![x1,y1,x2,y2].every(Number.isFinite))continue;rows.push({key:place+':'+pack.type+':'+index+':'+knowledgeFingerprint(range),target:pack.type,map:place,in:place,bounds:range,x:(x1+x2)/2,y:(y1+y2)/2,count:Math.max(1,pack.count??1),radius:60,definition:knowledgeFingerprint([G.monsters[pack.type],range])});}}}return rows;}
 export function mapGraph(G){const edges=[];for(const [from,m] of Object.entries(G.maps??{}))for(const d of m.doors??[]){if(Array.isArray(d)&&typeof d[4]==='string'&&G.maps[d[4]])edges.push({from,to:d[4],x:d[0],y:d[1]});}for(const [from,m] of Object.entries(G.maps??{}))for(const npc of m.npcs??[])if(npc.id==='transporter'&&Array.isArray(npc.position))for(const to of Object.keys(G.npcs?.transporter?.places??{}))if(G.maps[to]&&to!==from)edges.push({from,to,x:npc.position[0],y:npc.position[1],transport:true});return {definition:knowledgeFingerprint(edges),edges};}
 export function mapHops(graph,from,to){if(from===to)return 0;const queue=[[from,0]],seen=new Set([from]);while(queue.length){const [m,n]=queue.shift();for(const e of graph.edges.filter(e=>e.from===m)){if(e.to===to)return n+1;if(!seen.has(e.to)){seen.add(e.to);queue.push([e.to,n+1]);}}}return Infinity;}
+
+// Only combat-relevant, deterministic gear properties belong in a learning
+// identity. Heartbeat timestamps, sessions, current health and volatile buffs
+// are freshness evidence, not a change to the equipment being measured.
+export function semanticGear(gear){
+ if(!gear||typeof gear!=='object')return null;
+ const slots=Object.entries(gear.slots??{}).sort(([a],[b])=>a.localeCompare(b))
+  .map(([slot,item])=>[slot,item?[
+   item.name??'',item.level??0,item.stat_type??'',item.p??'',item.title??'',
+   !!item.l,!!item.b
+  ]:null]);
+ const stats=Object.entries(gear.stats??{}).filter(([,v])=>Number.isFinite(v))
+  .sort(([a],[b])=>a.localeCompare(b));
+ return [gear.class??'',gear.level??0,gear.complete===true,slots,stats];
+}

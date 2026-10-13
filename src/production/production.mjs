@@ -360,7 +360,7 @@ export function createProduction(bot){
  function availabilityFingerprint(step){
   return JSON.stringify([step?.item,step?.level,step?.kind,
    p.c.items.map(i=>i?[i.name,i.level??0,i.q??1,i.stat_type??'']:null),
-   bot.bank?.catalogStatus?.().revision??null,p.c.gold,
+   (bot.bank?.catalogStock?.()??[]).map(r=>[r.item?.name,r.item?.level??0,r.item?.q??1,r.item?.stat_type??'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),p.c.gold,
    cfg.production.enabled,cfg.production.autoHelpers,cfg.production.minChance]);
  }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();

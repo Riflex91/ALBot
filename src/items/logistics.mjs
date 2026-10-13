@@ -34,7 +34,8 @@ export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity}={
   return sum+(Number.isSafeInteger(held)&&held>=1&&held<=stackLimit?stackLimit-held:0);
  },0):0;
  const free=items.filter(x=>!x).length;
- const newSlots=Number.isFinite(maxNewSlots)?Math.max(0,Math.min(free,Math.floor(maxNewSlots))):free;
+ // A single send_item invocation is not a proved multi-slot batch allocator.
+ const newSlots=Math.min(1,Number.isFinite(maxNewSlots)?Math.max(0,Math.min(free,Math.floor(maxNewSlots))):free);
  return Math.min(Number.MAX_SAFE_INTEGER,stackSpace+newSlots*stackLimit);
 }
 export function createLogistics(bot){

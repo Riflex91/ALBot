@@ -1,5 +1,5 @@
 import {distance,samePlace} from '../core/policy.mjs';
-import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
 // Mechanic adapters are derived from design/monsters.js and node/server.js.
 // Unsupported mechanics are catalogued with an explicit refusal, never guessed.
 const BOSS_NAMES=['phoenix','jr','greenjr','mvampire','fvampire','goldenbat','pinkgoo','snowman','wabbit','dragold','icegolem','franky','mrgreen','mrpumpkin','crabxx','crabx','grinch','skeletor','stompy','cutebee','rharpy','rimedjinn'];
@@ -61,7 +61,7 @@ export function bossReadiness(G,id,live,members,{maxSeconds=300,planned=false,me
 }
 export function createBosses(bot){
  const {p,cfg}=bot;let active=null,damage=0,healing=0,since=Date.now(),phase='IDLE',reason='',definition='',heals=[];
- const healContext=()=>knowledgeFingerprint([p.G.version,p.realm(),bot.farmers.map(n=>n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear)]);
+ const healContext=()=>knowledgeFingerprint([p.G.version,p.realm(),bot.farmers.map(n=>semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))]);
  function members(planned){return bot.farmers.map(n=>n===bot.me.name?{...p.c,name:n}:bot.transport.fresh(n)).filter(h=>h&&(h.name===bot.me.name||h.running&&h.realm===p.realm())&&!h.rip&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2)).map(h=>({...h,...h.stats}));}
  function evaluate(id,live,planned=false){if(!cfg.world.bossTactics||!bossProfile(p.G,id))return null;
   const team=members(planned);if(team.length!==bot.farmers.length)return {safe:false,reason:'Bossgruppe unvollständig',phase:'ASSEMBLE'};
@@ -82,7 +82,7 @@ export function createBosses(bot){
  }
  function tick(){const a=bot.strategy?.heartbeat?.(),id=a?.target;
   if(!id||!bossProfile(p.G,id)){active=null;phase='IDLE';return;}
-  const stamp=knowledgeFingerprint([p.G.monsters[id],bot.farmers.map(n=>n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear)]);
+  const stamp=knowledgeFingerprint([p.G.monsters[id],bot.farmers.map(n=>semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))]);
   if(active!==id||stamp!==definition){active=id;definition=stamp;since=Date.now();damage=healing=0;}
   const live=bot.monsters().find(m=>m.mtype===id),r=evaluate(id,live,!live);phase=r?.phase??'IDLE';reason=r?.reason??'';
   if(live&&r&&!r.safe&&phase!=='WAIT'){bot.strategy.failActivity(reason,id);return;}

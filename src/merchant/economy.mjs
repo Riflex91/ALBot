@@ -1,4 +1,5 @@
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace,surplusQuantity} from '../core/policy.mjs';
+import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {MUTATION_RISK_WINDOW_MS,mutationRiskLimit,mutationRiskAllowed} from './mutation-risk.mjs';
 // Adventure Land server (node/server.js) uses B.sell_dist = 400 for the
@@ -15,12 +16,9 @@ export function saleReceiptMatches(receipt,item,quantity,gold){
 // NPC purchase uses actual stack capacity. One free slot permits a normal
 // scroll or potion purchase even at the Merchant's preferred 4-slot reserve.
 export function purchaseFits(items,item,quantity,meta){
- if(!Array.isArray(items)||!Number.isSafeInteger(quantity)||quantity<1||!meta)return false;
- const max=meta.s===true?9999:Number.isSafeInteger(meta.s)&&meta.s>1?meta.s:1;
- let space=items.filter(i=>!i).length*max;
- if(max>1)for(const i of items)if(i&&identity(i)===identity(item))
-  space+=Math.max(0,max-(i.q??1));
- return space>=quantity;
+ if(!Number.isSafeInteger(quantity)||quantity<1)return false;
+ const planned=capacityAfterConsumption(items,[],item,meta);
+ return !!planned&&planned.units>=quantity;
 }
 export function createEconomy(bot){
  const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0,npcEpoch=-1;const npcCache=new Map();const ruleActions=new Map();

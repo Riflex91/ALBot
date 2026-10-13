@@ -1,5 +1,5 @@
 import {potionTarget,onlineSupplyFarmers} from './potion-supply.mjs';
-import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
+import {protectedItem,variantCount,transferable,fingerprint,identity,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
@@ -20,8 +20,25 @@ export function teamPickupThreshold(peers,realm,threshold=30){
  const slots=peers.reduce((sum,h)=>sum+h.lootSlots,0);
  return {ready:true,slots,trigger:slots>=threshold};
 }
+// Physical receive preflight: only identical, unprotected stacks can absorb
+// units without allocating a new inventory slot. An offer acknowledgement
+// never frees a slot or guarantees later delivery.
+export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity}={}){
+ if(!Array.isArray(items)||!item?.name||!meta)return 0;
+ const raw=meta.s===true?9999:meta.s;
+ const stackLimit=Number.isSafeInteger(raw)&&raw>1?raw:1;
+ const matches=x=>!!x&&!protectedItem(x)&&identity(x)===identity(item);
+ const stackSpace=stackLimit>1?items.reduce((sum,x)=>{
+  if(!matches(x))return sum;
+  const held=x.q??1;
+  return sum+(Number.isSafeInteger(held)&&held>=1&&held<=stackLimit?stackLimit-held:0);
+ },0):0;
+ const free=items.filter(x=>!x).length;
+ const newSlots=Number.isFinite(maxNewSlots)?Math.max(0,Math.min(free,Math.floor(maxNewSlots))):free;
+ return Math.min(Number.MAX_SAFE_INTEGER,stackSpace+newSlots*stackLimit);
+}
 export function createLogistics(bot){
-  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
+  const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
@@ -98,22 +115,42 @@ export function createLogistics(bot){
     const pickup=me.role==='merchant'&&cfg.merchant.enabled&&cfg.merchant.pickup&&known?cfg.merchant.maxDelivery:0;
     if((!rule&&!verifiedGear&&!verifiedElixir&&!implicit&&!pickup)||protectedItem(i))return 0;
     const min=me.role==='merchant'?0:cfg.farming.freeSlots;
-    if(bot.free()<=min)return 0;
+    // A merchant can receive into a *truly compatible* existing stack even
+    // at 0 empty slots. New loot may not consume the recovery workspace.
+    if(me.role!=='merchant'&&bot.free()<=min)return 0;
     const pot=isPotion(i),held=count(i);
     const demand=pot&&me.role==='farmer'?
       Math.max(implicit,rule?demandFor(rule,held):0):
       Math.max(rule?demandFor(rule,held):implicit,pickup,verifiedGear?1:0,verifiedElixir?1:0);
     // The carrying target applies independently to HP and MP potions.
     // Aggregating both types wrongly rejected all MP after 3000 HP.
-    return Math.min(demand,pot&&me.role==='farmer'?
-      Math.max(0,potionTarget(cfg,i.name)-held):Infinity);}
+    const nominal=Math.min(demand,pot&&me.role==='farmer'?
+      Math.max(0,potionTarget(cfg,i.name)-held):Infinity);
+    // Tests using an intentionally minimal adapter may omit G; the actual
+    // client always supplies G.items. Unknown definitions in a real G must
+    // fail closed rather than be treated as unbounded stack capacity.
+    if(!p.G?.items)return nominal;
+    const pressure=me.role==='merchant'&&cfg.merchant.enabled&&
+      (bot.free()<=Math.max(0,cfg.merchant.minFreeSlots??4)||
+       bot.merchant?.status?.()?.capacityRecovery===true);
+    const maxNewSlots=pressure&&!verifiedGear&&!verifiedElixir?0:Infinity;
+    return Math.min(nominal,physicalReceiveCapacity(p.c.items,i,
+      p.G.items[i.name],{maxNewSlots}));}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
       counters.offersReceived++;
       if(bot.checkpoint?.durable===false||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
-      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;const quantity=Math.min(d.quantity,capacity(d.item,!!d.gear,elixirRequested),cfg.merchant.maxDelivery);if(quantity<1)return;
+      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;const quantity=Math.min(d.quantity,capacity(d.item,!!d.gear,elixirRequested),cfg.merchant.maxDelivery);if(quantity<1){
+       if(Date.now()-lastCapacityWarning>10000){
+        lastCapacityWarning=Date.now();
+        bot.event?.('logistics.receiveCapacity',{peer:from,item:d.item.name,
+         free:bot.free(),code:'OUTPUT_CAPACITY',
+         reason:'Kein physischer Platz innerhalb des laufenden Kapazitätsplans; Angebot ohne Annahme zurückgestellt'});
+       }
+       return;
+      }
       if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
       if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.

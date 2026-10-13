@@ -24,7 +24,7 @@ export function createMerchant(bot){
  let depot=savedDepot&&depotStages.includes(savedDepot.stage)&&savedDepot.stage!=='complete'&&
   Number.isFinite(savedDepot.started)&&Date.now()-savedDepot.started<3600000?
   {stage:savedDepot.stage,started:savedDepot.started,stageAt:savedDepot.stageAt??savedDepot.started}:null;
- let lastDepot=Number.isFinite(savedDepot?.completedAt)?savedDepot.completedAt:0;
+ let lastDepot=Number.isFinite(savedDepot?.completedAt)?savedDepot.completedAt:Date.now();
  // A pickup is admitted only after a bounded, sequential depot cycle.
  // Mutations use the existing durable journal and retain every user rule,
  // safety reservation, minimum success chance and hourly budget.
@@ -383,7 +383,7 @@ export function createMerchant(bot){
   if(me.role!=='merchant'||!cfg.merchant.bank||!bot.bank?.ready)return false;
   const now=Date.now();
   if(!depot){
-   if(now-lastDepot<600000||bot.logistics?.reserved||bot.gold?.reserved||
+   if(now-lastDepot<(p.c.map==='bank'?30000:600000)||bot.logistics?.reserved||bot.gold?.reserved||
       bot.movement.order)return false;
    depot={stage:'reconcile',started:now,stageAt:now};
    p.write?.(depotKey,{...depot,completedAt:lastDepot});

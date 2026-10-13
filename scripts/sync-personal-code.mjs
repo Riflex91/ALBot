@@ -25,7 +25,7 @@ if(Buffer.byteLength(candidate)>1048576)throw Error('CODE Bundle zu gross');
 new Script(candidate);
 const hash=createHash('sha256').update(candidate).digest('hex');
 if(process.argv.includes('--check')){
- if(existing!==candidate)console.log('Transient runtime candidate; bot.js will be synchronized after build artifact inspection');
+ if(existing!==candidate)throw Error('bot.js stimmt nicht mit gebauter Runtime ueberein');
 }else if(process.argv.includes('--write')){
  await writeFile(new URL('../bot.js',import.meta.url),candidate);
 }else throw Error('Nutze --check oder --write');

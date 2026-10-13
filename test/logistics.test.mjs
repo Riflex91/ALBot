@@ -190,3 +190,39 @@ test('merchant actually stops old smart route and heads to recipient new map',()
  assert.equal(rerouted.dest.map,'forest');
  assert.equal(rerouted.dest.x,250);
 });
+
+function fullMerchantOfferFixture(){
+ const f=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ f.A.me.role='farmer';f.B.me.role='merchant';
+ f.A.cfg.party.merchant='B';f.A.cfg.merchant.enabled=true;
+ f.A.cfg.merchant.pickup=true;f.A.cfg.merchant.maxDelivery=3000;
+ f.A.cfg.items=[{...r,name:'Abgabe',item:'hpot1',role:'farmer',
+  enabled:true,action:'send',recipient:'B',keep:0,teamReserve:0,batch:10}];
+ f.A.p.G={items:{hpot1:{type:'material',s:9999}}};
+ f.B.p.G={items:{hpot1:{type:'material',s:9999}}};
+ f.B.p.c.items=[{name:'hpot1',q:9998},...Array(41).fill({name:'other'})];
+ f.B.free=()=>f.B.p.c.items.filter(i=>!i).length;
+ f.B.merchant={status:()=>({capacityRecovery:true})};
+ const originalFresh=f.A.transport.fresh;
+ f.A.transport.fresh=n=>({...originalFresh(n),free:0});
+ return f;
+}
+test('sender asks full Merchant about matching stack headroom and sends only acknowledged one',()=>{
+ const f=fullMerchantOfferFixture();
+ f.A.logistics.poll();
+ assert.equal(f.A.logistics.stats().offersSent,1);
+ assert.equal(f.B.journal?.quantity,1,'receive admission caps 9998/9999 at one');
+ f.A.logistics.poll();
+ assert.equal(f.sends(),1);
+ assert.equal(f.B.p.c.items[0].q,9999);
+ assert.equal(f.A.p.c.items[0].q,99);
+});
+test('sender inquiry at full Merchant with incompatible stacks cannot trigger value dispatch',()=>{
+ const f=fullMerchantOfferFixture();
+ f.B.p.c.items[0]={name:'ringsj'};
+ f.A.logistics.poll();
+ assert.equal(f.A.logistics.stats().offersSent,1,'a bounded offer is harmless');
+ assert.equal(f.B.journal,null,'no physical room and no accept');
+ f.A.logistics.poll();
+ assert.equal(f.sends(),0);
+});

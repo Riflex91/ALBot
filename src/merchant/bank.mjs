@@ -367,7 +367,7 @@ export function createBank(bot){
      fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&!p.c.items[r.dest]){
      if(p.write(reclaimKey,null))reclaiming=null;return true;
   }
-  const item=p.c.items[r.dest],rule=item&&(e.explicit(item)??e.rules(item));
+  const item=p.c.items[r.dest],rule=item?eligibleBankSale(item)?.r:null;
   if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&!!eligibleBankSale(item)&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity},{onConfirmed:()=>{
    const next={...r,saleConfirmed:true};if(!p.write(reclaimKey,next))return false;
    reclaiming=next;return true;

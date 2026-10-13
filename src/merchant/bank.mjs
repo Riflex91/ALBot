@@ -83,11 +83,11 @@ export function createBank(bot){
   // Live bank arrays may change between planner epochs after a confirmed
   // transaction. Never reuse slot snapshots for authoritative mutations.
   const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&
-   Array.isArray(items)).map(([name,items])=>[name,Array.from({length:items.length},
+   Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},
     (_,n)=>items[n]??null)]);
-  // An abbreviated live pack is not proof that slots 0..41 exist. Normalize
-  // sparse holes only WITHIN the server-observed array length. Any larger
-  // pack must be confirmed by a later live bank observation before use.
+  // The game can send a newly opened but empty 42-slot bank pack as [].
+  // All decisions must use this SAME normalized logical view; the raw
+  // array length is not the number of available bank slots.
   // Merely reading a retained p.c.bank object from outside its actual map
   // never renews the 120-second evidence TTL.
   const live=rows.length>0&&rows.some(([pack])=>packMap(pack)===p.c.map)&&
@@ -179,7 +179,10 @@ export function createBank(bot){
    // the character-wide quantity while the bank request is in flight. Observe
    // the exact source slot and addressed bank stack instead of an aggregate
    // count that is unrelated to the bank transfer's success.
-   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&!p.c.bank[pack][dest]&&p.c.bank[pack].filter(i=>!i).length>workspace&&fingerprint(p.c.bank[pack][dest])===targetPrint&&
+   return e.perform('bank.store',{slots:[slot],rule:r,guard:()=>!!p.c.bank&&Array.isArray(p.c.bank[pack])&&
+     packMap(pack)===p.c.map&&
+     (packs().find(([name])=>name===pack)?.[1]?.filter(i=>!i).length??0)>workspace&&
+     !p.c.bank[pack][dest]&&fingerprint(p.c.bank[pack][dest])===targetPrint&&
      (parkVerified?parkable(slot)&&fingerprint(p.c.items[slot])===fingerprint(item):e.spare(slot,r)>=q),
     call:()=>p.call('bank_store',slot,pack,dest),
     observe:()=>!p.c.items[slot]&&identity(p.c.bank?.[pack]?.[dest])===identity(item)&&(p.c.bank[pack][dest].q??1)===targetQuantity+q,
@@ -424,7 +427,7 @@ export function createBank(bot){
   }});return true;}
   e.note('Bankfreigabe: Bestand oder Verkaufsregel geändert; Auftrag benötigt Prüfung');return true;
  }
- function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),size:items.length,used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}
+ function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),size:items.length,observedLength:p.c.bank?.[pack]?.length??null,used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}
  function gold(){
   if(!cfg.merchant.bank||!cfg.merchant.bankGold||!p.c.bank||me.name!==cfg.party.merchant)return false;
   const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);

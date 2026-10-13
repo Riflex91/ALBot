@@ -1,3 +1,11 @@
+# Produktions- und Dispositionskorrektur 0.10.3-candidate (13.10.2026)
+
+Aus der externen ALFinal-Analyse werden die Ursachen Reservierungsüberdeckung, Inventardruck und fehlende Mutation-Helper übernommen. Der vorgeschlagene rechnerische Schritt `reservation - localStock` wäre für eine bereits erfüllte Zielmenge gefährlich und wurde **nicht** übernommen: `reservedQuantity()` bleibt der konservative Bruttobedarf; `surplusQuantity(held,reserved,keep,teamReserve)` lässt nur physisch überschüssige identische Varianten frei. Alte persönliche Einstellungen einschließlich `maxSpendPerHour=5000000` und die öffentliche API bleiben unverändert. Ein Merchant mit zu wenig Arbeitsplätzen versucht zuerst sichere Stapelkonsolidierung, danach freigegebene Bankablage und zuletzt unreservierte NPC-Verkäufe. Wirtschaftlich sinnvolle Upgrades ohne Scroll werden als `no-helper-available` erfasst; mögliche Standard-Helper-Käufe bleiben begrenzt und sämtlichen bestehenden Kosten-/Inventar-Guards unterworfen. Bank-Reclaim und alle vorhandenen Wertjournale bleiben unangetastet.
+
+Vollständige Offline-CI und tatsächlicher 10-Minuten-Team-Livetest müssen getrennt bewertet werden. Im Spiel sind keine echten Gold-/Bank-/Mutationsaktionen bestätigt; ein erfolgreicher Node-Test ist hierfür kein Beweis. [PR #35](https://github.com/Riflex91/ALBot/pull/35).
+
+---
+
 # ALBot Live-Diagnose 13.10.2026 (Review)
 
 Die vier Live-Logs zeigen konkurrierende Legacy-Farmregeln, zu frühe Spawn-Ankunft, fehlende Startwaffe für Mage und häufige Merchant-Auftragswechsel. Der Patch ergänzt phasenweise wiederaufnehmbare Depotpflege, längere Haltezeit für Produktionsziele, Startwaffen-Priorität und den Full-Profil-Default maxSpendPerHour = 5000000 Gold. Importierte persönliche Einstellungen werden nicht automatisch überschrieben; vollständiger Spiel-Livetest steht aus. Itemschutz, Wertjournale und Mindest-Erfolgschancen bleiben erhalten.

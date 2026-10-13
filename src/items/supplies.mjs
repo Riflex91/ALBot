@@ -1,3 +1,22 @@
+// Skill consumption must follow the real, currently unlocked rotation,
+// not only the subset of skills that have an explicit editor rule.
+// These are the consuming skills actually invoked by skills.rotation/support;
+// the live G remains authoritative for class, unlock level and item ID.
+export function plannedSkillReagents(G,character,cfg,me){
+ const rotation={
+  ranger:['poisonarrow'],rogue:['pcoat'],mage:['entangle'],
+  priest:['phaseout',...(cfg.party?.enabled&&cfg.party?.revive?['revive']:[])]
+ }[character?.ctype]??[];
+ const custom=(cfg.skills??[]).filter(r=>r.enabled&&
+  (!r.character||r.character===me.name)&&
+  (r.class==='auto'||r.class===character?.ctype)).map(r=>r.skill);
+ return [...new Set([...rotation,...custom])].filter(id=>{
+  const s=G.skills?.[id];
+  return !!s&&typeof s.consume==='string'&&!!G.items?.[s.consume]&&
+   (!s.class||s.class.includes(character.ctype))&&
+   (s.level??0)<=character.level;
+ }).map(id=>G.skills[id].consume).filter((item,i,items)=>items.indexOf(item)===i);
+}
 // Reagent orders use the existing production and acknowledged delivery path.
 export function createSupplies(bot){
  const {p,cfg,me}=bot,key='albot:supplies:v1:'+me.name;
@@ -5,11 +24,8 @@ export function createSupplies(bot){
   r&&typeof r.item==='string'&&Number.isSafeInteger(r.quantity)&&r.quantity>0&&r.quantity<=100&&
   Number.isSafeInteger(r.cycle)&&r.cycle>0&&r.cycle<=Date.now()).slice(0,6):[];
  let last=0;
- const selected=()=>Object.entries(p.G.skills??{}).filter(([id,s])=>
-  typeof s.consume==='string'&&p.G.items?.[s.consume]&&
-  (!s.class||s.class.includes(p.c.ctype))&&(s.level??0)<=p.c.level&&
-  cfg.skills.some(r=>r.enabled&&r.skill===id&&(!r.character||r.character===me.name)&&
-    (!r.role||r.role==='all'||r.role===me.role))).map(([,s])=>s.consume);
+ const selected=()=>plannedSkillReagents(p.G,p.c,cfg,me);
+
  function request(){
   if(cfg.production.skillSupplies!==true||!bot.running||p.c.rip)return [];
   if(Date.now()-last<5000)return requests;last=Date.now();

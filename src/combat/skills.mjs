@@ -10,10 +10,17 @@ export function highestDpsFarmer(bot,allies){
  return (allies??[]).filter(a=>a&&selected.has(a.name)&&
    a.name!==bot.p.c.name&&!a.rip&&a.hp>0&&
    Number.isFinite(a.attack)&&a.attack>0&&
-   Number.isFinite(a.mp)&&Number.isFinite(a.max_mp)&&a.max_mp>0)
+   Number.isFinite(a.mp)&&a.mp>=0&&Number.isFinite(a.max_mp)&&a.max_mp>0&&
+   (a.max_mp-a.mp)/a.max_mp>=.02)
    .sort((a,b)=>{
     const dps=x=>x.attack*(Number.isFinite(x.frequency)&&x.frequency>0?x.frequency:1);
-    return dps(b)-dps(a)||a.name.localeCompare(b.name);
+    // DPS decides first. With equal output, feed the farmer whose next
+    // rotation has more usable missing MP. No full-mana target may preempt
+    // another eligible DPS farmer.
+    const missing=x=>Math.min(200,Math.max(0,x.max_mp-x.mp));
+    return dps(b)-dps(a)||missing(b)-missing(a)||
+      (b.max_mp-b.mp)/b.max_mp-(a.max_mp-a.mp)/a.max_mp||
+      a.name.localeCompare(b.name);
    })[0]??null;
 }
 export function createSkills(bot){

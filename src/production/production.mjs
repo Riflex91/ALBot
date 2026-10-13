@@ -198,7 +198,7 @@ export function createProduction(bot){
     const retainedFailure=kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6&&
       mutationResult?.success===false&&!mutationResult.calculate&&e.count(i)===before&&identity(p.c.items[slot])===identity(i);
     return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length||retainedFailure);
-   },details:{item:i.name,before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
+   },details:{item:i.name,riskVariant:identity(i),before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
  }
  function craft(name,r){
   const found=findRecipe(p.G,name,r.recipe),recipe=found?.recipe;if(r.action!=='craft'||!e.remaining(r)||!cfg.production.enabled||!cfg.production.craft||!recipe)return false;

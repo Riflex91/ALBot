@@ -17,6 +17,14 @@ export function createMerchant(bot){
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
   standRequestedUntil=0,lastSupplyCheck=0;
+ // Resumable phase metadata, never a replacement for durable value journals.
+ const depotKey='albot:merchant-depot:'+me.name;
+ const depotStages=['reconcile','mutation','sale','storage','capacity','complete'];
+ const savedDepot=p.read?.(depotKey);
+ let depot=savedDepot&&depotStages.includes(savedDepot.stage)&&savedDepot.stage!=='complete'&&
+  Number.isFinite(savedDepot.started)&&Date.now()-savedDepot.started<3600000?
+  {stage:savedDepot.stage,started:savedDepot.started,stageAt:savedDepot.stageAt??savedDepot.started}:null;
+ let lastDepot=Number.isFinite(savedDepot?.completedAt)?savedDepot.completedAt:0;
  // A pickup is admitted only after a bounded, sequential depot cycle.
  // Mutations use the existing durable journal and retain every user rule,
  // safety reservation, minimum success chance and hourly budget.
@@ -365,6 +373,61 @@ export function createMerchant(bot){
   }
   return false;
  }
+ function advanceDepot(){
+  if(!depot)return;const previous=depot.stage;
+  depot.stage=depotStages[depotStages.indexOf(previous)+1]??'complete';depot.stageAt=Date.now();
+  p.write?.(depotKey,{...depot,completedAt:lastDepot});
+  bot.event?.('merchant.depotStage',{from:previous,to:depot.stage});
+ }
+ function depotTick(){
+  if(me.role!=='merchant'||!cfg.merchant.bank||!bot.bank?.ready)return false;
+  const now=Date.now();
+  if(!depot){
+   if(now-lastDepot<600000||bot.logistics?.reserved||bot.gold?.reserved||
+      bot.movement.order)return false;
+   depot={stage:'reconcile',started:now,stageAt:now};
+   p.write?.(depotKey,{...depot,completedAt:lastDepot});
+   bot.event?.('merchant.depotStage',{from:null,to:'reconcile'});
+  }
+  if(bot.journal||bot.inventoryBlocked||bot.bank?.pending||
+     exec.busy('inventory')||bot.logistics?.reserved||bot.gold?.reserved)return true;
+  if(bot.movement.order?.owner==='economy')return true;
+  if(now-depot.stageAt>180000&&!bot.movement.order){
+   bot.event?.('merchant.depotSkipped',{stage:depot.stage,reason:bot.reason});
+   advanceDepot();return true;
+  }
+  if(depot.stage==='reconcile'){
+   if(!bot.bank.ready('items0'))return true;
+   if(bot.bank.audit())return true;
+   advanceDepot();return true;
+  }
+  if(depot.stage==='mutation'){
+   if(workStage('upgrade')||workStage('compound')||workStage('exchange')||
+      bot.production?.tick?.())return true;
+   advanceDepot();return true;
+  }
+  if(depot.stage==='sale'){
+   if(workStage('sell'))return true;
+   advanceDepot();return true;
+  }
+  if(depot.stage==='storage'){
+   for(let slot=0;slot<p.c.items.length;slot++){
+    const item=p.c.items[slot];if(!e.safe(item))continue;
+    const r=e.rules(item);if(r?.action!=='bank'||e.spare(slot,r)<1)continue;
+    if(bot.bank.store(slot,r)||bot.movement.order?.owner==='economy'||
+       bot.journal||exec.busy('inventory'))return true;
+   }
+   advanceDepot();return true;
+  }
+  if(depot.stage==='capacity'){
+   if(!bot.bank.ready('items0'))return true;
+   if(bot.bank.audit()||bot.bank.gold())return true;
+   advanceDepot();return true;
+  }
+  lastDepot=now;depot=null;
+  p.write?.(depotKey,{stage:'complete',completedAt:now});
+  bot.event?.('merchant.depotComplete',{at:now});return false;
+ }
  function tick(){
   if(bot.recovering)return;
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
@@ -376,6 +439,8 @@ export function createMerchant(bot){
   // fresh-heartbeat retargeting. Do not cancel a valid route using its old
   // coordinates here, before logistics can replan it.
   const route=bot.movement.order;if(route?.owner==='gold'){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&(!peer?.running||bot.strategy?.canVisit?.(peer)===false))bot.movement.stop();}
+  // Keep the admitted depot cycle intact across normal background work.
+  if(depot&&depotTick())return;
   // Cast first at the arrived position: logistics.travel() can initiate
   // a bank departure in the same tick and otherwise preempt the spell.
   if(!bot.movement.order&&bot.farmers?.some(n=>{
@@ -417,6 +482,7 @@ export function createMerchant(bot){
    lastSupplyCheck=Date.now();if(supplyBeforePickup(false))return;
   }
   if(standDepot())return;
+  if(depotTick())return;
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots+(cfg.merchant.bankWorkspace??0),add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   if(bot.conversions)add('conversions',{priority:-350},()=>bot.conversions.tick());
   if(bot.marketDemand)add('market.expire',{priority:100},()=>bot.marketDemand.expire());
@@ -479,5 +545,5 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

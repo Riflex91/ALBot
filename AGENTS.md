@@ -1,3 +1,9 @@
+# ALBot Live-Diagnose 13.10.2026 (Review)
+
+Die vier Live-Logs zeigen konkurrierende Legacy-Farmregeln, zu frühe Spawn-Ankunft, fehlende Startwaffe für Mage und häufige Merchant-Auftragswechsel. Der Patch ergänzt phasenweise wiederaufnehmbare Depotpflege, längere Haltezeit für Produktionsziele, Startwaffen-Priorität und den Full-Profil-Default maxSpendPerHour = 5000000 Gold. Importierte persönliche Einstellungen werden nicht automatisch überschrieben; vollständiger Spiel-Livetest steht aus. Itemschutz, Wertjournale und Mindest-Erfolgschancen bleiben erhalten.
+
+---
+
 # Automatischer Betrieb und Gruppenwahl 0.10.1 – 13.10.2026
 
 Lokale Automatik aktiviert Produktions-/Merchant-/Lernfunktionen und unterstützte Bossprofile innerhalb bestehender Budgets und Schutzregeln. Eigene Online-Farmer werden automatisch erkannt und auf 3.000 HP-/300 MP-Tränke aufgefüllt. Die Farmwahl berücksichtigt individuellen AoE-Beitrag, Priest-Heilung, Tankkontrolle, Rüstung/Resistenz, aktive Paladin-Auren und begrenzte Schutzressourcen.

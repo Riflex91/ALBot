@@ -135,6 +135,25 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(!cfg.farming.enabled){bot.reason='Farmen ausgeschaltet';bot.skills.rotation(null);return;}
     if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
     if(bot.free()<cfg.farming.freeSlots){bot.reason='Inventarreserve erreicht';bot.target=null;bot.skills.rotation(null);return;}
+    // Equip a carried compatible weapon before resuming the farm plan.
+    // gear.equip keeps game-class, equipment and value-journal guards.
+    if(!c.slots?.mainhand&&cfg.production?.gear&&bot.gear?.equip&&!bot.journal&&!bot.inventoryBlocked){
+      const hands=p.G.classes?.[c.ctype],candidate=c.items
+        .map((item,slot)=>({item,slot,meta:p.G.items?.[item?.name]}))
+        .filter(({item,meta})=>item&&meta&&
+          (meta.type==='weapon'||meta.type==='tool')&&
+          (Object.hasOwn(hands?.mainhand??{},meta.wtype??meta.type)||
+           Object.hasOwn(hands?.doublehand??{},meta.wtype??meta.type)))
+        .sort((a,b)=>(b.item.level??0)-(a.item.level??0))[0];
+      if(candidate){
+       const rule={enabled:true,name:'Kampfbereitschaft: Waffe anlegen',
+        item:candidate.item.name,action:'equip',slot:'mainhand',
+        keep:0,teamReserve:0,maxActions:0,goldBudget:0,lossBudget:0};
+       if(bot.gear.equip(candidate.slot,rule)){
+        bot.reason='Kampfwaffe anlegen: '+candidate.item.name;return;
+       }
+      }
+    }
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){

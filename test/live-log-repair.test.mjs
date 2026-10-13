@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createBehavior} from '../src/core/behavior.mjs';
 import {createTeamPlan} from '../src/world/team-plan.mjs';
 import {createMerchant} from '../src/merchant/controller.mjs';
+import {emergencyMaterialSaleAllowed} from '../src/merchant/bank.mjs';
 
 test('legacy recurring Bee rule cannot override autonomous verified team plan',()=>{
  const requests=[],cfg={farming:{autoTargets:true},rules:[{enabled:true,role:'farmer',character:'',
@@ -55,4 +56,12 @@ test('merchant keeps staged depot reconciliation across ticks and checkpoints',(
  assert.equal(merchant.status().depot.stage,'mutation');
  assert.equal(auditCount,1);
  assert.ok(events.some(([type])=>type==='merchant.depotStage'));
+});
+
+test('bank pressure may reclaim only low-value plain material within a bounded total',()=>{
+ assert.equal(emergencyMaterialSaleAllowed({type:'material'},5,20,100),true);
+ assert.equal(emergencyMaterialSaleAllowed({type:'material'},101,1,100),false);
+ assert.equal(emergencyMaterialSaleAllowed({type:'material'},10,1001,100),false);
+ assert.equal(emergencyMaterialSaleAllowed({type:'weapon'},1,1,100),false);
+ assert.equal(emergencyMaterialSaleAllowed({type:'material'},1,10000,100),false);
 });

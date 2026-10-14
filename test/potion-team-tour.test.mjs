@@ -36,7 +36,8 @@ test('real merchant supply preflight acquires both potion deficits in bounded NP
  const merchant=createMerchant(bot);bot.merchant=merchant;
  assert.equal(merchant.potionSupplyActive(),true);
  assert.deepEqual(storage.get('albot:potion-tour:M').names,['A','B','C']);
- for(let n=0;n<18;n++)merchant.prepareDeparture({name:'A',items:[]});
+ for(let n=0;n<12&&(owned.hpot0<4050||owned.mpot0<951);n++)
+  merchant.prepareDeparture({name:'A',items:[]});
  assert.ok(buys.some(x=>x.item==='hpot0'),'buys HP potions');
  assert.ok(buys.some(x=>x.item==='mpot0'),'buys MP potions');
  assert.equal(owned.hpot0,4050,'3850 team HP shortage plus protected 200 merchant reserve');

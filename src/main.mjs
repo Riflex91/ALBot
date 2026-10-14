@@ -77,6 +77,18 @@ export function canAcceptPartyRequest(bot,name){
   return !!(bot.running&&bot.cfg.party.enabled&&peer?.running&&peer.realm===bot.p.realm()&&
     (bot.me.name===bot.leader&&!bot.p.c?.party||bot.p.c?.party===bot.me.name));
 }
+// Complete only ABSENT schema fields before start validation. Explicit invalid
+// values remain invalid, and each runtime flavor keeps its own descriptor.
+// Older personal CODE settings remain unchanged in the stored source object.
+export function startupDescriptor(value){
+ return value?.general?.testLogging!==undefined?FULL_DESCRIPTOR:
+  value?.production?.strategy?P3P4_DESCRIPTOR:
+  value?.world?INTEGRATION_DESCRIPTOR:
+  value?.production?ECONOMY_DESCRIPTOR:LIVE_DESCRIPTOR;
+}
+export function completeStartupConfig(value){
+ return addMissingDefaults(startupDescriptor(value).schema,value);
+}
 export function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
@@ -92,7 +104,7 @@ export function install(root){
   }
   const failed=(state,reason)=>{report.error(state,reason);root.ALBot={version:VERSION,status:()=>({state,reason}),testReport:()=>report.text(),exportTestReport:()=>report.flush()};report.flush(true);};
   function validate(value){
-    const descriptor=value.general?.testLogging!==undefined?FULL_DESCRIPTOR:value.production?.strategy?P3P4_DESCRIPTOR:value.world?INTEGRATION_DESCRIPTOR:value.production?ECONOMY_DESCRIPTOR:LIVE_DESCRIPTOR;
+    const descriptor=startupDescriptor(value);
     const errors=validateProfile(descriptor,value);if(errors.length)return errors;
     const full=addMissingDefaults(DESCRIPTOR.schema,value);
     if(![FULL_DESCRIPTOR,P3P4_DESCRIPTOR].includes(descriptor))errors.push(...validateProfile(DESCRIPTOR,full));
@@ -106,7 +118,7 @@ export function install(root){
     if(value.items.some(r=>r.enabled&&r.action==='send'&&(!r.recipient||!value.characters.some(c=>c.enabled&&c.name===r.recipient))))errors.push('Lieferempfänger muss aktiv konfiguriert sein.');
     return errors;
   }
-  let cfg;try{cfg=parseData(JSON.stringify(root.ALBotConfig));if(cfg.general?.testLogging!==undefined&&cfg.general.autonomousSetup===undefined)cfg.general.autonomousSetup=true;cfg=applyAutonomousMode(cfg);cfg=discoverAccountRoster(cfg,p,defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items));if(cfg.general?.autonomousSetup===true&&cfg.world){cfg.world.allowedBosses=[...new Set([...(cfg.world.allowedBosses??[]),...Object.keys(p.G.monsters??{}).filter(id=>bossProfile(p.G,id)?.supported)])];}const errors=validate(cfg);if(errors.length)throw Error(errors.join('; '));}catch(e){p.log('Konfiguration ungültig: '+e.message);failed('invalid',e.message);return;}
+  let cfg;try{cfg=completeStartupConfig(parseData(JSON.stringify(root.ALBotConfig)));if(cfg.general?.testLogging!==undefined&&cfg.general.autonomousSetup===undefined)cfg.general.autonomousSetup=true;cfg=applyAutonomousMode(cfg);cfg=discoverAccountRoster(cfg,p,defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items));if(cfg.general?.autonomousSetup===true&&cfg.world){cfg.world.allowedBosses=[...new Set([...(cfg.world.allowedBosses??[]),...Object.keys(p.G.monsters??{}).filter(id=>bossProfile(p.G,id)?.supported)])];}const errors=validate(cfg);if(errors.length)throw Error(errors.join('; '));}catch(e){p.log('Konfiguration ungültig: '+e.message);failed('invalid',e.message);return;}
   const configuredMe=cfg.characters.find(c=>c.name===p.c?.name&&c.enabled),me=configuredMe??automaticSupplyReceiver(cfg,p),supplyOnly=!!me&&!configuredMe;
   if(!me){p.log('Eigenen Namen zuerst in der Werkstatt aktivieren.');failed('unconfigured','Eigenen Namen zuerst aktivieren');return;}
   report.configure?.({continuous:cfg.general.testLogging===true});

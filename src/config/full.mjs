@@ -102,7 +102,7 @@ FULL_DESCRIPTOR.schema.properties.skills.items.properties.maxTargets.default=5;
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.farming.properties,{potionCarryMax:number('Trank-Obergrenze je Sorte und Farmer',10000,1,1000000)});
 
-Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{discoverOwnFarmers:bool('Eigene Online-Farmer automatisch erkennen (ALBot-Bestandsmeldung erforderlich)',true),hpPotionTarget:number('HP-Tränke je Online-Farmer (Zielbestand)',3000,0,100000),mpPotionTarget:number('MP-Tränke je Online-Farmer (Zielbestand)',300,0,100000)});
+Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{potionTeamRefill:bool('Bei 50 Tränken Teamversorgung für aktive Farmer auslösen',false),potionAlertBelow:number('Alarm bei verbleibenden Tränken je Sorte',50,0,1000),discoverOwnFarmers:bool('Eigene Online-Farmer automatisch erkennen (ALBot-Bestandsmeldung erforderlich)',true),hpPotionTarget:number('HP-Tränke je Online-Farmer (Zielbestand)',3000,0,100000),mpPotionTarget:number('MP-Tränke je Online-Farmer (Zielbestand)',300,0,100000)});
 
 
 

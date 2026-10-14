@@ -1,4 +1,4 @@
-import {potionTarget,onlineSupplyFarmers} from '../items/potion-supply.mjs';
+import {potionTarget,onlineSupplyFarmers,teamPotionRefillSnapshot} from '../items/potion-supply.mjs';
 import {createTrackerAcquisition} from './tracker-acquisition.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
@@ -28,6 +28,36 @@ export function createMerchant(bot){
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
   standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0,capacityRecovery=false;
+ // The alert arms one persisted team refill tour. A changed roster or
+ // missing heartbeat suspends buying until every selected farmer is verified.
+ const potionCycleKey='albot:potion-tour:'+me.name;
+ const savedCycle=me.role==='merchant'?p.read?.(potionCycleKey):null;
+ let potionCycle=savedCycle&&Number.isFinite(savedCycle.at)&&
+   savedCycle.at<=Date.now()&&Date.now()-savedCycle.at<21600000&&
+   Array.isArray(savedCycle.names)&&savedCycle.names.every(n=>typeof n==='string')?
+    {at:savedCycle.at,names:savedCycle.names}:null;
+ function teamSupply(){
+  if(cfg.merchant.potionTeamRefill!==true||me.role!=='merchant'||
+     !cfg.merchant.enabled||!cfg.merchant.supply)return null;
+  const snap=teamPotionRefillSnapshot(bot,{active:!!potionCycle});
+  if(!snap.ready)return {...snap,active:false};
+  const names=snap.farmers.map(f=>f.name);
+  if(potionCycle&&JSON.stringify(potionCycle.names)!==JSON.stringify(names)){
+   if(p.write?.(potionCycleKey,null)===true)potionCycle=null;
+   else return {...snap,active:false,reason:'cycle-storage-failed'};
+  }
+  if(snap.triggered&&!potionCycle){
+   const next={at:Date.now(),names};
+   if(p.write?.(potionCycleKey,next)===true){
+    potionCycle=next;
+    bot.event?.('merchant.potionTeamAlarm',{threshold:cfg.merchant.potionAlertBelow??50,farmerNames:names.join(',')});
+   }else return {...snap,active:false,reason:'cycle-storage-failed'};
+  }
+  if(potionCycle&&snap.need.hpot0===0&&snap.need.mpot0===0){
+   if(p.write?.(potionCycleKey,null)===true)potionCycle=null;
+  }
+  return {...snap,active:!!potionCycle&&(snap.need.hpot0>0||snap.need.mpot0>0)};
+ }
  // Resumable phase metadata, never a replacement for durable value journals.
  const depotKey='albot:merchant-depot:'+me.name;
  const depotStages=['reconcile','mutation','sale','storage','capacity','exchange','complete'];
@@ -94,7 +124,10 @@ export function createMerchant(bot){
  }
  function supplyBeforePickup(advance=true){
   if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply){if(advance)nextStage();return false;}
-  const farmers=onlineSupplyFarmers(bot).filter(({peer})=>['hpot0','mpot0'].every(id=>Number.isSafeInteger(peer.potions?.[id])&&peer.potions[id]>=0&&peer.potions[id]<=1000000));
+  const team=teamSupply();
+  if(team&&!team.active){if(advance)nextStage();return false;}
+  const farmers=team?team.farmers.map(x=>({name:x.name,peer:bot.transport.fresh(x.name)})):
+   onlineSupplyFarmers(bot).filter(({peer})=>['hpot0','mpot0'].every(id=>Number.isSafeInteger(peer.potions?.[id])&&peer.potions[id]>=0&&peer.potions[id]<=1000000));
   if(!farmers.length){if(advance)nextStage();return false;}
   for(const id of ['hpot0','mpot0']){
    if(advance&&departure.skipped.has(id))continue;
@@ -135,7 +168,13 @@ export function createMerchant(bot){
      enabled:true,maxPrice:price,goldBudget:quantity*price,lossBudget:0,
      batch:quantity,maxCount:Math.max(100000,carried+missing),
      keep:0,teamReserve:0,targetCount:carried+missing};
-   const stillNeeded=()=>{const liveNeed=onlineSupplyFarmers(bot).filter(({peer})=>Number.isSafeInteger(peer.potions?.[id])).reduce((n,{peer})=>n+Math.max(0,target-peer.potions[id]),0);return cfg.merchant.supply&&potionTarget(cfg,id)===target&&liveNeed>0&&liveNeed+reserve-e.count({name:id,level:0})>=quantity;};
+   const stillNeeded=()=>{const check=teamSupply();
+    if(team&&(!check?.ready||!check.active))return false;
+    const current=team?check.farmers.map(x=>({peer:bot.transport.fresh(x.name)})):
+      onlineSupplyFarmers(bot).filter(({peer})=>Number.isSafeInteger(peer.potions?.[id]));
+    const liveNeed=current.reduce((n,{peer})=>n+Math.max(0,target-peer.potions[id]),0);
+    return cfg.merchant.supply&&potionTarget(cfg,id)===target&&liveNeed>0&&liveNeed+reserve-e.count({name:id,level:0})>=quantity;
+   };
    if(e.npcBuy({name:id,level:0},rule,quantity,stillNeeded))return true;
    if(bot.movement.order?.owner==='economy'||bot.journal||
       exec.busy('inventory')||exec.busy('economy'))return true;
@@ -596,6 +635,12 @@ export function createMerchant(bot){
     return h?.running&&!h.rip&&samePlace(p.c,h)&&
       distance(p.c,h)<=(p.G.skills?.mluck?.range??320);
   }))buff();
+  // When the emergency is armed, obtain the two potion types from the NPC
+  // before beginning the first delivery journey, as inventory/budget allows.
+  if(cfg.merchant.potionTeamRefill===true&&cfg.merchant.supply&&
+     Date.now()-lastSupplyCheck>=10000){
+    lastSupplyCheck=Date.now();if(supplyBeforePickup(false))return;
+  }
   bot.logistics.travel();
   if(departure&&departure.stage!=='ready'&&!['logistics','gold'].includes(bot.movement.order?.owner))
     return;
@@ -626,7 +671,7 @@ export function createMerchant(bot){
       ?'Lieferauftrag offen: '+(intent.recipient??'Team')+' – Warte auf freigegebene Items/aktuelle Empfangsposition'
       :'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf');
   }
-  if(me.role==='merchant'&&cfg.merchant.supply&&Date.now()-lastSupplyCheck>=10000){
+  if(me.role==='merchant'&&cfg.merchant.supply&&cfg.merchant.potionTeamRefill!==true&&Date.now()-lastSupplyCheck>=10000){
    lastSupplyCheck=Date.now();if(supplyBeforePickup(false))return;
   }
   if(standDepot())return;
@@ -694,5 +739,6 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
+  claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

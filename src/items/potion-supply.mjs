@@ -36,3 +36,27 @@ export function automaticSupplyReceiver(cfg,p){
  const own=ownSupplyCharacters(p);if(!own.some(c=>c.name===p.c.name)||!own.some(c=>c.name===cfg.party.merchant))return null;
  return {name:p.c.name,enabled:true,class:p.c.ctype,role:'farmer',group:cfg.party.group,region:(p.realm().match(/^([A-Z]{2})(.+)$/)?.[1]??''),server:(p.realm().match(/^([A-Z]{2})(.+)$/)?.[2]??''),merchantMobility:'mobile',rotation:false,catchUp:false,goldReserve:0,gearRole:'auto',farmTargets:[]};
 }
+
+
+export function teamPotionRefillSnapshot(bot,{active=false}={}){
+ const {cfg,transport,p}=bot;
+ const names=[...new Set((bot.farmers??[]).slice(0,cfg.party?.maxFarmers??3))];
+ if(!names.length||names.length!==(bot.farmers??[]).length)return {ready:false,active:false,reason:'roster-unavailable'};
+ const target=Object.fromEntries(['hpot0','mpot0'].map(id=>[id,potionTarget(cfg,id)]));
+ const peers=[];
+ for(const name of names){
+  const h=transport?.fresh?.(name);
+  if(!h?.running||h.rip||h.realm!==p.realm()||!h.potions||
+    ['hpot0','mpot0'].some(id=>!Number.isSafeInteger(h.potions[id])||
+      h.potions[id]<0||h.potions[id]>1000000))
+   return {ready:false,active:false,reason:'farmer-stock-unverified',missing:name};
+  peers.push({name,peer:h});
+ }
+ const threshold=cfg.merchant.potionAlertBelow??50;
+ const triggered=peers.some(({peer})=>['hpot0','mpot0'].some(id=>target[id]>0&&peer.potions[id]<=threshold));
+ const need=Object.fromEntries(['hpot0','mpot0'].map(id=>
+  [id,peers.reduce((total,{peer})=>total+Math.max(0,target[id]-peer.potions[id]),0)]));
+ const incomplete=need.hpot0>0||need.mpot0>0;
+ return {ready:true,active:incomplete&&(active||triggered),triggered,need,
+  farmers:peers.map(({name,peer})=>({name,hpot0:peer.potions.hpot0,mpot0:peer.potions.mpot0}))};
+}

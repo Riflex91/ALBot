@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ownSupplyCharacters,onlineSupplyFarmers,potionTarget,automaticSupplyReceiver} from '../src/items/potion-supply.mjs';
+import {ownSupplyCharacters,onlineSupplyFarmers,potionTarget,teamPotionRefillSnapshot,automaticSupplyReceiver} from '../src/items/potion-supply.mjs';
 import {createTransport} from '../src/party/transport.mjs';
 import {defaultsFor,applyAutonomousMode} from '../editor/lib/contract.mjs';
 import {FULL_DESCRIPTOR} from '../src/config/full.mjs';
@@ -48,4 +48,44 @@ test('autonomous mode enables capabilities without changing budgets, item rules 
  assert.equal(cfg.production.lossBudget,50);assert.equal(cfg.production.minChance,.92);assert.equal(cfg.merchant.maxSpendPerHour,123);
  assert.deepEqual(cfg.items,before.items);assert.deepEqual(cfg.characters,before.characters);
  cfg.general.autonomousSetup=false;cfg.production.autoHelpers=false;applyAutonomousMode(cfg);assert.equal(cfg.production.autoHelpers,false);
+});
+
+test('one farmer at 50 HP potions triggers a complete three-farmer HP and MP tour',()=>{
+ const cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+ cfg.merchant.hpPotionTarget=3000;cfg.merchant.mpPotionTarget=3000;
+ cfg.merchant.potionTeamRefill=true;cfg.merchant.potionAlertBelow=50;
+ const potions={
+  A:{hpot0:50,mpot0:2800},
+  B:{hpot0:2900,mpot0:1000},
+  C:{hpot0:3000,mpot0:2999}
+ };
+ const bot={cfg,farmers:['A','B','C'],p:{realm:()=> 'EUII'},
+  transport:{fresh:n=>({running:true,realm:'EUII',potions:potions[n]})}};
+ const snap=teamPotionRefillSnapshot(bot);
+ assert.equal(snap.ready,true);
+ assert.equal(snap.triggered,true);
+ assert.equal(snap.active,true);
+ assert.deepEqual(snap.need,{hpot0:3050,mpot0:2201});
+ potions.A.hpot0=51;
+ assert.equal(teamPotionRefillSnapshot(bot).active,false,'without an alert, no new tour');
+ assert.equal(teamPotionRefillSnapshot(bot,{active:true}).active,true,'existing cycle finishes all top-ups');
+ potions.A.hpot0=3000;potions.A.mpot0=3000;
+ potions.B.hpot0=3000;potions.B.mpot0=3000;
+ potions.C.hpot0=3000;potions.C.mpot0=3000;
+ assert.equal(teamPotionRefillSnapshot(bot,{active:true}).active,false,'tour completes at full target for all three');
+});
+test('three-farmer purchasing is suspended for missing, stale or invalid inventory reports',()=>{
+ const cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+ cfg.merchant.potionTeamRefill=true;
+ const peers={A:{running:true,realm:'EUII',potions:{hpot0:50,mpot0:1000}},
+  B:{running:true,realm:'EUII',potions:{hpot0:10,mpot0:1500}},
+  C:{running:true,realm:'EUII',potions:{hpot0:2900,mpot0:100}}};
+ const bot={cfg,farmers:['A','B','C'],p:{realm:()=> 'EUII'},
+  transport:{fresh:n=>peers[n]}};
+ assert.equal(teamPotionRefillSnapshot(bot).ready,true);
+ peers.C=null;assert.equal(teamPotionRefillSnapshot(bot,{active:true}).ready,false);
+ peers.C={running:true,realm:'USI',potions:{hpot0:30,mpot0:100}};
+ assert.equal(teamPotionRefillSnapshot(bot,{active:true}).ready,false);
+ peers.C.realm='EUII';peers.C.potions.mpot0=NaN;
+ assert.equal(teamPotionRefillSnapshot(bot,{active:true}).ready,false);
 });

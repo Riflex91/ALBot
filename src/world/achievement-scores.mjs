@@ -55,7 +55,11 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
   if(!pendingAt||closed||!carrier()||carrier()==='unknown')return false;
   pendingAt=0;
   const rows=verifiedTrackerScores(data,p.G);
-  if(!rows){reason='invalid-server-reply';return false;}
+  if(!rows){
+   // A malformed new response invalidates the old snapshot. Never reuse
+   // previously confirmed scores after a failed refresh.
+   entries=null;receivedAt=0;reason='invalid-server-reply';return false;
+  }
   entries=rows;receivedAt=clock();reason='verified-account-max';return true;
  }
  function detach(){

@@ -2,7 +2,7 @@ import {potionTarget,onlineSupplyFarmers} from '../items/potion-supply.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
-import {planPickupCapacity,pickupCleanupCandidates} from './pickup-capacity.mjs';
+import {planPickupCapacity,pickupCleanupCandidates,pickupOperatingTarget} from './pickup-capacity.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 // A stand may only open while idle. Native smart_move pathfinding can leave
 // character.moving false for several seconds; inspect the movement owner too.
@@ -232,13 +232,15 @@ export function createMerchant(bot){
       nextStage();
       return true;
     }
-    // Prepare a genuinely large pickup workspace rather than treating the
-    // minimum 4+3 slots as the objective. Never sell protected/reserved gear
-    // just to achieve the ideal. When no safe cleanup remains, depart with
-    // a bounded partial load above the physical reserve.
+    // Only the authenticated, advertised non-mergeable variants justify
+    // additional cleanup, with small working headroom for larger tours.
+    // An unverified lootSlots hint or one actual offer cannot justify
+    // clearing 20 slots. An achievable ideal never vetoes the normal
+    // per-batch pickup guard or authorizes destruction of protected items.
     const reserve=Math.max(0,cfg.merchant.minFreeSlots??4);
-    const ideal=Math.min(p.c.items.length-reserve,
-      Math.max(20,Math.min(32,peer?.lootSlots??20)));
+    const ideal=pickupOperatingTarget(offers,{
+      reserve,inventorySize:p.c.items.length
+    });
     if(bot.free()<ideal){
      const options=pickupCleanupCandidates(p.c.items,i=>e.rules(i),
        (slot,rule)=>e.spare(slot,rule),i=>e.safe(i),

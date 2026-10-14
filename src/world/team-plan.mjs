@@ -37,7 +37,7 @@ export function createTeamPlan(bot){
     materialRequestHasWork(r,bot.farmers));
  }
  function observe(){if(me.name!==bot.leader)return;const now=Date.now(),dt=Math.max(0,Math.min(5000,now-previous));previous=now;if(!current||!samePlace(p.c,current)||distance(p.c,current)>220){area=null;lastXp=p.c.xp??0;lastGold=p.c.gold??0;return;}
-  const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>semanticGear(n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))),old=verifiedAreaHistory(history[id],now)??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visiblebot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
+  const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>semanticGear(n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))),old=verifiedAreaHistory(history[id],now)??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
   // A new spawn/hour/gear key starts a fresh rate window. Experience and gold
   // earned on the way to this area must not be attributed to its throughput.
   ({xp:lastXp,gold:lastGold}=areaRateBaseline(area,id,p.c.xp??0,p.c.gold??0,lastXp,lastGold));

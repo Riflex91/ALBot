@@ -88,3 +88,18 @@ test('delayed tracker response after carrier loss cannot restore achievement bon
  f.socket.deliver(data());
  assert.ok(f.scores.bonus('goo')>0);
 });
+
+test('fractional and unsafe account scores or milestone thresholds never influence farming',()=>{
+ const malformed={max:{monsters:{goo:[99.5],bee:[Number.MAX_SAFE_INTEGER+1],crab:[99]}}};
+ const rows=verifiedTrackerScores(malformed,G);
+ assert.equal(rows.some(x=>x.monster==='goo'||x.monster==='bee'),false);
+ const defs={monsters:{goo:{achievements:[[99.5,'stat','hp',50],[100,'stat','hp',5],[Number.MAX_SAFE_INTEGER+1,'stat','hp',100]]}}};
+ const clean=verifiedTrackerScores({max:{monsters:{goo:[99]}}},defs);
+ assert.equal(clean[0].nextThreshold,100);
+ assert.ok(achievementMilestoneBias(clean[0])>0);
+ for(const bad of [
+  {...clean[0],score:99.5,gap:.5},
+  {...clean[0],nextThreshold:99.5,gap:.5},
+  {...clean[0],gap:.5}
+ ])assert.equal(achievementMilestoneBias(bad),0);
+});

@@ -1,4 +1,5 @@
 import {carriedAchievementCarrier} from '../items/achievement-utility.mjs';
+import {createAchievementScores} from './achievement-scores.mjs';
 // The official Guide observes fights but does not execute its advice.
 // Only small, validated hints enter the existing scheduler; all action guards stay.
 export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false){

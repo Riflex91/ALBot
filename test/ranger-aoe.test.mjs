@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSkills} from '../src/combat/skills.mjs';
 
-function rangerFixture(teamCount,outsiders=0,maxTargets=5,{allowNeutral=false,capacity=3,phase='BUILD',foreign=0}={}){
+function rangerFixture(teamCount,outsiders=0,maxTargets=5,{allowNeutral=false,capacity=3,phase='BUILD',foreign=0,maxAggro=5}={}){
  const actions=[];
  const mobs=[
   ...Array.from({length:teamCount},(_,i)=>({id:'team-'+i,type:'monster',mtype:'bee',map:'main',in:'main',x:20+i*3,y:0,hp:1200,max_hp:1200,target:i%2?'Ranger2':'Ranger1'})),
@@ -11,7 +11,7 @@ function rangerFixture(teamCount,outsiders=0,maxTargets=5,{allowNeutral=false,ca
  ];
  const c={name:'Ranger1',ctype:'ranger',level:80,map:'main',in:'main',x:0,y:0,range:150,
   mp:2000,max_mp:2000,attack:100,hp:1000,max_hp:1000,slots:{},s:{}};
- const cfg={general:{testLogging:true},farming:{pvp:false,maxAggro:5},party:{enabled:true,aoe:true,aoeMaxTargets:maxTargets,advancedSkills:true},skills:[]};
+ const cfg={general:{testLogging:true},farming:{pvp:false,maxAggro},party:{enabled:true,aoe:true,aoeMaxTargets:maxTargets,advancedSkills:true},skills:[]};
  const p={c,parent:{is_pvp:false},G:{items:{},skills:{
   '3shot':{class:['ranger'],level:60,mp:300,range:150,hostile:true},
   '5shot':{class:['ranger'],level:75,mp:420,range:150,hostile:true},
@@ -34,6 +34,24 @@ test('ranger 3shot selects the two engaged teammates targets despite a neutral b
  assert.equal(actions.length,1);
  assert.equal(actions[0].skill,'3shot');
  assert.deepEqual(actions[0].targets.map(x=>x.id),['team-0','team-1']);
+});
+test('3shot hits three existing party threats with a two-monster new-pull limit',()=>{
+ const {skills,mobs,actions}=rangerFixture(3,0,5,{maxAggro:2});skills.use('3shot',mobs[0],.2,0,15,true);
+ assert.deepEqual(actions[0].targets.map(x=>x.id),['team-0','team-1','team-2']);
+});
+test('3shot does not pull a third neutral monster through the new-pull limit',()=>{
+ const {skills,mobs,actions}=rangerFixture(2,1,5,{maxAggro:2,capacity:3,allowNeutral:true});skills.use('3shot',mobs[0],.2,0,15,true);
+ assert.deepEqual(actions[0].targets.map(x=>x.id),['team-0','team-1']);
+});
+test('3shot can open on three neutral monsters only when encounter and user approve three',()=>{
+ const {skills,mobs,actions}=rangerFixture(0,3,5,{maxAggro:3,capacity:3,allowNeutral:true});skills.use('3shot',mobs[0],.2,0,15,true);
+ assert.equal(actions[0].targets.length,3);
+});
+test('requested maxAggro twelve permits a neutral third target, while 3shot itself stays capped at three',()=>{
+ const mixed=rangerFixture(2,10,5,{maxAggro:12,capacity:3,allowNeutral:true});mixed.skills.use('3shot',mixed.mobs[0],.2,0,15,true);
+ assert.deepEqual(mixed.actions[0].targets.map(x=>x.id),['team-0','team-1','outsider-0']);
+ const neutral=rangerFixture(0,12,5,{maxAggro:12,capacity:5,allowNeutral:true});neutral.skills.use('3shot',neutral.mobs[0],.2,0,15,true);
+ assert.equal(neutral.actions[0].targets.length,3);
 });
 
 test('ranger 5shot caps already engaged targets at five, even when six are nearby',()=>{

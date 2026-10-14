@@ -86,7 +86,9 @@ export function createSkills(bot){
     // allowed only if the team plan, danger checks and planner all approve it.
     // Untargeted AoE must account for EVERY visible mob inside its effect area.
     const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&bot.allowed(e));
-    const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets,cfg.farming.maxAggro??Infinity);
+    // Skill target count is distinct from permission to pull NEW monsters.
+    // Three already engaged party threats do not create a third new pull.
+    const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets,aimed?Infinity:cfg.farming.maxAggro??Infinity);
     const engaged=visible.filter(eligible);
     const canPull=e=>!!(e&&!e.target&&bot.teamPlan?.target()&&e.mtype===bot.teamPlan.target()&&
       bot.teamPlan.wantsCombat?.()!==false&&bot.allowed(e)&&bot.strategy?.safeTarget?.(e.mtype,e)!==false);
@@ -143,7 +145,8 @@ export function createSkills(bot){
       return Promise.resolve(invoked).then(v=>noTarget(v)?transient():v,
         err=>{if(noTarget(err))return transient();throw err;});
     },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:(state,result)=>{if(consume)bot.endValue(state);if(result?.transient==='no_target'){count(id,'targetBlocked');return;}if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
-    if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve});}return accepted;
+    if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve,
+     ...(multi?{targetCount:selected.length,targetIds:selected.map(e=>e.id),engagedTargets:engaged.length,visibleTargets:visible.length,neutralTargets:neutralCount,targetLimit:limit,newPullLimit:cfg.farming.maxAggro??1,extraPullAllowance:additional}: {})});}return accepted;
   }
   function support(){
     if(!cfg.party.enabled)return false;

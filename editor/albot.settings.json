@@ -1295,6 +1295,32 @@
             "minimum": 2000,
             "maximum": 600000
           },
+          "preventiveStorage": {
+            "type": "boolean",
+            "title": "Vorbeugende Inventar- und Bankplanung",
+            "default": true
+          },
+          "storageFreeSlots": {
+            "type": "integer",
+            "title": "Vorbeugende freie Inventarplätze",
+            "default": 8,
+            "minimum": 4,
+            "maximum": 30
+          },
+          "storageTargetSlots": {
+            "type": "integer",
+            "title": "Arbeitsraum nach Entlastung",
+            "default": 12,
+            "minimum": 6,
+            "maximum": 40
+          },
+          "storageReplacementMinutes": {
+            "type": "integer",
+            "title": "Maximale belegte Wiederbeschaffungszeit (Minuten)",
+            "default": 60,
+            "minimum": 1,
+            "maximum": 1440
+          },
           "budgetMode": {
             "type": "string",
             "title": "Budgetmodus",
@@ -1490,6 +1516,10 @@
           "marketHistory",
           "marketHistoryTtlMs",
           "serviceSliceMs",
+          "preventiveStorage",
+          "storageFreeSlots",
+          "storageTargetSlots",
+          "storageReplacementMinutes",
           "budgetMode",
           "accountLossWindowMs",
           "offlineGoldBalances",

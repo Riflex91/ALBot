@@ -17,6 +17,10 @@ FULL_DESCRIPTOR.schema.properties.general.properties.pauseOnUnknown={type:'boole
 Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{testLogging:bool('Fortlaufendes Testlog schreiben',true),transferIntervalMs:number('Neue Übergabe frühestens nach (ms)',250,250,10000)});
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
+ preventiveStorage:bool('Vorbeugende Inventar- und Bankplanung',true),
+ storageFreeSlots:number('Vorbeugende freie Inventarplätze',8,4,30),
+ storageTargetSlots:number('Arbeitsraum nach Entlastung',12,6,40),
+ storageReplacementMinutes:number('Maximale belegte Wiederbeschaffungszeit (Minuten)',60,1,1440),
  budgetMode:{type:'string',title:'Budgetmodus',enum:['bounded','account-loss'],default:'bounded'},
  accountLossWindowMs:number('Zeitfenster für rapiden Accountgoldverlust (ms)',900000,60000,3600000),
  offlineGoldBalances:{type:'array',title:'Bekannte Goldstände aktuell offline befindlicher eigener Charaktere',default:[],maxItems:128,items:{type:'object',additionalProperties:false,properties:{name:{type:'string',title:'Charakter',default:'',maxLength:80},gold:number('Gold',0,0,Number.MAX_SAFE_INTEGER)}}},

@@ -16,6 +16,7 @@ import {createRecovery} from './core/recovery.mjs';
 import {createTeamPlan} from './world/team-plan.mjs';
 import {createElixirs} from './items/elixirs.mjs';
 import {createEconomicIntelligence} from './production/intelligence.mjs';
+import {createStoragePlanner} from './merchant/storage-plan.mjs';
 import {createPriorityScheduler} from './core/priority.mjs';
 import {createServices} from './merchant/services.mjs';
 import {P3P4_DESCRIPTOR} from './config/p3p4.mjs';
@@ -161,7 +162,7 @@ export function install(root){
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
   if(cfg.world){bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
-  if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.elixirs=createElixirs(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.intelligence=createEconomicIntelligence(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);}
+  if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.elixirs=createElixirs(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);}
   const cleanup=[];
   const game=root.game??p.parent.game;if(bot.observations&&typeof game?.on==='function'&&typeof game?.remove==='function')for(const [event,handler] of [['hit',d=>{bot.observations.hit(d);bot.threats?.hit(d);bot.bosses?.hit(d);}],['death',d=>{bot.observations.death(d);bot.threats?.death(d);}],['trade',d=>bot.marketDemand?.sale(d)]].filter(([event])=>event!=='trade'||bot.marketDemand)){const id=game.on(event,handler);cleanup.push(()=>game.remove(id));}
   if(bot.services&&typeof p.c.on==='function'&&(typeof p.c.remove==='function'||typeof p.c.off==='function')){const events=p.c,handler=data=>bot.services.observeMerrit(data),id=events.on('merrit',handler);cleanup.push(()=>typeof events.remove==='function'?events.remove(id):events.off('merrit',handler));}

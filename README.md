@@ -1,8 +1,8 @@
-# ALBot 0.10.2-candidate – aktuell (13.10.2026)
+# ALBot 0.10.7-candidate – aktuell (14.10.2026)
 
-**Direkt einsetzbare [bot.js](bot.js)** mit automatischer Account-Erkennung und dem aktualisierten Merchant-Limit von **5.000.000 Gold pro Stunde**. Die Datei kombiniert das 0.10.2-Runtime-Bundle mit dem geprüften, namelosen Autokonfigurationsprofil. Sie kann nach einer Sicherung der bisherigen CODE-Datei in Adventure Land eingesetzt werden. Das Profil enthält keine fest konfigurierten Charakternamen oder Zugangsdaten.
+**Direkt einsetzbare [bot.js](bot.js)** mit automatischer Account-Erkennung, vorbeugender Lagerplanung und auf ausdrücklichen Benutzerwunsch `maxAggro=12`. Compounds und geprüfte Verkäufe können Platz schaffen, bevor Inventar und Bank vollständig belegt sind. Zufällige Exchanges müssen ihren ungünstigsten Slotbedarf gegen den freien Arbeitsraum prüfen. 3-shot darf drei freigegebene Ziele einschließlich neutraler Farmmonster treffen; die aktuelle Encounter-/Sicherheitsfreigabe bleibt zuständig. Persönliche Finanzsteuerung: `account-loss`, 85 % belegter Accountgoldverlust in 15 Minuten; vier bestätigte Offlinegold-Startwerte sind enthalten.
 
-Die modularen Quellcodes unter `src/` sind die Wartungsgrundlage; `npm ci && npm run build` erzeugt die allgemeine `dist/albot.js` und `npm run build:editor` die Werkstatt. Die Datei `bot.js` ist dagegen der zuletzt vom Nutzer ausgewählte **persönliche** Export. Änderungen aus PR #34 wurden unter Linux und Windows offline getestet (510/510 Tests pro System); echte Spiel-/Wertaktionen müssen noch live überprüft werden.
+Die modularen Quellcodes unter `src/` sind die Wartungsgrundlage; `npm ci && npm run build` erzeugt die allgemeine `dist/albot.js`, `npm run build:editor` die Werkstatt. Danach die persönliche `bot.js` mit `node scripts/sync-personal-code.mjs --write` aktualisieren. 801/801 Windows-Offlinetests bestanden; neue Liveabnahme offen. Basis ist der gemergte Stand `11a795d`. [Neue Logbefunde, Verhalten, Grenzen und Verwendung](docs/CHANGELOG-0.10.7.md).
 
 ---
 

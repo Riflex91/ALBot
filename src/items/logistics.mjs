@@ -153,7 +153,8 @@ export function createLogistics(bot){
     // exactly-four-slot fallback is still allowed until that state starts.
     const pressure=me.role==='merchant'&&cfg.merchant.enabled&&
       bot.merchant?.status?.()?.capacityRecovery===true;
-    const maxNewSlots=pressure&&!verifiedGear&&!verifiedElixir?0:Infinity;
+    const maxNewSlots=Math.min(pressure&&!verifiedGear&&!verifiedElixir?0:Infinity,
+      verifiedGear||verifiedElixir?Infinity:bot.storage?.receiveNewSlots?.()??Infinity);
     return Math.min(nominal,physicalReceiveCapacity(p.c.items,i,
       p.G.items[i.name],{maxNewSlots}));}
   function receive(from,m){

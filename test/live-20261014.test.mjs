@@ -9,6 +9,7 @@ import {defaultsFor} from '../editor/lib/contract.mjs';
 import {FULL_DESCRIPTOR} from '../src/config/full.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
 import {createBank} from '../src/merchant/bank.mjs';
+import {createStoragePlanner} from '../src/merchant/storage-plan.mjs';
 
 function fixture(name='M'){
  const cfg=defaultsFor(FULL_DESCRIPTOR.schema),store=new Map(),messages=[],calls=[];
@@ -29,6 +30,20 @@ function fixture(name='M'){
 }
 const swapData=()=>({out:'A',in:'C',original:['A','B'],originalLeader:'B',names:['B','C'],leader:'B',seq:1,realm:'EUII',until:Date.now()+120000});
 const swapMessage=(data=swapData())=>({type:'accountSwap',id:'swap1',session:'M1',data});
+test('preventive unallocated triple goes through real preview, budget journal and compound dispatcher',async()=>{
+ const {bot}=fixture();Object.assign(bot.cfg.merchant,{budgetMode:'account-loss',preventiveStorage:true,storageFreeSlots:8,storageTargetSlots:12});Object.assign(bot.cfg.production,{minChance:.7,enabled:true,compound:true,autonomy:true,purposeAllocation:true,goals:[]});
+ bot.p.G.items={ring:{compound:{},type:'ring',g:10,grades:[3,5]},cscroll0:{type:'cscroll',g:1,s:9999}};
+ bot.p.c.items=Array.from({length:42},()=>({name:'locked',l:true}));for(let n=0;n<3;n++)bot.p.c.items[n]={name:'ring',level:0};bot.p.c.items[3]={name:'cscroll0',q:44};
+ for(let n=38;n<42;n++)bot.p.c.items[n]=null;bot.free=()=>bot.p.c.items.filter(i=>!i).length;
+ let previews=0,mutations=0;bot.p.call=(name,...args)=>{
+  if(name==='item_grade')return 0;if(name==='item_value')return 10;if(name==='find_npc')return {map:'main',in:'main',x:0,y:0};
+  if(name==='compound'){if(args.at(-1)===true){previews++;return {chance:.99,cost:0};}mutations++;return true;}throw Error(name);
+ };
+ bot.intelligence={chance:()=>.99,recordChance(){},rules:()=>[],profitGoals:()=>[],disposition:()=>null};bot.bank={pending:false,capacityEvidence:()=>({rows:[{free:0}]}),catalogStock:()=>[],consolidateInventory:()=>false};
+ bot.economy=createEconomy(bot);bot.production=createProduction(bot);bot.storage=createStoragePlanner(bot);
+ assert.equal(bot.storage.tick(),true);await new Promise(r=>setImmediate(r));assert.equal(bot.storage.tick(),true);
+ assert.equal(previews,1);assert.equal(mutations,1);assert.equal(bot.economy.ledger.productionExposure,40);
+});
 test('merchant gold route waits for inventory preparation and does not repeat it en route',()=>{
  const {bot,peers,calls}=fixture();peers.get('A').goldSurplus=100000;peers.get('A').x=1000;let ready=false,preparations=0;
  bot.merchant={prepareGoldPickup:()=>{preparations++;return ready;}};bot.movement={order:null,go:(d,owner)=>{calls.push(owner);bot.movement.order={owner};},stop(){}};

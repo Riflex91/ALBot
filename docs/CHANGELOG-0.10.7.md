@@ -1,0 +1,55 @@
+# 0.10.7-candidate: vorbeugende Lagerplanung und Ranger-Zielauswahl
+
+Basis ist der gemergte GitHub-Stand `11a795d` vom 14.10.2026, einschließlich der Korrekturen aus PR #88 und #89. Diese Version setzt die anschließenden Benutzerwünsche um: Inventar-/Bankdruck möglichst vor einer Überfüllung lösen, passende Compounds vor riskanten Exchanges priorisieren, leicht ersetzbare nutzlose Bestände freigeben und `maxAggro` im persönlichen Profil auf **12** setzen.
+
+## Befunde der neuen Logs
+
+Alle acht Dateien aus Downloads wurden geprüft. Merchantlauf: 23:12:37 bis 23:19:16 Uhr Europe/Berlin, ungefähr 6 Minuten 39 Sekunden. Alle melden 0.10.6-candidate; die enthaltenen `capacityBlock`-/`productionContinuation`-Felder belegen die jüngeren gemergten Module. Die Versionsnummer allein unterschied diese Zwischenstände nicht.
+
+- 23 bestätigte Exchanges: **20 anniversarygift, 2 candy1, 1 gem0**.
+- 10 abgeschlossene Upgrade-Versuche, 2 abgeschlossene Compounds auf ringsj, 7 Entnahmen und 7 Einlagerungen.
+- Zwei Gearlieferungen mit anschließendem Equip bei Ranger2 und Ranger3. Diese Korrektur funktioniert in diesem Ausschnitt.
+- Keine Verkäufe. Sämtliche drei Farmer haben in ihren Testlogs keine begonnenen Angriffe und keine 3shot-Aufrufe. Sie pausieren neue Pulls wegen Merchant-Lagerdruck; die sichtbaren Loot-Aufrufe sind kein Nachweis neuer Kämpfe.
+- Merchant startet mit 0 freien Slots. Druckmeldungen zeigen später 2, 5, 4 und schließlich 3 freie Slots. Endbestand: 39 belegte Inventarplätze. Ranger2 meldet 15 und Ranger3 16 abgebrochene unversandte Angebote; daraus folgt kein Itemverlust.
+- Fünf hpamulet +0, vier ringsj +0 und zwei ringsj +1 bleiben unter anderem im Merchantinventar. Ein bloß vorhandenes Item ist kein Beleg einer freigegebenen Dreiergruppe; Reservierungen und genaue Varianten müssen geprüft werden.
+- Die früheren 1.600-fachen Bankmeldungen sind behoben: keine verdrängten Ereignisse, nur 10 allgemeine Meldungen in diesem Merchantlog.
+- Accountgoldprüfung am Export vollständig, Gesamtgold 21.781.609, keine ausgelöste Verlustsperre. Der Charakterwechsel bleibt in diesem kurzen Lauf unbewiesen.
+
+**Exchange-Ursache:** `production.exchange()` prüfte mit unbekanntem Output nur, ob nach dem Inputverbrauch ein physischer Ausgabeplatz vorhanden ist. Es prüfte weder das normale 4-Slot-Arbeitsminimum noch den aktiven Entlastungszustand. Die automatische Disposition wählte Exchanges anhand des erwarteten wirtschaftlichen Ertrags. Der Recoverypfad erlaubte Exchange ausdrücklich; die Depotphase konnte ebenfalls `workStage('exchange')` ausführen. Bei einem anniversarygift-Stapel von beispielsweise 526 Stück verbraucht der Vorgang ein Stück, lässt den Stapelslot aber belegt. Eine neue Itembelohnung kann somit einen zusätzlichen Slot beanspruchen. Der bestehende Guard verhinderte unmittelbare physische Unmöglichkeit, aber keine Verschärfung des Lagerdrucks.
+
+Live-Spieldaten Version 17665 wurden am Prüfzeitpunkt von `https://adventure.land/data.js` geladen. Die anniversarygift-Tabelle enthält Gold, verschachtelte Itembelohnungen und cxjar-Varianten; eine rein goldbasierte Planung genügt dafür nicht.
+
+## Neuer Ablauf
+
+Der neue Planer ist standardmäßig in Full-Profilen aktiv und verwendet bestehende Economy-/Production-/Bank-Dispatches, den gemeinsamen Executor und die vorhandenen Wertjournale. Er erzeugt keine zusätzlichen parallel laufenden Spielaktionen.
+
+1. **Vorbeugung:** bei höchstens 8 freien Inventarplätzen oder knappem belegtem Bankarbeitsraum Entlastung planen. Ziel sind 12 freie Inventarplätze. Normale Farmerbeute darf diese vorbeugende Reserve nicht aufbrauchen; kompatible vorhandene Stapel können weiterhin aufgefüllt werden. Belegtes Gear und Elixiere behalten ihre gesonderte physische Freigabe.
+2. **Gefahrlos zusammenführen und liefern:** vorhandene Stapelkonsolidierung und bereits ausführbare Gearlieferungen nutzen. Die normale Sicherheits-/Logistikprüfung bleibt zuständig.
+3. **Compounds:** gleiche ungeschützte Items, gleiche Level, gleiche Varianten zu ausführbaren Dreiergruppen zusammenstellen. Lokale Dreiergruppen haben Vorrang; beobachtete Bankkopien dürfen gezielt die fehlenden Teile einer Gruppe liefern. Vor Bankentnahmen muss die erforderliche Chance bekannt und ausreichend sein. Entnahmen müssen physisch Platz haben. Drei gewöhnliche Einzelitems werden bei Erfolg zu einem Item: mindestens zwei Gesamtplätze werden frei. Vor dem nächsten Level wird neu geprüft, nicht blind bis zum Ende weitergecompoundet.
+4. **Reserven erhalten:** manuelle Keep-Regeln, aktive Material-/Gearzuteilungen, funktionale Items, ungewöhnliche Varianten, explizite Mengen und mindestens ein vollständiger Rezeptbatch bleiben geschützt. Bank- und Inventarreserven werden gemeinsam berücksichtigt; ausgestattete Items und unbewiesene Offlinebestände gelten nicht als verkaufbares Reservebackup. Die normalen Mindestchancen und Ziellevel werden nicht abgesenkt.
+5. **Leicht ersetzbare Bestände verkaufen:** automatische Verkäufe benötigen normale ungeschützte +0-Items, keinen geplanten Bedarf, eine freigegebene Preisprüfung und einen belegten Ersatzweg. Ausrüstungsitems benötigen zusätzlich einen frischen Nachweis `no-gear-use`. Ersatzwege sind ein tatsächlich erreichbarer NPC-Verkauf oder ein sicheres reguläres Farmziel mit gemessener Teamrate und einer Wiederbeschaffungsprognose innerhalb von 60 Minuten beim konservativen p90-Modell. Ein kleiner NPC-Verkaufswert allein ist kein Freigabebeweis. Bei Datenlücken bleiben die Items geschützt.
+6. **Bank vor Überfüllung entlasten:** im tatsächlich beobachteten Bankbereich beginnt die Notfreigabe bereits bei knappem Arbeitsraum. Sie darf jetzt auch die vom Lagerplaner nachgewiesenen leicht ersetzbaren gewöhnlichen Gearitems freigeben; die alte pauschale Sperre sämtlicher upgrade-/compoundfähiger Bankitems gilt für diese konkret geprüften Freigaben nicht mehr. Entnahme, tatsächlicher NPC-Verkauf und Quittung werden weiterhin einzeln abgeglichen.
+7. **Exchanges simulieren:** Inputverbrauch und alle bekannten möglichen Outputzweige einschließlich verschachtelter Tabellen bestimmen den ungünstigsten Slotbedarf. Varianten werden konservativ als neue Slots eingeplant. Unter Entlastung bleiben Exchanges zurückgestellt, außer sie geben in jedem bekannten Ausgang tatsächlich einen Slot frei, etwa ein vollständig aufgebrauchter garantiert goldliefernder Stapel. Im Normalbetrieb muss auch nach dem ungünstigsten Ausgang die 8-Slot-Reserve verbleiben. Die Freigabe wird vor Planung und erneut beim Dispatch geprüft; damit gilt sie für direkte Regeln, Recovery, Depot und Produktionsketten.
+8. **Neu bewerten:** nach jeder bestätigten Änderung Bestände erneut prüfen. Nicht ausführbare Mutationen werden zeitlich zurückgestellt, damit andere Entlastung laufen kann. Ein abgelaufener Banknachweis verwandelt eine zuletzt belegte volle Bank nicht stillschweigend in eine leere; der Druck bleibt bis zur frischen Gegenbeobachtung bestehen.
+
+Ein Beispiel für einen sinnvollen Folgeschritt: drei gleiche hpamulet +0 können unter den obigen Bedingungen in ein hpamulet +1 überführt werden und zwei Plätze freigeben. Bereits vorhandene +1-Kopien können eine weitere Dreiergruppe bilden; vor dieser Aktion werden Chance, Reserve und Ziellevel erneut überprüft. Seltene oder benötigte Items werden nicht verkauft, um eine beliebige Platzquote zu erfüllen.
+
+Die Einstellungen heißen `merchant.preventiveStorage`, `storageFreeSlots=8`, `storageTargetSlots=12` und `storageReplacementMinutes=60`. Sie sind Planungs-/Qualitätsparameter, keine neuen finanziellen Ausgabenbudgets. Das mitgelieferte Benutzerprofil behält `budgetMode=account-loss`, das 15-Minuten-Fenster und die bestätigten Offlinegold-Startwerte bei. Allgemeine neue Profile dürfen weiterhin `bounded` wählen.
+
+## 3-shot und neutrale Ziele
+
+Die vorherige Zielgrenze war das Minimum aus Skilllimit, Regelgrenze, Party-AoE-Grenze **und `farming.maxAggro`**. Die übergebenen Profile enthielten `maxAggro=2`. Deshalb konnte 3-shot dort höchstens zwei Ziele auswählen, obwohl die Regel `maxTargets=15` hatte. `minTargets=2` bedeutet lediglich, dass ein Einsatz mit zwei zulässigen Zielen erlaubt ist.
+
+Jetzt sind Zielzahl und neue Pulls getrennt. Drei bereits an die eigene Gruppe gebundene zulässige Monster können gemeinsam getroffen werden. Neutrale Monster dürfen zum aktuellen freigegebenen Farmziel gehören und nur innerhalb der aktuellen BUILD-/Encounter-/Gefahrenfreigabe ergänzt werden. Monster fremder Gruppen bleiben ausgeschlossen. Auch die finale Dispatchprüfung prüft die neuen Pulls erneut.
+
+Auf ausdrücklichen Benutzerwunsch enthält die persönliche bot.js sowie der aktuelle Spielbotexport `farming.maxAggro=12`. Das ist eine Obergrenze, kein Auftrag, sofort zwölf Gegner anzuziehen. Der adaptive Encounterplaner, Party-/Skillgrenzen, Reichweite, Mana, Gesundheit und Lagerpause können die tatsächlich zulässige Anzahl weiter reduzieren. 3-shot hat weiterhin höchstens drei Ziele; die verwendete Mindestzielzahl 2 bleibt erhalten, damit der Ranger nicht unnötig auf einen dritten Gegner wartet.
+
+`skill.decision` enthält nun `targetCount`, `targetIds`, `engagedTargets`, `neutralTargets`, `targetLimit`, `newPullLimit` und `extraPullAllowance`. Die alten Logs protokollierten nur den ersten Zielnamen; rückwirkend lassen sich die tatsächlich gesendeten IDs daraus nicht zählen. In den neuesten Logs ist wegen Lagerpause kein 3-shot ausgeführt worden. Die neue Zielauswahl ist deshalb offline geprüft, noch nicht live abgenommen.
+
+## Prüfung und Verwendung
+
+801/801 Offline-Tests bestanden; gemeinsame Runtime, persönliche bot.js und eigenständige Werkstatt gebaut. Tests umfassen Exchange mit großer Inputrestmenge, gemischten/goldexklusiven/unknown/nested Outputs, vollen und veralteten Bankbeobachtungen, vorbeugendem Arbeitsraum, lokaler/bankgestützter Dreiergruppe, echten Compound-Preview-/Budget-/Journal-/Dispatch-Pfad, Varianten-/Keep-/Rezept-/Zielschutz, Ersatzweg und Gegenbeispiele, vorbeugende Bankfreigabe für gewöhnliches Gear, Abbruch einer verspäteten Verkaufsfreigabe nach neuer Reservierung sowie neutrale/already-engaged 3-shot-Ziele mit `maxAggro=12`. Keine echten Spielaktionen ausgeführt.
+
+Zum Spielen `ALBot-0.10.7-Spielbot.js` vollständig in die gespeicherten CODE-Slots des Merchants und aller aktiven Farmer übernehmen. Das Spielprofil stammt aus den neuesten Merchantlogs; gezielte neue Änderungen sind vorbeugende Lagerparameter und `maxAggro=12`. Logbelege und Profil liegen im Paket. GitHub-Basis und Patch sind angegeben; eine lokale Änderung ist noch kein Merge oder Livebeweis.
+
+Im neuen Testlauf müssen Entlastungspläne und bestätigte Compounds/Verkäufe sichtbar sein; anniversarygift muss bei aktivem Druck `storage.exchangeDeferred` zeigen. Neue 3-shot-Aufrufe sollen ihre tatsächlichen Zielzahlen/-IDs melden. Wenn ausschließlich geschützte oder nicht ausreichend belegte Bestände verbleiben, kann der Bot keine freie Kapazität garantieren. Er darf diese Situation nicht durch verdeckte Verkäufe oder riskante Mutationen umgehen.

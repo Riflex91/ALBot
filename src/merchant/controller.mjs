@@ -676,13 +676,14 @@ export function createMerchant(bot){
   if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
   // A delivery of already finished, allocated gear can release a physical
   // slot without selling protected production stock.
-  if(capacityRecovery&&bot.free()>(cfg.merchant.minFreeSlots??4)&&
+  if((capacityRecovery||bot.storage?.active)&&bot.free()>(cfg.merchant.minFreeSlots??4)&&
     bot.logistics?.actionableGearDelivery?.()){
    bot.logistics.travel?.();
    if(bot.movement.order?.owner==='logistics'||bot.logistics?.handoffActive||
     (bot.farmers??[]).some(n=>{const h=bot.transport?.fresh?.(n);
      return h?.running&&samePlace(p.c,h)&&distance(p.c,h)<=200;}))return;
   }
+  if(bot.storage?.tick?.())return;
   if(relieveInventoryPressure())return;
   // Deliver a missing starter weapon before another pickup journey takes
   // control. The usual user rules, per-goal budgets and slot limits apply.
@@ -820,5 +821,5 @@ export function createMerchant(bot){
    capacityBlock?'SAFE_MARGIN_BLOCKED':'NORMAL',
    capacityBlock:capacityBlock?{reason:capacityBlock.reason,free:capacityBlock.free,
     requiredFree:Math.max(8,(cfg.merchant.minFreeSlots??4)+4),retryAt:capacityBlock.until}:null,
-   productionContinuation:productionContinuation?{...productionContinuation}:null,depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+   storagePlan:bot.storage?.status?.()??null,productionContinuation:productionContinuation?{...productionContinuation}:null,depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

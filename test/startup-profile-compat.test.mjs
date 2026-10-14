@@ -16,11 +16,12 @@ function personalConfig(){
  return JSON.parse(content.slice(start+'globalThis.ALBotConfig='.length,runtime).trim().replace(/;$/,''));
 }
 
-test('personal 0.10.6 CODE explicitly contains all three merchant defaults and validates',()=>{
+test('personal CODE carries the requested account-loss policy and validates new storage settings',()=>{
  const config=personalConfig();
- assert.equal(config.merchant.budgetMode,'bounded');
+ assert.equal(config.merchant.budgetMode,'account-loss');
  assert.equal(config.merchant.accountLossWindowMs,900000);
- assert.deepEqual(config.merchant.offlineGoldBalances,[]);
+ assert.deepEqual(config.merchant.offlineGoldBalances.map(r=>r.gold),[0,0,0,0]);
+ assert.equal(config.merchant.preventiveStorage,true);assert.equal(config.farming.maxAggro,12);
  assert.equal(startupDescriptor(config),FULL_DESCRIPTOR);
  assert.deepEqual(validateProfile(FULL_DESCRIPTOR,config),[]);
 });
@@ -38,7 +39,8 @@ test('old saved personalized CODE starts after missing merchant fields are compl
  assert.equal(repaired.merchant.accountLossWindowMs,900000);
  assert.deepEqual(repaired.merchant.offlineGoldBalances,[]);
  assert.deepEqual(validateProfile(FULL_DESCRIPTOR,repaired),[]);
- assert.deepEqual(repaired,personalConfig(),
+ const expected=personalConfig();expected.merchant.budgetMode='bounded';expected.merchant.accountLossWindowMs=900000;expected.merchant.offlineGoldBalances=[];
+ assert.deepEqual(repaired,expected,
   'no existing custom farmer, merchant or world settings are changed');
 });
 

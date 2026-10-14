@@ -118,7 +118,7 @@ export function createBank(bot){
    if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint||catalog.gold!==p.c.bank?.gold||Date.now()-catalog.observedAt>120000){
     // New verified visit or a server-observable bank state revision.
     const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),gold:Number.isSafeInteger(p.c.bank?.gold)&&p.c.bank.gold>=0?p.c.bank.gold:null,
-     revision:(catalog.revision??0)+1,rows:current};
+     revision:(catalog.revision??0)+1,rows:current,capacity:rows.map(([pack,items])=>({pack,map:packMap(pack),size:items.length,free:items.filter(i=>!i).length}))};
     // Verified in-session evidence is useful even in a minimal or readonly
     // client; persistence is best effort and never grants mutation authority.
     catalog=next;observed=true;
@@ -376,6 +376,8 @@ export function createBank(bot){
  function eligibleBankSale(item){
   if(!e.safe(item)||item.data!==undefined||item.p||item.title||item.stat_type||item.acc||item.rid||item.skin||item.expires||item.special||item.v||(item.level??0)>0)return null;
   const meta=p.G.items?.[item.name],price=e.value(item),explicit=e.explicit(item),original=explicit??e.rules(item);
+  const planned=bot.storage?.lowQualityRule?.(item);
+  if(planned)return {r:planned,price,lossScore:price+1000/Math.max(1,item.q??1)};
   // Under confirmed bank pressure, allow only a bounded, plain low-value
   // material to be sold even if autonomous disposition normally stores it.
   // An explicit user bank/keep/protection rule always wins.
@@ -397,9 +399,9 @@ export function createBank(bot){
   if(!Number.isFinite(rarity)||!Number.isFinite(difficulty)||rarity<0||difficulty<0)return null;
   return {r,price,lossScore:price+rarity*1000000+difficulty*100000+1000/Math.max(1,item.q??1)};
  }
- function reclaim(){
+ function reclaim(preventiveWorkspace=null){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<1)return false;
-  const rows=packs(),workspace=Math.max(0,cfg.merchant.bankWorkspace??2);
+  const rows=packs(),workspace=Math.max(0,Number.isSafeInteger(preventiveWorkspace)?Math.min(40,preventiveWorkspace):cfg.merchant.bankWorkspace??2);
   const bankPressure=bankCapacityPressure(rows.map(([pack,items])=>({
    map:packMap(pack),items
   })),workspace,p.c.map);
@@ -474,5 +476,5 @@ export function createBank(bot){
  // Safe consolidation precedes evidence-based, rule-bound bank reclaim.
  function audit(){if(!cfg.merchant.bank||!p.c.bank||bot.inventoryBlocked||bot.journal)return false;
   return consolidateInventory()||consolidate()||consolidateAcross()||reclaim();}
- return {goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {capacityEvidence(){packs();return catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Array.isArray(catalog.capacity)?{at:catalog.observedAt,rows:catalog.capacity.map(r=>({...r}))}:null;},goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

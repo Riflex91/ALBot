@@ -397,13 +397,22 @@ export function createLogistics(bot){
         if(!i||!p.G?.items?.[i.name]||protectedItem(i))continue;
         const sig=signature(i);variants.set(JSON.stringify(sig),sig);
       }
+      // Merchant's implicit one-to-one achievement delivery is a real
+      // pending handoff, not a generated user rule. Advertise only that
+      // verified delivery in the compact summary, without exposing all of
+      // the Merchant's carried equipment as speculative offers.
+      if(me.role==='merchant')for(const i of p.c.items??[]){
+        if(!i||!isAchievementCarrier(i)||!achievementRecipient(i))continue;
+        const sig=signature(i);variants.set(JSON.stringify(sig),sig);
+      }
       if(me.role==='farmer')for(const name of ['hpot0','mpot0']){
         const item={name,level:0,stat_type:'',p:'',title:''};
         if(isPotion(item)&&!variants.has(JSON.stringify(item)))variants.set(JSON.stringify(item),item);
       }
       const all=[...variants.values()],result=[];let bytes=0;
       for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),
-        transfer=me.role==='farmer'?sendRule(item,cfg.party.merchant):null,
+        transfer=me.role==='farmer'?sendRule(item,cfg.party.merchant):
+          isAchievementCarrier(item)?sendRule(item,achievementRecipient(item)):null,
         countNow=count(item),row={item:item.name,variant:item,
         need:r?demandFor(r,countNow):defaultPotionDemand(item,countNow),
         held:isPotion(item)?countNow:undefined,

@@ -1,4 +1,5 @@
 import {carriedAchievementCarrier} from '../items/achievement-utility.mjs';
+import {createAchievementScores} from './achievement-scores.mjs';
 // The official Guide observes fights but does not execute its advice.
 // Only small, validated hints enter the existing scheduler; all action guards stay.
 export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false){
@@ -16,6 +17,7 @@ export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false)
 }
 export function createProgression(bot){
  const {p,cfg,me}=bot;let cached=null,last=0,definitions=null,statusReason='not-read',lastError=0;
+ const trackerScores=createAchievementScores(bot);
  const enabled=()=>cfg.production?.progressionAdvice===true;
  const options=()=>{
   const g=cfg.production?.goals?.find(x=>x.enabled&&typeof x.item==='string'&&p.G.items?.[x.item]&&Number.isSafeInteger(x.quantity)&&x.quantity>0);
@@ -28,6 +30,9 @@ export function createProgression(bot){
   return {goal,spendLimit,allowPvp:false};
  };
  function refresh(force=false){
+  // This is account-wide read-only evidence, independent of the optional
+  // official progression-advice switch. The socket request is rate-limited.
+  trackerScores.poll();
   if(!enabled()){statusReason='disabled';return null;}
   const now=Date.now(),ttl=Math.max(15000,cfg.general.planningTickMs??15000);
   if(!force&&definitions===p.G&&now-last<ttl)return cached;
@@ -62,5 +67,5 @@ export function createProgression(bot){
   const state=refresh(),goal=state?.goal;
   return state?.itemPlanned&&goal?.kind==='item'&&g.item===goal.name&&g.level===goal.level?0.1:0;
  }
- return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0,achievementCarrier:carriedAchievementCarrier(p.c.items),farmerCarriers:(bot.farmers??[]).map(name=>({name,carrier:name===me.name?carriedAchievementCarrier(p.c.items):bot.transport?.fresh?.(name)?.achievementCarrier??'unknown'}))}),close(){p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
+ return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0,trackerScores:trackerScores.status(),achievementCarrier:carriedAchievementCarrier(p.c.items),farmerCarriers:(bot.farmers??[]).map(name=>({name,carrier:name===me.name?carriedAchievementCarrier(p.c.items):bot.transport?.fresh?.(name)?.achievementCarrier??'unknown'}))}),close(){trackerScores.close();p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
 }

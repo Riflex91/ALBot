@@ -25,6 +25,8 @@ export function createPorts(root){
     // wrapper owns a shared singleton; stopping ALBot must not detach listeners
     // still in use by the game or another code client.
     closeProgression(){try{progressionRuntime?.detach?.();}catch{}progressionRuntime=null;progressionDefinitions=null;},
+    // Only a read-only tracker observation request; no user-item operations.
+    trackerSocket(){return parent?.socket??null;},
     call(name,...args){const f=find(name);if(!f)throw Error('Spiel-API fehlt: '+name);return f[1].apply(f[0],args);},
     get c(){return root.character;},get G(){return root.G??parent.G;},get entities(){return parent.entities??{};},
     realm(){return String(parent.server_region??root.server_region??'')+String(parent.server_identifier??root.server_identifier??'');},

@@ -16,7 +16,8 @@ function fixture({tokens=4,own='tracker',peerCarrier=null,free=12,
   journal:false};
  const G={tokens:{monstertoken:{tracker:price}},
   items:{tracker:{type:'tracker'},supercomputer:{type:'computer'},
-   monstertoken:{type:'token'}}};
+   monstertoken:{type:'token',npc:'monsterhunter',g:12000}},
+  npcs:{monsterhunter:{role:'monstertokens'}}};
  const p={c,G,realm:()=> 'EUII',
   read:key=>records.get(key)??null,
   write:(key,value)=>{
@@ -65,6 +66,8 @@ test('verified four-token exchange is exactly one journalled purchase for one mi
  assert.equal(f.c.items.filter(i=>i?.name==='tracker').length,2);
  assert.equal(f.c.items.some(i=>i?.name==='monstertoken'),false);
  assert.equal(f.actions[0].kind,'tracker.exchange');
+ assert.equal(f.actions[0].job.loss,48000,
+  'four Monster Tokens are counted against the Economy loss budget');
  assert.deepEqual(f.actions[0].job.slots,[0]);
  assert.equal(f.actions[0].job.details.tokensSpent,4);
  assert.equal(f.acquisition.status().pendingRecipient,'Ranger');
@@ -140,4 +143,37 @@ test('unknown persisted intent freezes future token spending rather than resetti
  assert.equal(f.acquisition.tick(),false);
  assert.equal(f.acquisition.status().reason,'invalid-durable-state');
  assert.equal(f.calls.length,0);
+});
+
+test('unverified token NPC mapping or NPC identity never authorizes spending',()=>{
+ const cases=[
+  f=>{f.G.items.monstertoken.npc='other';},
+  f=>{delete f.G.items.monstertoken.npc;},
+  f=>{f.G.npcs.monsterhunter.role='merchant';},
+  f=>{delete f.G.npcs.monsterhunter;},
+  f=>{delete f.G.items.monstertoken.g;},
+  f=>{f.G.items.monstertoken.g=-1;},
+  f=>{f.G.items.monstertoken.g=Infinity;}
+ ];
+ for(const mutate of cases){
+  const f=fixture();mutate(f);
+  assert.equal(f.acquisition.eligible(),false);
+  assert.equal(f.acquisition.tick(),false);
+  assert.deepEqual(f.calls,[]);
+ }
+});
+test('token valuation/NPC drift after planning rejects dispatch under the original checkpoint',()=>{
+ const f=fixture();
+ let guard;
+ f.bot.economy.perform=(kind,job)=>{guard=job.guard;return true;};
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(guard(),true);
+ f.G.items.monstertoken.g=13000;
+ assert.equal(guard(),false,'price change revokes previously authorized token exchange');
+ assert.deepEqual(f.calls,[]);
+ const next=fixture();
+ next.bot.economy.perform=(kind,job)=>{guard=job.guard;return true;};
+ next.acquisition.tick();
+ next.G.npcs.monsterhunter.role='merchant';
+ assert.equal(guard(),false,'NPC identity change revokes planned token consumption');
 });

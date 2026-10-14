@@ -23,6 +23,26 @@ export function planPickupCapacity(rows,{
   missing:Math.max(0,target-Math.max(0,free)),
   ready:offers>0&&target===0||offers>0&&free>=target};
 }
+/**
+ * Soft capacity objective for an advertised pickup, separate from the hard
+ * per-batch reserve enforced by planPickupCapacity(). The advertised number
+ * of distinct variants that actually require new slots is authoritative;
+ * the peer's unverified lootSlots hint is not permission for extra banking
+ * or selling. Reserve a little working space only for a multi-variant tour.
+ *
+ * This is a cleanup preference, never a veto of a physically feasible pickup.
+ */
+export function pickupOperatingTarget(plan,{reserve=4,inventorySize=42}={}){
+ const size=Number.isSafeInteger(inventorySize)&&inventorySize>0?inventorySize:0;
+ const slots=Number.isSafeInteger(plan?.slotOffers)&&plan.slotOffers>0?
+  plan.slotOffers:0;
+ if(!slots||!size)return 0;
+ const base=Number.isSafeInteger(reserve)&&reserve>=0?reserve:4;
+ const batch=Number.isSafeInteger(plan?.target)&&plan.target>0?plan.target:0;
+ const buffer=Math.min(4,Math.floor(slots/3));
+ return Math.min(size,Math.max(batch,base+Math.min(32,slots+buffer)));
+}
+
 // A cleanup must free a *whole slot*. Partial stack transfers are not a
 // pickup capacity gain and could consume extra temporary workspace.
 // The normal keep amount is an *inventory* reserve; moving an automatically

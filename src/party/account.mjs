@@ -152,7 +152,7 @@ export function createAccount(bot){
    return {...c,class:c.class==='auto'?seen?.class??own?.class??g?.class??'auto':c.class,
     level:seen?.level??own?.level??g?.level??0,xp:own?.xp??null,maxXp:own?.maxXp??null,
     running:!!seen?.running,rip:!!seen?.rip,hp:seen?.hp,max_hp:seen?.max_hp,
-    stats:seen?.gear?.stats??g?.stats};
+    stats:seen?.gear?.stats??seen?.stats??g?.stats};
   });
   const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();
   const bossObjective=bot.bosses?.objective();
@@ -173,7 +173,9 @@ export function createAccount(bot){
   bot.accountChoice={names:target,reason:training?'Levelausgleich aus belegten Charakterleveln (kein Wechsel ohne Rückstand und Mindesthaltezeit)':
    cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder',
    catchUp:swap??null,nextEligibleAt:training?changed+Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000):null};
-  const elected=cfg.party.leader||chooseCombatLeader(members.filter(x=>target.includes(x.name)))||bot.leader;
+  const elected=cfg.party.leader||chooseCombatLeader(members.filter(x=>target.includes(x.name)))||
+   (target.includes(bot.leader)?bot.leader:null)||
+   target.find(name=>members.some(x=>x.name===name&&x.running))||target[0]||bot.leader;
   if(JSON.stringify(target)===JSON.stringify(bot.farmers)){if(elected!==bot.leader&&apply(target,elected)){sequence++;bot.event('account.leader',{leader:elected,reason:'Bekannte aktuelle Fähigkeiten, Schutz und Kampfstärke'});}return;}
   const out=bot.farmers.find(n=>!target.includes(n)),into=target.find(n=>!bot.farmers.includes(n));
   if(!out||!into||out===me.name||!p.has('stop_character')||!p.has('start_character')||!p.has('get_active_characters'))return;

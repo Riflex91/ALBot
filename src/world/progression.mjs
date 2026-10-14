@@ -63,8 +63,8 @@ export function createProgression(bot){
   // The optional official Guide adds a small separate hint. Verified
   // account milestone proximity is available even with Guide advice off,
   // but only for current carried-Tracktrix proof, never stale estimates.
-  const guide=enabled()?refresh()?.rows.some(x=>
-    x.monster===monster&&(!map||x.map===map))?.06:0;
+  const guide=enabled()&&refresh()?.rows.some(x=>
+    x.monster===monster&&(!map||x.map===map)) ? .06 : 0;
   return Math.min(.10,guide+(trackerScores.bonus(monster)??0));
  }
  function goalPriority(g){

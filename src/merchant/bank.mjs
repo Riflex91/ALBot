@@ -181,11 +181,17 @@ export function createBank(bot){
   // when equivalent destinations are already reachable here.
   const eligible=rows.filter(([pack,items])=>(!r.pack||r.pack===pack)&&
     !!packMap(pack)&&items.filter(i=>!i).length>workspace);
-  const preferred=r.pack||
-    eligible.find(([pack])=>packMap(pack)===p.c.map)?.[0]||
-    eligible[0]?.[0]||
-    rows.find(([pack])=>packMap(pack)===p.c.map)?.[0]||
-    rows[0]?.[0]||'items0';
+  // Full or workspace-reserved packs are not destinations. Never leave
+  // an upgrade NPC merely to re-observe the same full bank. While physically
+  // at the bank, reversible consolidation/expansion/reclaim remain available.
+  const preferred=eligible.find(([pack])=>packMap(pack)===p.c.map)?.[0]||
+    eligible[0]?.[0]||null;
+  if(!preferred){
+   if(p.c.map!=='bank')return false;
+   if(consolidate()||!r.pack&&expand()||reclaim())return true;
+   e.note('Bank voll: kein belegter freier Ablageplatz; keine weitere Bankfahrt');
+   return false;
+  }
   if(!ready(preferred))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;

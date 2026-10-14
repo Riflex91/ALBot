@@ -161,3 +161,57 @@ test('unrecoverable full inventory reports an explicit safe-capacity blocker',()
  assert.ok(f.events.some(e=>e.type==='merchant.inventoryPressure'&&
   e.code==='NO_SAFE_CAPACITY'&&e.free===0));
 });
+
+test('under inventory pressure the admitted upgrade NPC route is resumed before another bank trip',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ for(let i=39;i<42;i++)f.items[i]=null;
+ f.bot.cfg.production.enabled=true;
+ f.bot.cfg.merchant.bank=true;
+ f.bot.logistics.travel=()=>{};
+ let attempts=0;
+ f.bot.production={status:()=>({steps:[{kind:'upgrade',item:'poker',level:3}]}),
+  tick:()=>{
+   attempts++;
+   if(attempts===1){f.bot.movement.order={owner:'economy',dest:{map:'main',x:-207,y:-220}};return true;}
+   f.bot.journal={kind:'upgrade'};return true;
+  }};
+ const merchant=createMerchant(f.bot);
+ merchant.tick();assert.equal(attempts,1);
+ assert.equal(merchant.status().productionContinuation.item,'poker');
+ f.bot.movement.order=null;
+ merchant.tick();
+ assert.equal(attempts,2,'upgrade must be attempted after NPC arrival');
+ assert.equal(f.calls.filter(x=>x.startsWith('bank:')).length,0);
+ assert.equal(merchant.status().productionContinuation,null);
+});
+
+test('an exhausted recovery at seven free slots releases team pressure but retains diagnosis',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ for(let i=35;i<42;i++)f.items[i]=null;
+ f.bot.logistics.travel=()=>{f.bot.movement.order={owner:'logistics'};};
+ const merchant=createMerchant(f.bot);
+ // Enter recovery with 3 free slots first.
+ for(let i=35;i<39;i++)f.items[i]={name:'protected',level:0,q:1};
+ merchant.tick();assert.equal(merchant.status().capacityRecovery,true);
+ for(let i=35;i<39;i++)f.items[i]=null;
+ merchant.tick();
+ assert.equal(merchant.status().capacityRecovery,false,'farm must not be frozen at 7 free');
+ assert.equal(merchant.status().capacityState,'SAFE_MARGIN_BLOCKED');
+ assert.equal(merchant.status().capacityBlock.requiredFree,8);
+ assert.equal(merchant.status().capacityBlock.reason,'NO_ACTIONABLE_CAPACITY');
+});
+
+test('actionable finished gear is routed before speculative bank cleanup',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ for(let i=35;i<42;i++)f.items[i]=null;
+ for(let i=35;i<39;i++)f.items[i]={name:'protected',level:0,q:1};
+ let deliveries=0;
+ f.bot.logistics.actionableGearDelivery=()=>true;
+ f.bot.logistics.travel=()=>{deliveries++;f.bot.movement.order={owner:'logistics'};};
+ const merchant=createMerchant(f.bot);
+ merchant.tick();assert.equal(merchant.status().capacityRecovery,true);
+ for(let i=35;i<39;i++)f.items[i]=null;
+ merchant.tick();
+ assert.equal(deliveries,1,'an allocated gear handoff should be prioritized');
+ assert.deepEqual(f.calls,[],'no speculative bank or sale transfer');
+});

@@ -30,7 +30,7 @@ export function purchaseFits(items,item,quantity,meta){
  return !!planned&&planned.units>=quantity;
 }
 export function createEconomy(bot){
- const {p,cfg,me,exec}=bot;let closed=false,lastMessage='',lastMessageAt=0,npcEpoch=-1;const npcCache=new Map();const ruleActions=new Map();
+ const {p,cfg,me,exec}=bot;let closed=false,npcEpoch=-1;const noteTimes=new Map();const npcCache=new Map();const ruleActions=new Map();
  const actionKey=r=>JSON.stringify([r.name,r.item,r._originalAction??r.action,r.character,r.recipient,r.minLevel,r.maxLevel]);
  const remaining=r=>!r?.maxActions||(ruleActions.get(actionKey(r))??0)<r.maxActions;
  const ledgerKey='albot:economy:'+me.name+':budget';
@@ -50,7 +50,17 @@ export function createEconomy(bot){
  const goalId=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,g.gearSlot??'']);
  function goalSpent(g){const index=cfg.production.goals.indexOf(g);return Math.max(ledger.goals[goalId(g)]??0,index>=0?ledger.goals[String(index)]??0:0);}
  function goalBudget(cost,loss,item){const goal=bot.production?.activeGoal;return cost+loss===0||!goal||!(bot.production.owns?.(item)??true)||(Object.hasOwn(ledger.goals,goalId(goal))||Object.keys(ledger.goals).length<1024)&&goalSpent(goal)+cost+loss<=goal.budget;}
- function note(s){bot.reason=s;if(lastMessage!==s||Date.now()-lastMessageAt>30000){lastMessage=s;lastMessageAt=Date.now();bot.report(s);}}
+ function note(s){
+   bot.reason=s;
+   // Bank pressure alternates two different messages. A global 'last
+   // message' throttle does not protect the report ring from that pattern.
+   const key=/^(?:Bank voll|Bankdruck)/.test(s)?s.split(':')[0]:s;
+   const now=Date.now();
+   if(now-(noteTimes.get(key)??-Infinity)<60000)return;
+   if(noteTimes.size>=128)for(const [old,at] of noteTimes)if(now-at>60000)noteTimes.delete(old);
+   if(noteTimes.size>=128)noteTimes.delete(noteTimes.keys().next().value);
+   noteTimes.set(key,now);bot.report(s);
+  }
  const bankExpansionAvailable=cost=>Number.isSafeInteger(cost)&&cost>0&&
    (cfg.merchant.budgetMode==='account-loss'||cost<=bankExpansionRemaining(cfg.merchant.bankBudget,ledger.bankSpent??0));
  const exposure=()=>ledger.productionExposure===undefined?ledger.loss:Number.isSafeInteger(ledger.productionExposure)&&ledger.productionExposure>=0?ledger.productionExposure:Infinity;

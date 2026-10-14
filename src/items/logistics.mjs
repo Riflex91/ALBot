@@ -74,7 +74,7 @@ export function createLogistics(bot){
   const achievementRecipient=item=>me.role==='merchant'&&
     cfg.merchant.enabled&&cfg.merchant.supply&&isAchievementCarrier(item)&&
     !explicitInventory(item)&&!bot.economy?.explicit(item)&&
-    bot.production?.reservedQuantity?.(item)!==1?
+    (bot.production?.reservedQuantity?.(item)??0)===0?
     carrierRecipient(bot.farmers,name=>transport.fresh(name),p.realm()):null;
   const achievementRule=(item,to)=>achievementRecipient(item)===to?
     {enabled:true,name:'Tracktrix-Teambonus an '+to,

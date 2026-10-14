@@ -35,15 +35,23 @@ export function createTeamTravel(bot){
   home=next;return true;
  }
  function registry(){const external=p.root.ALBotServerRegistry??p.parent.ALBotServerRegistry;const official=external==null;const raw=external??p.parent.X?.servers??[];if(raw!==registryRef){registryRef=raw;registryAt=Date.now();}return normalizeServerRegistry(raw,registryAt,official);}
- function admission(realm){return cfg.general.testLogging===undefined||assessServerHop(registry().find(s=>s.realm===realm),history,Date.now(),{pvp:cfg.farming.pvp,cooldown:w.hopCooldownMs}).allowed;}
+ // Verify an online NORMAL server from the current registry rather than
+ // trusting a past selection or any PvP flag on the character.
+ function destinationNormal(realm){
+  if(!nonPvpRealm(realm)||!w.allowedRealms.includes(realm))return false;
+  const matches=registry().filter(s=>s.realm===realm);
+  return matches.length===1&&matches[0].online===true&&matches[0].mode==='NORMAL';
+ }
+ function admission(realm){return destinationNormal(realm)&&
+  (cfg.general.testLogging===undefined||assessServerHop(registry().find(s=>s.realm===realm),history,Date.now(),{pvp:false,cooldown:w.hopCooldownMs}).allowed);}
  const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
  const realmAllowed=realm=>nonPvpRealm(realm)&&!cfg.farming.pvp&&admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm);
  function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
   hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm},hop.id);return true;
  }
- function applyHop(){if(!hop||!safe())return false;const realm=hop.realm;if(!p.write('albot:hop:'+me.name,Date.now()))return false;
-  history=[...history.filter(t=>Date.now()-t<3600000),Date.now()].slice(-16);if(!p.write('albot:hop-history:'+me.name,history))return false;hopAt=Date.now();const started=exec.run('server.hop',['lifecycle'],()=>bot.running&&!bot.journal,()=>{bot.pause('Serverwechsel: '+realm);try{return Promise.resolve(p.call('change_server',realm.slice(0,2),realm.slice(2))).catch(error=>bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error)));}catch(error){bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error));}},{delay:w.hopCooldownMs});hop=null;return started;
+ function applyHop(){if(!hop||!safe()||!destinationNormal(hop.realm))return false;const realm=hop.realm;if(!p.write('albot:hop:'+me.name,Date.now()))return false;
+  history=[...history.filter(t=>Date.now()-t<3600000),Date.now()].slice(-16);if(!p.write('albot:hop-history:'+me.name,history))return false;hopAt=Date.now();const started=exec.run('server.hop',['lifecycle'],()=>bot.running&&!bot.journal&&destinationNormal(realm),()=>{if(!destinationNormal(realm))return false;bot.pause('Serverwechsel: '+realm);try{return Promise.resolve(p.call('change_server',realm.slice(0,2),realm.slice(2))).catch(error=>bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error)));}catch(error){bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error));}},{delay:w.hopCooldownMs});hop=null;return started;
  }
  function receive(from,m){
   if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()){

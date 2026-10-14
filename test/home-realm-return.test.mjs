@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assessHomeSpawn,chooseHomeFallback} from '../src/world/servers.mjs';
-import {createTeamTravel} from '../src/party/travel.mjs';
+import {assessServerHop,assessHomeSpawn,chooseHomeFallback} from '../src/world/servers.mjs';
+import {createTeamTravel,nonPvpRealm,normalizeServerRegistry} from '../src/party/travel.mjs';
 test('home realm requires sustained spawn observation before judging crowding',()=>{
  const base={realm:'EUII',home:'EUII',enteredAt:1000,checkMs:90000,threshold:.65};
  assert.equal(assessHomeSpawn({...base,now:60999,pressure:.95}).state,'checking');
@@ -57,4 +57,49 @@ test('USIV -> EUII probe -> crowded fallback holds ten-minute persisted retry',(
   const retry=make();retry.tick();
   assert.equal(retry.status().hop?.realm,'EUII');
  }finally{Date.now=old;}
+});
+
+test('official EU and US numbered realms are eligible; PvP names and modes are always rejected',()=>{
+ const roman=['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+ const official=['EU','US'].flatMap(region=>roman.map(id=>region+id));
+ assert.equal(official.length,20);
+ for(const realm of official)assert.equal(nonPvpRealm(realm),true,realm);
+ for(const realm of ['EUPVP','USpVp','EUIIPvP','USI-PVP','PVP','ASIAI','EU','USIIIPVP'])
+  assert.equal(nonPvpRealm(realm),false,realm);
+ const at=100000,base={realm:'EUII',mode:'NORMAL',online:true,at};
+ assert.equal(assessServerHop(base,[],at,{pvp:false,cooldown:60000}).allowed,true);
+ assert.equal(assessServerHop({...base,mode:'PVP'},[],at,{pvp:true,cooldown:60000}).allowed,false,
+  'PvP remains forbidden regardless of the farming flag');
+ assert.equal(assessServerHop({...base,name:'eu-pVp'},[],at,{pvp:false,cooldown:60000}).allowed,false);
+ const registry=normalizeServerRegistry([{region:'EU',name:'II',mode:'pVp',online:true,players:1}],at);
+ assert.equal(registry[0].mode,'PVP');
+});
+test('server hop is aborted if the official destination becomes PvP before commit',async()=>{
+ const original=Date.now;let now=1000000;Date.now=()=>now;
+ try{
+  let mode='NORMAL';const changes=[];
+  const root={ALBotServerRegistry:[]};
+  const update=()=>{root.ALBotServerRegistry=[{realm:'EUII',mode,online:true,players:0,at:now}];};
+  update();
+  const store=new Map();
+  const bot={me:{name:'A'},leader:'A',farmers:['A'],session:'one',
+   cfg:{general:{testLogging:true},farming:{pvp:false},party:{merchant:''},
+    world:{serverHop:true,allowedRealms:['EUII','USII'],homeRealm:'',
+     hopCooldownMs:60000,magiport:false,autoHop:false}},
+   running:true,journal:null,inventoryBlocked:false,bank:{pending:false},
+   logistics:{reserved:false},monsters:()=>[],movement:{stop(){}},
+   transport:{fresh:()=>null,send:()=>Promise.resolve(true)},
+   exec:{pending:new Map(),run:(kind,locks,guard,fn)=>guard()&&fn()},
+   p:{root,parent:{},c:{name:'A',rip:false,q:{},ctype:'ranger'},
+    realm:()=> 'USII',read:k=>store.get(k)??null,
+    write:(k,v)=>{store.set(k,v);return true;},
+    call:(name,...args)=>{changes.push([name,...args]);return Promise.resolve(true);}},
+   pause(){},report(){},event(){}};
+  const travel=createTeamTravel(bot);
+  assert.equal(travel.requestHop('EUII'),true);
+  mode='PVP';update();
+  travel.tick();await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(changes,[],'not even a previously planned hop may enter PvP');
+  assert.equal(travel.requestHop('EUIIPVP'),false);
+ }finally{Date.now=original;}
 });

@@ -27,7 +27,7 @@ import {createStrategy} from './world/strategy.mjs';
 import {createBehavior} from './core/behavior.mjs';
 import {createAccount} from './party/account.mjs';
 import {createProgression} from './world/progression.mjs';
-import {createTeamTravel} from './party/travel.mjs';
+import {createTeamTravel,nonPvpRealm} from './party/travel.mjs';
 import {createAura} from './party/aura.mjs';
 import {ECONOMY_DESCRIPTOR} from './config/live-b.mjs';
 import {createEconomy} from './merchant/economy.mjs';
@@ -97,7 +97,7 @@ export function install(root){
     if(![FULL_DESCRIPTOR,P3P4_DESCRIPTOR].includes(descriptor))errors.push(...validateProfile(DESCRIPTOR,full));
     if(value.party.selection!=='adaptive'&&value.characters.filter(c=>c.enabled&&c.role==='farmer'&&c.group===value.party.group).length>value.party.maxFarmers)errors.push('Mehr aktive Farmer als maxFarmers.');
     if(value.world&&value.characters.filter(c=>c.enabled&&c.role==='farmer').length>20)errors.push('Höchstens 20 Farmer im Account-Roster.');
-    if(value.world?.serverHop&&(!value.world.allowedRealms.length||value.world.allowedRealms.some(r=>!/^([A-Z]{2})([A-Za-z0-9]+)$/.test(r))))errors.push('Serverwechsel benötigt gültige erlaubte Realms.');
+    if(value.world?.serverHop&&(!value.world.allowedRealms.length||value.world.allowedRealms.some(r=>!nonPvpRealm(r))))errors.push('Serverwechsel benötigt gültige EU-/US-Nicht-PvP-Realms.');
     if(value.characters.some(c=>c.enabled&&c.group!==value.party.group))errors.push('ALBot benötigt eine gemeinsame Gruppenkennung.');
     if(value.characters.filter(c=>c.enabled&&c.role==='merchant').length>1)errors.push('ALBot verwendet höchstens einen zuständigen Merchant.');
     const merchant=value.characters.find(c=>c.enabled&&c.role==='merchant');if(merchant&&value.merchant.enabled&&value.party.merchant!==merchant.name)errors.push('Zuständigen Merchant unter Gruppe & Skills auswählen.');

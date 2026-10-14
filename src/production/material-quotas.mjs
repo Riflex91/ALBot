@@ -13,13 +13,21 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={})
   selected.add(name);
   const h=fresh(name);
   if(!h?.running||h.rip||h.realm!==realm)continue;
-  const progress=h.materialProgress?.find?.(x=>x?.objective===request.objective);
-  const raw=progress?.quantity??0;
-  // Never allocate against a malformed count; doing so can reproduce
-  // material the team may already be carrying.
-  if(!Number.isSafeInteger(raw)||raw<0)continue;
-  const free=h.free,eligible=h.inventoryBlocked!==true&&
-    (!Number.isSafeInteger(free)||free>freeReserve);
+  // fitHeartbeat may drop this OPTIONAL evidence if the team heartbeat
+  // exceeds its wire budget. Missing evidence is NOT proof of zero stock.
+  // Freeze fresh quotas across the whole active group until all currently
+  // participating Farmers have reported their quantities again.
+  if(!Array.isArray(h.materialProgress))return {remaining:quantity,quotas:[]};
+  const matches=h.materialProgress.filter(x=>x?.objective===request.objective);
+  if(matches.length>1)return {remaining:quantity,quotas:[]};
+  const raw=matches.length?matches[0].quantity:0;
+  // A malformed quantity is unknown, not zero. Continuing allocation among
+  // other Farmers would duplicate stock already present in this inventory.
+  if(!Number.isSafeInteger(raw)||raw<0)return {remaining:quantity,quotas:[]};
+  // Unknown physical free space cannot authorize MORE farming. Current
+  // observed stock still contributes to the global material balance.
+  const free=h.free,eligible=h.inventoryBlocked===false&&
+    Number.isSafeInteger(free)&&free>freeReserve;
   holders.push({name,held:raw,eligible});
  }
  const total=holders.reduce((sum,h)=>sum+h.held,0);

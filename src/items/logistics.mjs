@@ -3,6 +3,7 @@ import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,c
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
+import {isAchievementCarrier} from './achievement-utility.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
 // map or a frozen kite position after the recipient has moved away.
 export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190}={}){
@@ -56,7 +57,7 @@ export function createLogistics(bot){
     if(bot.supplyOnly||me.role!=='farmer'||!cfg.merchant.pickup||!cfg.party.merchant||
        !item||protectedItem(item)||explicitInventory(item))return null;
     const meta=p.G?.items?.[item.name];
-    if(!meta||['pot','elixir','tool','stand'].includes(meta.type))return null;
+    if(!meta||isAchievementCarrier(item)||['pot','elixir','tool','stand'].includes(meta.type))return null;
     return {enabled:true,name:'Beuteabgabe '+item.name,action:'send',
       item:item.name,recipient:cfg.party.merchant,keep:0,teamReserve:0,
       batch:cfg.merchant.maxDelivery,ttlMs:cfg.general.messageTtlMs};

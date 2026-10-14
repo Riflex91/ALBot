@@ -1,3 +1,4 @@
+import {carriedAchievementCarrier} from '../items/achievement-utility.mjs';
 // The official Guide observes fights but does not execute its advice.
 // Only small, validated hints enter the existing scheduler; all action guards stay.
 export function supportedProgressionRows(advice,G,allowed,excluded=[],pvp=false){
@@ -61,5 +62,5 @@ export function createProgression(bot){
   const state=refresh(),goal=state?.goal;
   return state?.itemPlanned&&goal?.kind==='item'&&g.item===goal.name&&g.level===goal.level?0.1:0;
  }
- return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0}),close(){p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
+ return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0,achievementCarrier:carriedAchievementCarrier(p.c.items),farmerCarriers:(bot.farmers??[]).map(name=>({name,carrier:name===me.name?carriedAchievementCarrier(p.c.items):bot.transport?.fresh?.(name)?.achievementCarrier??'unknown'}))}),close(){p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
 }

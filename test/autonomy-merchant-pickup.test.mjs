@@ -36,7 +36,7 @@ test('30 slot threshold counts fresh active same-realm loot; offline farmers are
 function logisticsFor(items,extraRules=[],reserved=()=>0){
  const p={c:{name:'Ranger',map:'main',items},
    G:{items:{sword:{type:'weapon'},gem0:{type:'material'},hpot0:{type:'pot',gives:[['hp',200]]},
-     pickaxe:{type:'tool'},cxjar:{type:'material'}}},realm:()=> 'EUII'};
+     pickaxe:{type:'tool'},cxjar:{type:'material'},tracker:{type:'tracker'},supercomputer:{type:'computer'},computer:{type:'computer'}}},realm:()=> 'EUII'};
  const cfg={items:extraRules,merchant:{pickup:true,maxDelivery:1000},party:{merchant:'Merchant'},
    general:{messageTtlMs:10000},farming:{freeSlots:3}};
  const bot={p,cfg,me:{name:'Ranger',role:'farmer'},rule:()=>null,task:()=> 'farm',
@@ -94,4 +94,26 @@ test('farmer offers an unlisted gear item even when merchant did not advertise i
  assert.equal(messages[0].type,'offer');
  assert.equal(messages[0].data.item.name,'sword');
  assert.equal(messages[0].data.quantity,1);
+});
+
+test('unconfigured Tracktrix and Super Computer stay on Farmer, not automatic pickup manifest',()=>{
+ const log=logisticsFor([
+  {name:'tracker',level:0},
+  {name:'supercomputer',level:0},
+  {name:'gem0',level:0,q:100},
+  {name:'computer',level:0}
+ ]);
+ assert.equal(log.pickupSlots(),2,'only ordinary gem and unprotected computer are pickup cargo');
+ const rows=log.summary().filter(x=>x.to==='Merchant');
+ assert.deepEqual(rows.map(x=>x.item).sort(),['computer','gem0']);
+});
+test('explicit user send instruction may still transfer a Tracktrix',()=>{
+ const rule={enabled:true,action:'send',item:'tracker',
+  recipient:'Merchant',name:'Explicit Tracktrix transfer',
+  role:'farmer',minLevel:0,maxLevel:99,character:'',map:'',
+  server:'',task:'',statType:'',property:'',title:'',priority:100,
+  keep:0,teamReserve:0,batch:1};
+ const log=logisticsFor([{name:'tracker',level:0}],[rule]);
+ assert.equal(log.pickupSlots(),1);
+ assert.equal(log.summary().find(x=>x.to==='Merchant')?.item,'tracker');
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTeamPlan,verifiedAreaHistory,areaRateBaseline} from '../src/world/team-plan.mjs';
+import {createTeamPlan,verifiedAreaHistory,areaRateBaseline,areaObservationSeconds} from '../src/world/team-plan.mjs';
 import {createFarmer} from '../src/combat/farmer.mjs';
 
 test('dangerous farm-area failure quarantines a spawn instead of instantly reselecting it',()=>{
@@ -96,4 +96,12 @@ test('spawn measurement baseline excludes XP and gold earned during area transit
  assert.deepEqual(areaRateBaseline('main:goo','main:bee',150,60,100,20),{xp:150,gold:60});
  assert.deepEqual(areaRateBaseline('main:goo','main:goo',150,60,100,20),{xp:100,gold:20});
  assert.deepEqual(areaRateBaseline(null,'main:goo',150,60,100,20),{xp:150,gold:60});
+});
+
+test('new spawn, hour or gear bucket does not charge transit time to spawn pressure',()=>{
+ assert.equal(areaObservationSeconds(null,'area-a',5000),0);
+ assert.equal(areaObservationSeconds('area-a','area-b',3000),0);
+ assert.equal(areaObservationSeconds('area-a','area-a',3000),3);
+ assert.equal(areaObservationSeconds('area-a','area-a',9000),5);
+ assert.equal(areaObservationSeconds('area-a','area-a',NaN),0);
 });

@@ -157,10 +157,18 @@ export function createBank(bot){
    if(bot.free()<1){e.note('Bank-Split '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
-  const rows=packs(),preferred=r.pack||rows.find(([,items])=>items.some(i=>!i)&&
-     items.some(i=>simple(i)&&identity(i)===identity(item)&&
-       (i.q??1)<stackMax(i)))?.[0]||
-     rows.find(([,items])=>items.some(i=>!i))?.[0]||'items0';
+  const rows=packs(),workspace=parkVerified?0:(cfg.merchant.bankWorkspace??0);
+  // A merely empty slot is NOT available to ordinary stores if using it
+  // would eat into the configured bank workspace. Select from opened packs
+  // that can actually receive a whole stack; stay on the current bank map
+  // when equivalent destinations are already reachable here.
+  const eligible=rows.filter(([pack,items])=>(!r.pack||r.pack===pack)&&
+    !!packMap(pack)&&items.filter(i=>!i).length>workspace);
+  const preferred=r.pack||
+    eligible.find(([pack])=>packMap(pack)===p.c.map)?.[0]||
+    eligible[0]?.[0]||
+    rows.find(([pack])=>packMap(pack)===p.c.map)?.[0]||
+    rows[0]?.[0]||'items0';
   if(!ready(preferred))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;

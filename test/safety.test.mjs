@@ -44,3 +44,18 @@ test('passive boss label does not cause preemptive flee; official auto-aggro sti
  createFarmer(bot).tick();assert.deepEqual(moves,['kite']);
  assert.equal(bot.recovering,true);
 });
+
+test('36-second ordinary farming limit overrides only time, not conservative risk budgets',()=>{
+ const {bot,c,cfg,G}=fixture();
+ cfg.world.risk='conservative';cfg.farming.maxCombatSeconds=36;
+ c.attack=100;c.frequency=1;
+ G.monsters.slow={hp:3500,attack:1,frequency:1};
+ assert.equal(assessCombat(G.monsters.slow,[c],'conservative').safe,false,'legacy conservative cap remains 12 s');
+ assert.equal(assessCombat(G.monsters.slow,[c],'conservative',1,{maxCombatSeconds:36}).safe,true);
+ assert.equal(bot.strategy.safeTarget('slow'),true,'real farming strategy applies personalized 36-second cap');
+ G.monsters.slow.hp=3700;
+ assert.equal(bot.strategy.safeTarget('slow'),false,'fight above 36 seconds stays rejected');
+ G.monsters.slow.hp=3500;G.monsters.slow.attack=200;
+ assert.equal(bot.strategy.safeTarget('slow'),false,'fight-time override must not bypass incoming hit safety');
+ assert.equal(assessCombat(G.monsters.slow,[c],'conservative',1,{maxCombatSeconds:400}).safe,false,'invalid override falls back to profile');
+});

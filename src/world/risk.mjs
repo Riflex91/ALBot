@@ -24,6 +24,10 @@ export function assessCombat(monster,members,mode='balanced',aggro=1,options={})
  const seconds=monster.hp/outgoing,incoming=monster.attack*monster.frequency*Math.max(1,aggro),exposure=incoming*seconds;
  const healCredit=farmHealing(healer,alive,seconds,options)*(healer?farmFearFactor(healer,monster,aggro):1);
  const protection=farmDefense(monster,alive,seconds,aggro,limits,healCredit,options);
- const safe=seconds<=limits.seconds&&protection.safe;
+ // A personal override changes only the estimated fight-time cap; the
+ // selected risk profile retains all hit, exposure and mechanics safeguards.
+ const maxSeconds=Number.isSafeInteger(options.maxCombatSeconds)&&options.maxCombatSeconds>=1&&options.maxCombatSeconds<=300?
+  options.maxCombatSeconds:limits.seconds;
+ const safe=seconds<=maxSeconds&&protection.safe;
  return {reason:safe?'Bekannte Gruppe innerhalb des Risikobudgets':'Treffer, Kampfdauer oder Schadensbudget überschritten',seconds,incoming,outgoing,rawExposure:exposure,...protection,safe,healCredit,healer:healer?.name??null,availableHp:weakest};
 }

@@ -19,7 +19,7 @@ export function mutationHelpers(bot,item,kind){
  const result=[];
  for(const s of scrolls)for(const o of offerings){
   const price=x=>x?Math.max(e.value(x.i),Number.isFinite(x.m.g)?x.m.g:0):0;
-  const cost=price(s)+price(o);if(!Number.isFinite(cost)||cost>cfg.production.helperMaxPrice)continue;
+  const cost=price(s)+price(o);if(!Number.isFinite(cost)||cfg.merchant.budgetMode!=='account-loss'&&cost>cfg.production.helperMaxPrice)continue;
   if(result.some(r=>r.scroll===s.i.name&&r.offering===(o?.i.name??'')))continue;
   result.push({scroll:s.i.name,scrollSlot:s.slot,offering:o?.i.name??'',offeringSlot:o?.slot??null,
    cost,preserves:kind==='upgrade'&&s.m.grade===3.6});
@@ -48,7 +48,7 @@ export function planMutationHelpers(bot,item,quotes,kind,minChance){
   Math.min(8,i.q??1,surplusQuantity(bot.economy.count(i),bot.production?.reservedQuantity(i)??0,rule?.keep??0,rule?.teamReserve??0));});
  const helpers=quotes.map(q=>({...q,uses:[[slots.indexOf(q.scrollSlot),1],...(q.offeringSlot===null?[]:[[slots.indexOf(q.offeringSlot),1]])]}));
  const plan=finiteMutationPlan({counts,resources,helpers,maxLevel:max,minChance,compound:kind==='compound',
-  price:l=>bot.economy.value({...item,level:l}),budget:cfg.production.helperMaxPrice,margin:cfg.production.minImprovement,
+  price:l=>bot.economy.value({...item,level:l}),budget:cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.helperMaxPrice,margin:cfg.production.minImprovement,
   chance:(l,h)=>l===start?h.chance:!h.offering&&h.scroll===(kind==='compound'?'cscroll':'scroll')+p.call('item_grade',{...item,level:l})?
    bot.intelligence?.chance(item.name,l,kind):null});
  if(plan.action===kind&&plan.level!==start)return {action:'bank',ev:bot.economy.value(item),reason:'another-level-first'};

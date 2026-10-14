@@ -310,13 +310,13 @@ test('NPC purchase and sale execute from 375 units, retaining server-side value 
  assert.equal(bot.journal,null);assert.ok(calls.includes('sell'));
 });
 
-test('unsafe auto-sale budget denies NPC travel before choosing a destination',()=>{
+test('zero-exposure auto-sale can travel despite exhausted production risk budget',()=>{
  const {bot,c,rule}=fixture();c.items[0]={name:'claw',level:0};bot.p.G.items.claw={g:5};
  rule.action='sell';rule.item='claw';rule.minPrice=1;rule._autoDisposition=true;rule.batch=1;
  let queries=0,moves=0;
  bot.p.call=name=>{if(name==='item_value')return 1;if(name==='find_npc'){queries++;return {map:'main',x:1,y:1};}throw Error('unexpected '+name);};
  bot.movement.go=()=>{moves++;return true;};bot.account={spendAllowed:()=>false};
- assert.equal(bot.economy.npcSell(0,rule),false);assert.equal(queries,0);assert.equal(moves,0);
+ assert.equal(bot.economy.npcSell(0,rule),false);assert.ok(queries>0);assert.equal(moves,1);
 });
 test('bank reclaim requires explicit sale rule rather than synthetic auto-disposition',()=>{
  const {bot,c}=fixture();bot.cfg.production.autoDisposition=true;bot.cfg.merchant.bankReclaim=true;

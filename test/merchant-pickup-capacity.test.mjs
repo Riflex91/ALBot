@@ -92,6 +92,12 @@ function merchantFixture(){
    spare:(slot,r)=>r.action==='bank'?1:0}};
  return {bot,c,actions,events};
 }
+test('gold pickup clears all safely releasable stacks even when existing capacity is sufficient',()=>{
+ const {bot,c,actions}=merchantFixture();c.items[1]={name:'mat',level:0,q:1};c.items[2]=null;c.items[3]=null;
+ const merchant=createMerchant(bot),peer={name:'F',items:[]};assert.equal(merchant.prepareGoldPickup(peer),false);
+ assert.equal(merchant.prepareGoldPickup(peer),false);assert.equal(merchant.prepareGoldPickup(peer),true);
+ assert.deepEqual(actions.map(x=>x[1]),[0,1]);assert.ok(c.items.filter(Boolean).every(i=>i.l));
+});
 test('merchant prepares one new free slot before traveling to collect known loot',()=>{
  const {bot,actions}=merchantFixture(),merchant=createMerchant(bot),peer={name:'F',items:[offer()]};
  assert.equal(bot.free(),4);

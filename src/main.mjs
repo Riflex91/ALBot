@@ -32,6 +32,7 @@ import {createAura} from './party/aura.mjs';
 import {ECONOMY_DESCRIPTOR} from './config/live-b.mjs';
 import {createEconomy} from './merchant/economy.mjs';
 import {createBank} from './merchant/bank.mjs';
+import {createAccountLossGuard} from './merchant/account-loss.mjs';
 import {createMarket} from './merchant/market.mjs';
 import {createProduction} from './production/production.mjs';
 import {createGear} from './production/gear.mjs';
@@ -144,7 +145,7 @@ export function install(root){
   bot.learning=createLearning(bot);bot.cloud=createCloudSync(bot);
   const exec=new Executor({retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
   bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
-  if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.services=createServices(bot);}
+  if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.services=createServices(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
   if(cfg.world){bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
@@ -186,6 +187,8 @@ export function install(root){
     if(now()<retryAfter)return;
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
+    bot.lossGuard?.sample();if(bot.lossGuard?.blocked){bot.transport.heartbeat();bot.pause('Accountgold: mindestens 85 % Verlust innerhalb des Prüfzeitfensters; manuelle Freigabe erforderlich');return;}
+    if(bot.lifecycleChanging){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}return;}
     if(supplyOnly){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}bot.logistics.poll(true);exec.flush();return;}
     bot.teamTravel?.tick();if(!bot.running)return;
     if(bot.teamTravel?.blocked)return;
@@ -229,6 +232,7 @@ export function install(root){
     start(){
       if(disposed)return false;if(bot.running)return true;
       const deny=reason=>{bot.reason=reason;publish();bot.report(reason);return false;};
+      bot.lossGuard?.sample();if(bot.lossGuard?.blocked)return deny('Accountgold-Verlustsperre aktiv');
       if(me.class!=='auto'&&me.class!==p.c.ctype)return deny('Konfigurierte Klasse stimmt nicht');
       if(me.region+me.server!==p.realm()&&!(cfg.world?.serverHop&&cfg.world.allowedRealms.includes(p.realm())))return deny('Falscher Realm: erwartet '+me.region+me.server);
       if(cfg.general.transport==='ipc'&&!p.ipc)return deny('Lokale IPC nicht verfügbar');
@@ -236,12 +240,14 @@ export function install(root){
       bot.cloud.resume();bot.economy?.resume();report.event('start');bot.running=true;bot.reason=supplyOnly?'Automatischer Trankempfänger (kein Farmprofil)':'Start';generation++;if(!supplyOnly)bot.progression?.refresh();tick(generation);return bot.running;
     },
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),
+    accountGoldStatus:()=>bot.lossGuard?.status()??null,
+    acknowledgeAccountGoldLoss:()=>bot.lossGuard?.reset()??false,
     restoreLearning:()=>bot.cloud.restore(),
     bossCatalog:()=>bot.bosses?.catalog()??[],
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},
@@ -260,6 +266,11 @@ export function install(root){
     dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();cleanup.splice(0).forEach(f=>f());panel?.remove();}
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.push(p.hook('on_destroy',()=>api.dispose()));
+  // Read-only heartbeats also while paused allow a complete account balance
+  // review and propagate an explicit release without resuming game actions.
+  let guardTimer=null;function passiveGoldStatus(){if(disposed)return;if(!bot.running){try{bot.lossGuard?.sample();bot.transport.heartbeat();}catch(e){runtimeWarning('gold-status',e);}}guardTimer=root.setTimeout(passiveGoldStatus,2000);}
+  if(cfg.merchant?.budgetMode==='account-loss')guardTimer=root.setTimeout(passiveGoldStatus,2000);
+  cleanup.push(()=>root.clearTimeout(guardTimer));
   report.setProvider(()=>({test:cfg.general.testLogging!==undefined?'Vollbetrieb':cfg.production?.strategy?'P3/P4':cfg.world?'Live C':cfg.production?'Live B':'Live A',status:api.status(),schedulerTiming:{...schedulerTiming,meanMs:schedulerTiming.totalMs/Math.max(1,schedulerTiming.ticks)},performanceTrick:{...performanceTrick},checkpointMode:checkpoint.durable?'persistent':'memory-consumption-only',movement:bot.movement.status(),transport:bot.transport.status(),party:{gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]},bankPartial:bot.bank?.status(),logistics:bot.logistics.stats(),goldLogistics:bot.gold?.status(),bankCapacity:bot.bank?.capacity(),production:bot.production?.status(),gear:bot.gear?.suggestions(),gearTargets:bot.gear?.status(),economy:bot.economy?.ledger,market:bot.market?.status(),performance:bot.observations?.heartbeat(),strategy:bot.strategy?.status(),teamPlan:bot.teamPlan?.status(),encounter:bot.encounter?.status(),capabilities:bot.capabilities?.snapshot(),navigation:bot.navigation?.status(),economicIntelligence:bot.intelligence?.status(),learning:bot.learning.status(),adaptive:bot.adaptive?.status(),bosses:bot.bosses?.status(),marketDemand:bot.marketDemand?.status(),cloud:bot.cloud.status(),priority:bot.priority?.status(),recovery:bot.recovery?.status(),contentQuarantine:bot.content?.status(),threats:bot.threats?.status(),gearAllocation:bot.allocation?.status(),achievementProgression:bot.progression?.status(),account:bot.account?.status(),travel:bot.teamTravel?.status(),services:bot.services?.status(),merchantTask:bot.merchant?.status(),settings:{general:cfg.general,farming:cfg.farming,party:cfg.party,merchant:cfg.merchant,production:cfg.production,world:cfg.world,rules:cfg.rules,characters:cfg.characters,skills:cfg.skills.slice(0,30),items:cfg.items.slice(0,80),omittedItemRules:Math.max(0,cfg.items.length-80)},equipment:bot.gear?.snapshot(),itemDecisions:cfg.general.testLogging?(p.c.items??[]).flatMap((i,slot)=>i?["inventory","acquisition","production"].map(phase=>{const r=bot.economy?.rules(i,phase);return {slot,item:i.name,level:i.level??0,phase,rule:r?.name??null,action:r?.action??"keep",priority:r?.priority,protected:protectedItem(i),reserved:bot.production?.reservedQuantity(i)??0,remaining:!r||bot.economy.remaining(r),reason:protectedItem(i)?"Geschütztes Item":r?"Spezifität und Priorität; explizite Regel vor abgeleitetem Ziel":"Keine freigegebene Regel: behalten"};}):[]):undefined,inventory:(p.c.items??[]).map((i,slot)=>i?{slot,name:i.name,level:i.level??0,quantity:i.q??1,locked:!!i.l}:null).filter(Boolean)}));
   if(!checkpoint.durable)bot.report('Speicher voll: Verbrauch wird im RAM abgeglichen; Lieferungen bleiben gesperrt. Testlog ohne localStorage.');
   p.log(VERSION+' · '+(p.headless?'Headless':'Browser')+' · '+me.role+' · '+(cfg.general.testLogging!==undefined?'Vollbetrieb':cfg.production?.strategy?'P3/P4':cfg.world?'Live C':cfg.production?'Live B':'Live A')+' Testkandidat');publish();if(cfg.general.autostart)api.start();return api;

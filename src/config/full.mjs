@@ -17,8 +17,11 @@ FULL_DESCRIPTOR.schema.properties.general.properties.pauseOnUnknown={type:'boole
 Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{testLogging:bool('Fortlaufendes Testlog schreiben',true),transferIntervalMs:number('Neue Übergabe frühestens nach (ms)',250,250,10000)});
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
+ budgetMode:{type:'string',title:'Budgetmodus',enum:['bounded','account-loss'],default:'bounded'},
+ accountLossWindowMs:number('Zeitfenster für rapiden Accountgoldverlust (ms)',900000,60000,3600000),
+ offlineGoldBalances:{type:'array',title:'Bekannte Goldstände aktuell offline befindlicher eigener Charaktere',default:[],maxItems:128,items:{type:'object',additionalProperties:false,properties:{name:{type:'string',title:'Charakter',default:'',maxLength:80},gold:number('Gold',0,0,Number.MAX_SAFE_INTEGER)}}},
 
- collectGold:bool('Farmer-Gold oberhalb ihrer Reserven abholen'),goldTransferMax:number('Gold je bestätigter Übergabe',100000,1),goldCollectBelow:number('Goldabholung erst ab Überschuss',10000,1),
+ collectGold:bool('Gesamten Farmer-Goldüberschuss oberhalb der Reserve abholen'),goldTransferMax:number('Legacy-Goldlimit (ignoriert: gesamter Überschuss je Übergabe)',100000,1),goldCollectBelow:number('Goldabholung erst ab Überschuss',10000,1),
 
  bankWorkspace:number('Freie Bankplätze je Pack anstreben',2,0,42),bankReclaim:bool('Bei Bankdruck explizit verkäuflichen Bestand zum NPC freigeben')
 

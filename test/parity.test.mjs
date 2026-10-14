@@ -323,14 +323,14 @@ test('U07 owned fallback runtime detaches only its own listeners, even on repeat
  p.closeProgression();assert.equal(detaches,2);
 });
 test('U05 cumulative automatic risk limit cannot be bypassed by multiple spends',()=>{
- const ledger={hour:Date.now(),spent:20,loss:2,goals:{}},checked=[];
+ const ledger={hour:Date.now(),spent:20,loss:2,productionExposure:22,goals:{}},checked=[];
  const p={c:{gold:100000,slots:{}},read:()=>ledger};
  const bot={p,me:{name:'M',role:'merchant',goldReserve:0},cfg:{merchant:{goldReserve:0,maxSpendPerHour:1000},production:{lossBudget:1000,goals:[]}},account:{spendAllowed:(cost,loss)=>{checked.push([cost,loss]);return cost+loss<=25;}}};
  const economy=createEconomy(bot),auto={_autoProduction:true,goldBudget:1000,lossBudget:1000};
  assert.equal(economy.budget(3,0,auto),true);
  assert.equal(economy.budget(4,0,auto),false);
  assert.equal(economy.budget(4,0,{...auto,_autoProduction:false}),true);
- assert.deepEqual(checked,[[23,2],[24,2]]);
+ assert.deepEqual(checked,[[3,22],[4,22]]);
 });
 
 test('U05 valuable auto-mutation is banked rather than risked beyond configured loss budget',()=>{
@@ -754,7 +754,7 @@ test('U05 failed durable sender stamp cancels before executor and never leaves a
  assert.equal(gold.status().state,'offered');
  assert.deepEqual(sent.map(x=>x.type),['goldOffer']);
  const offer=sent[0];
- gold.receive('M',{type:'goldAccept',id:offer.id,session:peer.session,data:{quantity:500}});
+ gold.receive('M',{type:'goldAccept',id:offer.id,session:peer.session,data:{quantity:1000}});
  assert.equal(gold.status().state,'accepted');
  gold.poll();
  assert.equal(queued,0,'Executor never sees a non-durable gold send');

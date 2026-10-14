@@ -316,14 +316,14 @@ export function createMerchant(bot){
   }
  }
 
- function preparePickup(peer){
-  if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.pickup)return true;
+ function preparePickup(peer,maximize=false){
+  if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.pickup&&!maximize)return true;
   const reserve=cfg.merchant.minFreeSlots??4;
   const plan=planPickupCapacity(peer?.items,{merchant:me.name,free:bot.free(),reserve,
     known:i=>!!p.G?.items?.[i.name],canStack:canReceiveIntoStack});
   const previous=pickupStatus;
   pickupStatus={peer:peer.name,...plan,at:Date.now(),state:plan.ready?'ready':'preparing'};
-  if(!plan.offers||plan.ready){
+  if(!maximize&&(!plan.offers||plan.ready)){
    if(plan.ready&&previous?.peer===peer.name&&previous.missing>0)
     bot.event?.('merchant.pickupReady',{peer:peer.name,free:plan.free,target:plan.target});
    return true;
@@ -366,6 +366,7 @@ export function createMerchant(bot){
     return false;
    }
   }
+  if(maximize){pickupStatus.state='ready';bot.event?.('merchant.goldPickupReady',{peer:peer.name,free:bot.free(),reason:'Alle derzeit ausführbaren geschützten Bereinigungen geprüft'});return true;}
   pickupStatus.state='blocked';
   if(Date.now()-lastPickupWarning>10000){
    lastPickupWarning=Date.now();
@@ -608,6 +609,7 @@ export function createMerchant(bot){
  }
  function tick(){
   if(bot.recovering)return;
+  if(bot.movement?.townActive||p.c.c?.town||exec.pending?.has('travel.town'))return;
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
   if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;
@@ -652,7 +654,7 @@ export function createMerchant(bot){
     if(pickupStatus.state==='blocked'&&!bot.movement.order)bot.gold?.travel();
     return;
   }
-  if(!bot.movement.order)bot.gold?.travel();
+  if(!bot.movement.order&&bot.gold?.travel())return;
   if(['logistics','gold'].includes(bot.movement.order?.owner)){bot.services?.interrupt();bot.services?.restore();return;}
   // Do not head back to the bank/market after one received stack while a
   // nearby farmer is still cycling its heartbeat's advertised loot variants.
@@ -733,12 +735,12 @@ export function createMerchant(bot){
   for(const job of tasks.rank(jobs)){
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
-   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
+   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'||bot.movement?.townActive){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
+ return {tick,preparePickup,prepareGoldPickup:peer=>preparePickup(peer,true),prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
   claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

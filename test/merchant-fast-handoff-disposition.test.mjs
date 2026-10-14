@@ -60,7 +60,7 @@ test('handoff readiness excludes busy journals and gold/item conflicts but not c
  assert.ok(confirmedHandoffCooldown(60000)<=2000);
 });
 
-test('confirmed consecutive gold blocks can start within two seconds without bypassing receipts',()=>{
+test('whole surplus is transferred once; new farming income waits for the confirmed receipt cooldown',()=>{
  const old=Date.now;let now=1000000;Date.now=()=>now;
  try{
   const messages=[],data=new Map(),c={name:'F',gold:250000,map:'main',in:'main',x:0,y:0,q:{},items:[]};
@@ -85,16 +85,16 @@ test('confirmed consecutive gold blocks can start within two seconds without byp
   const gold=createGoldLogistics(bot);
   gold.poll(true);
   const offer=messages.find(m=>m.type==='goldOffer');
-  assert.equal(offer.data.quantity,100000);
-  gold.receive('M',{type:'goldAccept',id:offer.id,session:peer.session,data:{quantity:100000}});
+  assert.equal(offer.data.quantity,250000);
+  gold.receive('M',{type:'goldAccept',id:offer.id,session:peer.session,data:{quantity:250000}});
   gold.poll(true);
   assert.equal(bot.journal?.kind,'gold.send');
-  assert.equal(c.gold,150000);
-  gold.receive('M',{type:'goldReceipt',id:offer.id,session:peer.session,data:{quantity:100000}});
+  assert.equal(c.gold,0);
+  gold.receive('M',{type:'goldReceipt',id:offer.id,session:peer.session,data:{quantity:250000}});
   gold.poll(true);
   assert.equal(bot.journal,null,'the previous block must be verified and closed');
   assert.equal(messages.filter(m=>m.type==='goldDone').length,1);
-  now+=1000;gold.poll(true);
+  c.gold+=1000;now+=1000;gold.poll(true);
   assert.equal(messages.filter(m=>m.type==='goldOffer').length,1,'cooldown still active');
   now+=700;gold.poll(true);
   assert.equal(messages.filter(m=>m.type==='goldOffer').length,2,

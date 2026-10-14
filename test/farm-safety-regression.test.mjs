@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTeamPlan,verifiedAreaHistory,areaRateBaseline,areaObservationSeconds,areaPressure} from '../src/world/team-plan.mjs';
+import {createTeamPlan,verifiedAreaHistory,areaRateBaseline,areaObservationSeconds,areaPressure,farmAreaHistoryKey} from '../src/world/team-plan.mjs';
 import {createFarmer} from '../src/combat/farmer.mjs';
+import {spawnLocations} from '../src/world/knowledge.mjs';
 
 test('dangerous farm-area failure quarantines a spawn instead of instantly reselecting it',()=>{
  const events=[],G={monsters:{goo:{hp:30,attack:1,frequency:1,xp:20,respawn:1}},maps:{main:{monsters:[{type:'goo',boundaries:[['main',0,0,100,100]]}]}}};
@@ -113,4 +114,39 @@ test('historical spawn crowd pressure decays and expires without inventing safet
  assert.deepEqual(areaPressure(row,2000,1000),{empty:0,foreign:0});
  assert.deepEqual(areaPressure(row,500,1000),{empty:0,foreign:0});
  assert.deepEqual(areaPressure(null,1500,1000),{empty:0,foreign:0});
+});
+
+test('farm area identity is stable across heartbeat churn but changes with actual team gear',()=>{
+ const gear={class:'ranger',level:60,complete:true,session:'first',at:100,
+  slots:{mainhand:{name:'bow',level:4}},stats:{attack:300,frequency:1.3}};
+ const first=farmAreaHistoryKey('EUII',12,'main:goo:0',[gear]);
+ assert.equal(farmAreaHistoryKey('EUII',12,'main:goo:0',[{...gear,at:999,session:'later',hp:1}]),first);
+ assert.notEqual(farmAreaHistoryKey('EUII',12,'main:goo:0',[{...gear,stats:{attack:310,frequency:1.3}}]),first);
+ assert.notEqual(farmAreaHistoryKey('EUII',13,'main:goo:0',[gear]),first);
+ assert.notEqual(farmAreaHistoryKey('EUII',12,'main:bee:0',[gear]),first);
+});
+
+test('team plan ranking uses previously observed semantic-gear spawn samples',()=>{
+ const now=Date.now(),gear={class:'ranger',level:20,complete:true,session:'recent',
+  slots:{mainhand:{name:'bow',level:2}},stats:{attack:50,frequency:1}};
+ const G={monsters:{goo:{hp:30,attack:1,frequency:1,xp:20,respawn:1}},
+  maps:{main:{monsters:[{type:'goo',count:1,boundaries:[['main',0,0,100,100]]}]}}};
+ const spawn=spawnLocations(G,['goo'])[0];
+ const key=farmAreaHistoryKey('EUII',new Date(now).getUTCHours(),spawn.key,[gear]);
+ const history={[key]:{at:now-1000,seconds:120,xp:0,gold:0,empty:110,foreign:0,deaths:0,lostKills:0}};
+ const bot={p:{c:{name:'Leader',map:'main',in:'main',x:0,y:0,attack:50,frequency:1,
+   max_hp:500,hp:500,level:20,items:[],xp:0,gold:0},G,root:{S:{}},parent:{S:{}},
+   read:()=>history,realm:()=> 'EUII',entities:{}},
+  cfg:{general:{testLogging:true,messageTtlMs:10000},farming:{pvp:false,maxAggro:1,
+   knowledgeFreshMs:600000,planHoldMs:300000},world:{excludedMaps:[],cacheTtlMs:60000},
+   party:{enabled:true}},
+  me:{name:'Leader',role:'farmer',farmTargets:[]},leader:'Leader',farmers:['Leader'],
+  transport:{fresh:()=>null},strategy:{safeTarget:()=>true,permittedMap:()=>true,busy:false},
+  monsters:()=>[],event:()=>{},decisionEpoch:1,
+  movement:{order:null,stop(){}},gear:{snapshot:()=>({...gear,at:now,session:'changed'})},
+  content:{approve:()=>true},progression:{bonus:()=>0}};
+ const plan=createTeamPlan(bot);plan.tick();
+ const first=plan.status().ranking[0];
+ assert.equal(first?.pressure,'spawn-starved','known empty spawn should remain visible in ranking');
+ assert.ok(first.xpPerHour<30000,'recorded poor throughput must lower theoretical 36000 XP/h');
 });

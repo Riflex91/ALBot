@@ -248,16 +248,30 @@ export function createLogistics(bot){
     return rule?.action==='bank'&&bot.economy.remaining(rule)&&bot.economy.spare(slot,rule)>0;
    });
   }
+  // The existing handoff protocol can accept a stack-compatible offer even
+  // with no physically empty slot. Preserve the bounded on-site batch only
+  // while a current, authenticated peer offer has demonstrable stack headroom.
+  // Never infer headroom from the peer's lootSlots count alone.
+  const mergeableOnSiteOffer=peer=>(peer?.items??[]).some(row=>{
+    if(row?.to!==me.name||!Number.isSafeInteger(row.surplus)||row.surplus<1)return false;
+    const item=row.variant??{name:row.item,level:0,stat_type:'',p:'',title:''};
+    return safeItem(item)&&!!p.G?.items?.[item.name]&&
+      physicalReceiveCapacity(p.c.items,item,p.G.items[item.name],
+       {maxNewSlots:0})>0;
+  });
+  const onSiteRoom=peer=>bot.free()>(cfg.merchant.minFreeSlots??4)||
+    mergeableOnSiteOffer(peer);
+  function onSitePeer(){
+    const peer=transport.fresh(pickupOnSiteName);
+    return peer?.running&&!peer.rip&&peer.realm===p.realm()&&
+      Number.isSafeInteger(peer.lootSlots)&&peer.lootSlots>0&&
+      samePlace(p.c,peer)&&distance(p.c,peer)<=200&&onSiteRoom(peer);
+  }
   function travel(){
     // Keep the ongoing pickup at this location for one bounded batch.
     // Replanning against a rotating 12-item heartbeat must not redirect
     // the Merchant to another farmer between two valid offers.
-    if(pickupOnSiteAt&&Date.now()-pickupOnSiteAt<30000&&
-      bot.free()>cfg.merchant.minFreeSlots){
-      const peer=transport.fresh(pickupOnSiteName);
-      if(peer?.running&&!peer.rip&&peer.realm===p.realm()&&
-        peer.lootSlots>0&&samePlace(p.c,peer)&&distance(p.c,peer)<=200)return;
-    }
+    if(pickupOnSiteAt&&Date.now()-pickupOnSiteAt<30000&&onSitePeer())return;
     if(bot.recovering||bot.gold?.reserved||me.role!=='merchant'||!cfg.merchant.enabled||job||incoming||bot.inventoryBlocked||bot.journal||bot.bank?.pending||exec.busy('inventory'))return;
     const route=bot.movement?.order;
     // Delivery must not cancel an in-progress gold pickup or economy order.
@@ -298,8 +312,7 @@ export function createLogistics(bot){
     if(complete&&lootSlots<(cfg.merchant.pickupThreshold??30)/2){
       pickupCycle=false;
     }
-    if(pickupOnSiteAt&&(!transport.fresh(pickupOnSiteName)?.running||
-      Date.now()-pickupOnSiteAt>30000||bot.free()<=cfg.merchant.minFreeSlots))
+    if(pickupOnSiteAt&&(Date.now()-pickupOnSiteAt>30000||!onSitePeer()))
       pickupOnSiteAt=0;
     const urgency=name=>{const h=transport.fresh(name);return h?.items?.some(x=>x.need>0)?100+(1-(h.hp/Math.max(1,h.max_hp)))*10:0;};
     for(const [name] of [...transport.peers].sort((a,b)=>(a[0]===bot.merchant?.serviceTarget?.()?-1000:0)-(b[0]===bot.merchant?.serviceTarget?.()?-1000:0)||urgency(b[0])-urgency(a[0]))){const h=transport.fresh(name);if(!h?.running||h.rip||h.realm!==p.realm())continue;
@@ -326,7 +339,7 @@ export function createLogistics(bot){
         if(bot.movement?.order?.owner==="gold")bot.movement.stop();
         if(bot.services?.active||bot.services?.waiting){bot.services.interrupt();if(bot.services.restore())return;}
         if(samePlace(p.c,h)&&distance(p.c,h)<=200){
-          if(pickup&&bot.free()>cfg.merchant.minFreeSlots){
+          if(pickup&&onSiteRoom(h)){
             if(pickupOnSiteName!==name||!pickupOnSiteAt){
               pickupOnSiteName=name;pickupOnSiteAt=Date.now();
               bot.event?.('logistics.pickupOnSite',{peer:name,free:bot.free(),
@@ -348,10 +361,7 @@ export function createLogistics(bot){
   }
   return {receive,poll,travel,yieldUnsent,pickupSlots,
     pickupOnSite:()=>!!pickupOnSiteAt&&Date.now()-pickupOnSiteAt<30000&&
-      bot.free()>cfg.merchant.minFreeSlots&&
-      (()=>{const h=transport.fresh(pickupOnSiteName);
-        return !!h?.running&&!h.rip&&h.realm===p.realm()&&
-          h.lootSlots>0&&samePlace(p.c,h)&&distance(p.c,h)<=200;})(),
+      onSitePeer(),
     get pickupCycle(){return pickupCycle;},get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},
     summary(){
       const rules=allRules().filter(r=>r.enabled&&(r.role==='all'||r.role===me.role)&&(!r.character||r.character===me.name));

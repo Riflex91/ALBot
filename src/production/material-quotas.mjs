@@ -48,9 +48,26 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={})
 // a zero-permission state, not unlimited permission to farm.
 export function materialQuotaCap(request,name){
  if(!Number.isSafeInteger(request?.quantity)||request.quantity<1)return 0;
- if(Number.isSafeInteger(request.remaining)&&request.remaining<=0)return 0;
- if(!Array.isArray(request.quotas))return request.quantity;
+ if(request.remaining!==undefined&&
+   (!Number.isSafeInteger(request.remaining)||request.remaining<=0))return 0;
+ if(request.quotas===undefined)return request.quantity;
+ if(!Array.isArray(request.quotas))return 0;
  const row=request.quotas.find(r=>r?.name===name);
  return Number.isSafeInteger(row?.quantity)&&row.quantity>0?
    Math.min(row.quantity,request.quantity):0;
+}
+
+// A material objective with no physical farming allocations must not hijack
+// the team's ordinary XP/gold farm plan. Legacy requests without quotas remain
+// actionable, while explicit zero/empty/malformed quotas are a deliberate
+// pause until the Merchant can verify and assign more material work.
+export function materialRequestHasWork(request,selectedFarmers=null){
+ if(!Number.isSafeInteger(request?.quantity)||request.quantity<=0)return false;
+ if(request.remaining!==undefined&&
+   (!Number.isSafeInteger(request.remaining)||request.remaining<=0))return false;
+ if(request.quotas===undefined)return true;
+ if(!Array.isArray(request.quotas))return false;
+ return request.quotas.some(row=>typeof row?.name==='string'&&row.name&&
+   (!Array.isArray(selectedFarmers)||selectedFarmers.includes(row.name))&&
+   materialQuotaCap(request,row.name)>0);
 }

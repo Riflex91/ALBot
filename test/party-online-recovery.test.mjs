@@ -142,6 +142,7 @@ test('coordinator safely swaps a stronger active farmer for an offline underleve
    balanceHoldMs:1800000};
   const levels={'My_Ranger1':70,'My_Ranger2':68,'My_Ranger3':66,'My_Rogue':35};
   const active={My_Merchant:true,My_Ranger1:true,My_Ranger2:true,My_Ranger3:true};
+  bot.me.role='merchant';
   for(const [name,peer] of peers)peer.level=levels[name];
   bot.running=true;bot.p.G={monsters:{}};
   bot.transport.ownCharacters=()=>Object.entries(levels).map(([name,level])=>({
@@ -181,7 +182,7 @@ test('no account lifecycle calls without trustworthy offline levels or available
   const {bot,calls,peers}=accountFixture(['My_Ranger1','My_Ranger2','My_Ranger3']);
   bot.cfg.party.leader='';bot.cfg.party.balanceFarmers=true;
   bot.cfg.party.balanceHoldMs=300000;
-  bot.p.G={monsters:{}};bot.running=true;
+  bot.p.G={monsters:{}};bot.running=true;bot.me.role='merchant';
   for(const p of peers.values())p.level=70;
   bot.transport.ownCharacters=()=>[{name:'My_Rogue',class:'rogue',level:null}];
   bot.p.has=()=>false;

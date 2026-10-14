@@ -32,7 +32,7 @@ function fixture({tokens=4,own='tracker',peerCarrier=null,free=12,
    c.items[freeSlot]={name:'tracker',level:0};
    return Promise.resolve({success:true,name:'tracker'});
   }};
- const cfg={items:[],merchant:{enabled:true,supply:true,minFreeSlots:4},
+ const cfg={items:[],merchant:{enabled:true,supply:true,bank:true,minFreeSlots:4},
    farming:{freeSlots:4}};
  const bot={p,cfg,me:{name:'Merchant',role:'merchant'},farmers:['Ranger'],
   running:true,inventoryBlocked:false,journal:null,checkpoint:{durable:true},

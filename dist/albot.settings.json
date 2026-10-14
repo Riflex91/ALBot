@@ -124,7 +124,7 @@
             "type": "boolean",
             "title": "Eigene Charaktere und Rollen beim Start automatisch erkennen",
             "default": false,
-            "description": "Namenloses Profil: Accountliste und aktueller Realm; online durch Heartbeats bestaetigt. Keine automatischen Charakterstarts. Bei mehreren Merchants ist der alphabetisch erste zustaendig."
+            "description": "Namenloses Profil: Accountliste und aktueller Realm; Charakterstarts erfolgen nur mit bewusst aktivierter Levelausgleichsrotation, belegten Levelwerten und sicheren Lifecycle-APIs. Bei mehreren Merchants ist der alphabetisch erste zustaendig."
           }
         },
         "required": [
@@ -494,6 +494,13 @@
             "minimum": 1000,
             "maximum": 3600000
           },
+          "maxCombatSeconds": {
+            "type": "integer",
+            "title": "Maximale erwartete Kampfdauer je normalem Farmgegner in Sekunden (0 = Risikoprofil)",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 300
+          },
           "adaptivePull": {
             "type": "boolean",
             "title": "Pullgröße aus tatsächlichen Kämpfen lernen",
@@ -718,6 +725,25 @@
             "type": "boolean",
             "title": "Situationsabhängige Paladin-/Mage-Fähigkeiten",
             "default": true
+          },
+          "balanceFarmers": {
+            "type": "boolean",
+            "title": "Eigene Farmer mit Levelrückstand kontrolliert einwechseln",
+            "default": false
+          },
+          "balanceLevelGap": {
+            "type": "integer",
+            "title": "Levelabstand für automatische Aufholrotation",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "balanceHoldMs": {
+            "type": "integer",
+            "title": "Mindestzeit zwischen Aufholwechseln (ms)",
+            "default": 1800000,
+            "minimum": 300000,
+            "maximum": 86400000
           }
         },
         "required": [
@@ -1057,7 +1083,7 @@
           "maxSpendPerHour": {
             "type": "integer",
             "title": "Maximale Goldausgaben pro Stunde",
-            "default": 2000000,
+            "default": 5000000,
             "minimum": 0,
             "maximum": 1000000000000
           },
@@ -1269,14 +1295,55 @@
             "minimum": 2000,
             "maximum": 600000
           },
+          "budgetMode": {
+            "type": "string",
+            "title": "Budgetmodus",
+            "enum": [
+              "bounded",
+              "account-loss"
+            ],
+            "default": "bounded"
+          },
+          "accountLossWindowMs": {
+            "type": "integer",
+            "title": "Zeitfenster für rapiden Accountgoldverlust (ms)",
+            "default": 900000,
+            "minimum": 60000,
+            "maximum": 3600000
+          },
+          "offlineGoldBalances": {
+            "type": "array",
+            "title": "Bekannte Goldstände aktuell offline befindlicher eigener Charaktere",
+            "default": [],
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "title": "Charakter",
+                  "default": "",
+                  "maxLength": 80
+                },
+                "gold": {
+                  "type": "integer",
+                  "title": "Gold",
+                  "default": 0,
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          },
           "collectGold": {
             "type": "boolean",
-            "title": "Farmer-Gold oberhalb ihrer Reserven abholen",
+            "title": "Gesamten Farmer-Goldüberschuss oberhalb der Reserve abholen",
             "default": false
           },
           "goldTransferMax": {
             "type": "integer",
-            "title": "Gold je bestätigter Übergabe",
+            "title": "Legacy-Goldlimit (ignoriert: gesamter Überschuss je Übergabe)",
             "default": 100000,
             "minimum": 1,
             "maximum": 1000000000
@@ -1345,6 +1412,18 @@
             "minimum": 10,
             "maximum": 300
           },
+          "potionTeamRefill": {
+            "type": "boolean",
+            "title": "Bei 50 Tränken Teamversorgung für aktive Farmer auslösen",
+            "default": false
+          },
+          "potionAlertBelow": {
+            "type": "integer",
+            "title": "Alarm bei verbleibenden Tränken je Sorte",
+            "default": 50,
+            "minimum": 0,
+            "maximum": 1000
+          },
           "discoverOwnFarmers": {
             "type": "boolean",
             "title": "Eigene Online-Farmer automatisch erkennen (ALBot-Bestandsmeldung erforderlich)",
@@ -1411,6 +1490,9 @@
           "marketHistory",
           "marketHistoryTtlMs",
           "serviceSliceMs",
+          "budgetMode",
+          "accountLossWindowMs",
+          "offlineGoldBalances",
           "collectGold",
           "goldTransferMax",
           "goldCollectBelow",
@@ -2102,7 +2184,7 @@
           "autoGearMaxLevel": {
             "type": "integer",
             "title": "Automatische Gear-Zielgrenze",
-            "default": 5,
+            "default": 8,
             "minimum": 0,
             "maximum": 99
           },

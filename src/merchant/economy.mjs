@@ -52,12 +52,25 @@ export function createEconomy(bot){
  function goalBudget(cost,loss,item){const goal=bot.production?.activeGoal;return cost+loss===0||!goal||!(bot.production.owns?.(item)??true)||(Object.hasOwn(ledger.goals,goalId(goal))||Object.keys(ledger.goals).length<1024)&&goalSpent(goal)+cost+loss<=goal.budget;}
  function note(s){bot.reason=s;if(lastMessage!==s||Date.now()-lastMessageAt>30000){lastMessage=s;lastMessageAt=Date.now();bot.report(s);}}
  const bankExpansionAvailable=cost=>Number.isSafeInteger(cost)&&cost>0&&
-   cost<=bankExpansionRemaining(cfg.merchant.bankBudget,ledger.bankSpent??0);
+   (cfg.merchant.budgetMode==='account-loss'||cost<=bankExpansionRemaining(cfg.merchant.bankBudget,ledger.bankSpent??0));
+ const exposure=()=>ledger.productionExposure===undefined?ledger.loss:Number.isSafeInteger(ledger.productionExposure)&&ledger.productionExposure>=0?ledger.productionExposure:Infinity;
+ const automaticRisk=(cost,loss,r)=>!!(r?._autoProduction||r?._autoDisposition)&&(cost>0||loss>0);
  function budget(cost,loss=0,r=null){
-  if(Date.now()-ledger.hour>=3600000)ledger={...ledger,hour:Date.now(),spent:0,loss:0};
+  if(cfg.merchant.budgetMode==='account-loss'){bot.lossGuard?.sample();const committed=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);return !bot.lossGuard?.blocked&&Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-committed>=cost);}
+  if(Date.now()-ledger.hour>=3600000)ledger={...ledger,hour:Date.now(),spent:0,loss:0,productionExposure:0,supplySpent:0};
   const reserve=Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
   const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
-  return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-cost-commitments>=reserve)&&ledger.spent+cost<=cfg.merchant.maxSpendPerHour&&ledger.loss+loss<=cfg.production.lossBudget&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget))&&(!(r?._autoProduction||r?._autoDisposition)||bot.account?.spendAllowed?.(ledger.spent+cost,ledger.loss+loss)===true);
+  return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-cost-commitments>=reserve)&&(cost===0||ledger.spent+cost<=cfg.merchant.maxSpendPerHour)&&(loss===0||ledger.loss+loss<=cfg.production.lossBudget)&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget))&&(!automaticRisk(cost,loss,r)||bot.account?.spendAllowed?.(cost,exposure()+loss,{production:true})===true);
+ }
+ function budgetExplanation(cost,loss=0,r=null){
+  if(cfg.merchant.budgetMode==='account-loss')return bot.lossGuard?.blocked?'Accountgold: 85-%-Verlustsperre aktiv':'Tatsächlich verfügbares Gold reicht für Kosten und bestehende Handelszusagen nicht';
+  const reserve=Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
+  if(cost>0&&p.c.gold-cost<reserve)return 'Goldreserve würde unterschritten';
+  if(ledger.spent+cost>cfg.merchant.maxSpendPerHour)return 'Stündliches Ausgabenbudget ausgeschöpft';
+  if(ledger.loss+loss>cfg.production.lossBudget)return 'Stündliches Verlustbudget ausgeschöpft';
+  if(r&&(cost>r.goldBudget||loss>r.lossBudget))return 'Budget der Itemregel reicht nicht';
+  if(automaticRisk(cost,loss,r)){const risk=bot.account?.risk?.({production:true});return 'Account-Risikobudget: benötigt '+(exposure()+cost+loss)+' Gold, Sitzungslimit '+(risk?.sessionRiskLimit??'unbekannt')+' Gold; '+(risk?.reason??'Accountdaten fehlen');}
+  return 'Kosten/Verlust oder gebundene Handelsangebote nicht freigegeben';
  }
  // Persist worst-case per-variant mutation exposure over a 24-hour window,
  // without weakening hourly or per-goal budgets. A reload does not erase it.
@@ -67,6 +80,7 @@ export function createEconomy(bot){
    ledger.itemRisk&&typeof ledger.itemRisk==='object'&&!Array.isArray(ledger.itemRisk)?
    ledger.itemRisk:{};
  function riskAllowed(kind,r,details,loss){
+  if(cfg.merchant.budgetMode==='account-loss')return !bot.lossGuard?.blocked;
   if(!riskApplies(kind,r))return true;
   return mutationRiskAllowed(riskRows(),details.riskVariant,loss,
    mutationRiskLimit(details.item,p.G.items?.[details.item],
@@ -75,14 +89,16 @@ export function createEconomy(bot){
  // Charge the maximum exposure BEFORE dispatch. A reload or ambiguous result cannot reset a budget.
  function charge(cost,loss,r,kind,details){
   if(!budget(cost,loss,r)||!riskAllowed(kind,r,details,loss))return false;
-  const next={...ledger,goals:{...ledger.goals},spent:ledger.spent+cost,loss:ledger.loss+loss};
-  if(riskApplies(kind,r)){
+  const irreversible=['upgrade','compound','craft','exchange','dismantle'].includes(kind);
+  const next={...ledger,goals:{...ledger.goals},spent:ledger.spent+cost,loss:ledger.loss+loss,
+   productionExposure:exposure()+(irreversible?cost+loss:loss),supplySpent:(ledger.supplySpent??0)+(!irreversible?cost:0)};
+  if(cfg.merchant.budgetMode!=='account-loss'&&riskApplies(kind,r)){
    const current=riskRows(),key=details.riskVariant;
    if(!Object.hasOwn(current,key)&&Object.keys(current).length>=128)return false;
    next.riskStart=current===ledger.itemRisk?ledger.riskStart:Date.now();
    next.itemRisk={...current,[key]:(current[key]??0)+loss};
   }
-  const goal=bot.production?.activeGoal;if(goal&&cost+loss>0&&(bot.production.owns?.(details.item)??true)){const spent=goalSpent(goal)+cost+loss;if(spent>goal.budget)return false;next.goals[goalId(goal)]=spent;}
+  const goal=bot.production?.activeGoal;if(goal&&cost+loss>0&&(bot.production.owns?.(details.item)??true)){const spent=goalSpent(goal)+cost+loss;if(cfg.merchant.budgetMode!=='account-loss'&&spent>goal.budget)return false;next.goals[goalId(goal)]=spent;}
   if(kind==='bank.expand'){
    if(!bankExpansionAvailable(cost))return false;
    next.bankSpent=(ledger.bankSpent??0)+cost;
@@ -90,13 +106,18 @@ export function createEconomy(bot){
   if(!p.write(ledgerKey,next))return false;ledger=next;return true;
  }
  function perform(kind,{slots=[],cost=0,loss=0,rule=null,guard=()=>true,call,observe,details={},timeout=20000,onConfirmed=()=>true}){
+  // Official equip clears player.c, cancelling Town. Protect the channel
+  // both before enqueueing and in the final dispatch guard.
+  const townActive=()=>bot.movement?.townActive||p.c.c?.town||exec.pending?.has('travel.town');
+  if(townActive())return false;
   if(bot.recovery?.authorize(kind)===false)return false;const definitions=[...new Set(slots.map(n=>p.c.items[n]?.name).filter(Boolean)),...(rule?.item?[rule.item]:[])];if(definitions.some(name=>bot.content?.approve('item:'+name,[p.G.items[name],p.G.craft?.[name],p.G.drops?.[name]])===false))return false;
   if(kind==='bank.expand'&&!bankExpansionAvailable(cost))return false;
-  if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!budget(cost,loss,rule)||!remaining(rule))return false;
-  if(!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
+  if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!remaining(rule))return false;
+  if(!budget(cost,loss,rule)){note(kind+': '+budgetExplanation(cost,loss,rule));return false;}
+  if(cfg.merchant.budgetMode!=='account-loss'&&!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
   if(!riskAllowed(kind,rule,details,loss)){note('Autonome Mutation: 24h-Risikolimit für Itemvariante ausgeschöpft');return false;}
   const prints=slots.map(s=>[s,fingerprint(p.c.items[s])]);
-  const valid=()=>bot.running&&!closed&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
+  const valid=()=>bot.running&&!closed&&!townActive()&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
     (kind!=='bank.expand'||bankExpansionAvailable(cost))&&
     riskAllowed(kind,rule,details,loss)&&guard();
   return exec.run(kind,['inventory','gold','economy'],valid,()=>{
@@ -119,7 +140,7 @@ export function createEconomy(bot){
  function npcBuy(item,r,quantity,extraGuard=()=>true){
   const meta=p.G.items[item.name];if(!meta||item.level||item.p||item.stat_type||item.title)return false;
   const price=meta.g;if(!Number.isFinite(price)||price<=0||price>r.maxPrice)return false;
-  const before=count(item),q=Math.floor(Math.min(quantity,r.batch,r.maxCount-before,Math.floor(r.goldBudget/price)));
+  const before=count(item),q=Math.floor(Math.min(quantity,r.batch,r.maxCount-before,Math.floor((cfg.merchant.budgetMode==='account-loss'?Math.max(0,p.c.gold):r.goldBudget)/price)));
   if(q<1||!extraGuard())return false;
   if(!purchaseFits(p.c.items,item,q,meta)){
    note('NPC-Kauf '+item.name+': physische Inventarplätze fehlen (frei: '+bot.free()+')');
@@ -135,5 +156,5 @@ export function createEconomy(bot){
   return sourceVerified&&(saleReceiptMatches(receipt,i,q,q*price)||p.c.gold===gold+q*price);
  },details:{item:i.name,variant:identity(i),quantity:q,before,sourceSlot:slot,expectedGold:q*price}});
  }
- return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,bankExpansionAvailable,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
+ return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,budgetExplanation,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,bankExpansionAvailable,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }

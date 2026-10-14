@@ -160,7 +160,7 @@ export function createLogistics(bot){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
       counters.offersReceived++;
-      if(bot.checkpoint?.durable===false||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
+      if(bot.checkpoint?.durable===false||bot.lifecycleChanging||bot.movement?.townActive||p.c.c?.town||exec.pending?.has('travel.town')||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
       if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;
       const trackerRequested=me.role==='farmer'&&from===cfg.party?.merchant&&

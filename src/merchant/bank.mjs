@@ -115,9 +115,9 @@ export function createBank(bot){
     items.flatMap((item,slot)=>item&&e.safe(item)?[{pack,slot,item:{...item}}]:[]):[]).slice(0,512);
    const fingerprintNow=JSON.stringify(rows.filter(([pack])=>packMap(pack)===p.c.map)
     .map(([pack,items])=>[pack,items.map(item=>item?fingerprint(item):null)]));
-   if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint){
+   if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint||catalog.gold!==p.c.bank?.gold||Date.now()-catalog.observedAt>120000){
     // New verified visit or a server-observable bank state revision.
-    const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),
+    const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),gold:Number.isSafeInteger(p.c.bank?.gold)&&p.c.bank.gold>=0?p.c.bank.gold:null,
      revision:(catalog.revision??0)+1,rows:current};
     // Verified in-session evidence is useful even in a minimal or readonly
     // client; persistence is best effort and never grants mutation authority.
@@ -348,15 +348,15 @@ export function createBank(bot){
   for(const [pack,def] of Object.entries(definitions()).sort((a,b)=>(a[1]?.[1]??Infinity)-(b[1]?.[1]??Infinity))){
    const cost=def?.[1];
    if(def?.[0]!==p.c.map||p.c.bank[pack]||
-      !bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,
-       cfg.merchant.bankExpandGoldFraction??.75))continue;
+      !bankExpansionAffordable(cost,p.c.gold,cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.merchant.bankBudget,
+       cfg.merchant.budgetMode==='account-loss'?1:cfg.merchant.bankExpandGoldFraction??.75))continue;
    // Selecting an individually affordable pack after earlier expansions
    // would otherwise enqueue an action that fails only on the durable charge.
    if(e.bankExpansionAvailable?.(cost)!==true){
     cumulativeBudgetBlocked=true;continue;
    }
-   const allowed=()=>bankExpansionAffordable(cost,p.c.gold,cfg.merchant.bankBudget,
-    cfg.merchant.bankExpandGoldFraction??.75)&&e.bankExpansionAvailable(cost);
+   const allowed=()=>bankExpansionAffordable(cost,p.c.gold,cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.merchant.bankBudget,
+    cfg.merchant.budgetMode==='account-loss'?1:cfg.merchant.bankExpandGoldFraction??.75)&&e.bankExpansionAvailable(cost);
    return e.perform('bank.expand',{cost,guard:()=>!!p.c.bank&&!p.c.bank[pack]&&
     definitions()[pack]?.[0]===p.c.map&&definitions()[pack]?.[1]===cost&&allowed(),
     call:()=>p.call('open_bank_pack',pack,'gold'),
@@ -468,5 +468,5 @@ export function createBank(bot){
  // Safe consolidation precedes evidence-based, rule-bound bank reclaim.
  function audit(){if(!cfg.merchant.bank||!p.c.bank||bot.inventoryBlocked||bot.journal)return false;
   return consolidateInventory()||consolidate()||consolidateAcross()||reclaim();}
- return {store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+ return {goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

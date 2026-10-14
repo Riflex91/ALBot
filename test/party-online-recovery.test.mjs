@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAccount} from '../src/party/account.mjs';
+import {createAccount,selectCatchUpSwap} from '../src/party/account.mjs';
+import {discoverAccountRoster,ownSupplyCharacters} from '../src/items/potion-supply.mjs';
 import {createTeamPlan} from '../src/world/team-plan.mjs';
 import {spawnLocations} from '../src/world/knowledge.mjs';
 
@@ -97,4 +98,95 @@ test('coordinator restores a returning active ranger to an underfilled adaptive 
   now+=15001;account.tick();
   assert.deepEqual(bot.farmers,['My_Ranger1','My_Ranger2','My_Rogue']);assert.equal(bot.leader,'My_Ranger1');
  }finally{Date.now=old;}
+});
+
+test('autodiscovery permits lifecycle rotation only with explicit farmer balancing',()=>{
+ const chars=[{name:'A',type:'ranger',level:50,xp:123,max_xp:1000},
+  {name:'B',type:'priest',level:42,xp:100,max_xp:1200},{name:'M',type:'merchant',level:70},
+  {name:'Foreign',type:'alien',level:3},{name:'NoLevel',type:'warrior',level:NaN}];
+ const p={c:{name:'M'},realm:()=> 'EUII',has:()=>true,call:id=>id==='get_characters'?chars:[]};
+ const own=ownSupplyCharacters(p);
+ assert.deepEqual(own.find(x=>x.name==='B'),{name:'B',class:'priest',level:42,xp:100,maxXp:1200});
+ assert.equal(own.find(x=>x.name==='NoLevel').level,null);
+ const template={role:'farmer',rotation:false,catchUp:false};
+ const cfg=enabled=>({general:{autoRoster:true},party:{group:'team1',balanceFarmers:enabled},characters:[]});
+ const off=discoverAccountRoster(cfg(false),p,template),on=discoverAccountRoster(cfg(true),p,template);
+ assert.ok(off.characters.filter(x=>x.role==='farmer').every(x=>!x.rotation));
+ assert.ok(on.characters.filter(x=>x.role==='farmer').every(x=>x.rotation));
+ assert.equal(on.characters.find(x=>x.name==='M').rotation,false);
+});
+
+test('catch-up chooses the weakest offline level and replaces only a safe eligible stronger farmer',()=>{
+ const members=[
+  {name:'A',rotation:true,level:71,running:true,class:'ranger',xp:9,maxXp:10},
+  {name:'B',rotation:true,level:68,running:true,class:'ranger'},
+  {name:'C',rotation:true,level:67,running:true,class:'priest'},
+  {name:'D',rotation:true,level:40,running:false,class:'ranger'},
+  {name:'E',rotation:true,level:48,running:false,class:'mage'}];
+ assert.deepEqual(selectCatchUpSwap(members,['A','B','C'],{levelGap:2}),
+  {out:'A',in:'D',fromLevel:71,toLevel:40,gap:31});
+ assert.equal(selectCatchUpSwap(members.map(m=>m.name==='D'?{...m,level:NaN}:m).map(m=>m.name==='E'?{...m,level:NaN}:m),['A','B','C']),null);
+ assert.equal(selectCatchUpSwap(members,['A','B','C'],{levelGap:40}),null);
+ assert.equal(selectCatchUpSwap(members.map(m=>m.name==='A'?{...m,rotation:false}:m),
+  ['A','B','C'],{levelGap:2})?.out,'B');
+ assert.equal(selectCatchUpSwap(members,['A','B','C'],{levelGap:2,protectedNames:['A','B','C']}),null);
+ assert.equal(selectCatchUpSwap(members.map(m=>m.name==='D'?{...m,level:67}:m).filter(m=>m.name!=='E'),
+  ['A','B','C'],{levelGap:5}),null);
+});
+
+test('coordinator safely swaps a stronger active farmer for an offline underleveled peer after hold',()=>{
+ const oldNow=Date.now;let now=10000000;Date.now=()=>now;
+ try{
+  const {bot,peers,calls,events}=accountFixture(['My_Ranger1','My_Ranger2','My_Ranger3']);
+  bot.cfg.party={...bot.cfg.party,leader:'',balanceFarmers:true,balanceLevelGap:2,
+   balanceHoldMs:1800000};
+  const levels={'My_Ranger1':70,'My_Ranger2':68,'My_Ranger3':66,'My_Rogue':35};
+  const active={My_Merchant:true,My_Ranger1:true,My_Ranger2:true,My_Ranger3:true};
+  for(const [name,peer] of peers)peer.level=levels[name];
+  bot.running=true;bot.p.G={monsters:{}};
+  bot.transport.ownCharacters=()=>Object.entries(levels).map(([name,level])=>({
+   name,class:name==='My_Rogue'?'rogue':'ranger',level}));
+  bot.p.write=()=>true;
+  bot.p.has=name=>['start_character','stop_character','get_active_characters'].includes(name);
+  bot.p.call=(name,who)=>{
+   calls.push([name,who]);
+   if(name==='get_active_characters')return {...active};
+   if(name==='stop_character'){delete active[who];peers.get(who).running=false;return true;}
+   if(name==='start_character'){
+    active[who]=true;peers.set(who,{name:who,level:levels[who],class:'rogue',running:true,
+     realm:'EUII',hp:100,max_hp:100,stats:{attack:70,frequency:1,armor:5}});return true;
+   }
+   throw Error(name);
+  };
+  bot.exec.run=(key,resources,guard,fn)=>guard()?(fn(),true):false;
+  const account=createAccount(bot);
+  now+=60000;account.tick();
+  assert.equal(calls.length,0,'no rotation before minimum training hold');
+  now+=1740001;account.tick();
+  assert.deepEqual(calls[0],['stop_character','My_Ranger1']);
+  assert.equal(account.status().transition.out,'My_Ranger1');
+  account.tick();assert.deepEqual(calls.at(-1),['start_character','My_Rogue']);
+  account.tick();
+  assert.deepEqual(bot.farmers,['My_Ranger2','My_Ranger3','My_Rogue']);
+  assert.equal(account.status().transition,null);
+  assert.ok(events.some(e=>e.type==='account.rotation'&&e.data.into==='My_Rogue'));
+  now+=60000;account.tick();
+  assert.equal(calls.filter(c=>c[0]==='stop_character').length,1,'no immediate ping-pong');
+ }finally{Date.now=oldNow;}
+});
+
+test('no account lifecycle calls without trustworthy offline levels or available APIs',()=>{
+ const oldNow=Date.now;let now=10000000;Date.now=()=>now;
+ try{
+  const {bot,calls,peers}=accountFixture(['My_Ranger1','My_Ranger2','My_Ranger3']);
+  bot.cfg.party.leader='';bot.cfg.party.balanceFarmers=true;
+  bot.cfg.party.balanceHoldMs=300000;
+  bot.p.G={monsters:{}};bot.running=true;
+  for(const p of peers.values())p.level=70;
+  bot.transport.ownCharacters=()=>[{name:'My_Rogue',class:'rogue',level:null}];
+  bot.p.has=()=>false;
+  const account=createAccount(bot);now+=600000;account.tick();
+  assert.deepEqual(calls,[]);
+  assert.equal(account.status().choice.catchUp,null);
+ }finally{Date.now=oldNow;}
 });

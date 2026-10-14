@@ -32,7 +32,7 @@ function fixture({tokens=4,own='tracker',peerCarrier=null,free=12,
    c.items[freeSlot]={name:'tracker',level:0};
    return Promise.resolve({success:true,name:'tracker'});
   }};
- const cfg={items:[],merchant:{enabled:true,supply:true,minFreeSlots:4},
+ const cfg={items:[],merchant:{enabled:true,supply:true,bank:true,minFreeSlots:4},
    farming:{freeSlots:4}};
  const bot={p,cfg,me:{name:'Merchant',role:'merchant'},farmers:['Ranger'],
   running:true,inventoryBlocked:false,journal:null,checkpoint:{durable:true},
@@ -139,5 +139,70 @@ test('unknown persisted intent freezes future token spending rather than resetti
  assert.equal(f.acquisition.eligible(),false);
  assert.equal(f.acquisition.tick(),false);
  assert.equal(f.acquisition.status().reason,'invalid-durable-state');
+ assert.equal(f.calls.length,0);
+});
+
+test('live banked Tracktrix is retrieved before spending four Monster Tokens',()=>{
+ const f=fixture({tokens:8});
+ f.G.bank_packs={items0:['bank',42]};
+ f.c.bank={items0:[{name:'tracker',level:0},...Array(41).fill(null)]};
+ const requests=[];
+ f.bot.bank.retrieve=(item,rule,wanted)=>{
+  requests.push({item,rule,wanted});
+  const place=f.c.items.findIndex(i=>!i);
+  f.c.items[place]=f.c.bank.items0[0];
+  f.c.bank.items0[0]=null;
+  return true;
+ };
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].rule.pack,'items0');
+ assert.equal(requests[0].wanted,1);
+ assert.equal(requests[0].item.name,'tracker');
+ assert.equal(f.calls.length,0,'tokens must remain untouched when banked Tracker exists');
+ assert.equal(f.c.items.filter(i=>i?.name==='tracker').length,2);
+ assert.equal(f.acquisition.eligible(),false,'newly retrieved spare can be distributed');
+});
+test('missing bank pack definition cannot authorize a guessed retrieval',()=>{
+ const f=fixture();
+ f.c.bank={items0:[{name:'tracker'}]};
+ assert.equal(f.acquisition.tick(),true,
+  'without verified bank pack mapping only documented token route is usable');
+ assert.equal(f.calls.length,1);
+});
+test('protected, variant-modified or nonstandard bank Trackers cannot be retrieved implicitly',()=>{
+ const variants=[
+  {name:'tracker',l:true},{name:'tracker',level:1},
+  {name:'tracker',data:{gift:1}},{name:'tracker',q:2},
+  {name:'tracker',acc:'x'},{name:'tracker',rid:'x'}
+ ];
+ for(const variant of variants){
+  const f=fixture();
+  f.G.bank_packs={items0:['bank',42]};
+  f.c.bank={items0:[variant]};
+  assert.equal(f.acquisition.tick(),true,JSON.stringify(variant));
+  assert.equal(f.calls.length,1,'not a safe bank retrieve variant: '+JSON.stringify(variant));
+ }
+});
+test('pending token order prevents bank retrieval until confirmed recipient',()=>{
+ const f=fixture({existingState:{recipient:'Ranger',at:Date.now()}});
+ f.G.bank_packs={items0:['bank',42]};
+ f.c.bank={items0:[{name:'tracker',level:0}]};
+ let retrieved=false;
+ f.bot.bank.retrieve=()=>{retrieved=true;return true;};
+ assert.equal(f.acquisition.eligible(),false);
+ assert.equal(f.acquisition.tick(),false);
+ assert.equal(retrieved,false);
+});
+test('below Merchant reserve bank retrieval is not an emergency shortcut',()=>{
+ const f=fixture();
+ f.G.bank_packs={items0:['bank',42]};
+ f.c.bank={items0:[{name:'tracker',level:0}]};
+ for(let i=2;i<38;i++)f.c.items[i]={name:'gem0'};
+ // Only four slots remain; neither retrieval nor token purchase is allowed.
+ assert.equal(f.c.items.filter(i=>!i).length,4);
+ assert.equal(f.acquisition.eligible(),false);
+ assert.equal(f.acquisition.tick(),false);
  assert.equal(f.calls.length,0);
 });

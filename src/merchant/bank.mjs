@@ -12,6 +12,23 @@ export function bankExpansionAffordable(cost,gold,staticBudget,fraction=.75){
    Number.isFinite(fraction)&&fraction>=0&&fraction<=1&&
    cost<=Math.floor(gold*fraction);
 }
+// Every bank pack keeps its own workspace reserve. Summing free slots
+// across different packs can report usable capacity when NONE of the packs
+// can accept one more regular deposit.
+export function bankCapacityPressure(rows,workspace=2,localMap=null){
+ if(!Array.isArray(rows)||!Number.isSafeInteger(workspace)||workspace<0)
+  return {pressed:false,locallyBlocked:false,usablePacks:0};
+ const valid=rows.filter(row=>row&&typeof row.map==='string'&&
+  Array.isArray(row.items));
+ const free=row=>row.items.filter(i=>!i).length;
+ const usablePacks=valid.filter(row=>free(row)>workspace).length;
+ const local=valid.filter(row=>row.map===localMap);
+ // A remote viable pack prevents irreversible reclaim; bank.store can travel
+ // there. A local pack above its reserve makes reclaim unnecessary as well.
+ return {pressed:local.length>0&&usablePacks===0,
+  locallyBlocked:local.length>0&&local.every(row=>free(row)<=workspace),
+  usablePacks};
+}
 export function createBank(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const pendingKey='albot:bank-partial:'+me.name;let pending=p.read(pendingKey)??null;
@@ -376,10 +393,14 @@ export function createBank(bot){
  }
  function reclaim(){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<1)return false;
-  const rows=packs().filter(([pack])=>packMap(pack)===p.c.map);
-  const free=rows.reduce((n,[,items])=>n+items.filter(i=>!i).length,0);
-  const pressed=rows.length>0&&free<(cfg.merchant.bankWorkspace??2);
-  if(!pressed){
+  const rows=packs(),workspace=Math.max(0,cfg.merchant.bankWorkspace??2);
+  const bankPressure=bankCapacityPressure(rows.map(([pack,items])=>({
+   map:packMap(pack),items
+  })),workspace,p.c.map);
+  // This threshold must agree with ordinary bank.store: a slot reserved
+  // for workspace cannot be used by ordinary inventory cleanup. Never
+  // reclaim/sell if a remote opened bank pack could accept a safe deposit.
+  if(!bankPressure.pressed){
    if(pressure.observations&&p.write(pressureKey,null))pressure={observations:0,epoch:null,at:0};
    return false;
   }

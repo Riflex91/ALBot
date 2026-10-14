@@ -3,7 +3,7 @@ import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,c
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
-import {isAchievementCarrier} from './achievement-utility.mjs';
+import {isAchievementCarrier,carriedAchievementCarrier,trackerDeliveryNeed,trackerMerchantKeep} from './achievement-utility.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
 // map or a frozen kite position after the recipient has moved away.
 export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190}={}){
@@ -62,6 +62,17 @@ export function createLogistics(bot){
       item:item.name,recipient:cfg.party.merchant,keep:0,teamReserve:0,
       batch:cfg.merchant.maxDelivery,ttlMs:cfg.general.messageTtlMs};
   };
+  const trackerRule=(item,to)=>{
+    if(item?.name!=='tracker'||me.role!=='merchant'||!cfg.merchant.enabled||
+       !cfg.merchant.supply||!bot.farmers?.includes(to)||
+       bot.economy?.explicit?.(item)||!p.G?.items?.tracker)return null;
+    const peer=transport.fresh(to);
+    if(!trackerDeliveryNeed(peer,p.realm(),{reserve:cfg.farming.freeSlots??4}))return null;
+    return {enabled:true,name:'Tracktrix-Reserve → '+to,
+      item:'tracker',action:'send',recipient:to,
+      keep:trackerMerchantKeep(p.c.items),teamReserve:0,
+      batch:1,ttlMs:cfg.general.messageTtlMs};
+  };
   const potionRule=(item,to)=>{
     if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
        !onlineSupplyFarmers(bot).some(x=>x.name===to)||!['hpot0','mpot0'].includes(item.name)||!isPotion(item)||explicitInventory(item)||bot.economy?.explicit(item))return null;
@@ -70,9 +81,12 @@ export function createLogistics(bot){
   };
   const sendRecipients=item=>{
     const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-    return configured.length?configured:(autoLootRule(item)?[cfg.party.merchant]:(isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?onlineSupplyFarmers(bot).map(x=>x.name):[]));
+    return configured.length?configured:(item?.name==='tracker'&&me.role==='merchant'?
+      (bot.farmers??[]).filter(name=>!!trackerRule(item,name)):
+      (autoLootRule(item)?[cfg.party.merchant]:
+      (isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?onlineSupplyFarmers(bot).map(x=>x.name):[])));
   };
-  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
+  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??trackerRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
   const defaultPotionDemand=(item,n)=>{
     if(me.role!=='farmer'||!isPotion(item))return 0;
@@ -106,8 +120,8 @@ export function createLogistics(bot){
     bot.event?.('logistics.cancelled',{id:j.id,peer:j.to,state:j.state,reason});
     return true;
   }
-  function capacity(i,verifiedGear=false,verifiedElixir=false){
-    const rule=ruleFor(i),implicit=defaultPotionDemand(i,count(i));
+  function capacity(i,verifiedGear=false,verifiedElixir=false,verifiedTracker=false){
+    const rule=ruleFor(i),implicit=Math.max(defaultPotionDemand(i,count(i)),verifiedTracker?1:0);
     // minFreeSlots is a cleanup target, not a pickup embargo. At the live
     // Merchant reserve (4 slots in USIV) legitimate incoming loot must still
     // be accepted if at least one physical slot is actually available.
@@ -143,7 +157,13 @@ export function createLogistics(bot){
       counters.offersReceived++;
       if(bot.checkpoint?.durable===false||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
-      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;const quantity=Math.min(d.quantity,capacity(d.item,!!d.gear,elixirRequested),cfg.merchant.maxDelivery);if(quantity<1){
+      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;
+      const trackerRequested=me.role==='farmer'&&from===cfg.party?.merchant&&
+       d.item.name==='tracker'&&!carriedAchievementCarrier(p.c.items)&&
+       bot.free()>(cfg.farming.freeSlots??4)&&
+       !chooseRule(cfg.items.filter(r=>r.enabled&&r.item==='tracker'),d.item,context())&&
+       !!p.G?.items?.tracker;
+      const quantity=Math.min(d.quantity,capacity(d.item,!!d.gear,elixirRequested,trackerRequested),cfg.merchant.maxDelivery);if(quantity<1){
        if(Date.now()-lastCapacityWarning>10000){
         lastCapacityWarning=Date.now();
         bot.event?.('logistics.receiveCapacity',{peer:from,item:d.item.name,
@@ -381,11 +401,24 @@ export function createLogistics(bot){
         const item={name,level:0,stat_type:'',p:'',title:''};
         if(isPotion(item)&&!variants.has(JSON.stringify(item)))variants.set(JSON.stringify(item),item);
       }
+      if(me.role==='farmer'&&p.G?.items?.tracker&&
+        trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
+         achievementCarrier:carriedAchievementCarrier(p.c.items),
+         inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
+         free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})){
+        const item={name:'tracker',level:0,stat_type:'',p:'',title:''};
+        variants.set(JSON.stringify(item),item);
+      }
       const all=[...variants.values()],result=[];let bytes=0;
       for(let n=0;n<Math.min(12,all.length);n++){const item=all[(summaryOffset+n)%all.length],r=ruleFor(item),
         transfer=me.role==='farmer'?sendRule(item,cfg.party.merchant):null,
         countNow=count(item),row={item:item.name,variant:item,
-        need:r?demandFor(r,countNow):defaultPotionDemand(item,countNow),
+        need:r?demandFor(r,countNow):item.name==='tracker'&&me.role==='farmer'&&
+          trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
+           achievementCarrier:carriedAchievementCarrier(p.c.items),
+           inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
+           free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
+           defaultPotionDemand(item,countNow),
         held:isPotion(item)?countNow:undefined,
         surplus:transfer?Math.max(0,countNow-transfer.keep-transfer.teamReserve-
           (bot.production?.reservedQuantity?.(item,transfer.recipient)??0)):0,

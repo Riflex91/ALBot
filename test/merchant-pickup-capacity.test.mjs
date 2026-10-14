@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planPickupCapacity,pickupCleanupCandidates} from '../src/merchant/pickup-capacity.mjs';
+import {planPickupCapacity,pickupCleanupCandidates,pickupOperatingTarget} from '../src/merchant/pickup-capacity.mjs';
 import {createMerchant} from '../src/merchant/controller.mjs';
 import {createLogistics} from '../src/items/logistics.mjs';
 import {createGoldLogistics} from '../src/items/gold.mjs';
@@ -50,6 +50,27 @@ test('mixed pickup batch still requires physical slots for unmergeable variants'
   canStack:i=>i.name==='mat'});
  assert.deepEqual([plan.offers,plan.stackOffers,plan.slotOffers,plan.target,
   plan.missing,plan.ready],[2,1,1,5,5,false]);
+});
+test('pickup working-space target scales with distinct new-slot variants, not a fixed 20',()=>{
+ const base={merchant:'My_Merchant',free:4,reserve:4,known:()=>true};
+ const plan=rows=>planPickupCapacity(rows,base);
+ assert.equal(pickupOperatingTarget(plan([]),{reserve:4,inventorySize:42}),0);
+ assert.equal(pickupOperatingTarget(plan([offer('one')]),{reserve:4,inventorySize:42}),5);
+ assert.equal(pickupOperatingTarget(plan([offer('one'),offer('one')]),{reserve:4,inventorySize:42}),5);
+ assert.equal(pickupOperatingTarget(plan([offer('a'),offer('b')]),{reserve:4,inventorySize:42}),6);
+ assert.equal(pickupOperatingTarget(plan([offer('a'),offer('b'),offer('c')]),{reserve:4,inventorySize:42}),8);
+ const dozen=Array.from({length:12},(_,i)=>offer('i'+i));
+ assert.equal(pickupOperatingTarget(plan(dozen),{reserve:4,inventorySize:42}),20);
+ assert.equal(pickupOperatingTarget(plan(dozen),{reserve:4,inventorySize:8}),8,
+  'working-space objective must fit the physical inventory');
+});
+test('merge-only pickup and malformed requested capacity never imply speculative slot cleanup',()=>{
+ const plan=planPickupCapacity([offer('mat')],{
+  merchant:'My_Merchant',free:0,reserve:4,known:()=>true,
+  canStack:()=>true});
+ assert.equal(plan.slotOffers,0);
+ assert.equal(pickupOperatingTarget(plan,{reserve:4,inventorySize:42}),0);
+ assert.equal(pickupOperatingTarget({slotOffers:-100,target:1},{inventorySize:42}),0);
 });
 test('preflight considers only whole-stack bank/sell actions and never protected/keep entries',()=>{
  const items=[{name:'bank',q:3},{name:'sell',q:1},{name:'partial',q:5},{name:'locked',q:1,l:true},{name:'keep',q:1}];
@@ -274,6 +295,30 @@ test('genuine positive offer still prepares free space for pickup',()=>{
  assert.equal(f.merchant.status().departure.phase,'capacity');
 });
 
+test('a single known item offer does not clear 20 spaces once its physical pickup reserve fits',()=>{
+ const f=departureAtCapacity([offer('misc')]);
+ // Retain bankable but nonessential inventory: 5 free slots already meet
+ // this one-variant offer; a large stale lootSlots hint cannot change that.
+ f.c.items[37]=null;
+ f.peer.lootSlots=42;
+ assert.equal(f.bot.free(),5);
+ assert.equal(f.merchant.prepareDeparture(f.peer),true);
+ assert.equal(f.merchant.status().departure.phase,'ready');
+ assert.deepEqual(f.actions,[],'extra automatic bank/sale must not be triggered');
+ assert.equal(f.merchant.status().pickup.target,5);
+});
+test('three distinct pickup offers justify just one extra working slot above hard reserve',()=>{
+ const f=departureAtCapacity([offer('misc'),offer('mat'),offer('extra')]);
+ f.bot.p.G.items.extra={type:'material'};
+ f.c.items[37]=null;f.c.items[36]=null;f.c.items[35]=null;
+ assert.equal(f.bot.free(),7);
+ assert.equal(f.merchant.prepareDeparture(f.peer),false,'8-slot soft workspace needs one more slot');
+ assert.deepEqual(f.actions,[['bank.store',0,'bank']]);
+ assert.equal(f.bot.free(),8);
+ assert.equal(f.merchant.status().departure.phase,'capacity');
+ assert.equal(f.merchant.prepareDeparture(f.peer),true);
+ assert.equal(f.merchant.status().departure.phase,'ready');
+});
 test('farmer accepts MP potions even when HP stack already holds 3000',()=>{
  const {bot,c}=merchantFixture(),sent=[];
  bot.running=true;bot.me={name:'F',role:'farmer'};

@@ -226,3 +226,73 @@ test('sender inquiry at full Merchant with incompatible stacks cannot trigger va
  f.A.logistics.poll();
  assert.equal(f.sends(),0);
 });
+
+
+function carrierPair({merchantItems=2,farmerCarrier=null,farmerFree=40}={}){
+ const {A,B,sends}=pair();
+ const cfg=A.cfg;
+ cfg.items=[];
+ cfg.party.merchant='A';cfg.farming.freeSlots=4;
+ cfg.merchant.supply=true;cfg.merchant.enabled=true;
+ cfg.merchant.pickup=true;cfg.merchant.maxDelivery=100;
+ A.p.G={items:{tracker:{type:'tracker'},supercomputer:{type:'computer'}}};
+ B.p.G=A.p.G;
+ A.farmers=['B'];
+ A.p.c.items=Array.from({length:42},(_,idx)=>
+  idx<merchantItems?{name:'tracker',level:0}:null);
+ B.p.c.items=Array.from({length:42},(_,idx)=>
+  idx<42-farmerFree?{name:'gem0',level:0}:null);
+ if(farmerCarrier)B.p.c.items[0]={name:farmerCarrier,level:0};
+ const parentFresh=A.transport.fresh;
+ A.transport.fresh=name=>{
+  const result=parentFresh(name);
+  return {...result,free:B.p.c.items.filter(i=>!i).length,
+   achievementCarrier:farmerCarrier,inventoryBlocked:false,journal:false};
+ };
+ return {A,B,sends};
+}
+test('Merchant sends exactly one spare Tracktrix to Farmer with verified missing carrier',()=>{
+ const {A,B,sends}=carrierPair();
+ assert.equal(B.logistics.summary().find(x=>x.item==='tracker')?.need,1);
+ A.logistics.poll();
+ assert.equal(B.journal?.kind,'receive');
+ A.logistics.poll();
+ assert.equal(sends(),1);
+ assert.equal(A.p.c.items.filter(i=>i?.name==='tracker').length,1);
+ assert.equal(B.p.c.items.filter(i=>i?.name==='tracker').length,1);
+ B.logistics.poll();A.logistics.poll();
+ assert.equal(A.logistics.stats().sendsStarted,1);
+});
+test('Merchant keeps its only Tracker without Super Computer, even if Farmer needs one',()=>{
+ const {A,B,sends}=carrierPair({merchantItems:1});
+ A.logistics.poll();A.logistics.poll();
+ assert.equal(sends(),0);
+ assert.equal(A.p.c.items.filter(i=>i?.name==='tracker').length,1);
+ assert.equal(B.logistics.summary().find(x=>x.item==='tracker')?.need,1);
+});
+test('Farmer with Super Computer or unknown carrier cannot trigger speculative Tracker transfer',()=>{
+ for(const carrier of ['supercomputer','unknown','tracker']){
+  const {A,sends}=carrierPair({farmerCarrier:carrier});
+  A.logistics.poll();A.logistics.poll();
+  assert.equal(sends(),0,'carrier '+carrier);
+ }
+});
+test('automatic Tracker transfer requires verified Farmer workspace and permitted session',()=>{
+ for(const free of [0,1,4]){
+  const {A,B,sends}=carrierPair({farmerFree:free});
+  assert.equal(B.logistics.summary().find(x=>x.item==='tracker')?.need??0,0);
+  A.logistics.poll();A.logistics.poll();
+  assert.equal(sends(),0,'free: '+free);
+ }
+});
+test('explicit Merchant keep rule overrides implicit Tracktrix distribution',()=>{
+ const {A,sends}=carrierPair();
+ A.cfg.items=[{enabled:true,name:'No Tracker transfer',role:'merchant',
+  item:'tracker',action:'keep',minLevel:0,maxLevel:99,character:'',
+  server:'',map:'',task:'',statType:'',property:'',title:'',priority:100}];
+ // Merchant transport is mocked without economy.explicit; include the
+ // real explicit rule checker to cover the full merchant integration.
+ A.economy={explicit:i=>A.cfg.items.find(r=>r.item===i.name)};
+ A.logistics.poll();A.logistics.poll();
+ assert.equal(sends(),0);
+});

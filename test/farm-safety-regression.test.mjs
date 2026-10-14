@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTeamPlan,verifiedAreaHistory,areaRateBaseline,areaObservationSeconds} from '../src/world/team-plan.mjs';
+import {createTeamPlan,verifiedAreaHistory,areaRateBaseline,areaObservationSeconds,areaPressure} from '../src/world/team-plan.mjs';
 import {createFarmer} from '../src/combat/farmer.mjs';
 
 test('dangerous farm-area failure quarantines a spawn instead of instantly reselecting it',()=>{
@@ -104,4 +104,13 @@ test('new spawn, hour or gear bucket does not charge transit time to spawn press
  assert.equal(areaObservationSeconds('area-a','area-a',3000),3);
  assert.equal(areaObservationSeconds('area-a','area-a',9000),5);
  assert.equal(areaObservationSeconds('area-a','area-a',NaN),0);
+});
+
+test('historical spawn crowd pressure decays and expires without inventing safety approval',()=>{
+ const row={at:1000,seconds:100,empty:80,foreign:300};
+ assert.deepEqual(areaPressure(row,1000,1000),{empty:.8,foreign:3});
+ assert.deepEqual(areaPressure(row,1500,1000),{empty:.4,foreign:1.5});
+ assert.deepEqual(areaPressure(row,2000,1000),{empty:0,foreign:0});
+ assert.deepEqual(areaPressure(row,500,1000),{empty:0,foreign:0});
+ assert.deepEqual(areaPressure(null,1500,1000),{empty:0,foreign:0});
 });

@@ -1,5 +1,4 @@
-import {carriedAchievementCarrier,trackerDeliveryNeed,trackerMerchantKeep}
- from '../items/achievement-utility.mjs';
+import {carriedAchievementCarrier,trackerDeliveryNeed,trackerMerchantKeep} from '../items/achievement-utility.mjs';
 import {protectedItem,fingerprint} from '../core/policy.mjs';
 
 // Official: G.tokens.monstertoken.tracker = 4; runner exchange_buy()

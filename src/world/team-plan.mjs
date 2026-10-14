@@ -18,6 +18,9 @@ export function verifiedAreaHistory(row,now=Date.now()){
     !Number.isSafeInteger(row.lostKills??0)||(row.lostKills??0)<0)return null;
  return row;
 }
+export function areaRateBaseline(previousKey,nextKey,xp,gold,lastXp,lastGold){
+ return previousKey===nextKey?{xp:lastXp,gold:lastGold}:{xp,gold};
+}
 export function createTeamPlan(bot){
  const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
@@ -37,7 +40,7 @@ export function createTeamPlan(bot){
   const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>semanticGear(n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))),old=verifiedAreaHistory(history[id],now)??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visiblebot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
   // A new spawn/hour/gear key starts a fresh rate window. Experience and gold
   // earned on the way to this area must not be attributed to its throughput.
-  if(area!==id){lastXp=p.c.xp??0;lastGold=p.c.gold??0;}
+  ({xp:lastXp,gold:lastGold}=areaRateBaseline(area,id,p.c.xp??0,p.c.gold??0,lastXp,lastGold));
   old.seconds+=dt/1000;old.xp+=Math.max(0,(p.c.xp??0)-lastXp);lastXp=p.c.xp??0;if(!bot.journal&&!bot.logistics.reserved&&!bot.gold?.reserved)old.gold=(old.gold??0)+Math.max(0,(p.c.gold??0)-lastGold);lastGold=p.c.gold??0;old.empty+=visible.length?0:dt/1000;old.foreign+=foreign*dt/1000;old.samples++;old.at=now;history[id]=old;area=id;
   // A crowded spawn is often NOT empty: other players claim monsters before
   // us. Count sustained foreign presence as pressure, not just empty time.

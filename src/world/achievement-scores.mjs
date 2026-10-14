@@ -27,6 +27,17 @@ export function verifiedTrackerScores(data,G,{limit=512}={}){
  }
  return rows;
 }
+// Verified proximity to the NEXT stat milestone is worth at most 4% of a
+// normal safe FarmPlan's utility. This never creates a new monster candidate,
+// guesses kill-credit rates or overrides a material-production objective.
+export function achievementMilestoneBias(row){
+ if(!row||!Number.isFinite(row.score)||row.score<0||
+    !Number.isFinite(row.nextThreshold)||row.nextThreshold<=row.score||
+    !Number.isFinite(row.gap)||row.gap!==row.nextThreshold-row.score||
+    !row.nextReward||typeof row.nextReward.stat!=='string'||
+    !Number.isFinite(row.nextReward.value)||row.nextReward.value<=0)return 0;
+ return row.gap<25?Math.min(.04,.04*(25-row.gap)/25):0;
+}
 export function createAchievementScores(bot,clock=()=>Date.now()){
  const {p}=bot,interval=120000,ttl=600000,timeout=15000;
  let socket=null,lastRequestAt=0,pendingAt=0,receivedAt=0,entries=null,
@@ -79,5 +90,11 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
     .sort((a,b)=>a.gap-b.gap||a.monster.localeCompare(b.monster))
     .slice(0,12)};
  }
- return {poll,status,close(){closed=true;pendingAt=0;detach();}};
+ function bonus(monster){
+  if(!bot.running||!carriedAchievementCarrier(p.c?.items)||
+     !receivedAt||clock()<receivedAt||clock()-receivedAt>ttl||
+     typeof monster!=='string')return 0;
+  return achievementMilestoneBias(entries?.find(row=>row.monster===monster));
+ }
+ return {poll,status,bonus,close(){closed=true;pendingAt=0;detach();}};
 }

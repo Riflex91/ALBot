@@ -42,8 +42,17 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
  const {p}=bot,interval=120000,ttl=600000,timeout=15000;
  let socket=null,lastRequestAt=0,pendingAt=0,receivedAt=0,entries=null,
   reason='not-observed',closed=false;
+ function carrier(){
+  const held=carriedAchievementCarrier(p.c?.items);
+  if(!held||held==='unknown'){
+   // A carrier gap invalidates account-score proof. An old response or
+   // re-equipped carrier must not resurrect stale achievement priorities.
+   entries=null;receivedAt=0;pendingAt=0;
+  }
+  return held;
+ }
  function receive(data){
-  if(!pendingAt||closed)return false;
+  if(!pendingAt||closed||!carrier()||carrier()==='unknown')return false;
   pendingAt=0;
   const rows=verifiedTrackerScores(data,p.G);
   if(!rows){reason='invalid-server-reply';return false;}
@@ -58,9 +67,9 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
  }
  function poll(){
   if(closed||!bot.running)return false;
-  const carrier=carriedAchievementCarrier(p.c?.items);
-  if(carrier==='unknown'){reason='inventory-unknown';return false;}
-  if(!carrier){reason='carrier-not-held';pendingAt=0;return false;}
+  const held=carrier();
+  if(held==='unknown'){reason='inventory-unknown';return false;}
+  if(!held){reason='carrier-not-held';pendingAt=0;return false;}
   const now=clock();
   if(pendingAt&&now-pendingAt<timeout)return false;
   if(pendingAt){pendingAt=0;reason='server-timeout';}
@@ -77,12 +86,12 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
   catch{pendingAt=0;reason='tracker-request-failed';return false;}
  }
  function status(){
-  const carrier=carriedAchievementCarrier(p.c?.items),now=clock();
+  const held=carrier(),now=clock();
   const current=receivedAt>0&&now>=receivedAt&&now-receivedAt<=ttl;
-  const rows=current&&carrier?entries??[]:[];
-  return {state:carrier==='unknown'?'inventory-unknown':!carrier?'carrier-not-held':
+  const rows=current&&held&&held!=='unknown'?entries??[]:[];
+  return {state:held==='unknown'?'inventory-unknown':!held?'carrier-not-held':
     !current&&receivedAt>0?'stale':reason,
-   carrier,observedAt:current?receivedAt:null,
+   carrier:held,observedAt:current?receivedAt:null,
    observedMonsters:rows.length,
    // An actual server score, not an estimate. Limited diagnostic output and
    // no use in automatic farm ordering until live evidence is validated.
@@ -91,7 +100,7 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
     .slice(0,12)};
  }
  function bonus(monster){
-  if(!bot.running||!carriedAchievementCarrier(p.c?.items)||
+  if(!bot.running||!carrier()||
      !receivedAt||clock()<receivedAt||clock()-receivedAt>ttl||
      typeof monster!=='string')return 0;
   return achievementMilestoneBias(entries?.find(row=>row.monster===monster));

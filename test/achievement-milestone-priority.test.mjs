@@ -45,7 +45,11 @@ test('verified active carrier enables milestone bias; stale/removed data disable
  f.bot.p.c.items=[{name:'computer'}];
  assert.equal(f.scores.bonus('goo'),0,'no carried achievement carrier');
  f.bot.p.c.items=[{name:'supercomputer'}];
- assert.ok(f.scores.bonus('goo')>0,'supercomputer is an exact replacement');
+ assert.equal(f.scores.bonus('goo'),0,'re-equipped carrier requires new server evidence');
+ f.advance(120001);
+ assert.equal(f.scores.poll(),true);
+ f.socket.deliver(data());
+ assert.ok(f.scores.bonus('goo')>0,'fresh confirmed supercomputer score is accepted');
  f.advance(600001);
  assert.equal(f.scores.bonus('goo'),0,'stale scores cannot change farm targets');
 });
@@ -69,4 +73,18 @@ test('reloading optional Guide advice off still uses confirmed achievement score
  assert.equal(progression.bonus('crab','main'),0);
  progression.close();
  assert.equal(socket.handlers.size,0);
+});
+
+test('delayed tracker response after carrier loss cannot restore achievement bonus',()=>{
+ const f=fixture();
+ assert.equal(f.scores.poll(),true);
+ f.bot.p.c.items=[];
+ assert.equal(f.scores.status().state,'carrier-not-held');
+ f.socket.deliver(data());
+ f.bot.p.c.items=[{name:'tracker'}];
+ assert.equal(f.scores.bonus('goo'),0);
+ f.advance(120001);
+ assert.equal(f.scores.poll(),true);
+ f.socket.deliver(data());
+ assert.ok(f.scores.bonus('goo')>0);
 });

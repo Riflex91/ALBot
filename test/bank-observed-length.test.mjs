@@ -112,7 +112,7 @@ test('bank store stays on current bank map when a pack has more than the workspa
 test('explicit pack routing is never silently widened to an unrelated bank map',()=>{
  const f=bankWithTwoMaps({localFree:1,remoteFree:12});
  assert.equal(f.bank.store(0,rule),false);
- assert.deepEqual(f.travel,['bank']);
+ assert.deepEqual(f.travel,[],'a workspace-blocked explicit pack is not a valid bank destination');
  assert.deepEqual(f.performed,[]);
  assert.equal(f.c.items[0].name,'mat');
 });

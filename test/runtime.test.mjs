@@ -109,7 +109,7 @@ test('same artifact keeps contexts independent, one timer and cleans listeners o
  a.load();assert.equal(a.timers.size,0);assert.equal(a.root.ALBot.status().running,false);assert.equal(a.listeners.size,2);a.root.ALBot.dispose();b.root.ALBot.dispose();assert.equal(a.listeners.size,0);
 });
 test('unsupported config prevents gameplay; unresolved value checkpoint permits guarded runtime',()=>{
- const a=harness();a.cfg.production={enabled:true};a.load();assert.equal(a.root.ALBot.status().state,'invalid');assert.equal(a.timers.size,0);
+ const a=harness();a.cfg.production={enabled:'not-a-boolean'};a.load();assert.equal(a.root.ALBot.status().state,'invalid');assert.equal(a.timers.size,0);
  const b=harness();b.storage.set('albot:live-a:A:checkpoint',{journal:{kind:'send',item:'hpot1'}});b.load();assert.equal(b.root.ALBot.start(),true);assert.equal(b.root.ALBot.status().inventoryBlocked,true);assert.equal(b.timers.size,1);assert.ok(b.root.ALBot.status().journal);b.root.ALBot.dispose();
 });
 test('CODE without TextEncoder or structuredClone boots without changing host globals',()=>{

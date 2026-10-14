@@ -3,7 +3,7 @@ import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,c
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
-import {isAchievementCarrier} from './achievement-utility.mjs';
+import {isAchievementCarrier,carrierRecipient} from './achievement-utility.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
 // map or a frozen kite position after the recipient has moved away.
 export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190}={}){
@@ -68,11 +68,27 @@ export function createLogistics(bot){
     return {enabled:true,name:'Autoversorgung '+item.name+' → '+to,action:'send',
       item:item.name,recipient:to,keep:200,teamReserve:0,batch:1500,ttlMs:cfg.general.messageTtlMs};
   };
+  // A gifted or previously banked carrier held by the Merchant should
+  // reach ONE Farmer who is confirmed to be without either accepted utility.
+  // Explicit user item rules always override this derived logistics route.
+  const achievementRecipient=item=>me.role==='merchant'&&
+    cfg.merchant.enabled&&cfg.merchant.supply&&isAchievementCarrier(item)&&
+    !explicitInventory(item)&&!bot.economy?.explicit(item)&&
+    bot.production?.reservedQuantity?.(item)!==1?
+    carrierRecipient(bot.farmers,name=>transport.fresh(name),p.realm()):null;
+  const achievementRule=(item,to)=>achievementRecipient(item)===to?
+    {enabled:true,name:'Tracktrix-Teambonus an '+to,
+     action:'send',item:item.name,recipient:to,keep:0,teamReserve:0,
+     batch:1,ttlMs:cfg.general.messageTtlMs}:null;
   const sendRecipients=item=>{
     const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-    return configured.length?configured:(autoLootRule(item)?[cfg.party.merchant]:(isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?onlineSupplyFarmers(bot).map(x=>x.name):[]));
+    if(configured.length)return configured;
+    const recipient=achievementRecipient(item);
+    return recipient?[recipient]:(autoLootRule(item)?[cfg.party.merchant]:
+      isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?
+      onlineSupplyFarmers(bot).map(x=>x.name):[]);
   };
-  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
+  const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??achievementRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
   const defaultPotionDemand=(item,n)=>{
     if(me.role!=='farmer'||!isPotion(item))return 0;
@@ -331,7 +347,11 @@ export function createLogistics(bot){
          h.potions[id]<potionTarget(cfg,id)&&
          p.c.items.some(i=>i?.name===id&&!!sendRule(i,name)&&
            availableTransfer(p.c.items.indexOf(i),sendRule(i,name))>0));
-       const demand=requested||directPotions||gearRequested||elixirRequested;
+       const carrierRequested=cfg.merchant.supply&&
+         p.c.items.some((i,slot)=>i&&isAchievementCarrier(i)&&
+           achievementRecipient(i)===name&&!!sendRule(i,name)&&
+           availableTransfer(slot,sendRule(i,name))>0);
+       const demand=requested||directPotions||gearRequested||elixirRequested||carrierRequested;
       const pickup=cfg.merchant.pickup&&pickupCycle&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
         const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&localBankBatch())continue;

@@ -73,10 +73,12 @@ export function createLogistics(bot){
       keep:trackerMerchantKeep(p.c.items),teamReserve:0,
       batch:1,ttlMs:cfg.general.messageTtlMs};
   };
+  const refillFarmers=()=>onlineSupplyFarmers(bot).filter(({name})=>
+    cfg.merchant.potionTeamRefill!==true||(bot.farmers??[]).includes(name));
   const potionRule=(item,to)=>{
     if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
        (cfg.merchant.potionTeamRefill===true&&bot.merchant?.potionSupplyActive?.()!==true)||
-       !onlineSupplyFarmers(bot).some(x=>x.name===to)||!['hpot0','mpot0'].includes(item.name)||!isPotion(item)||explicitInventory(item)||bot.economy?.explicit(item))return null;
+       !refillFarmers().some(x=>x.name===to)||!['hpot0','mpot0'].includes(item.name)||!isPotion(item)||explicitInventory(item)||bot.economy?.explicit(item))return null;
     return {enabled:true,name:'Autoversorgung '+item.name+' → '+to,action:'send',
       item:item.name,recipient:to,keep:200,teamReserve:0,batch:1500,ttlMs:cfg.general.messageTtlMs};
   };
@@ -86,7 +88,7 @@ export function createLogistics(bot){
       (bot.farmers??[]).filter(name=>!!trackerRule(item,name)):
       (autoLootRule(item)?[cfg.party.merchant]:
       (isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)&&
-        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?onlineSupplyFarmers(bot).map(x=>x.name):[])));
+        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?refillFarmers().map(x=>x.name):[])));
   };
   const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??trackerRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};

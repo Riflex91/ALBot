@@ -75,7 +75,7 @@ function farmerFixture({free=10,signal=null,engaged=false,monsters=true}={}){
   transport:{fresh:name=>name==='Merchant'?signal:null},
   logistics:{handoffActive:false,reserved:false},
   gold:{reserved:false},
-  encounter:{pull:()=>{pulls.push(1);return false;}},
+  encounter:{status:()=>({phase:'IDLE'}),pull:()=>{pulls.push(1);return false;}},
   event:()=>{},pause:()=>{}};
  bot.farmer=createFarmer(bot);
  return {bot,c,foe,attacks,skills,moves,pulls};

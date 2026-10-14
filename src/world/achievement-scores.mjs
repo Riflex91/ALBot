@@ -16,7 +16,7 @@ export function verifiedTrackerScores(data,G,{limit=512}={}){
   // the next milestone for this exact monster in the current G.
   const levels=Array.isArray(defs[id]?.achievements)?
     defs[id].achievements.filter(row=>Array.isArray(row)&&
-      Number.isFinite(row[0])&&row[0]>score&&row[0]>0)
+      Number.isSafeInteger(row[0])&&row[0]>score&&row[0]>0)
       .sort((a,b)=>a[0]-b[0]):[];
   const next=levels[0],threshold=next?.[0]??null;
   rows.push({monster:id,score,nextThreshold:threshold,
@@ -32,7 +32,7 @@ export function verifiedTrackerScores(data,G,{limit=512}={}){
 // guesses kill-credit rates or overrides a material-production objective.
 export function achievementMilestoneBias(row){
  if(!row||!Number.isFinite(row.score)||row.score<0||
-    !Number.isFinite(row.nextThreshold)||row.nextThreshold<=row.score||
+    !Number.isSafeInteger(row.nextThreshold)||row.nextThreshold<=row.score||
     !Number.isFinite(row.gap)||row.gap!==row.nextThreshold-row.score||
     !row.nextReward||typeof row.nextReward.stat!=='string'||
     !Number.isFinite(row.nextReward.value)||row.nextReward.value<=0)return 0;

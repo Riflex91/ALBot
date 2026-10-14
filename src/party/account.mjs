@@ -15,6 +15,24 @@ export function selectAccountTeam(members,limit,{boss=false,leader='',current=[]
   }).sort((a,b)=>b.teamScore-a.teamScore||a.index-b.index);if(!candidates.length)break;add(candidates[0]);}
  }else for(const x of ranked)add(x);return chosen;
 }
+// Level evidence must be current or from the account's own character list.
+// Gear is handled separately by the gear planner; unequal class DPS is not
+// a reliable substitute for level progression (healers/tanks versus rangers).
+export function selectCatchUpSwap(members,current,{levelGap=2,protectedNames=[]}={}){
+ if(!Array.isArray(members)||!Array.isArray(current)||!Number.isSafeInteger(levelGap)||levelGap<1)return null;
+ const fixed=new Set(protectedNames);
+ const eligible=members.filter(x=>x?.rotation===true&&typeof x.name==='string'&&
+   Number.isSafeInteger(x.level)&&x.level>0&&x.class&&x.class!=='auto');
+ const progress=x=>Number.isFinite(x.xp)&&Number.isFinite(x.maxXp)&&x.maxXp>0?
+   Math.min(1,Math.max(0,x.xp/x.maxXp)):0;
+ const incoming=eligible.filter(x=>!current.includes(x.name)&&!x.running)
+   .sort((a,b)=>a.level-b.level||progress(a)-progress(b)||a.name.localeCompare(b.name))[0];
+ const outgoing=eligible.filter(x=>current.includes(x.name)&&x.running&&!fixed.has(x.name))
+   .sort((a,b)=>b.level-a.level||progress(b)-progress(a)||a.name.localeCompare(b.name))[0];
+ if(!incoming||!outgoing||outgoing.level-incoming.level<levelGap)return null;
+ return {out:outgoing.name,in:incoming.name,fromLevel:outgoing.level,toLevel:incoming.level,
+  gap:outgoing.level-incoming.level};
+}
 export function chooseCombatLeader(members){return members.filter(x=>x.running&&!x.rip&&x.hp>0&&x.stats?.attack>0).map(x=>({...x,leaderScore:(['warrior','paladin'].includes(x.class)?5:0)+Math.log1p(x.stats.attack*(x.stats.frequency??1))+Math.log1p(x.stats.armor??0)/2+(x.hp/Math.max(1,x.max_hp))*3})).sort((a,b)=>b.leaderScore-a.leaderScore||a.name.localeCompare(b.name))[0]?.name??null;}
 // Wealth snapshots contain monetary balances only; inventories and transferred
 // gold are never added as estimates. Missing/future/stale peers fail conservative.
@@ -124,11 +142,37 @@ export function createAccount(bot){
    return;
   }
   if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
-  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{const h=bot.transport.fresh(c.name),g=bot.gear?.profile(c.name);return {...c,class:c.class==='auto'?h?.class??g?.class??'auto':c.class,level:h?.level??g?.level??0,running:!!h?.running,rip:!!h?.rip,hp:h?.hp,max_hp:h?.max_hp,stats:h?.gear?.stats??g?.stats};});
+  // get_characters() can supply offline levels; do not infer a zero-level
+  // character or use a stale heartbeat as evidence for account rotation.
+  const roster=new Map((bot.transport?.ownCharacters?.()??[]).map(c=>[c.name,c]));
+  const members=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>{
+   const h=bot.transport.fresh(c.name),own=roster.get(c.name),g=bot.gear?.profile(c.name);
+   const local=c.name===me.name?{...p.c,level:p.c.level,running:bot.running,class:p.c.ctype}:null;
+   const seen=local??h;
+   return {...c,class:c.class==='auto'?seen?.class??own?.class??g?.class??'auto':c.class,
+    level:seen?.level??own?.level??g?.level??0,xp:own?.xp??null,maxXp:own?.maxXp??null,
+    running:!!seen?.running,rip:!!seen?.rip,hp:seen?.hp,max_hp:seen?.max_hp,
+    stats:seen?.gear?.stats??g?.stats};
+  });
   const leaderActivity=bot.transport.fresh(bot.leader)?.activity;const task=me.role==='merchant'?leaderActivity?.kind:bot.strategy.task();
   const bossObjective=bot.bosses?.objective();
-  const target=selectAccountTeam(members,cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),preferredClasses:bossObjective?.recommended??[],leader:cfg.party.leader,current:bot.farmers,synergy:!!cfg.party.gearSynergy,damageType:p.G.monsters[bossObjective?.id??leaderActivity?.target??bot.target?.mtype]?.damage_type});
-  bot.accountChoice={names:target,reason:cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte, Catch-up und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder'};
+  const training=cfg.party.balanceFarmers===true&&!bossObjective&&
+   !['boss','event','quest'].includes(task)&&!bot.teamPlan?.materialActive?.();
+  const due=Date.now()-changed>=Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000);
+  const swap=training&&due?selectCatchUpSwap(members,bot.farmers,{
+   levelGap:cfg.party.balanceLevelGap??2,protectedNames:[cfg.party.leader,me.name].filter(Boolean)
+  }):null;
+  // During ordinary farming the existing group stays stable until an eligible
+  // underleveled *offline* farmer is demonstrably behind an active one.
+  // Boss/event tasks still select by combat suitability and class synergy.
+  const target=training?(swap?bot.farmers.filter(n=>n!==swap.out).concat(swap.in):[...bot.farmers]):
+   selectAccountTeam(members,cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),
+    preferredClasses:bossObjective?.recommended??[],leader:cfg.party.leader,current:bot.farmers,
+    synergy:!!cfg.party.gearSynergy,
+    damageType:p.G?.monsters?.[bossObjective?.id??leaderActivity?.target??bot.target?.mtype]?.damage_type});
+  bot.accountChoice={names:target,reason:training?'Levelausgleich aus belegten Charakterleveln (kein Wechsel ohne Rückstand und Mindesthaltezeit)':
+   cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder',
+   catchUp:swap??null,nextEligibleAt:training?changed+Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000):null};
   const elected=cfg.party.leader||chooseCombatLeader(members.filter(x=>target.includes(x.name)))||bot.leader;
   if(JSON.stringify(target)===JSON.stringify(bot.farmers)){if(elected!==bot.leader&&apply(target,elected)){sequence++;bot.event('account.leader',{leader:elected,reason:'Bekannte aktuelle Fähigkeiten, Schutz und Kampfstärke'});}return;}
   const out=bot.farmers.find(n=>!target.includes(n)),into=target.find(n=>!bot.farmers.includes(n));

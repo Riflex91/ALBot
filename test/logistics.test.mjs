@@ -226,3 +226,52 @@ test('sender inquiry at full Merchant with incompatible stacks cannot trigger va
  f.A.logistics.poll();
  assert.equal(f.sends(),0);
 });
+
+function achievementPair(){
+ const {A,B,sends}=pair();
+ A.cfg.items=[];A.cfg.party.merchant='A';
+ A.cfg.merchant.enabled=true;A.cfg.merchant.supply=true;
+ A.cfg.merchant.pickup=true;A.cfg.merchant.maxDelivery=100;
+ A.farmers=['B'];A.running=true;B.running=true;
+ A.p.G={items:{tracker:{type:'tracker'},supercomputer:{type:'computer'}}};
+ B.p.G={items:{tracker:{type:'tracker'},supercomputer:{type:'computer'}}};
+ A.p.c.items=[{name:'tracker',level:0},...Array(41).fill(null)];
+ B.p.c.items=Array(42).fill(null);
+ let carrier=null;
+ A.transport.fresh=name=>name==='B'?{
+  name:'B',session:'B',running:true,rip:false,realm:'EUII',map:'main',in:'main',
+  x:0,y:0,free:41,achievementCarrier:carrier,inventoryBlocked:false,
+  reserved:false,journal:false,items:[]
+ }:null;
+ return {A,B,sends,setCarrier:value=>{carrier=value;}};
+}
+test('Merchant announces one documented Tracktrix to a verified missing Farmer',()=>{
+ const {A}=achievementPair();
+ const summary=A.logistics.summary().filter(x=>x.to==='B');
+ assert.equal(summary.length,1);
+ assert.equal(summary[0].item,'tracker');
+ assert.equal(summary[0].surplus,1);
+ assert.equal(A.logistics.pickupSlots(),0);
+});
+test('Unknown or already-carried Tracktrix prevents speculative Merchant offer',()=>{
+ const f=achievementPair();f.setCarrier('unknown');
+ assert.equal(f.A.logistics.summary().some(x=>x.to==='B'),false);
+ f.setCarrier('supercomputer');
+ assert.equal(f.A.logistics.summary().some(x=>x.to==='B'),false);
+ f.setCarrier('tracker');
+ assert.equal(f.A.logistics.summary().some(x=>x.to==='B'),false);
+});
+test('An explicit keep rule always overrides implicit achievement delivery',()=>{
+ const f=achievementPair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ f.A.cfg.items=[{...r,name:'Protected Tracktrix',item:'tracker',role:'merchant',
+   action:'keep',enabled:true}];
+ assert.equal(f.A.logistics.summary().some(x=>x.to==='B'),false);
+});
+test('Authentic state change to a covered Farmer cancels uncommitted Tracktrix offer',()=>{
+ const f=achievementPair();
+ f.A.logistics.poll();
+ assert.equal(f.A.logistics.stats().offersSent,1);
+ f.setCarrier('supercomputer');
+ f.A.logistics.poll();
+ assert.equal(f.sends(),0,'recheck never sends a newly redundant carrier');
+});

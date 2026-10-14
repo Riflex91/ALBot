@@ -7,7 +7,11 @@ export function fitHeartbeat(data,maxLength=4200){
  const d={...data,items:[...(data.items??[])],materials:[...(data.materials??[])]};
  const length=()=>JSON.stringify(d).length;
  if(length()<=maxLength)return d;
- for(const key of ['performance','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','materialProgress','bankOwner','skills','mluck','elixir','supplies']){
+ // Keep verified material stock counts as long as possible: the Merchant
+ // uses these counts to avoid allocating duplicate farming quotas. They
+ // matter more than optional diagnostic/skill/market telemetry, but lose
+ // priority to the core identity, item demand and material requests below.
+ for(const key of ['performance','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','bankOwner','skills','mluck','elixir','supplies','materialProgress']){
   delete d[key];if(length()<=maxLength)return d;
  }
  // Keep active team identity if possible, but delivery demand takes precedence.

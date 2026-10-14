@@ -158,7 +158,7 @@ export function createLogistics(bot){
       if(bot.checkpoint?.durable===false||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
       if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;
-      const trackerRequested=me.role==='farmer'&&from===cfg.party.merchant&&
+      const trackerRequested=me.role==='farmer'&&from===cfg.party?.merchant&&
        d.item.name==='tracker'&&!carriedAchievementCarrier(p.c.items)&&
        bot.free()>(cfg.farming.freeSlots??4)&&
        !chooseRule(cfg.items.filter(r=>r.enabled&&r.item==='tracker'),d.item,context())&&
@@ -405,7 +405,7 @@ export function createLogistics(bot){
         trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
          achievementCarrier:carriedAchievementCarrier(p.c.items),
          inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
-         free:bot.free()},p.realm(),{reserve:cfg.farming.freeSlots??4})){
+         free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})){
         const item={name:'tracker',level:0,stat_type:'',p:'',title:''};
         variants.set(JSON.stringify(item),item);
       }
@@ -417,7 +417,7 @@ export function createLogistics(bot){
           trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
            achievementCarrier:carriedAchievementCarrier(p.c.items),
            inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
-           free:bot.free()},p.realm(),{reserve:cfg.farming.freeSlots??4})?1:
+           free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
            defaultPotionDemand(item,countNow),
         held:isPotion(item)?countNow:undefined,
         surplus:transfer?Math.max(0,countNow-transfer.keep-transfer.teamReserve-

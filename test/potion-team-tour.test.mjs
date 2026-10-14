@@ -24,7 +24,7 @@ function setup(){
   bank:{pending:false,manageStand:()=>false,consolidateInventory:()=>false,
    consolidate:()=>false,consolidateAcross:()=>false,stock:()=>0},
   services:{active:false,waiting:false},
-  economy:{count:item=>owned[item.name],explicit:()=>null,ledger:{spent:0},
+  economy:{count:item=>owned[item.name],safe:item=>!!item,explicit:()=>null,ledger:{spent:0},
    npcBuy:(item,rule,qty,guard)=>{assert.equal(guard(),true);
     assert.ok(qty<=cfg.merchant.maxDelivery);
     buys.push({item:item.name,qty});owned[item.name]+=qty;return true;}},

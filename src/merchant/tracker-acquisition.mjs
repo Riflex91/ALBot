@@ -39,7 +39,7 @@ export function createTrackerAcquisition(bot){
   const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
   if(own>trackerMerchantKeep(p.c.items))return null;
   for(const [pack,items] of Object.entries(p.c.bank??{})){
-   if(!/^items\\d+$/.test(pack)||!Array.isArray(items)||
+   if(!/^items[0-9]+$/.test(pack)||!Array.isArray(items)||
       !p.G?.bank_packs?.[pack])continue;
    const item=items.find(i=>i?.name==='tracker'&&!protectedItem(i)&&
      (i.level??0)===0&&(i.q??1)===1&&!i.data&&!i.acc&&!i.rid&&

@@ -21,6 +21,9 @@ export function verifiedAreaHistory(row,now=Date.now()){
 export function areaRateBaseline(previousKey,nextKey,xp,gold,lastXp,lastGold){
  return previousKey===nextKey?{xp:lastXp,gold:lastGold}:{xp,gold};
 }
+export function areaObservationSeconds(previousKey,nextKey,dt){
+ return previousKey===nextKey&&Number.isFinite(dt)&&dt>=0?Math.min(5000,dt)/1000:0;
+}
 export function createTeamPlan(bot){
  const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
@@ -41,7 +44,8 @@ export function createTeamPlan(bot){
   // A new spawn/hour/gear key starts a fresh rate window. Experience and gold
   // earned on the way to this area must not be attributed to its throughput.
   ({xp:lastXp,gold:lastGold}=areaRateBaseline(area,id,p.c.xp??0,p.c.gold??0,lastXp,lastGold));
-  old.seconds+=dt/1000;old.xp+=Math.max(0,(p.c.xp??0)-lastXp);lastXp=p.c.xp??0;if(!bot.journal&&!bot.logistics.reserved&&!bot.gold?.reserved)old.gold=(old.gold??0)+Math.max(0,(p.c.gold??0)-lastGold);lastGold=p.c.gold??0;old.empty+=visible.length?0:dt/1000;old.foreign+=foreign*dt/1000;old.samples++;old.at=now;history[id]=old;area=id;
+  const observedSeconds=areaObservationSeconds(area,id,dt);
+  old.seconds+=observedSeconds;old.xp+=Math.max(0,(p.c.xp??0)-lastXp);lastXp=p.c.xp??0;if(!bot.journal&&!bot.logistics.reserved&&!bot.gold?.reserved)old.gold=(old.gold??0)+Math.max(0,(p.c.gold??0)-lastGold);lastGold=p.c.gold??0;old.empty+=visible.length?0:observedSeconds;old.foreign+=foreign*observedSeconds;old.samples++;old.at=now;history[id]=old;area=id;
   // A crowded spawn is often NOT empty: other players claim monsters before
   // us. Count sustained foreign presence as pressure, not just empty time.
   const emptyRatio=old.empty/Math.max(1,old.seconds);

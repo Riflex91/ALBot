@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fitHeartbeat} from '../src/party/transport.mjs';
+import {planMaterialQuotas} from '../src/production/material-quotas.mjs';
 
 const data=()=>({
  name:'Ranger1',realm:'EUII',running:true,session:'test-session',
@@ -45,4 +46,28 @@ test('active material counts are preferred to unrelated skill telemetry near the
  assert.deepEqual(result.materialProgress,d.materialProgress);
  assert.deepEqual(result.items,d.items);
  assert.ok(JSON.stringify(result).length<=4200);
+});
+
+test('oversized heartbeat with lost material evidence cannot authorize another farming quota',()=>{
+ const objective='material:gem0',request={objective,item:'gem0',quantity:10};
+ const hidden=fitHeartbeat({...data(),running:true,rip:false,
+  materialProgress:[{objective:'q'.repeat(5000),quantity:8}],
+  free:15,inventoryBlocked:false},4200);
+ assert.equal(hidden.materialProgress,undefined,
+  'transport legitimately sheds impossible material evidence');
+ const known={name:'Ranger2',running:true,rip:false,realm:'EUII',
+  free:15,inventoryBlocked:false,
+  materialProgress:[{objective,quantity:2}]};
+ const active={...hidden,name:'Ranger1'};
+ const peers={Ranger1:active,Ranger2:known};
+ const guarded=planMaterialQuotas(request,['Ranger1','Ranger2'],
+  name=>peers[name],'EUII',{freeReserve:4});
+ assert.deepEqual(guarded,{remaining:10,quotas:[]});
+ // Once a compact complete heartbeat arrives, current stock is accounted
+ // for and only the exact remaining quantity can be assigned.
+ peers.Ranger1={...active,materialProgress:[{objective,quantity:7}]};
+ const reopened=planMaterialQuotas(request,['Ranger1','Ranger2'],
+  name=>peers[name],'EUII',{freeReserve:4});
+ assert.deepEqual(reopened,{remaining:1,quotas:[
+  {name:'Ranger1',quantity:8},{name:'Ranger2',quantity:2}]});
 });

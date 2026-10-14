@@ -82,3 +82,50 @@ test('duplicate roster entries cannot double count held items or material quotas
  assert.deepEqual(result,{remaining:2,quotas:[
   {name:'A',quantity:4},{name:'B',quantity:2}]});
 });
+
+test('missing active materialProgress is unknown, never zero or an extra allocation',()=>{
+ const workers=[peer('A',3),peer('B',7,{materialProgress:undefined})];
+ const first=plan(10,workers);
+ assert.deepEqual(first,{remaining:10,quotas:[]},
+  'known A stock cannot justify reassigning unknown B stock');
+ workers[1].materialProgress=[{objective:request.objective,quantity:7}];
+ const recovered=plan(10,workers);
+ assert.deepEqual(recovered,{remaining:0,quotas:[
+  {name:'A',quantity:3},{name:'B',quantity:7}]});
+});
+test('valid empty materialProgress means verified zero for that objective',()=>{
+ const result=plan(9,[peer('A',2),peer('B',0,{materialProgress:[]})]);
+ assert.deepEqual(result,{remaining:7,quotas:[
+  {name:'A',quantity:6},{name:'B',quantity:3}]});
+});
+test('malformed or duplicate live material records freeze allocation to every Farmer',()=>{
+ const invalid=[
+  {objective:request.objective,quantity:-1},
+  {objective:request.objective,quantity:'5'},
+  {objective:request.objective,quantity:NaN},
+  {objective:request.objective,quantity:undefined}
+ ];
+ for(const record of invalid){
+  const result=plan(11,[peer('A',0),peer('B',3,{materialProgress:[record]})]);
+  assert.deepEqual(result,{remaining:11,quotas:[]});
+ }
+ const duplicated=plan(11,[peer('A',0),peer('B',3,{
+  materialProgress:[
+   {objective:request.objective,quantity:2},
+   {objective:request.objective,quantity:1}
+  ]})]);
+ assert.deepEqual(duplicated,{remaining:11,quotas:[]});
+});
+test('online Farmer with missing physical free slots contributes stock but receives no quota',()=>{
+ const result=plan(10,[peer('A',6,{free:undefined}),peer('B',1)]);
+ assert.deepEqual(result,{remaining:3,quotas:[{name:'B',quantity:4}]});
+});
+test('unknown inventoryBlocked status contributes stock without authorizing a new pull',()=>{
+ const result=plan(8,[peer('A',2,{inventoryBlocked:undefined}),peer('B',1)]);
+ assert.deepEqual(result,{remaining:5,quotas:[{name:'B',quantity:6}]});
+});
+test('stale offline or wrong-realm missing progress does not freeze active team',()=>{
+ const result=plan(10,[peer('A',2),peer('B',4,{running:false,
+  materialProgress:undefined}),peer('C',0,{realm:'USIV',materialProgress:null})]);
+ assert.deepEqual(result,{remaining:8,quotas:[{name:'A',quantity:10}]});
+});

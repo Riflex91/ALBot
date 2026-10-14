@@ -84,3 +84,10 @@ test('spawn history rejects malformed persistence before learned farm scoring',(
  assert.equal(verifiedAreaHistory([],now),null);
  assert.equal(verifiedAreaHistory(null,now),null);
 });
+
+test('corrupt persisted area counters are replaced before next observation',()=>{
+ const source={at:1000,seconds:NaN,xp:Infinity,gold:-1,empty:100,foreign:0,deaths:0,lostKills:0};
+ assert.equal(verifiedAreaHistory(source,2000),null);
+ const valid={at:2000,seconds:1,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:1};
+ assert.deepEqual(verifiedAreaHistory(valid,2000),valid);
+});

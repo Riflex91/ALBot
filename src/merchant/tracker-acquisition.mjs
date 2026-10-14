@@ -30,7 +30,11 @@ export function createTrackerAcquisition(bot){
     bot.logistics?.reserved||bot.bank?.pending||pending)return null;
   if(p.G?.tokens?.monstertoken?.tracker!==4||
     p.G.items?.tracker?.type!=='tracker'||
-    p.G.items?.monstertoken?.type!=='token')return null;
+    p.G.items?.monstertoken?.type!=='token'||
+    p.G.items?.monstertoken?.npc!=='monsterhunter'||
+    p.G.npcs?.monsterhunter?.role!=='monstertokens'||
+    !Number.isSafeInteger(p.G.items.monstertoken.g)||
+    p.G.items.monstertoken.g<0)return null;
   if((cfg.items??[]).some(r=>r?.enabled&&
     ['tracker','monstertoken'].includes(r.item)))return null;
   const dest=recipient();
@@ -67,10 +71,18 @@ export function createTrackerAcquisition(bot){
   const valid=()=>{const next=candidate();return !!next&&next.recipient===plan.recipient&&
     next.slot===plan.slot&&next.sourceFingerprint===plan.sourceFingerprint&&
     next.tokensBefore===plan.tokensBefore&&next.trackersBefore===plan.trackersBefore&&
-    e.npcAt?.(d)===true&&p.G.tokens.monstertoken.tracker===4;};
+    e.npcAt?.(d)===true&&p.G.tokens.monstertoken.tracker===4&&
+    p.G.items.monstertoken.npc==='monsterhunter'&&
+    p.G.npcs?.monsterhunter?.role==='monstertokens'&&
+    p.G.items.monstertoken.g===tokenValue;};
   if(!valid())return false;
+  // Monster Tokens are a scarce value resource, not a free currency.
+  // Charge their known official NPC reference value to the existing
+  // hourly/goal loss budget BEFORE sending exchange_buy to the server.
+  const tokenValue=p.G.items.monstertoken.g,loss=4*tokenValue;
+  if(!Number.isSafeInteger(loss))return false;
   return e.perform('tracker.exchange',{
-   slots:[plan.slot],guard:valid,timeout:20000,
+   slots:[plan.slot],loss,guard:valid,timeout:20000,
    call:()=>{
     // Durable intent is written before ANY token is spent. An unknown
     // exchange stays locked until a verified recipient carries Tracktrix.

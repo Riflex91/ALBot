@@ -17,14 +17,21 @@ test('bank expansion never exceeds 75 percent of live merchant gold',()=>{
  assert.equal(bankExpansionAffordable(100,1000,99,.75),false);
  assert.equal(bankExpansionAffordable(0,1000,2000000,.75),false);
 });
-test('30 slot pickup threshold counts slots, not quantities, requires fresh selected farmers',()=>{
+test('30 slot threshold counts fresh active same-realm loot; offline farmers are excluded',()=>{
  const row=slots=>({running:true,rip:false,realm:'EUII',lootSlots:slots});
  assert.deepEqual(teamPickupThreshold([row(10),row(12),row(7)],'EUII',30),
    {ready:true,slots:29,trigger:false});
  assert.deepEqual(teamPickupThreshold([row(10),row(12),row(8)],'EUII',30),
    {ready:true,slots:30,trigger:true});
- assert.equal(teamPickupThreshold([row(30),{...row(10),realm:'USI'},row(1)],'EUII',30).trigger,false);
- assert.equal(teamPickupThreshold([row(20),null,row(20)],'EUII',30).ready,false);
+ // A selected cross-realm or missing peer cannot suppress 30 or 40 proven
+ // loot slots on active farmers. Nor may foreign loot count toward the limit.
+ assert.deepEqual(teamPickupThreshold([row(30),{...row(10),realm:'USI'},row(1)],'EUII',30),
+   {ready:true,slots:31,trigger:true});
+ assert.deepEqual(teamPickupThreshold([row(20),null,row(20)],'EUII',30),
+   {ready:true,slots:40,trigger:true});
+ assert.equal(teamPickupThreshold([row(29),{...row(42),realm:'USI'}],'EUII',30).trigger,false);
+ assert.equal(teamPickupThreshold([row(30),row(undefined)],'EUII',30).ready,false,
+   'invalid count on an ACTIVE farmer must still veto a speculative trip');
 });
 function logisticsFor(items,extraRules=[],reserved=()=>0){
  const p={c:{name:'Ranger',map:'main',items},

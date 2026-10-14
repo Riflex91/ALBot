@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ACHIEVEMENT_CARRIER_IDS,isAchievementCarrier,
-  carriedAchievementCarrier} from '../src/items/achievement-utility.mjs';
+  carriedAchievementCarrier,carrierRecipient} from '../src/items/achievement-utility.mjs';
 import {fitHeartbeat} from '../src/party/transport.mjs';
 import {createProgression} from '../src/world/progression.mjs';
 
@@ -48,4 +48,30 @@ test('progression status records local and fresh team carrier evidence without i
  assert.equal(status.scores,undefined,'unknown account monster score is not zero');
  peer=null;
  assert.equal(createProgression(bot).status().farmerCarriers[1].carrier,'unknown');
+});
+
+test('verified uncovered Farmer is selected before another already carrying bonuses',()=>{
+ const peers={R1:{name:'R1',running:true,realm:'EUII',rip:false,
+  achievementCarrier:'supercomputer',free:15,inventoryBlocked:false,
+  journal:false,reserved:false},
+ R2:{name:'R2',running:true,realm:'EUII',rip:false,
+  achievementCarrier:null,free:15,inventoryBlocked:false,
+  journal:false,reserved:false}};
+ const find=n=>peers[n]??null;
+ assert.equal(carrierRecipient(['R1','R2','R2'],find,'EUII'),'R2');
+ peers.R2.achievementCarrier='tracker';
+ assert.equal(carrierRecipient(['R1','R2'],find,'EUII'),null);
+});
+test('stale, cross-realm, unsafe or unknown recipient never receives implicit carrier',()=>{
+ const available={name:'R1',running:true,realm:'EUII',rip:false,
+  achievementCarrier:null,free:8,inventoryBlocked:false,
+  journal:false,reserved:false};
+ for(const overrides of [{achievementCarrier:undefined},{achievementCarrier:'unknown'},
+  {running:false},{rip:true},{realm:'USIV'}, {free:0},{free:undefined},
+  {inventoryBlocked:true},{journal:true},{reserved:true},{name:'Other'}]){
+  const person={...available,...overrides};
+  assert.equal(carrierRecipient(['R1'],()=>person,'EUII'),null,
+   JSON.stringify(overrides));
+ }
+ assert.equal(carrierRecipient(['R1'],()=>available,'EUII'),'R1');
 });

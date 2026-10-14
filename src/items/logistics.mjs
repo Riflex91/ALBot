@@ -15,10 +15,16 @@ export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190
  return distance(route.dest,peer)>Math.max(45,Math.min(100,error))?'retarget':'keep';
 }
 export function teamPickupThreshold(peers,realm,threshold=30){
- if(!Array.isArray(peers)||!peers.length||peers.some(h=>
-    !h?.running||h.rip||h.realm!==realm||!Number.isSafeInteger(h.lootSlots)||
+ // Only authenticated, live farmers on this realm contribute to an
+ // actionable pickup. One disconnected, dead or cross-realm teammate
+ // must not suppress legitimate loot on the remaining active farmers.
+ if(!Array.isArray(peers)||!peers.length)return {ready:false,slots:0,trigger:false};
+ const active=peers.filter(h=>h?.running&&!h.rip&&h.realm===realm);
+ // Missing active-team evidence does not mean the inventory is empty.
+ // Likewise, malformed live slot counts cannot authorize a trip.
+ if(!active.length||active.some(h=>!Number.isSafeInteger(h.lootSlots)||
     h.lootSlots<0||h.lootSlots>42))return {ready:false,slots:0,trigger:false};
- const slots=peers.reduce((sum,h)=>sum+h.lootSlots,0);
+ const slots=active.reduce((sum,h)=>sum+h.lootSlots,0);
  return {ready:true,slots,trigger:slots>=threshold};
 }
 // Physical receive preflight: only identical, unprotected stacks can absorb

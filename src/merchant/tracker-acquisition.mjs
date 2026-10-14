@@ -24,6 +24,30 @@ export function createTrackerAcquisition(bot){
   }
   return null;
  }
+ // Prefer already-owned, LIVE-observed bank inventory. Persisted catalog
+ // rows are planning hints only; a bank retrieve must still independently
+ // validate the exact live pack, slot and item variant before dispatch.
+ function bankCandidate(){
+  if(me.role!=='merchant'||!cfg.merchant?.enabled||!cfg.merchant.supply||
+    !cfg.merchant.bank||!bot.running||!bot.checkpoint?.durable||
+    bot.inventoryBlocked||bot.journal||bot.bank?.pending||
+    bot.logistics?.reserved||pending||!Array.isArray(p.c.items)||
+    p.c.items.filter(i=>!i).length<=(cfg.merchant.minFreeSlots??4)||
+    !carriedAchievementCarrier(p.c.items)||!recipient()||
+    (cfg.items??[]).some(r=>r?.enabled&&
+      ['tracker','monstertoken'].includes(r.item)))return null;
+  const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
+  if(own>trackerMerchantKeep(p.c.items))return null;
+  for(const [pack,items] of Object.entries(p.c.bank??{})){
+   if(!/^items\\d+$/.test(pack)||!Array.isArray(items)||
+      !p.G?.bank_packs?.[pack])continue;
+   const item=items.find(i=>i?.name==='tracker'&&!protectedItem(i)&&
+     (i.level??0)===0&&(i.q??1)===1&&!i.data&&!i.acc&&!i.rid&&
+     !i.p&&!i.title&&!i.stat_type&&!i.v&&!i.special);
+   if(item)return {pack,item};
+  }
+  return null;
+ }
  function candidate(){
   if(me.role!=='merchant'||!cfg.merchant?.enabled||!cfg.merchant.supply||
     !bot.running||!bot.checkpoint?.durable||bot.inventoryBlocked||bot.journal||
@@ -37,7 +61,7 @@ export function createTrackerAcquisition(bot){
   if(!dest||!Array.isArray(p.c.items))return null;
   if(!carriedAchievementCarrier(p.c.items))return null;
   const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
-  if(own>trackerMerchantKeep(p.c.items))return null;
+  if(own>trackerMerchantKeep(p.c.items)||bankCandidate())return null;
   // The game function exchange_buy chooses the FIRST token slot, including
   // locked/undersized stacks. Do not accidentally spend a different stack.
   const slot=p.c.items.findIndex(i=>i?.name==='monstertoken');
@@ -51,7 +75,7 @@ export function createTrackerAcquisition(bot){
    tokensBefore:p.c.items.reduce((n,i)=>n+(i?.name==='monstertoken'?(i.q??1):0),0),
    trackersBefore:p.c.items.filter(i=>i?.name==='tracker').length};
  }
- function eligible(){return !!candidate();}
+ function eligible(){return !!bankCandidate()||!!candidate();}
  function tick(){
   if(pending){
    const h=bot.transport?.fresh?.(pending.recipient);
@@ -60,6 +84,14 @@ export function createTrackerAcquisition(bot){
     if(p.write?.(key,null)!==true)return false;
     pending=null;reason='recipient-confirmed';
    }else{reason=pending.invalid?'invalid-durable-state':'await-recipient';return false;}
+  }
+  const stored=bankCandidate();
+  if(stored){
+   reason='bank-stock-first';
+   return bot.bank?.retrieve?.({name:'tracker',level:0,stat_type:'',p:'',title:''},
+    {enabled:true,name:'Bankreserve Tracktrix für Farmer',item:'tracker',
+     action:'retrieve',pack:stored.pack,batch:1,maxCount:9999,
+     keep:0,teamReserve:0,maxActions:0},1)??false;
   }
   const plan=candidate();if(!plan)return false;
   const e=bot.economy,d=e?.destination?.('monsterhunter');

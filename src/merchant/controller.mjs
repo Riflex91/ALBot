@@ -1,4 +1,5 @@
 import {potionTarget,onlineSupplyFarmers} from '../items/potion-supply.mjs';
+import {createTrackerAcquisition} from './tracker-acquisition.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
@@ -23,6 +24,7 @@ export function canOpenMerchantStand(bot){
 }
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
+ const trackerAcquisition=createTrackerAcquisition(bot);
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
   standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0,capacityRecovery=false;
@@ -676,6 +678,7 @@ export function createMerchant(bot){
       }
       return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);
      });
+   if(trackerAcquisition.eligible())add('tracker.exchange',{priority:-90},()=>trackerAcquisition.tick());
    add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production.helpers',{priority:-125},()=>bot.production.helperSupply?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>{buff();return bot.services.tick();});
@@ -691,5 +694,5 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+ return {tick,preparePickup,prepareDeparture,activateStand,claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

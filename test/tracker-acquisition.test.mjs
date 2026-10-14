@@ -16,7 +16,8 @@ function fixture({tokens=4,own='tracker',peerCarrier=null,free=12,
   journal:false};
  const G={tokens:{monstertoken:{tracker:price}},
   items:{tracker:{type:'tracker'},supercomputer:{type:'computer'},
-   monstertoken:{type:'token'}}};
+   monstertoken:{type:'token',npc:'monsterhunter',g:12000}},
+  npcs:{monsterhunter:{role:'monstertokens'}}};
  const p={c,G,realm:()=> 'EUII',
   read:key=>records.get(key)??null,
   write:(key,value)=>{
@@ -65,6 +66,8 @@ test('verified four-token exchange is exactly one journalled purchase for one mi
  assert.equal(f.c.items.filter(i=>i?.name==='tracker').length,2);
  assert.equal(f.c.items.some(i=>i?.name==='monstertoken'),false);
  assert.equal(f.actions[0].kind,'tracker.exchange');
+ assert.equal(f.actions[0].job.loss,48000,
+  'four Monster Tokens count toward the global value-loss budget');
  assert.deepEqual(f.actions[0].job.slots,[0]);
  assert.equal(f.actions[0].job.details.tokensSpent,4);
  assert.equal(f.acquisition.status().pendingRecipient,'Ranger');
@@ -205,4 +208,37 @@ test('below Merchant reserve bank retrieval is not an emergency shortcut',()=>{
  assert.equal(f.acquisition.eligible(),false);
  assert.equal(f.acquisition.tick(),false);
  assert.equal(f.calls.length,0);
+});
+
+test('unverified Daisy NPC mapping or missing token valuation never authorizes token loss',()=>{
+ const mutations=[
+  g=>{g.items.monstertoken.npc='unknown';},
+  g=>{delete g.items.monstertoken.npc;},
+  g=>{g.npcs.monsterhunter.role='other';},
+  g=>{delete g.npcs.monsterhunter;},
+  g=>{delete g.items.monstertoken.g;},
+  g=>{g.items.monstertoken.g=-1;},
+  g=>{g.items.monstertoken.g=Infinity;}
+ ];
+ for(const mutate of mutations){
+  const f=fixture();mutate(f.G);
+  assert.equal(f.acquisition.eligible(),false);
+  assert.equal(f.acquisition.tick(),false);
+  assert.deepEqual(f.calls,[]);
+ }
+});
+test('NPC role and monetary token value are pinned through the dispatch guard',()=>{
+ const f=fixture();
+ let guard;
+ f.bot.economy.perform=(kind,job)=>{guard=job.guard;return true;};
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(guard(),true);
+ f.G.items.monstertoken.g=13000;
+ assert.equal(guard(),false);
+ assert.deepEqual(f.calls,[]);
+ const other=fixture();
+ other.bot.economy.perform=(kind,job)=>{guard=job.guard;return true;};
+ other.acquisition.tick();
+ other.G.npcs.monsterhunter.role='merchant';
+ assert.equal(guard(),false);
 });

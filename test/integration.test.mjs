@@ -46,7 +46,7 @@ test('magiport cast needs matching request acknowledgement and receiver needs pr
 });
 
 test('server hop requires allowlist, all configured team peers and no unsettled action',()=>{
- const {bot,cfg,peers,calls}=botFixture();cfg.world.serverHop=true;cfg.world.allowedRealms=['EUII','EUI'];const travel=createTeamTravel(bot);assert.equal(travel.requestHop('USI'),false);assert.equal(travel.requestHop('EUI'),false);for(const name of ['B','C','M'])peers[name]={running:true,realm:'EUII'};bot.journal={kind:'send'};assert.equal(travel.requestHop('EUI'),false);bot.journal=null;assert.equal(travel.requestHop('EUI'),true);assert.equal(travel.blocked,true);travel.receive('B',{type:'hopCommit',id:'foreign',data:{realm:'EUI'}});assert.equal(calls.length,0);travel.close();assert.equal(travel.blocked,false);
+ const {bot,cfg,peers,calls}=botFixture();cfg.world.serverHop=true;cfg.world.allowedRealms=['EUII','EUI'];bot.p.root.ALBotServerRegistry=[{realm:'EUI',mode:'NORMAL',online:true,players:20,at:Date.now()}];const travel=createTeamTravel(bot);assert.equal(travel.requestHop('USI'),false);assert.equal(travel.requestHop('EUI'),false);for(const name of ['B','C','M'])peers[name]={running:true,realm:'EUII'};bot.journal={kind:'send'};assert.equal(travel.requestHop('EUI'),false);bot.journal=null;assert.equal(travel.requestHop('EUI'),true);assert.equal(travel.blocked,true);travel.receive('B',{type:'hopCommit',id:'foreign',data:{realm:'EUI'}});assert.equal(calls.length,0);travel.close();assert.equal(travel.blocked,false);
 });
 
 test('adaptive roster keeps fixed leader and unknown offline classes out of rotation',()=>{

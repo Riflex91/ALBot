@@ -1,4 +1,5 @@
 import {identity,variantCount,surplusQuantity} from '../core/policy.mjs';
+import {isAchievementCarrier} from '../items/achievement-utility.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
 import {itemPurposes} from '../items/purposes.mjs';
@@ -266,7 +267,7 @@ function mutationEconomics(i,{heldOverride=null}={}){
   if(decisionLedger.size>24)decisionLedger.delete(decisionLedger.keys().next().value);
  }
   function disposition(i){
-   if(cfg.production.autoDisposition!==true||!bot.economy.safe(i))return null;
+   if(cfg.production.autoDisposition!==true||!bot.economy.safe(i)||isAchievementCarrier(i))return null;
    // A goal only protects its exact-variant allocation; other held copies
    // remain available for normal economic decision making.
    if(!surplusQuantity(variantCount(p.c.items??[],i),bot.production?.reservedQuantity?.(i)??0))return null;

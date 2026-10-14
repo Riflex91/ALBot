@@ -300,6 +300,22 @@ export function createLogistics(bot){
       Number.isSafeInteger(peer.lootSlots)&&peer.lootSlots>0&&
       samePlace(p.c,peer)&&distance(p.c,peer)<=200&&onSiteRoom(peer);
   }
+  function actionableGearDelivery(){
+    if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
+      bot.journal||bot.inventoryBlocked||bot.logistics?.handoffActive)return false;
+    return (bot.farmers??[]).some(name=>{
+      const peer=transport.fresh(name);
+      if(!peer?.running||peer.rip||peer.realm!==p.realm()||
+        bot.strategy?.canVisit?.(peer)===false)return false;
+      return p.c.items.some((item,slot)=>{
+        if(!item||!p.G?.items?.[item.name]||
+          p.G.items[item.name].type==='pot')return false;
+        const rule=sendRule(item,name);
+        return !!rule&&availableTransfer(slot,rule)>0&&
+          !!bot.allocation?.offer(signature(item),name);
+      });
+    });
+  }
   function travel(){
     // Keep the ongoing pickup at this location for one bounded batch.
     // Replanning against a rotating 12-item heartbeat must not redirect
@@ -362,7 +378,7 @@ export function createLogistics(bot){
        const demand=requested||directPotions||gearRequested||elixirRequested;
       const pickup=cfg.merchant.pickup&&pickupCycle&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
       if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
-        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&localBankBatch())continue;
+        const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&!gearRequested&&localBankBatch())continue;
         // Plan and complete inventory preparation BEFORE leaving for the
         // farmer. A full inventory must not hide its own pickup demand.
         if(pickup){
@@ -394,7 +410,7 @@ export function createLogistics(bot){
     cancelUnsent(old,reason);
     return true;
   }
-  return {receive,poll,travel,yieldUnsent,pickupSlots,
+  return {receive,poll,travel,actionableGearDelivery,yieldUnsent,pickupSlots,
     pickupOnSite:()=>!!pickupOnSiteAt&&Date.now()-pickupOnSiteAt<30000&&
       onSitePeer(),
     get pickupCycle(){return pickupCycle;},get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},

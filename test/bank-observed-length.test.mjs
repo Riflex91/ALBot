@@ -74,3 +74,54 @@ test('workspace reserve and full intervening pack block the delayed store',()=>{
  f.c.bank.items0=Array.from({length:42},(_,n)=>n<41?{name:'other',q:1}:null);
  assert.equal(f.performed[0].guard(),false,'only one free slot remains below workspace');
 });
+
+function bankWithTwoMaps({localFree=1,remoteFree=10}={}){
+ const filled=(free)=>Array.from({length:42},(_,slot)=>
+  slot<42-free?{name:'other',q:1,data:{slot}}:null);
+ const f=fixture({items0:filled(localFree),items8:filled(remoteFree)});
+ f.p.G.bank_packs.items8=['bank_b',1000];
+ f.cfg.merchant.bankWorkspace=2;
+ f.c.items[0]={name:'mat',level:0,q:1};
+ const travel=[];
+ f.e.travel=location=>{
+  travel.push(location.map);
+  return location.map===f.c.map;
+ };
+ const openRule={...rule};
+ delete openRule.pack;
+ return {...f,openRule,travel};
+}
+test('bank store travels to genuinely usable other-map pack instead of looping on local workspace',()=>{
+ const f=bankWithTwoMaps({localFree:1,remoteFree:12});
+ assert.equal(f.bank.store(0,f.openRule),false,'remote map travel is not bank_store');
+ assert.deepEqual(f.travel,['bank_b']);
+ assert.deepEqual(f.performed,[]);
+ f.c.map=f.c.in='bank_b';
+ assert.equal(f.bank.store(0,f.openRule),true);
+ assert.deepEqual(f.performed.map(x=>[x.kind,x.pack,x.bankSlot]),
+  [['bank.store','items8',30]]);
+ assert.equal(f.performed[0].guard(),true);
+});
+test('bank store stays on current bank map when a pack has more than the workspace reserve',()=>{
+ const f=bankWithTwoMaps({localFree:3,remoteFree:12});
+ assert.equal(f.bank.store(0,f.openRule),true);
+ assert.deepEqual(f.travel,['bank'],'local bank store must not trigger an unnecessary bank_b trip');
+ assert.equal(f.performed[0].pack,'items0');
+ assert.equal(f.performed[0].bankSlot,39);
+});
+test('explicit pack routing is never silently widened to an unrelated bank map',()=>{
+ const f=bankWithTwoMaps({localFree:1,remoteFree:12});
+ assert.equal(f.bank.store(0,rule),false);
+ assert.deepEqual(f.travel,['bank']);
+ assert.deepEqual(f.performed,[]);
+ assert.equal(f.c.items[0].name,'mat');
+});
+test('remote pack filling during travel cannot authorize a stale bank_store destination',()=>{
+ const f=bankWithTwoMaps({localFree:1,remoteFree:4});
+ assert.equal(f.bank.store(0,f.openRule),false);
+ f.c.map=f.c.in='bank_b';
+ f.c.bank.items8=Array.from({length:42},(_,i)=>({name:'other',q:1,data:{i}}));
+ assert.equal(f.bank.store(0,f.openRule),false);
+ assert.deepEqual(f.performed,[]);
+ assert.equal(f.c.items[0].name,'mat');
+});

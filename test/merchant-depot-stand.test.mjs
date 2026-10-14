@@ -109,3 +109,28 @@ test('a bank stack is withdrawn only when it can merge into an inventory stack',
  assert.equal(actions[0][0],'bank.merge.retrieve');
  assert.equal(actions[0][1].quantity,9);
 });
+
+test('completely full bank packs cannot start remote store or parking journeys',()=>{
+ const {bot,c,actions}=fixture({bankStandCount:0});
+ bot.cfg.merchant.bank=true;bot.cfg.merchant.bankWorkspace=2;
+ c.map='main';c.items[0]={name:'mat',level:0,q:12};
+ c.bank.items0=Array.from({length:42},()=>({name:'stand0',level:0}));
+ c.bank.items1=Array.from({length:42},()=>({name:'stand0',level:0}));
+ let trips=0;bot.economy.travel=()=>{trips++;return true;};
+ assert.equal(bot.bank.store(0,{action:'bank',batch:12,keep:0,teamReserve:0}),false);
+ assert.equal(trips,0,'bank travel without a real deposit slot is prohibited');
+ assert.equal(bot.bank.park(0),false,'parking cannot bypass a full bank');
+ assert.equal(trips,0);
+ assert.deepEqual(actions,[]);
+});
+
+test('partially free bank pack still permits a real, non-speculative store route',()=>{
+ const {bot,c}=fixture({bankStandCount:0});
+ bot.cfg.merchant.bank=true;bot.cfg.merchant.bankWorkspace=2;
+ c.map='main';c.items[0]={name:'mat',level:0,q:12};
+ c.bank.items0=Array.from({length:42},(_,i)=>i<39?{name:'stand0',level:0}:null);
+ c.bank.items1=Array.from({length:42},()=>({name:'stand0',level:0}));
+ let trips=0;bot.economy.travel=()=>{trips++;return false;};
+ assert.equal(bot.bank.store(0,{action:'bank',batch:12,keep:0,teamReserve:0}),false);
+ assert.equal(trips,1,'a proven pack with 3 free slots can be visited');
+});

@@ -5,7 +5,7 @@ export function discoverAccountRoster(cfg,p,template){
  if(!realm||!rows.some(c=>c.name===p.c?.name))throw Error('Accountliste/Realm noch nicht verfügbar. Bot nach dem Laden erneut ausführen.');
  const merchant=rows.find(c=>c.class==='merchant'),farmers=rows.filter(c=>FARMER_CLASSES.includes(c.class));
  if(farmers.length>20)throw Error('Automatische Charaktererkennung: höchstens 20 Farmer unterstützt.');
- cfg.characters=[...farmers,...(merchant?[merchant]:[])].map(c=>({...structuredClone(template),name:c.name,class:c.class,role:c.class==='merchant'?'merchant':'farmer',enabled:true,group:cfg.party.group,region:realm[1],server:realm[2],rotation:false}));
+ cfg.characters=[...farmers,...(merchant?[merchant]:[])].map(c=>({...structuredClone(template),name:c.name,class:c.class,role:c.class==='merchant'?'merchant':'farmer',enabled:true,group:cfg.party.group,region:realm[1],server:realm[2],rotation:c.class!=='merchant'&&cfg.party.balanceFarmers===true}));
  if(!cfg.characters.some(c=>c.name===p.c.name))throw Error('Unbekannte Klasse oder weiterer Merchant. Der alphabetisch erste Merchant ist zuständig.');
  cfg.party.merchant=merchant?.name??'';cfg.party.leader='';cfg.party.selection='adaptive';
  return cfg;
@@ -13,7 +13,10 @@ export function discoverAccountRoster(cfg,p,template){
 export function ownSupplyCharacters(p){
  try{if(!p.has?.('get_characters'))return [];const rows=p.call('get_characters');
   if(!Array.isArray(rows)||rows.length>128)return [];
-  return rows.filter(r=>r&&typeof r.name==='string'&&/^[A-Za-z0-9_]{1,80}$/.test(r.name)).map(r=>({name:r.name,class:r.type??r.ctype??r.class??null}));
+  return rows.filter(r=>r&&typeof r.name==='string'&&/^[A-Za-z0-9_]{1,80}$/.test(r.name)).map(r=>({name:r.name,class:r.type??r.ctype??r.class??null,
+   level:Number.isSafeInteger(r.level)&&r.level>0?r.level:null,
+   xp:Number.isSafeInteger(r.xp)&&r.xp>=0?r.xp:null,
+   maxXp:Number.isSafeInteger(r.max_xp)&&r.max_xp>0?r.max_xp:null}));
  }catch{return [];}
 }
 export function potionTarget(cfg,id){

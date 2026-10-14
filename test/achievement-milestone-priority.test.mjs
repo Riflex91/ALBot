@@ -104,3 +104,16 @@ test('fractional server scores are preserved but unsafe scores and non-integer m
   {...clean[0],gap:Infinity}
  ])assert.equal(achievementMilestoneBias(bad),0);
 });
+
+test('invalid refresh revokes previously confirmed milestone priority',()=>{
+ const f=fixture();
+ assert.equal(f.scores.poll(),true);
+ f.socket.deliver(data());
+ assert.ok(f.scores.bonus('goo')>0);
+ f.advance(120001);
+ assert.equal(f.scores.poll(),true);
+ f.socket.deliver({max:{monsters:null}});
+ assert.equal(f.scores.status().state,'invalid-server-reply');
+ assert.equal(f.scores.status().observedMonsters,0);
+ assert.equal(f.scores.bonus('goo'),0);
+});

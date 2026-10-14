@@ -129,4 +129,9 @@ FULL_DESCRIPTOR.schema.properties.production.properties.acquireBy.description="I
 FULL_DESCRIPTOR.schema.properties.world.properties.allowedBosses.description="Im automatischen Betrieb ergänzt die Runtime alle vom aktuellen Bossadapter unterstützten Gegner. Bereitschaft, Karten-/Instanzgrenzen und Mechanikprüfungen bleiben verbindlich.";
 
 
-FULL_DESCRIPTOR.schema.properties.general.properties.autoRoster={...bool("Eigene Charaktere und Rollen beim Start automatisch erkennen",false),description:"Namenloses Profil: Accountliste und aktueller Realm; online durch Heartbeats bestaetigt. Keine automatischen Charakterstarts. Bei mehreren Merchants ist der alphabetisch erste zustaendig."};
+FULL_DESCRIPTOR.schema.properties.general.properties.autoRoster={...bool("Eigene Charaktere und Rollen beim Start automatisch erkennen",false),description:"Namenloses Profil: Accountliste und aktueller Realm; Charakterstarts erfolgen nur mit bewusst aktivierter Levelausgleichsrotation, belegten Levelwerten und sicheren Lifecycle-APIs. Bei mehreren Merchants ist der alphabetisch erste zustaendig."};
+Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{
+ balanceFarmers:bool('Eigene Farmer mit Levelrückstand kontrolliert einwechseln',false),
+ balanceLevelGap:number('Levelabstand für automatische Aufholrotation',2,1,100),
+ balanceHoldMs:number('Mindestzeit zwischen Aufholwechseln (ms)',1800000,300000,86400000)
+});

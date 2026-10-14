@@ -110,7 +110,10 @@ test('new pulls automatically resume when a fresh Merchant heartbeat clears its 
  const f=farmerFixture({free:15});
  f.bot.transport.fresh=()=>state;
  f.bot.farmer.tick();
- assert.deepEqual(f.attacks,[]);
+ assert.deepEqual(f.attacks.filter(x=>x==='attack'),[],
+  'pressure blocks NEW attacks but not collecting already dropped loot');
+ assert.ok(f.attacks.includes('loot'),
+  'pending loot collection remains available during Merchant pressure');
  state={...state,storagePressure:false};
  f.bot.farmer.tick();
  assert.equal(f.bot.target?.id,'mob1');

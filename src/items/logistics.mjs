@@ -75,6 +75,7 @@ export function createLogistics(bot){
   };
   const potionRule=(item,to)=>{
     if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
+       (cfg.merchant.potionTeamRefill===true&&bot.merchant?.potionSupplyActive?.()!==true)||
        !onlineSupplyFarmers(bot).some(x=>x.name===to)||!['hpot0','mpot0'].includes(item.name)||!isPotion(item)||explicitInventory(item)||bot.economy?.explicit(item))return null;
     return {enabled:true,name:'Autoversorgung '+item.name+' → '+to,action:'send',
       item:item.name,recipient:to,keep:200,teamReserve:0,batch:1500,ttlMs:cfg.general.messageTtlMs};
@@ -84,14 +85,16 @@ export function createLogistics(bot){
     return configured.length?configured:(item?.name==='tracker'&&me.role==='merchant'?
       (bot.farmers??[]).filter(name=>!!trackerRule(item,name)):
       (autoLootRule(item)?[cfg.party.merchant]:
-      (isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)?onlineSupplyFarmers(bot).map(x=>x.name):[])));
+      (isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)&&
+        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?onlineSupplyFarmers(bot).map(x=>x.name):[])));
   };
   const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??trackerRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
-  const defaultPotionDemand=(item,n)=>{
+  const defaultPotionDemand=(item,n,advertise=false)=>{
     if(me.role!=='farmer'||!isPotion(item))return 0;
     const desired=potionTarget(cfg,item.name);
     // Report the actual deficit against the separate HP and MP targets.
+    if(advertise&&cfg.merchant.potionTeamRefill===true&&n>(cfg.merchant.potionAlertBelow??50))return 0;
     return Math.max(0,desired-n);
   };
   const demandFor=(rule,n)=>{if(!rule)return 0;const threshold=(rule.requestBelow??0)>0?rule.requestBelow:rule.targetCount,normal=n<=threshold?Math.max(0,Math.min(rule.targetCount,rule.maxCount)-n):0;return Math.min(Math.max(normal,bot.behavior?.need(rule.item,n)??0),Math.max(0,rule.maxCount-n));};
@@ -256,7 +259,8 @@ export function createLogistics(bot){
         const collected=me.role==='farmer'&&to===cfg.party?.merchant&&
           cfg.merchant?.pickup&&r.action==='send'?availableTransfer(slot,r):0;
         const heldPotions=Number.isSafeInteger(peer.potions?.[item.name])?peer.potions[item.name]:demand?.held;
-        const potionNeed=me.role==='merchant'&&isPotion(item)&&Number.isSafeInteger(heldPotions)&&heldPotions>=0?Math.max(0,potionTarget(cfg,item.name)-heldPotions):0;
+        const potionNeed=me.role==='merchant'&&isPotion(item)&&
+          (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)&&Number.isSafeInteger(heldPotions)&&heldPotions>=0?Math.max(0,potionTarget(cfg,item.name)-heldPotions):0;
         const rawWanted=Math.max(demand?.need??0,potionNeed,gear?1:0,elixir?1:0,collected);const wanted=me.role==='merchant'&&isPotion(item)&&['hpot0','mpot0'].includes(item.name)?Math.min(rawWanted,potionNeed):rawWanted;if(!Number.isSafeInteger(wanted)||wanted<1)continue;
         const quantity=Math.min(availableTransfer(slot,r),cfg.merchant.maxDelivery,wanted);if(quantity<1)continue;
         if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
@@ -346,7 +350,9 @@ export function createLogistics(bot){
       const requested=(h.items??[]).some(x=>cfg.merchant.supply&&x.need>0&&p.c.items.some((i,slot)=>{const r=i&&matchingDemand(x,i)&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;}));
        const gearRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>{const r=i&&sendRule(i,name);return r&&availableTransfer(slot,r)>0&&!!bot.allocation?.offer(signature(i),name);});
        const elixirRequested=cfg.merchant.supply&&h.elixir?.quantity===1&&p.c.items.some((i,slot)=>{const r=i&&i.name===h.elixir.item&&sendRule(i,name);return r&&availableTransfer(slot,r)>0;});
-       const directPotions=cfg.merchant.supply&&['hpot0','mpot0'].some(id=>
+       const directPotions=cfg.merchant.supply&&
+         (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)&&
+         ['hpot0','mpot0'].some(id=>
          Number.isSafeInteger(h.potions?.[id])&&h.potions[id]>=0&&
          h.potions[id]<potionTarget(cfg,id)&&
          p.c.items.some(i=>i?.name===id&&!!sendRule(i,name)&&
@@ -418,7 +424,7 @@ export function createLogistics(bot){
            achievementCarrier:carriedAchievementCarrier(p.c.items),
            inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
            free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
-           defaultPotionDemand(item,countNow),
+           defaultPotionDemand(item,countNow,true),
         held:isPotion(item)?countNow:undefined,
         surplus:transfer?Math.max(0,countNow-transfer.keep-transfer.teamReserve-
           (bot.production?.reservedQuantity?.(item,transfer.recipient)??0)):0,

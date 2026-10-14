@@ -673,6 +673,16 @@ export function createMerchant(bot){
   if(bot.movement.order?.owner==='economy'){
    bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
   }
+  if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
+  // A delivery of already finished, allocated gear can release a physical
+  // slot without selling protected production stock.
+  if(capacityRecovery&&bot.free()>(cfg.merchant.minFreeSlots??4)&&
+    bot.logistics?.actionableGearDelivery?.()){
+   bot.logistics.travel?.();
+   if(bot.movement.order?.owner==='logistics'||bot.logistics?.handoffActive||
+    (bot.farmers??[]).some(n=>{const h=bot.transport?.fresh?.(n);
+     return h?.running&&samePlace(p.c,h)&&distance(p.c,h)<=200;}))return;
+  }
   if(relieveInventoryPressure())return;
   // Deliver a missing starter weapon before another pickup journey takes
   // control. The usual user rules, per-goal budgets and slot limits apply.
@@ -792,12 +802,23 @@ export function createMerchant(bot){
   for(const job of tasks.rank(jobs)){
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
-   const accepted=job.run();if(accepted||bot.movement.order?.owner==='economy'||bot.movement?.townActive){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
+   const accepted=job.run();
+   if(bot.movement.order?.owner==='economy'&&
+     (job.id==='production'||['upgrade','compound'].includes(job.r?.action))){
+    const step=job.id==='production'?bot.production?.status?.()?.steps?.[0]:
+     {kind:job.r.action,item:job.r.item,level:job.r.minLevel};
+    rememberProductionRoute(step,job.id==='production'?null:job.r);
+   }
+   if(accepted||bot.movement.order?.owner==='economy'||bot.movement?.townActive){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, Haltezeit und Wartealter; Logistik hat Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
  return {tick,preparePickup,prepareGoldPickup:peer=>preparePickup(peer,true),prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
-  claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':'NORMAL',depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+  claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':
+   capacityBlock?'SAFE_MARGIN_BLOCKED':'NORMAL',
+   capacityBlock:capacityBlock?{reason:capacityBlock.reason,free:capacityBlock.free,
+    requiredFree:Math.max(8,(cfg.merchant.minFreeSlots??4)+4),retryAt:capacityBlock.until}:null,
+   productionContinuation:productionContinuation?{...productionContinuation}:null,depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
 }

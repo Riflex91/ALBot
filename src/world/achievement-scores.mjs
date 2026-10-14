@@ -11,7 +11,7 @@ export function verifiedTrackerScores(data,G,{limit=512}={}){
  for(const id of Object.keys(defs).sort().slice(0,limit)){
   if(!Object.prototype.hasOwnProperty.call(max,id))continue;
   const entry=max[id],score=Array.isArray(entry)?entry[0]:null;
-  if(!Number.isSafeInteger(score)||score<0)continue;
+  if(!Number.isFinite(score)||score<0||score>Number.MAX_SAFE_INTEGER)continue;
   // Achievement definitions, not a guessed universal threshold, determine
   // the next milestone for this exact monster in the current G.
   const levels=Array.isArray(defs[id]?.achievements)?
@@ -31,9 +31,9 @@ export function verifiedTrackerScores(data,G,{limit=512}={}){
 // normal safe FarmPlan's utility. This never creates a new monster candidate,
 // guesses kill-credit rates or overrides a material-production objective.
 export function achievementMilestoneBias(row){
- if(!row||!Number.isSafeInteger(row.score)||row.score<0||
+ if(!row||!Number.isFinite(row.score)||row.score<0||
     !Number.isSafeInteger(row.nextThreshold)||row.nextThreshold<=row.score||
-    !Number.isSafeInteger(row.gap)||row.gap!==row.nextThreshold-row.score||
+    !Number.isFinite(row.gap)||row.gap!==row.nextThreshold-row.score||
     !row.nextReward||typeof row.nextReward.stat!=='string'||
     !Number.isFinite(row.nextReward.value)||row.nextReward.value<=0)return 0;
  return row.gap<25?Math.min(.04,.04*(25-row.gap)/25):0;

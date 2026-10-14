@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTeamPlan,verifiedAreaHistory} from '../src/world/team-plan.mjs';
+import {createTeamPlan,verifiedAreaHistory,areaRateBaseline} from '../src/world/team-plan.mjs';
 import {createFarmer} from '../src/combat/farmer.mjs';
 
 test('dangerous farm-area failure quarantines a spawn instead of instantly reselecting it',()=>{
@@ -90,4 +90,10 @@ test('corrupt persisted area counters are replaced before next observation',()=>
  assert.equal(verifiedAreaHistory(source,2000),null);
  const valid={at:2000,seconds:1,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:1};
  assert.deepEqual(verifiedAreaHistory(valid,2000),valid);
+});
+
+test('spawn measurement baseline excludes XP and gold earned during area transition',()=>{
+ assert.deepEqual(areaRateBaseline('main:goo','main:bee',150,60,100,20),{xp:150,gold:60});
+ assert.deepEqual(areaRateBaseline('main:goo','main:goo',150,60,100,20),{xp:100,gold:20});
+ assert.deepEqual(areaRateBaseline(null,'main:goo',150,60,100,20),{xp:150,gold:60});
 });

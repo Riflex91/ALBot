@@ -635,6 +635,12 @@ export function createMerchant(bot){
     return h?.running&&!h.rip&&samePlace(p.c,h)&&
       distance(p.c,h)<=(p.G.skills?.mluck?.range??320);
   }))buff();
+  // When the emergency is armed, obtain the two potion types from the NPC
+  // before beginning the first delivery journey, as inventory/budget allows.
+  if(cfg.merchant.potionTeamRefill===true&&cfg.merchant.supply&&
+     Date.now()-lastSupplyCheck>=10000){
+    lastSupplyCheck=Date.now();if(supplyBeforePickup(false))return;
+  }
   bot.logistics.travel();
   if(departure&&departure.stage!=='ready'&&!['logistics','gold'].includes(bot.movement.order?.owner))
     return;
@@ -665,7 +671,7 @@ export function createMerchant(bot){
       ?'Lieferauftrag offen: '+(intent.recipient??'Team')+' – Warte auf freigegebene Items/aktuelle Empfangsposition'
       :'Merchant wartet: kein freigegebener Auftrag/Nachschubbedarf');
   }
-  if(me.role==='merchant'&&cfg.merchant.supply&&Date.now()-lastSupplyCheck>=10000){
+  if(me.role==='merchant'&&cfg.merchant.supply&&cfg.merchant.potionTeamRefill!==true&&Date.now()-lastSupplyCheck>=10000){
    lastSupplyCheck=Date.now();if(supplyBeforePickup(false))return;
   }
   if(standDepot())return;

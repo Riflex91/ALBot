@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTeamPlan} from '../src/world/team-plan.mjs';
+import {createTeamPlan,verifiedAreaHistory} from '../src/world/team-plan.mjs';
 import {createFarmer} from '../src/combat/farmer.mjs';
 
 test('dangerous farm-area failure quarantines a spawn instead of instantly reselecting it',()=>{
@@ -70,4 +70,17 @@ test('audit G02 leader starts one bounded regroup after 45 seconds of stalled fo
   peer.x=60;time+=1000;farmer.tick();assert.equal(bot.movement.order,null,'recovered formation releases the leader');
   assert.ok(stops>=1);
  }finally{Date.now=clock;}
+});
+
+test('spawn history rejects malformed persistence before learned farm scoring',()=>{
+ const now=1000000;
+ const valid={at:now-10,seconds:60,xp:120,gold:30,empty:15,foreign:3,deaths:0,lostKills:0};
+ assert.deepEqual(verifiedAreaHistory(valid,now),valid);
+ for(const change of [
+  {seconds:0},{seconds:NaN},{xp:-1},{xp:Infinity},{gold:NaN},
+  {empty:61},{empty:-1},{foreign:-2},{deaths:-1},
+  {lostKills:1.5},{at:now+1},{at:Infinity}
+ ])assert.equal(verifiedAreaHistory({...valid,...change},now),null);
+ assert.equal(verifiedAreaHistory([],now),null);
+ assert.equal(verifiedAreaHistory(null,now),null);
 });

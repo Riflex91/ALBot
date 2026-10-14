@@ -28,6 +28,7 @@ export function createMerchant(bot){
  const service=createServicePlan({holdMs:cfg.merchant.taskHoldMs,event:(type,data)=>bot.event?.(type,data)});
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
   standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0,capacityRecovery=false;
+ let capacityBlock=null,productionContinuation=null,lastProgressTravel=null;
  // The alert arms one persisted team refill tour. A changed roster or
  // missing heartbeat suspends buying until every selected farmer is verified.
  const potionCycleKey='albot:potion-tour:'+me.name;
@@ -516,19 +517,59 @@ export function createMerchant(bot){
    reserved:bot.production?.reservedQuantity?.(item)??Infinity
   });
  }
+ function rememberProductionRoute(step,rule=null){
+  if(bot.movement.order?.owner!=='economy'||!step)return;
+  productionContinuation={kind:step.kind,item:step.item,level:step.level??0,
+   action:rule?.action??null,at:Date.now(),until:Date.now()+90000};
+ }
+ function resumeProductionAtNpc(){
+  if(!productionContinuation||bot.movement.order||
+   bot.journal||bot.inventoryBlocked)return false;
+  const route=productionContinuation;
+  if(Date.now()>route.until){productionContinuation=null;return false;}
+  // An arriving NPC route is an admitted job; resume before the pressure
+  // planner can issue an opposing bank journey.
+  const step=bot.production?.status?.()?.steps?.[0];
+  let accepted=false;
+  if(step?.kind===route.kind&&step.item===route.item&&
+   (step.level??0)===route.level)accepted=bot.production.tick();
+  else if(['upgrade','compound'].includes(route.action)){
+   const slot=p.c.items.findIndex(i=>i?.name===route.item&&(i.level??0)===route.level);
+   const rule=slot>=0?e.rules(p.c.items[slot],'production'):null;
+   if(slot>=0&&rule?.action===route.action)accepted=bot.production.mutate(slot,rule);
+  }
+  productionContinuation=null;
+  if(accepted||bot.movement.order?.owner==='economy'||bot.journal){
+   bot.event?.('merchant.productionResume',{kind:route.kind,item:route.item,
+    phase:bot.journal?'pending-confirmation':
+     bot.movement.order?.owner==='economy'?'travel':'admitted'});
+   if(bot.movement.order?.owner==='economy')rememberProductionRoute(step??route);
+   return true;
+  }
+  return false;
+ }
+ function pressureFingerprint(){
+  return JSON.stringify([p.c.map,bot.free(),
+   (p.c.items??[]).map(i=>i?[i.name,i.level??0,i.q??1]:null),
+   bot.bank?.capacity?.()?.map(r=>[r.pack,r.map,r.free,r.workspace])??null]);
+ }
  function relieveInventoryPressure(){
   const minimum=Math.max(0,cfg.merchant.minFreeSlots??4),freeSlots=bot.free();
   // Hysteresis: once slots reach the emergency threshold, finish opening a
   // useful working margin before admitting more nonessential acquisitions.
   if(freeSlots<=minimum)capacityRecovery=true;
   if(freeSlots>=Math.min(p.c.items.length,Math.max(8,minimum+4)))capacityRecovery=false;
+  const fingerprint=pressureFingerprint();
+  if(capacityBlock&&(capacityBlock.fingerprint!==fingerprint||Date.now()>=capacityBlock.until))capacityBlock=null;
   if(me.role!=='merchant'||!cfg.merchant.enabled||!capacityRecovery||
     bot.movement.order||bot.logistics?.reserved||bot.gold?.reserved||
     bot.bank.pending||bot.journal||bot.inventoryBlocked)return false;
   // This is a capacity-recovery transaction, NOT a general merchant task.
   // In particular, do not leave for an exchange while inventory is full.
-  if(bot.bank?.consolidateInventory?.())return true;
-  if(p.c.bank&&bot.bank?.consolidate?.())return true;
+  if(!capacityBlock){
+   if(bot.bank?.consolidateInventory?.())return true;
+   if(p.c.bank&&bot.bank?.consolidate?.())return true;
+  }
   const bank=[],sell=[];
   for(let slot=0;slot<p.c.items.length;slot++){
    const item=p.c.items[slot];if(!e.safe(item))continue;
@@ -557,23 +598,31 @@ export function createMerchant(bot){
    }
    return false;
   };
-  if(p.c.map==='bank'?(tryBank()||trySell()):(trySell()||tryBank()))return true;
+  if(!capacityBlock&&
+   (p.c.map==='bank'?(tryBank()||trySell()):(trySell()||tryBank())))return true;
   // When every carried gear copy is provisionally reserved for future
   // goals, its bank location can still be changed without selling it or
   // releasing the reservation. The bank's private park() validates user
   // rules, current production inputs, item identity and live destination.
   // This is also executable at zero free inventory slots.
-  if(cfg.merchant.bank&&cfg.production?.autoDisposition){
+  if(!capacityBlock&&cfg.merchant.bank&&cfg.production?.autoDisposition){
    for(let slot=0;slot<p.c.items.length;slot++){
     if(bot.bank?.park?.(slot)||bot.movement.order?.owner==='economy'||
        bot.journal||exec.busy('inventory')||exec.busy('economy'))return true;
    }
   }
-  if(Date.now()-lastPressureNote>30000){
+  if(!capacityBlock)capacityBlock={fingerprint,at:Date.now(),until:Date.now()+60000,
+   free:freeSlots,reason:'NO_ACTIONABLE_CAPACITY'};
+  // An exhausted plan with a safe working margin must not keep all farmers
+  // paused merely because the ideal 8-slot margin cannot be reached.
+  if(freeSlots>=minimum+2)capacityRecovery=false;
+  if(Date.now()-lastPressureNote>60000){
    lastPressureNote=Date.now();
    bot.event?.('merchant.inventoryPressure',{free:bot.free(),
     minimum,bankCandidates:bank.length,saleCandidates:sell.length,
-    code:bot.free()===0?'NO_SAFE_CAPACITY':'CAPACITY_RECOVERY_WAIT',
+    code:bot.free()===0?'NO_SAFE_CAPACITY':'NO_ACTIONABLE_CAPACITY',
+    requiredFree:Math.max(8,minimum+4),nextCheckAt:capacityBlock.until,
+    farmPaused:capacityRecovery,
     reason:'Keine ausführbare sichere Ganzstapelablage, Direktveräußerung oder Bankentlastung; kein Schutz/Journal wird gelockert'});
   }
   // Exactly at the configured reserve, normal work can continue, as before.
@@ -589,11 +638,19 @@ export function createMerchant(bot){
    const safeKinds=['exchange','upgrade','compound','craft','retrieve','buy'];
    if(cfg.production?.enabled&&safeKinds.includes(first?.kind)){
     const accepted=bot.production?.tick?.();
+    if(accepted)rememberProductionRoute(first);
     if(accepted||bot.movement.order?.owner==='economy'||
        bot.journal||exec.busy('economy')||exec.busy('inventory')){
-     bot.event?.('merchant.inventoryPressureProgress',{
-      free,minimum,kind:first.kind,
-      item:first.item,reason:'Physische Aktion trotz unterschrittener Slotreserve ausführbar'});
+     const phase=bot.journal?'pending-confirmation':
+      bot.movement.order?.owner==='economy'?'travel':'admitted';
+     const signature=first.kind+':'+first.item+':'+phase;
+     if(phase!=='travel'||lastProgressTravel!==signature){
+      lastProgressTravel=signature;
+      bot.event?.('merchant.inventoryPressureProgress',{
+       free,minimum,kind:first.kind,item:first.item,phase,
+       reason:phase==='travel'?'NPC-Reise gestartet; keine Itemaktion bestätigt':
+        'Auftrag gestartet; bestätigte Itemaktion nur über inventory.result'});
+     }
      return true;
     }
    }

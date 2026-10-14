@@ -1,6 +1,6 @@
 import {combatMembers,compositionOptions,farmThroughput} from './composition.mjs';
 import {materialEvent} from '../production/probability.mjs';
-import {materialQuotaCap} from '../production/material-quotas.mjs';
+import {materialQuotaCap,materialRequestHasWork} from '../production/material-quotas.mjs';
 import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {distance,samePlace,xy} from '../core/policy.mjs';
 import {spawnLocations,knowledgeFingerprint,semanticGear,mapGraph,mapHops} from './knowledge.mjs';
@@ -17,7 +17,7 @@ export function createTeamPlan(bot){
   if(!plan.objective)return true;if(plan.kind==='elixir')return bot.elixirs?.objective()?.objective===plan.objective||bot.transport.fresh(plan.leader)?.elixir?.item===plan.item;
   return materialRequests().some(r=>r.objective===plan.objective&&
     (!r.expires||r.expires>Date.now())&&r.monster===plan.target&&
-    r.remaining!==0);
+    materialRequestHasWork(r,bot.farmers));
  }
  function observe(){if(me.name!==bot.leader)return;const now=Date.now(),dt=Math.max(0,Math.min(5000,now-previous));previous=now;if(!current||!samePlace(p.c,current)||distance(p.c,current)>220){area=null;lastXp=p.c.xp??0;lastGold=p.c.gold??0;return;}
   const hour=new Date(now).getUTCHours(),id=p.realm()+':'+hour+':'+current.key+':'+knowledgeFingerprint(bot.farmers.map(n=>semanticGear(n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))),old=history[id]??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
@@ -48,7 +48,7 @@ export function createTeamPlan(bot){
   }
   observe();if(cfg.party.enabled&&me.name!==bot.leader){const h=bot.transport.fresh(bot.leader);const next=h?.running&&!h.rip? h?.farmPlan:null;if(valid(next)){const changed=!current||current.id!==next.id;current={...next};roles=h.roles??{};if(changed){if(['farm','world','combat','follow'].includes(bot.movement.order?.owner))bot.movement.stop();bot.target=null;bot.event('plan.adopt',{id:current.id,target:current.target,leader:bot.leader,reason:current.reason});}}else current=null;return;}
   if(Date.now()-last<Math.min(10000,cfg.world.cacheTtlMs)&&valid(current))return;last=Date.now();capabilities();const raw=knowledgeFingerprint([p.G.monsters,p.G.maps]);if(raw!==definition){definition=raw;graph=mapGraph(p.G);if(current&&!valid(current)){bot.event('plan.drift',{id:current.id,reason:'Spawn-/Monsterdefinition geändert'});current=null;}}
-  const materials=materialRequests(),requests=materials.filter(r=>r.quantity>0&&r.remaining!==0&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
+  const materials=materialRequests(),requests=materials.filter(r=>materialRequestHasWork(r,bot.farmers)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
   const combat=combatMembers(bot,true),composition=compositionOptions(bot,true);
   // Availability, not a legacy global AoE opt-out, governs farmer density.
   const aoeAvailable=(bot.farmers??[]).some(name=>{

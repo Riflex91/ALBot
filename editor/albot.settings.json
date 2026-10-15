@@ -1952,7 +1952,7 @@
           "minChance": {
             "type": "number",
             "title": "Globale Mindest-Erfolgschance",
-            "default": 1,
+            "default": 0.65,
             "minimum": 0,
             "maximum": 1
           },

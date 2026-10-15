@@ -1,3 +1,7 @@
+# Upgrade-Scrollwahl 0.10.8-candidate (15.10.2026)
+
+Benutzerauftrag umgesetzt: 65 % globale Mindestchance im persönlichen Bot und in neuen Full-Profilen; nach unzureichender scroll0-Vorschau passende scroll1 prüfen, vorhandene verwenden oder genau eine kaufen, echte Servervorschau vor Upgrade. Kaufanforderung für tatsächliche Scroll-IDs korrigiert. 806/806 Offlinetests; Runtime/Werkstatt und persönliche Bundleparität geprüft. Neue Spiel-Liveabnahme offen. [Details](docs/CHANGELOG-0.10.8.md).
+
 # Vorbeugende Lagerplanung und Ranger-Ziele 0.10.7-candidate (14.10.2026)
 
 Auf aktuellem Mainstand umgesetzt: 8-Slot-Vorwarnung / 12-Slot-Arbeitsziel, geschützte lokale und bankgestützte Compounds, nachgewiesene Ersetzbarkeit und Gegenwartsnutzen vor Freiverkäufen, vorbeugende Bankfreigabe, Worst-Case-Exchange-Outputprüfung, Annahmereserve und getrennte Ranger-Ziel-/Pullgrenzen. Persönlicher Auftrag maxAggro=12 und Accountgold-Verluststeuerung berücksichtigt. 801/801 Offlinetests; Runtime/Werkstatt gemeinsam gebaut. Liveabnahme und Langzeitverhalten offen. [Details](docs/CHANGELOG-0.10.7.md).

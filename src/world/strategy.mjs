@@ -12,6 +12,12 @@ export function rankFarmTargets(G,character,targets,mode='balanced',learned={},w
   const adjust=1+Math.max(-weight,Math.min(weight,(learned[id]?.factor??1)-1));return {id,index,score:base*adjust};
  }).sort((a,b)=>b.score-a.score||a.index-b.index).map(x=>x.id);
 }
+export function farmRiskHp(base,live){
+ const ordinary=base?.hp??0;
+ if(live&&Number.isFinite(ordinary)&&ordinary>0&&
+  Number.isFinite(live.max_hp)&&live.max_hp>ordinary)return ordinary;
+ return Math.max(ordinary,live?.max_hp??live?.hp??0);
+}
 export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null,questVisit=null,nextQuest=0;
  const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();
@@ -25,9 +31,7 @@ export function createStrategy(bot){
  // Naturally grown monsters are a temporary occupant, not a new species
  // or a permanently dangerous respawn. Calculate spot viability with base
  // HP while retaining LIVE attack, frequency, mechanics and defenses.
- const aged=!!(live&&Number.isFinite(base?.hp)&&base.hp>0&&
-   Number.isFinite(live.max_hp)&&live.max_hp>base.hp);
- const hp=aged?base.hp:Math.max(base?.hp??0,live?.max_hp??live?.hp??0);
+ const hp=farmRiskHp(base,live);
  return assessCombat({...base,...live,hp},members(planned),w.risk,cfg.farming.maxAggro,
   {...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
  function safeTarget(id,live,quiet=false,planned=false){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}

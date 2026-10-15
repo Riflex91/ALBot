@@ -3,13 +3,18 @@
 export function normalizedHunt(q){
  if(q===null||q===undefined)return null;
  if(typeof q.id!=='string'||!q.id||!Number.isSafeInteger(q.c)||q.c<0)return undefined;
- return {id:q.id,c:q.c};
+ const result={id:q.id,c:q.c};
+ if(Number.isFinite(q.ms))result.ms=Math.max(0,Math.floor(q.ms));
+ if(typeof q.sn==='string'&&q.sn)result.sn=q.sn;
+ return result;
 }
 export function huntForFarmer(name,localName,localStatus,peer,realm){
  if(name===localName)return normalizedHunt(localStatus);
  if(!peer||peer.running!==true||peer.rip||peer.realm!==realm||
    !Object.prototype.hasOwnProperty.call(peer,'monsterhunt'))return undefined;
- return normalizedHunt(peer.monsterhunt);
+ const q=normalizedHunt(peer.monsterhunt);
+ if(q?.ms!==undefined)q.ms=Math.max(0,q.ms-Math.max(0,Date.now()-(peer.received??Date.now())));
+ return q;
 }
 export function advanceHuntCycle(state,roster,hunt){
  const names=roster.filter(n=>typeof n==='string'&&n);
@@ -19,7 +24,9 @@ export function advanceHuntCycle(state,roster,hunt){
  if(!names.length)return {state:current,objective:null,changed:false};
  if(hunt===undefined)return {state:current,objective:{owner:names[current.index],phase:'unknown'},changed:!valid};
  let next={...current};
- if(next.phase==='turnin'&&(hunt===null||hunt.c>0)){
+ if(next.phase==='turnin'&&(hunt===null||hunt.c>0||hunt?.ms===0)){
+  next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
+ }else if(hunt?.ms===0||hunt===null&&next.phase==='combat'){
   next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
  }else if(hunt&&hunt.c===0){next.phase='turnin';next.lastId=hunt.id;}
  else if(hunt&&hunt.c>0){next.phase='combat';next.lastId=hunt.id;}
@@ -69,4 +76,23 @@ export function advancePastSkippedHunts(state,roster,lookup,now=Date.now()){
   index=(index+1)%names.length;
  }
  return {state,changed:false,allBlocked:true};
+}
+
+// The official monsterhunt condition lasts 1,800,000ms. Compare actual
+// remaining game-state milliseconds, never a fabricated local countdown.
+// Reject a run that cannot reasonably finish AND return to Daisy in time.
+export const OFFICIAL_HUNT_DURATION_MS=1800000;
+export function huntDeadlineStatus(hunt,realm,estimatedTravelSeconds=0,
+ estimatedSecondsPerKill=0,turnInSeconds=45){
+ if(!hunt)return {state:'none'};
+ if(hunt.ms===undefined)return {state:'unverified',remainingMs:null};
+ if(!Number.isFinite(hunt.ms))return {state:'unverified',remainingMs:null};
+ if(hunt.ms<=0)return {state:'expired',remainingMs:0};
+ if(hunt.sn&&typeof realm==='string'&&hunt.sn!==realm)
+  return {state:'wrong-realm',remainingMs:hunt.ms};
+ const neededMs=Math.ceil((Math.max(0,estimatedTravelSeconds)+
+  Math.max(0,estimatedSecondsPerKill)*Math.max(0,hunt.c)+
+  Math.max(0,turnInSeconds))*1000);
+ return {state:hunt.ms<=neededMs?'insufficient-time':'viable',
+  remainingMs:hunt.ms,neededMs};
 }

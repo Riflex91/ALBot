@@ -24,9 +24,15 @@ export class Executor {
         // Survival actions retain their ordinary retry window. Potion equip
         // uses value observation without creating an inventory journal.
         const survival=/^(potion|regen|heal|respawn)([.:_-]|$)/.test(key);
-        const failed=!randomFailure&&(p.error||!survival&&p.value&&['unknown','timeout','rejected'].includes(result));
+        // Native smart_move may be interrupted by a legitimate route
+        // handoff. It is neither an application error nor an invalid route;
+        // release its owner through onSettle without triggering bot.pause().
+        const benignMoveCancel=key==='move'&&/^(interrupted|cancelled|canceled|superseded)$/i.test(
+          String(p.error?.reason??p.error?.message??p.error??''));
+        const failed=!benignMoveCancel&&!randomFailure&&
+          (p.error||!survival&&p.value&&['unknown','timeout','rejected'].includes(result));
         this.cooldowns.set(key,now+(failed?(survival?3000:Math.max(3000,Math.min(60000,this.retryDelay(key)||3000))):p.delay));
-        if(p.error&&!randomFailure||result==='timeout')this.onError(key,p.error??result);p.onSettle(result,p.error??p.result);
+        if(!benignMoveCancel&&(p.error&&!randomFailure||result==='timeout'))this.onError(key,p.error??result);p.onSettle(result,p.error??p.result);
       }
     }
   }

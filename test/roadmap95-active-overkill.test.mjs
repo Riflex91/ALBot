@@ -115,7 +115,8 @@ test('ledger emits conservative damage per target while preserving evidence-only
  assert.equal(ledger.heartbeat().length,1);
  assert.equal(ledger.confirmedHit({actor:'My_Ranger2',target:'bee-a',damage:120}),true);
  assert.equal(ledger.snapshot().confirmed,1);
- assert.equal(ledger.heartbeat()[0].damage['bee-a'],120);
+ assert.equal(ledger.heartbeat()[0].damage['bee-a'],undefined,
+  'a server-confirmed hit is no longer projected as pending damage');
  const second=ledger.launched('attack',['bee-x'],{
   damage:{'bee-x':-30,'extra':9999}
  });

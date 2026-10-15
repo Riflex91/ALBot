@@ -111,9 +111,15 @@ export function createStrategy(bot){
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
   }
   if(bot.teamPlan?.materialActive())return false;
-  if(!w.quests||me.role!=='farmer'||cfg.party.enabled&&
-    (bot.teamPlan?.orderedHunt?.()?.owner??bot.leader)!==me.name||activity||bot.journal||bot.logistics.reserved)return false;
-  const q=p.c.s?.monsterhunt;if(q?.c>0)return false;
+  const turn=bot.teamPlan?.orderedHunt?.();
+  if(!w.quests||me.role!=='farmer'||turn?.phase==='blocked'||
+    cfg.party.enabled&&(turn?.owner??bot.leader)!==me.name||
+    activity||bot.journal||bot.logistics.reserved)return false;
+  const q=p.c.s?.monsterhunt;
+  // Server authority: a timed-out 30-minute status must not be interpreted
+  // as a new quest slot until the condition disappears from the character.
+  if(q&&Number.isFinite(q.ms)&&q.ms<=0)return false;
+  if(q?.c>0)return false;
   if(Date.now()<nextQuest||!p.has('interact')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
   if(!questVisit){questVisit={phase:'travel',before:JSON.stringify(q??null),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Aktiver Farmer nimmt eigenen Auftrag an oder gibt ihn ab'});}
   if(!bot.economy.at(d,70)){bot.reason='Unterwegs: Monsterhunt';bot.movement.go({...d,radius:60},'quest');return true;}

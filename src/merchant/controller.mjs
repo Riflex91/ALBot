@@ -724,7 +724,7 @@ export function createMerchant(bot){
   if(pickupStatus?.missing>0&&Date.now()-(pickupStatus.at??0)<3000){
     // Gold requires no inventory slot. A pickup that cannot safely free
     // space must not starve independent gold collection indefinitely.
-    if(pickupStatus.state==='blocked'&&!bot.movement.order)bot.gold?.travel();
+    // Gold surplus is received only on existing supply/item routes.
     return;
   }
   if(!bot.movement.order&&bot.gold?.travel())return;

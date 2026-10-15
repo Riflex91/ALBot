@@ -111,6 +111,7 @@ export function createStrategy(bot){
   }});return accepted||!!questVisit;
  }
  function anniversary(){
+  if(bot.teamPlan?.orderedHunt?.())return false; // serial monsterhunt first
   const s=state().anniversary;if(!w.anniversary||!s?.active||!s.live||!Number.isFinite(s.expires)||s.expires<Date.now()||s.available===false||!permittedMap(s.map)||!p.has('anniversary_can_visit')||!p.call('anniversary_can_visit')||!bot.economy)return false;
   const d={map:s.map,in:s.map,x:s.x,y:s.y};if(!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
   if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {transientMovementInterruption} from '../src/core/movement.mjs';
 import {safeThreeShotOpportunity} from '../src/combat/encounter.mjs';
-import {farmRiskHp} from '../src/world/strategy.mjs';
+import {farmRiskHp,questIdentity} from '../src/world/strategy.mjs';
 import {advanceHuntCycle,normalizedHunt,huntForFarmer,huntDeadlineStatus,OFFICIAL_HUNT_DURATION_MS} from '../src/world/hunt-rotation.mjs';
 
 test('native move interruption is transient, not a failed/unreachable bank waypoint',()=>{
@@ -71,4 +71,13 @@ test('peer monsterhunt timer is reduced by age of last authenticated heartbeat',
  },'USIV');
  assert.ok(q.ms>=6000&&q.ms<=7000);
  assert.equal(q.sn,'US IV');
+});
+
+test('countdown update alone is never treated as completed or reassigned hunt',()=>{
+ const a={id:'booboo',c:2,ms:800000,sn:'US IV'};
+ const b={...a,ms:799500};
+ assert.equal(questIdentity(a),questIdentity(b));
+ assert.notEqual(questIdentity(a),questIdentity({...a,c:1}));
+ assert.notEqual(questIdentity(a),questIdentity(null));
+ assert.notEqual(questIdentity(a),questIdentity({...a,sn:'EU II'}));
 });

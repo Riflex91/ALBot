@@ -19,7 +19,7 @@ export function advanceHuntCycle(state,roster,hunt){
  if(!names.length)return {state:current,objective:null,changed:false};
  if(hunt===undefined)return {state:current,objective:{owner:names[current.index],phase:'unknown'},changed:!valid};
  let next={...current};
- if(next.phase==='turnin'&&(hunt===null||hunt.c>0&&hunt.id!==next.lastId)){
+ if(next.phase==='turnin'&&(hunt===null||hunt.c>0)){
   next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
  }else if(hunt&&hunt.c===0){next.phase='turnin';next.lastId=hunt.id;}
  else if(hunt&&hunt.c>0){next.phase='combat';next.lastId=hunt.id;}

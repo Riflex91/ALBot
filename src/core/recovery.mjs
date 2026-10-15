@@ -71,7 +71,8 @@ export function inspectExchangeRecovery(bot){
  const table=exchangeDrops(G,G?.drops?.[j.item]);
  if(!table.length)return deny('exchange-reward-table-unavailable');
  const permitted=new Set(table.map(x=>x.item));
- if(rewards.some(x=>!permitted.has(x.item)))return deny('reward-not-in-official-drop-table');
+ if(rewards.length!==1||!table.some(x=>x.item===rewards[0].item&&x.quantity===rewards[0].quantity))
+  return deny('reward-not-an-exact-official-outcome');
  return {eligible:true,reason:'exact-input-consumption-and-verified-reward',
   consumed:j.quantity,source:j.item,rewards,
   signature:JSON.stringify([j.at,j.item,j.quantity,snap.realm,snap.gold,

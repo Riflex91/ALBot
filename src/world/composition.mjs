@@ -10,7 +10,7 @@ export function combatMembers(bot,planned=false){
  return [{...p.c,capabilities:bot.capabilities?.snapshot()},...peers].filter(c=>c.name!==cfg.party.merchant&&!c.rip&&c.hp>0);
 }
 export function compositionOptions(bot,planned=false){
- return {G:bot.p.G,outgoingUncertainty:.1,healing:bot.cfg.party.enabled!==false&&bot.cfg.party.healing===true,
+ return {G:bot.p.G,outgoingUncertainty:0,healing:bot.cfg.party.enabled!==false&&bot.cfg.party.healing===true,
   aoe:bot.cfg.party.aoe===true,planned,leader:bot.leader,ttl:bot.cfg.general.messageTtlMs??10000};
 }
 function freshCapability(c,id,options){

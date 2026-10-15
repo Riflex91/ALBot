@@ -23,6 +23,18 @@ export function highestDpsFarmer(bot,allies){
       a.name.localeCompare(b.name);
    })[0]??null;
 }
+// Fill every legal aimed-AoE slot, without consuming extra pull capacity for
+// mobs already attacking a party member. ID de-duplication prevents a stale
+// entity list from occupying multiple shot slots.
+export function maximalSafeAimedTargets(engaged,neutral,extra,limit){
+ const slots=Math.max(0,Math.floor(limit)),pulls=Math.max(0,Math.floor(extra)),out=[],seen=new Set();
+ for(const mob of engaged??[]){if(!mob?.id||seen.has(mob.id)||out.length>=slots)continue;
+  seen.add(mob.id);out.push(mob);}
+ let added=0;
+ for(const mob of neutral??[]){if(!mob?.id||seen.has(mob.id)||out.length>=slots||added>=pulls)continue;
+  seen.add(mob.id);out.push(mob);added++;}
+ return out;
+}
 export function createSkills(bot){
   const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map(),invalidAoENotices=new Set();
   const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
@@ -101,7 +113,9 @@ export function createSkills(bot){
     const additional=Math.floor(extraAllowance());
     // Already engaged, party-safe targets always occupy the first slots.
     // Extra targets require an explicit BUILD allowance; visible != safe.
-    const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
+    const candidates=aimed?maximalSafeAimedTargets(engaged,
+      visible.filter(canPull).sort((a,b)=>distance(p.c,a)-distance(p.c,b)),
+      additional,limit):visible;
     const thirdTargetDiagnostics=()=>{
       if(id!=='3shot')return null;
       const phase=bot.encounter?.status?.(),plan=bot.teamPlan?.target?.();
@@ -116,7 +130,8 @@ export function createSkills(bot){
       });
       return {thirdTargetBlocked:candidates.length<3,
        rejectedTargets:reasons.slice(0,6),
-       encounterPhase:phase?.phase??'unavailable',encounterCapacity:phase?.capacity??null};
+       encounterPhase:phase?.phase??'unavailable',encounterCapacity:phase?.capacity??null,
+       maximumSafeTargets:candidates.length,skillCapacity:limit};
     };
     const selected=multi?candidates.slice(0,limit):[];
     // Retain an approved one-target opener when it has a real purpose.

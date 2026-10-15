@@ -418,6 +418,7 @@ export function createProduction(bot){
      !cfg.production.enabled||!cfg.production.exchange)return false;
   const rule=ticket.rule;
   if(rule._autoProduction){
+   if(!cfg.production.autonomy||!ticket.goalKey)return false;
    // Reprioritization is allowed; removal/completion of the ORIGINAL demand
    // is not. The old rule may only consume items for a still-open goal.
    const g=goals().find(x=>goalKey(x)===ticket.goalKey);

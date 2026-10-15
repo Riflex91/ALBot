@@ -393,6 +393,55 @@ export function createProduction(bot){
    if(!e.npcTravel(d,'Exchange '+i.name))return false;const before=e.count(i),initialProof=proof(verified);
    return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return bot.storage?.exchangeAllowed?.(slot,q)!==false&&live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.npcAt(d)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G);},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},timeout:45000});
   }
+ // A production goal may be reprioritized while its already admitted NPC
+ // journey is running. Preserve one narrowly scoped, in-memory rule ticket
+ // and reevaluate actual outstanding demand before dispatching any exchange.
+ // This is NOT a durable value journal and grants no additional permissions.
+ function captureExchangeRoute(step){
+  if(step?.kind!=='exchange'||plan[0]?.kind!=='exchange'||
+     !goal||plan[0].item!==step.item||
+     (plan[0].level??0)!==(step.level??0))return null;
+  const item={name:step.item,level:step.level??0};
+  const rule=e.rules(item,'production');
+  if(rule?.action!=='exchange'||rule.item!==item.name||
+     !e.remaining(rule))return null;
+  const source=p.c.items.find(i=>i?.name===item.name&&
+   (i.level??0)===item.level&&e.safe(i));
+  if(!source)return null;
+  return {kind:'exchange',item:item.name,level:item.level,
+   rule:structuredClone(rule),goalKey:goalKey(goal),
+   variant:identity(source),sourceProof:step.sourceProof??null};
+ }
+ function resumeExchangeRoute(ticket){
+  if(!ticket||ticket.kind!=='exchange'||!ticket.rule||
+     ticket.rule.action!=='exchange'||ticket.rule.item!==ticket.item||
+     !cfg.production.enabled||!cfg.production.exchange)return false;
+  const rule=ticket.rule;
+  if(rule._autoProduction){
+   // Reprioritization is allowed; removal/completion of the ORIGINAL demand
+   // is not. The old rule may only consume items for a still-open goal.
+   const g=goals().find(x=>goalKey(x)===ticket.goalKey);
+   if(!g)return false;
+   const left=Math.max(0,g.quantity-(g.recipient?
+    deliveries[goalKey(g)]?.quantity??0:0));
+   if(!left||!needsProductionStock(qty(g.item,g.level,g),left))return false;
+  }
+  const slot=p.c.items.findIndex(i=>i?.name===ticket.item&&
+   (i.level??0)===(ticket.level??0)&&identity(i)===ticket.variant&&
+   e.safe(i));
+  if(slot<0)return false;
+  const item=p.c.items[slot];
+  // A new explicit keep rule must veto an old automatically generated ticket.
+  if(e.explicit(item,'inventory')?.action==='keep'||
+     e.explicit(item,'production')?.action==='keep')return false;
+  if(!rule._autoProduction){
+   const active=[e.rules(item,'production'),e.rules(item,'inventory')];
+   if(!active.some(r=>r?.action==='exchange'&&r.name===rule.name))
+    return false;
+  }
+  return exchange(slot,rule,ticket.sourceProof?
+   {sourceProof:ticket.sourceProof}:null);
+ }
  function availabilityFingerprint(step){
   return JSON.stringify([step?.item,step?.level,step?.kind,
    p.c.items.map(i=>i?[i.name,i.level??0,i.q??1,i.stat_type??'']:null),
@@ -538,7 +587,7 @@ export function createProduction(bot){
   return false;
  }
  function canRecordDelivery(item,to){const matching=goals().filter(g=>g.recipient===to&&g.item===item.name&&g.level===(item.level??0));if(Object.keys(deliveries).length+matching.filter(g=>!Object.hasOwn(deliveries,goalKey(g))).length<=1024)return true;e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');return false;}
- return {invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(cfg.general.testLogging===undefined)return materials;const first=materials[0];if(!first)return [];const plan=planMaterialQuotas(first,bot.farmers,
+ return {invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(cfg.general.testLogging===undefined)return materials;const first=materials[0];if(!first)return [];const plan=planMaterialQuotas(first,bot.farmers,
   name=>bot.transport.fresh(name),p.realm(),{freeReserve:cfg.farming.freeSlots});
  return [{...first,...plan}];},
  reserved:i=>reservedQuantity(i)>0,

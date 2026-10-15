@@ -1,5 +1,6 @@
 import {farmHealer,farmHealing,farmDefense,farmFearFactor} from './composition.mjs';
 import {outgoingDamageEstimate} from '../combat/damage-model.mjs';
+import {estimateCombatTimeline} from '../combat/combat-time.mjs';
 // Conservative planning estimate: unknown healing, kiting and critical hits are not guaranteed.
 export function assessCombat(monster,members,mode='balanced',aggro=1,options={}){
  const limits={conservative:{hit:.12,seconds:12,exposure:.35},balanced:{hit:.25,seconds:25,exposure:.55},aggressive:{hit:.4,seconds:45,exposure:.75}}[mode]??{hit:.12,seconds:12,exposure:.35};
@@ -35,5 +36,17 @@ export function assessCombat(monster,members,mode='balanced',aggro=1,options={})
  const maxSeconds=Number.isSafeInteger(options.maxCombatSeconds)&&options.maxCombatSeconds>=1&&options.maxCombatSeconds<=300?
   options.maxCombatSeconds:limits.seconds;
  const safe=seconds<=maxSeconds&&protection.safe;
- return {reason:safe?'Bekannte Gruppe innerhalb des Risikobudgets':'Treffer, Kampfdauer oder Schadensbudget überschritten',seconds,incoming,outgoing,rawExposure:exposure,...protection,safe,healCredit,healer:healer?.name??null,availableHp:weakest};
+ // Shadow projection is diagnostic only. Preserve the exact current
+ // allow/deny criteria (including the exclusive healer budget).
+ const model=estimateCombatTimeline(monster,alive,{
+  healer:healer?.name,healing:!!options.healing,game:options.G,aggro,
+  incomingSeconds:seconds,uncertainty:.1});
+ const timelineShadow={valid:model.valid,reason:model.reason??null,
+  projectedSeconds:model.seconds??null,lowerBoundDps:model.lowerBoundDps??null,
+  expectedDps:model.expectedDps??null,
+  healerDuty:model.healerBudget?.healerDuty??null,
+  healerProjectedHeals:model.healerBudget?.projectedHeals??null,
+  deltaSeconds:model.valid&&Number.isFinite(model.seconds)?model.seconds-seconds:null,
+  authority:'none'};
+ return {timelineShadow,reason:safe?'Bekannte Gruppe innerhalb des Risikobudgets':'Treffer, Kampfdauer oder Schadensbudget überschritten',seconds,incoming,outgoing,rawExposure:exposure,...protection,safe,healCredit,healer:healer?.name??null,availableHp:weakest};
 }

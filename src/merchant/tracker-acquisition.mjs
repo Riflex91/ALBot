@@ -33,7 +33,7 @@ export function createTrackerAcquisition(bot){
     bot.inventoryBlocked||bot.journal||bot.bank?.pending||
     bot.logistics?.reserved||pending||!Array.isArray(p.c.items)||
     p.c.items.filter(i=>!i).length<=(cfg.merchant.minFreeSlots??4)||
-    !carriedAchievementCarrier(p.c.items)||!recipient()||
+    !recipient()||
     (cfg.items??[]).some(r=>r?.enabled&&
       ['tracker','monstertoken'].includes(r.item)))return null;
   const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
@@ -63,7 +63,6 @@ export function createTrackerAcquisition(bot){
     ['tracker','monstertoken'].includes(r.item)))return null;
   const dest=recipient();
   if(!dest||!Array.isArray(p.c.items))return null;
-  if(!carriedAchievementCarrier(p.c.items))return null;
   const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
   if(own>trackerMerchantKeep(p.c.items)||bankCandidate())return null;
   // The game function exchange_buy chooses the FIRST token slot, including
@@ -79,7 +78,8 @@ export function createTrackerAcquisition(bot){
    tokensBefore:p.c.items.reduce((n,i)=>n+(i?.name==='monstertoken'?(i.q??1):0),0),
    trackersBefore:p.c.items.filter(i=>i?.name==='tracker').length};
  }
- function eligible(){return !!bankCandidate()||!!candidate();}
+ function eligible(){return !!bankCandidate()||!!candidate()||!!recipient()&&
+   bot.bank?.catalogStock?.().some(r=>r.item?.name==='tracker'&&!protectedItem(r.item));}
  function tick(){
   if(pending){
    const h=bot.transport?.fresh?.(pending.recipient);
@@ -88,6 +88,11 @@ export function createTrackerAcquisition(bot){
     if(p.write?.(key,null)!==true)return false;
     pending=null;reason='recipient-confirmed';
    }else{reason=pending.invalid?'invalid-durable-state':'await-recipient';return false;}
+  }
+  // A fresh catalog may justify travel, never withdrawal without live slots.
+  if(!bankCandidate()&&recipient()&&!p.c.bank){
+   const row=bot.bank?.catalogStock?.().find(r=>r.item?.name==='tracker'&&!protectedItem(r.item));
+   if(row){reason='bank-travel-for-verified-stock';bot.bank.ready(row.pack);return true;}
   }
   const stored=bankCandidate();
   if(stored){

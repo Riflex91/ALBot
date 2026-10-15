@@ -12,7 +12,7 @@ export function verifiedAdaptiveCapacity(profiles,context,max,healthy,enabled=tr
   const row=profiles?.[context+':'+size];
   const samples=Number.isSafeInteger(row?.samples)?row.samples:0;
   const failures=Number.isSafeInteger(row?.failures)?row.failures:0;
-  if(samples>0&&failures/samples>.1)break;
+  if(samples>0&&failures>0)break; // fail closed; never probe higher sizes
   if(samples>0&&failures===0){
    // Size has been observed safe; it may be kept while testing a new size.
    capacity=size;continue;

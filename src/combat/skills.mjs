@@ -197,7 +197,10 @@ export function createSkills(bot){
       const affected=multi?selected.map(x=>x.id):
        target?.id?[target.id]:target?.name?[target.name]:[];
       if((s.hostile||id==='heal')&&affected.length){
-       const damage=s.hostile?Object.fromEntries(affected.map(targetId=>{
+       // Only normal aimed ranger hits have calibrated damage multipliers.
+       // Unknown or conditional offensive skills remain telemetry-only.
+       const damage=s.hostile&&['3shot','5shot'].includes(id)?
+        Object.fromEntries(affected.map(targetId=>{
         const live=bot.entity(targetId);
         return [targetId,provisionalImpactDamage(p.c,live,s)];
        }).filter(([,amount])=>amount>0)):{};

@@ -248,3 +248,17 @@ test('NPC role and monetary token value are pinned through the dispatch guard',(
  other.G.npcs.monsterhunter.role='merchant';
  assert.equal(guard(),false);
 });
+
+test('missing token supply may trigger bounded non-mutating bank verification',()=>{
+ const f=fixture({tokens:0,own:null});
+ f.G.bank_packs={items0:['bank',42]};
+ let inspected=0;
+ f.bot.bank.ready=pack=>{assert.equal(pack,'items0');inspected++;return true;};
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(inspected,1);
+ assert.equal(f.calls.length,0,'no tokens may be spent');
+ assert.equal(f.actions.length,0,'no bank item may be withdrawn before live slot evidence');
+ assert.equal(f.acquisition.eligible(),false,'verification tour is rate-limited');
+ assert.equal(f.acquisition.status().reason,'bank-stock-verification');
+});

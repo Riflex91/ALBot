@@ -45,12 +45,9 @@ test('single target in verified one-hit normal attack range does not waste Range
  assert.deepEqual(f.calls,[]);
  assert.deepEqual(f.scheduled,[]);
 });
-test('two already engaged targets admit normal 3shot on shared attack resource',()=>{
+test('two engaged targets defer strict-three 3shot to ordinary attack',()=>{
  const f=fixture(2);f.run();
- assert.equal(f.calls.length,1);
- assert.equal(f.calls[0].id,'3shot');
- assert.equal(f.calls[0].targets.length,2);
- assert.ok(f.scheduled[0].resources.includes('attack'));
+ assert.equal(f.calls.length,0);
 });
 test('four already engaged targets prefer 5shot when unlocked',()=>{
  const f=fixture(4);f.run();
@@ -62,15 +59,12 @@ test('four engaged targets at level 65 fallback from locked 5shot to 3shot',()=>
  assert.equal(f.calls[0]?.id,'3shot');
  assert.equal(f.calls[0]?.targets.length,3);
 });
-test('an explicit one-target 3shot rule is respected despite verified normal one-hit range',()=>{
+test('even an explicitly configured one-target 3shot cannot bypass strict three real targets',()=>{
  const f=fixture(1,{explicit:true});f.monsters[0].hp=100;f.run();
- assert.equal(f.calls[0]?.id,'3shot');
- assert.equal(f.calls[0]?.targets.length,1);
- assert.ok(f.scheduled[0].resources.includes('attack'));
+ assert.equal(f.calls.length,0);
 });
 
-test('single higher-health engaged mob retains verified Ranger 3shot opener',()=>{
+test('single high-health target does not waste 3shot without two more verified targets',()=>{
  const f=fixture(1);f.run();
- assert.equal(f.calls[0]?.id,'3shot');
- assert.equal(f.calls[0]?.targets.length,1);
+ assert.equal(f.calls.length,0);
 });

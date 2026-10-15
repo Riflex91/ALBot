@@ -25,6 +25,16 @@ export function verifiedAdaptiveCapacity(profiles,context,max,healthy,enabled=tr
  }
  return capacity;
 }
+// An observed, complete healthy team and three immediately verified normal
+// targets permit a bounded 3shot test even when the persisted learning key
+// changed because of gear, roster or context. A known failed 3-target episode
+// still vetoes the attempt. No boss/event/foreign or unknown-risk pull.
+export function safeThreeShotOpportunity({healthy,max,failed,planned,visible,safe,teamNames=[]}){
+ return !!(healthy&&max>=3&&!failed&&planned&&
+  (visible??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
+   m.type==='monster'&&m.mtype===planned&&(!m.target||teamNames.includes(m.target))&&safe(m))
+   .filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).length>=3);
+}
 export function createEncounter(bot){
  const key='albot:pull:'+bot.me.name;let profiles=bot.p.read(key)??{},active=null,phase='RECOVER',capacity=1,context='',lastSave=0;
  function members(){return bot.farmers.map(n=>n===bot.me.name?{name:n,running:bot.running,hp:bot.p.c.hp,max_hp:bot.p.c.max_hp,mp:bot.p.c.mp,max_mp:bot.p.c.max_mp,gear:bot.gear?.snapshot(),capabilities:bot.capabilities?.snapshot()}:bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip);}
@@ -34,6 +44,21 @@ export function createEncounter(bot){
   const aoe=ms.flatMap(h=>h.capabilities?.aoe??[]),max=(bot.me?.role==='farmer'||bot.cfg.party.aoe)&&aoe.length?Math.min(bot.cfg.farming.maxAggro,bot.cfg.party.aoeMaxTargets,Math.max(...aoe.map(s=>s.capacity))):1;
   capacity=verifiedAdaptiveCapacity(profiles,context,max,healthy,
    bot.cfg.farming.adaptivePull!==false);
+  const noThreeFailure=!(profiles[context+':3']?.failures>0);
+  // An encounter at zero current aggro can safely start with a verified
+  // 3shot only if THREE ordinary, same-spawn targets pass every local filter.
+  // This avoids repeating the perpetual size-two cold start from live logs.
+  if(bot.me.name===bot.leader&&bot.me.role==='farmer'&&
+    safeThreeShotOpportunity({healthy,max,failed:!noThreeFailure,
+      planned:target,visible:bot.monsters(),teamNames:bot.teamNames,safe:m=>
+       !bot.recovering&&bot.teamPlan?.wantsCombat?.()!==false&&
+       !bot.p.parent?.is_pvp&&!bot.p.G.maps?.[m.map]?.pvp&&
+       m.map===bot.p.c.map&&m.in===(bot.p.c.in??bot.p.c.map)&&
+       distance(bot.p.c,m)<(bot.p.G.skills?.['3shot']?.range??bot.p.c.range)-5&&
+       bot.strategy?.safeTarget?.(m.mtype,m,true)===true&&
+       bot.threats?.permitted?.(m)!==false&&
+       bot.navigation?.permitted?.(m)!==false}))
+    capacity=Math.max(3,capacity);
   if(bot.recovering||bot.p.c.rip||active&&ms.length!==bot.farmers.length||ms.some(h=>h.hp/h.max_hp<(bot.cfg.farming.restBelow??.3)||h.mp/Math.max(1,h.max_mp)<.15)){phase=mobs.length?'ABORT':'RECOVER';if(active)complete(true);}else if(!mobs.length){if(active)complete(false);phase=healthy?'BUILD':'RECOVER';}else if(!healthy)phase='HOLD';else if(mobs.length<capacity)phase='BUILD';else phase=mobs.every(m=>m.hp<(bot.p.c.attack??1)*2)?'FINISH':'BURN';
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={target,adaptiveContext:bot.adaptive?.context(),key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0};
  }

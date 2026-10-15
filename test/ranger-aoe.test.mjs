@@ -28,12 +28,10 @@ function rangerFixture(teamCount,outsiders=0,maxTargets=5,{allowNeutral=false,ca
  return {skills:createSkills(bot),mobs,actions};
 }
 
-test('ranger 3shot selects the two engaged teammates targets despite a neutral bystander',()=>{
+test('ranger waits instead of wasting 3shot on two engaged targets and an unsafe bystander',()=>{
  const {skills,mobs,actions}=rangerFixture(2,1);
  skills.rotation(mobs[0]);
- assert.equal(actions.length,1);
- assert.equal(actions[0].skill,'3shot');
- assert.deepEqual(actions[0].targets.map(x=>x.id),['team-0','team-1']);
+ assert.equal(actions.length,0,'three verified targets required');
 });
 test('3shot hits three existing party threats with a two-monster new-pull limit',()=>{
  const {skills,mobs,actions}=rangerFixture(3,0,5,{maxAggro:2});skills.use('3shot',mobs[0],.2,0,15,true);
@@ -41,7 +39,7 @@ test('3shot hits three existing party threats with a two-monster new-pull limit'
 });
 test('3shot does not pull a third neutral monster through the new-pull limit',()=>{
  const {skills,mobs,actions}=rangerFixture(2,1,5,{maxAggro:2,capacity:3,allowNeutral:true});skills.use('3shot',mobs[0],.2,0,15,true);
- assert.deepEqual(actions[0].targets.map(x=>x.id),['team-0','team-1']);
+ assert.deepEqual(actions,[],'maxAggro two cannot trigger third unsafe pull');
 });
 test('3shot can open on three neutral monsters only when encounter and user approve three',()=>{
  const {skills,mobs,actions}=rangerFixture(0,3,5,{maxAggro:3,capacity:3,allowNeutral:true});skills.use('3shot',mobs[0],.2,0,15,true);
@@ -65,17 +63,13 @@ test('ranger 5shot caps already engaged targets at five, even when six are nearb
 test('ranger fires at one engaged team target without including unapproved neutral monsters',()=>{
  const {skills,mobs,actions}=rangerFixture(1,5);
  skills.rotation(mobs[0]);
- assert.equal(actions[0]?.skill,'3shot');
- assert.deepEqual(actions[0]?.targets.map(t=>t.id),['team-0']);
+ assert.equal(actions.length,0,'single target should use normal attacks');
 });
 
 test('ranger respects the per-cast target cap and skill min target floor',()=>{
  const {skills,mobs,actions}=rangerFixture(5,1,2);
  skills.rotation(mobs[0]);
- assert.equal(actions.length,1);
- assert.equal(actions[0].skill,'3shot');
- assert.equal(actions[0].targets.length,2);
- assert.ok(actions[0].targets.every(t=>t.target==='Ranger1'||t.target==='Ranger2'));
+ assert.equal(actions.length,0,'configured two-target cap cannot produce 3shot');
 });
 
 test('ranger opens combat with 3shot on three explicitly approved neutral targets',()=>{
@@ -87,7 +81,7 @@ test('ranger opens combat with 3shot on three explicitly approved neutral target
 test('ranger may start with one legal neutral target without waiting for existing aggro',()=>{
  const {skills,mobs,actions}=rangerFixture(0,1,5,{allowNeutral:true,capacity:1});
  skills.rotation(mobs[0]);
- assert.deepEqual(actions[0]?.targets.map(t=>t.id),['outsider-0']);
+ assert.equal(actions.length,0,'one available neutral target is insufficient');
 });
 test('neutral AoE opener rejects unsafe phases, and never selects foreign-party monsters',()=>{
  const stopped=rangerFixture(0,3,5,{allowNeutral:true,capacity:3,phase:'RECOVER'});
@@ -100,6 +94,5 @@ test('neutral AoE opener rejects unsafe phases, and never selects foreign-party 
 test('approved neutral opener respects reduced per-skill target limit',()=>{
  const {skills,mobs,actions}=rangerFixture(0,4,2,{allowNeutral:true,capacity:5});
  skills.rotation(mobs[0]);
- assert.equal(actions[0]?.skill,'3shot');
- assert.equal(actions[0]?.targets.length,2);
+ assert.equal(actions.length,0,'limit two is incompatible with an exact-three cast');
 });

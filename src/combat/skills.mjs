@@ -36,7 +36,7 @@ export function maximalSafeAimedTargets(engaged,neutral,extra,limit){
  return out;
 }
 export function createSkills(bot){
-  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map(),invalidAoENotices=new Set();
+  const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map(),invalidAoENotices=new Set(),lastShotShortfall=new Map();
   const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
   const diagnostics=()=>Object.fromEntries([...stats].map(([id,row])=>[id,{...row}]));
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
@@ -141,6 +141,19 @@ export function createSkills(bot){
        maximumSafeTargets:candidates.length,skillCapacity:limit};
     };
     const selected=multi?candidates.slice(0,limit):[];
+    // Deliberately do NOT fire a 2-target 3shot. Keep ordinary attacks
+    // available while waiting for three real, separately approved entities.
+    if(id==='3shot'&&(limit<3||selected.length!==3)){
+      count(id,'targetBlocked');
+      if(Date.now()-(lastShotShortfall.get(id)??0)>15000){
+       lastShotShortfall.set(id,Date.now());
+       bot.event?.('skill.waitingForThree',{skill:id,available:selected.length,
+        visible:visible.length,capacity:bot.encounter?.status?.()?.capacity??null,
+        phase:bot.encounter?.status?.()?.phase??'unknown',
+        rejected:thirdTargetDiagnostics()?.rejectedTargetReasons??''});
+      }
+      return false;
+    }
     // Retain an approved one-target opener when it has a real purpose.
     // Only avoid spending 200/320 MP and the shared attack opportunity if
     // an immediately available normal attack can already finish that mob.

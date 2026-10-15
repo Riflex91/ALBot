@@ -1,4 +1,8 @@
 import {arrived,samePlace,distance,xy} from './policy.mjs';
+export function transientMovementInterruption(error){
+ const code=String(error?.reason??error?.message??error??'').toLowerCase();
+ return code==='interrupted'||code==='cancelled'||code==='canceled'||code==='superseded';
+}
 export function createMovement(bot){
   const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,townQueued=false;
   // Only native smart-route failures quarantine a destination map, not normal
@@ -87,7 +91,20 @@ export function createMovement(bot){
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     token.mode=local?'move':'smart_move';
-    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand'),()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;if(state==='rejected'||state==='timeout'||state==='superseded'){const reason=error?.reason??error?.message??state;if(state!=='superseded')recordRouteFailure(owner,token.mode,dest,reason);stop();blockedUntil=Date.now()+3000;bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason});}}});
+    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand'),()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
+    if(error?.transient==='interrupted'){
+     order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,
+      reason:'Native smart route was cancelled externally; safe retry'});return;
+    }
+    if(state==='rejected'||state==='timeout'||state==='superseded'){
+ const reason=error?.reason??error?.message??state;
+ if(transientMovementInterruption(reason)||state==='superseded'){
+  // Native smart_move rejects with 'interrupted' when an ordinary travel
+  // handoff cancels it. The destination remains reachable; retry normally.
+  order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,reason});return;
+ }
+ recordRouteFailure(owner,token.mode,dest,reason);stop();blockedUntil=Date.now()+3000;
+ bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason});}}});
     if(accepted)bot.event?.('movement.request',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }

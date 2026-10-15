@@ -9,7 +9,7 @@ const char={name:'My_Ranger3',ctype:'ranger',attack:350,frequency:2,
  hp:500,max_hp:500,map:'main',in:'main',x:0,y:0};
 const enemy=(id,hp=90,target='My_Ranger2',x=40)=>({
  id,hp,max_hp:hp,mtype:'bee',type:'monster',target,map:'main',in:'main',
- x,y,armor:0,resistance:0,evasion:0,avoidance:0,reflection:0
+ x,y:0,armor:0,resistance:0,evasion:0,avoidance:0,reflection:0
 });
 const selected=enemy('bee-a');
 const alternative=enemy('bee-b',150,'My_Ranger1',50);

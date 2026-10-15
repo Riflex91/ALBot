@@ -179,7 +179,7 @@
       "offlineProfiles": true,
       "minImprovement": 0.05,
       "lossBudget": 1000000,
-      "minChance": 1,
+      "minChance": 0.65,
       "maxChainDepth": 8,
       "maxFarmHours": 12,
       "acquireBy": [

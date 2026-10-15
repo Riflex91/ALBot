@@ -1,4 +1,8 @@
-# Aktueller Benutzerauftrag 0.10.7-candidate (14.10.2026)
+# Aktueller Benutzerauftrag 0.10.8-candidate (15.10.2026)
+
+Benutzer verlangt scroll1-Prüfung und nötigenfalls Kauf vor dem Upgrade, wenn die Standardschriftrolle die Mindestchance verfehlt; globale Mindestchance ausdrücklich auf 65 % gesenkt. Persönliche bot.js und neue Full-Profile angepasst, strengere explizite Regeln bleiben geschützt. Nach einer belegten scroll0-Vorschau dient die rekonstruierbare höhere Scrollchance ausschließlich als Kaufnachweis. Frische scroll1-Servervorschau bleibt zwingend vor Wertaktion. Kein automatischer scroll2-Kauf. 806/806 Offlinetests, Runtime/Werkstatt und Bundleparität geprüft; neue Spiel-Liveabnahme offen. Details docs/CHANGELOG-0.10.8.md. Basis gemergter PR #90 / main 6a2aeef.
+
+# Benutzerauftrag 0.10.7-candidate (14.10.2026)
 
 Basis origin/main `11a795d`; frühere Kapazitätskorrekturen sind gemergt. Der Benutzer verlangt nun vorbeugende Lagerplanung, Compounds aus passenden Dreiergruppen, belegte Wiederbeschaffbarkeit vor Verkäufen und auf ausdrücklichen Wunsch `maxAggro=12`. Der persönliche Export verwendet weiterhin die zuvor autorisierte 85-%-Accountgold-Verluststeuerung mit 15-Minuten-Fenster, keine alten zusätzlichen Geldbudgets. Allgemeine Defaultprofile behalten `bounded`. Vorräte, Varianten, explizite Regeln, aktuelle Zuteilungen, Mindestchancen, echte Zahlungsfähigkeit und Wertjournale bleiben geschützt. Ein Exchange unter Lagerdruck benötigt einen nachweislich platzschaffenden Ausgang; normale zufällige Rewards müssen den ungünstigsten Slotbedarf prüfen. 3-shot-Zielzahl und neue Pulls sind getrennt, neutrale Ziele nur im freigegebenen Farm-/Encounterkontext. Details `docs/CHANGELOG-0.10.7.md`; 801/801 Offlinetests, neue Liveabnahme offen. Die untenstehenden alten Aussagen zu unveränderten Budget-/Aggrowerten werden durch diese konkreten Benutzeranweisungen ersetzt.
 

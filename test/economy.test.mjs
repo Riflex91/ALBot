@@ -195,6 +195,61 @@ test('helper comparison previews alternatives and dispatches the most profitable
  assert.ok(previews.includes(1)&&previews.includes(2));assert.deepEqual(mutations,[1]);assert.equal(bot.journal,null);
 });
 
+function scrollFallbackFixture({baseChance=.6086236064251731,betterChance=.7386236064251731,held=false,explicit='',minimum=.65}={}){
+ const f=fixture(),{bot,c,rule}=f;
+ Object.assign(bot.cfg.production,{enabled:true,upgrade:true,autonomy:true,autoHelpers:true,acquireBy:['npc'],minChance:minimum,lossBudget:1000000});
+ bot.cfg.merchant.maxSpendPerHour=1000000;c.gold=1000000;
+ Object.assign(rule,{item:'pants',action:'upgrade',targetLevel:5,minLevel:4,maxLevel:4,minChance:minimum,lossBudget:1000000,goldBudget:1000000,scroll:explicit});bot.cfg.items=[rule];
+ c.items=[{name:'pants',level:4},{name:'scroll0',q:2},held?{name:'scroll1',q:1}:null,...Array(39).fill(null)];
+ Object.assign(bot.p.G,{upgrades:{0:{5:.6}}});Object.assign(bot.p.G.items,{pants:{upgrade:{}},scroll0:{type:'uscroll',grade:0,g:1000},scroll1:{type:'uscroll',grade:1,g:40000}});
+ const previews=[],mutations=[],buys=[],events=[];bot.event=(type,data)=>events.push({type,...data});
+ bot.p.call=(name,...args)=>{
+  if(name==='find_npc')return {map:'bank',in:'bank',x:0,y:-100};if(name==='item_grade')return 0;if(name==='item_value')return 100;
+  assert.equal(name,'upgrade');const scroll=c.items[args[1]].name;
+  if(args.at(-1)===true){previews.push(scroll);return Promise.resolve({chance:scroll==='scroll0'?baseChance:betterChance,cost:0});}
+  mutations.push(scroll);c.items[0].level=5;c.items[args[1]].q--;return Promise.resolve({success:true});
+ };
+ bot.economy.npcFor=()=>({map:'bank',x:0,y:-100});
+ bot.economy.npcBuy=(item,r,n,guard)=>{assert.equal(guard(),true);buys.push(item.name);c.items[2]={name:item.name,q:1};return true;};
+ bot.production=createProduction(bot);
+ const settle=async()=>{await new Promise(r=>setImmediate(r));bot.exec.poll();};
+ const first=async()=>{bot.production.mutate(0,rule);await settle();f.advance();bot.production.mutate(0,rule);await settle();};
+ return {...f,previews,mutations,buys,events,settle,first};
+}
+
+test('gear upgrade buys one scroll1 after a sufficient forecast and executes only after its server preview',async()=>{
+ const f=scrollFallbackFixture();await f.first();assert.deepEqual(f.previews,['scroll0']);assert.deepEqual(f.mutations,[]);
+ f.bot.production.mutate(0,f.rule);assert.equal(f.bot.production.helperSupply(),true);assert.deepEqual(f.buys,['scroll1']);
+ f.advance();assert.equal(f.bot.production.mutate(0,f.rule),true);await f.settle();assert.deepEqual(f.mutations,[]);
+ assert.equal(f.bot.production.mutate(0,f.rule),true);await f.settle();assert.deepEqual(f.mutations,['scroll1']);assert.equal(f.bot.journal,null);
+ assert.deepEqual(f.previews,['scroll0','scroll1']);assert.equal(f.events.find(e=>e.type==='production.preview-result'&&e.scroll==='scroll1').minimum,.65);
+});
+
+test('owned scroll1 is reused without purchase and insufficient server chance defers the upgrade',async()=>{
+ const f=scrollFallbackFixture({held:true,betterChance:.64});await f.first();f.advance();f.bot.production.mutate(0,f.rule);await f.settle();
+ assert.equal(f.bot.production.mutate(0,f.rule),false);f.advance();assert.equal(f.bot.production.mutate(0,f.rule),false);
+ assert.deepEqual(f.previews,['scroll0','scroll1']);assert.deepEqual(f.mutations,[]);assert.deepEqual(f.buys,[]);
+});
+
+test('insufficient better-scroll forecast buys nothing, defers repeats, and preserves an explicit scroll0 rule',async()=>{
+ for(const options of [{minimum:.8},{explicit:'scroll0'}]){
+  const f=scrollFallbackFixture(options);await f.first();f.bot.production.mutate(0,f.rule);assert.equal(f.bot.production.helperSupply(),false);
+  assert.deepEqual(f.buys,[]);assert.deepEqual(f.mutations,[]);assert.deepEqual(f.previews,['scroll0']);
+ }
+});
+
+test('a changed item or minimum revokes a pending scroll1 acquisition before purchase',async()=>{
+ for(const change of [f=>f.c.items[0].level=3,f=>f.bot.cfg.production.minChance=.9]){
+  const f=scrollFallbackFixture();await f.first();f.bot.production.mutate(0,f.rule);change(f);
+  assert.equal(f.bot.production.helperSupply(),false);assert.deepEqual(f.buys,[]);
+ }
+});
+
+test('scroll1 forecast is unavailable without base definitions and never escalates to scroll2',async()=>{
+ const f=scrollFallbackFixture();delete f.bot.p.G.upgrades;await f.first();f.bot.production.mutate(0,f.rule);
+ assert.equal(f.bot.production.helperSupply(),false);assert.deepEqual(f.buys,[]);assert.deepEqual(f.mutations,[]);
+});
+
 test('craft rejects protected ingredients and output beyond the target quantity',()=>{
  const {bot,c,rule}=fixture();bot.cfg.production.enabled=true;bot.cfg.production.craft=true;bot.p.G.craft={result:{cost:10,q:2,items:[[2,'hpot0']]}};
  const protect={...rule,action:'keep'};bot.cfg.items=[protect];bot.production=createProduction(bot);

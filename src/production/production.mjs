@@ -86,7 +86,7 @@ export function unbankedDemand(rows,bankItems,name,level){
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
- const blockedMutations=new Map();const helperRequests=new Map();
+ const blockedMutations=new Map();const helperRequests=new Map();const scrollFallbacks=new Map();
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
@@ -189,6 +189,14 @@ export function createProduction(bot){
   const inputs=[slot];if(kind==='compound')for(let n=0;n<p.c.items.length&&inputs.length<3;n++)if(n!==slot&&e.safe(p.c.items[n])&&identity(i)===identity(p.c.items[n]))inputs.push(n);
   if(kind==='compound'&&inputs.length!==3)return false;
   if(e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+  // Only implicit standard-scroll upgrades may opt into scroll1. Explicit
+  // scrolls/offerings and the profit planner keep their own helper policies.
+  const fallbackKey=()=>JSON.stringify([p.c.items[slot],p.G.version,p.G.upgrades,
+   p.G.items[i.name],p.G.items.scroll0,p.G.items.scroll1,cfg.production,cfg.items,r]);
+  const fallbackProof=fallbackKey(),fallback=scrollFallbacks.get(fallbackProof);
+  if(fallback?.until>Date.now()&&fallback.blocked)return false;
+  const fallbackEligible=kind==='upgrade'&&!r.scroll&&!r.offering&&!r._autoDisposition&&cfg.production.autoHelpers&&p.call('item_grade',i)===0;
+  const useScroll1=fallbackEligible&&fallback?.until>Date.now()&&fallback.scroll==='scroll1';
   if(cfg.production.autoHelpers&&r._autoDisposition){
    const context=mutationContext(bot,i);
    if(helperSearch?.context!==context||Date.now()-helperSearch.at>30000)
@@ -213,12 +221,12 @@ export function createProduction(bot){
    if(choice.action!==kind)return false;
    r={...r,scroll:choice.scroll,offering:choice.offering};
   }
-  const scrollName=r.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',i));
+  const scrollName=useScroll1?'scroll1':r.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',i));
   const usable=x=>{const rule=x&&e.rules(x);return e.safe(x)&&rule?.action!=='keep'&&e.count(x)>(rule?rule.keep+rule.teamReserve:0)+reserveOther(x.name,x.level??0);};
   const scroll=p.c.items.findIndex(x=>x?.name===scrollName&&usable(x));const offering=r.offering?p.c.items.findIndex(x=>x?.name===r.offering&&usable(x)):null;
   // Merchant-only helper request: only for a rule explicitly asking for it.
   if(r.offering&&offering<0)requestHelper(r.offering,1);
-  if(scroll<0)requestHelper(scrollName,1);
+  if(scroll<0)requestHelper(scrollName,1,useScroll1?()=>fallbackKey()===fallbackProof&&fallback.until>Date.now():null);
   if(scroll<0||(r.offering&&offering<0)){e.note('Produktion benötigt '+scrollName+(r.offering?' / '+r.offering:''));return false;}
   const slots=[...inputs,scroll,...(offering===null?[]:[offering])];if(new Set(slots).size!==slots.length)return false;
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
@@ -230,10 +238,25 @@ export function createProduction(bot){
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
   if(preview?.key!==key||Date.now()-preview.time>5000){
    if(exec.busy('economy'))return false;preview={key,time:Date.now(),chance:null,cost:null};const token=preview;
-   const accepted=exec.run('production.preview',['economy'],()=>bot.running,()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{if(preview!==token||!bot.running)return;const raw=typeof result==='number'?result:result?.chance??result?.success_chance;token.chance=Number(raw);bot.intelligence?.recordChance(i.name,i.level??0,kind,token.chance,{scroll:scrollName,offering:r.offering??''});token.cost=result?.cost??0;bot.event?.('production.preview-result',{item:i.name,level:i.level??0,kind,chance:token.chance,cost:token.cost,minimum:Math.max(r.minChance,cfg.production.minChance)});}),{delay:1000});if(!accepted)preview=null;return accepted;
+   const accepted=exec.run('production.preview',['economy'],()=>bot.running,()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{if(preview!==token||!bot.running)return;const raw=typeof result==='number'?result:result?.chance??result?.success_chance;token.chance=Number(raw);bot.intelligence?.recordChance(i.name,i.level??0,kind,token.chance,{scroll:scrollName,offering:r.offering??''});token.cost=result?.cost??0;bot.event?.('production.preview-result',{item:i.name,level:i.level??0,kind,scroll:scrollName,offering:r.offering??'',chance:token.chance,cost:token.cost,minimum:Math.max(r.minChance,cfg.production.minChance)});}),{delay:1000});if(!accepted)preview=null;return accepted;
   }
   const chance=preview.chance,cost=preview.cost;
-  if(!Number.isFinite(chance)||chance>1||chance<Math.max(r.minChance,cfg.production.minChance)||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
+  const minimum=Math.max(r.minChance,cfg.production.minChance);
+  if(Number.isFinite(chance)&&chance>=0&&chance<minimum&&Number.isFinite(cost)&&cost>=0&&fallbackEligible){
+   // The server applies the higher-grade bonus once to the base probability,
+   // then adds the unchanged no-offering grace. This estimate authorizes only
+   // acquisition; execution still requires a fresh real scroll1 preview.
+   const baseGrade=p.call('item_grade',{...i,level:0}),base=p.G.upgrades?.[baseGrade]?.[(i.level??0)+1];
+   const estimate=Number.isFinite(base)&&base>0&&base<=chance&&chance<Math.min(base+.24,base*2)&&
+    (i.level??0)+1<=10&&p.G.items.scroll1?.type==='uscroll'&&p.G.items.scroll1.grade===1?
+    Math.min(chance+base*.2+.01,base+.36,base*3):null;
+   const upgrade=scrollName==='scroll0'&&Number.isFinite(estimate)&&estimate>=minimum;
+   if(scrollFallbacks.size>=64)scrollFallbacks.delete(scrollFallbacks.keys().next().value);
+   scrollFallbacks.set(fallbackProof,{scroll:upgrade?'scroll1':scrollName,blocked:!upgrade,until:Date.now()+(upgrade?300000:60000)});
+   bot.event?.('production.scroll-fallback',{item:i.name,level:i.level??0,scroll:scrollName,chance,minimum,estimatedScroll1Chance:estimate,next:upgrade?'scroll1':'deferred'});
+   e.note(upgrade?'Upgrade: prüfe scroll1 statt scroll0':'Upgrade zurückgestellt: Chance '+(chance*100).toFixed(2)+' % unter '+(minimum*100).toFixed(0)+' %');return false;
+  }
+  if(!Number.isFinite(chance)||chance>1||chance<minimum||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
   if(cfg.production.autoHelpers&&r._autoDisposition){
    const helperCost=slots.filter(n=>!inputs.includes(n)).reduce((sum,n)=>sum+Math.max(e.value(p.c.items[n]),p.G.items[p.c.items[n].name]?.g??0),0)+cost;
    const check=cfg.production.finiteHelpers?planMutationHelpers(bot,i,helperSearch.quotes.map(q=>q.scroll===scrollName&&q.offering===(r.offering??'')?{...q,chance,cost:helperCost}:q),kind,Math.max(r.minChance,cfg.production.minChance)):bestMutationHelper([{chance,cost:helperCost,preserves:kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6}],{
@@ -464,10 +487,10 @@ export function createProduction(bot){
   n+=Math.max(0,...[...waiting.values()].filter(w=>w.until>Date.now()).flatMap(w=>w.reservations.filter(r=>r.item===i.name&&r.level===(i.level??0)).map(r=>r.quantity)));
   if(goal?.recipient&&goal.recipient!==recipient&&goal.item===i.name&&goal.level===(i.level??0))n=Math.max(n,goal.quantity-(deliveries[goalKey(goal)]?.quantity??0));return Math.max(0,n);
  }
- function requestHelper(item,quantity=1){
+ function requestHelper(item,quantity=1,guard=null){
   if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||
     !cfg.production.autoHelpers||!cfg.production.acquireBy?.includes('npc')||
-    !/^(?:(?:uscroll|cscroll)[0-3]|offering[0-3]?)$/.test(item)||
+    !/^(?:(?:scroll|cscroll)[0-3]|offering[0-3]?)$/.test(item)||
     !['uscroll','cscroll','offering'].includes(p.G.items?.[item]?.type)||
     !Number.isSafeInteger(quantity)||quantity<1||quantity>3)return false;
   const now=Date.now();for(const [name,r] of helperRequests)
@@ -475,7 +498,7 @@ export function createProduction(bot){
   if(!helperRequests.has(item)&&helperRequests.size>=8)return false;
   const old=helperRequests.get(item);
   helperRequests.set(item,{quantity:Math.max(quantity,old?.quantity??0),
-   until:now+300000,next:old?.next??0});return true;
+   until:now+300000,next:old?.next??0,guard});return true;
  }
  function helperSupply(){
   if(me.role!=='merchant'||!bot.running||bot.journal||bot.inventoryBlocked||
@@ -483,7 +506,7 @@ export function createProduction(bot){
     !cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoHelpers)return false;
   const now=Date.now();
   for(const [name,r] of helperRequests){
-   if(r.until<=now||e.count({name,level:0})>=r.quantity){
+   if(r.until<=now||r.guard&&!r.guard()||e.count({name,level:0})>=r.quantity){
     helperRequests.delete(name);continue;
    }
    if(r.next>now)continue;
@@ -497,7 +520,7 @@ export function createProduction(bot){
    r.next=now+30000;
    const accepted=e.npcBuy({name,level:0},rule,1,
      ()=>cfg.production.enabled&&cfg.production.autoHelpers&&
-       r.until>Date.now()&&e.count({name,level:0})<r.quantity);
+       r.until>Date.now()&&(!r.guard||r.guard())&&e.count({name,level:0})<r.quantity);
    if(accepted||bot.movement.order?.owner==='economy'||bot.journal)return true;
   }
   return false;

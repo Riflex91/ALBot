@@ -72,6 +72,7 @@ FULL_DESCRIPTOR.schema.properties.merchant.properties.expandBank.default=true;
 FULL_DESCRIPTOR.schema.properties.merchant.properties.bankBudget.default=1000000000;
 
 FULL_DESCRIPTOR.schema.properties.production.properties.lossBudget.default=1000000;
+FULL_DESCRIPTOR.schema.properties.production.properties.minChance.default=.65;
 
 // Optional additions preserve full/v1 profiles; defaults are applied on import.
 

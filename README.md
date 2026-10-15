@@ -1,4 +1,8 @@
-# ALBot 0.10.7-candidate – aktuell (14.10.2026)
+# ALBot 0.10.8-candidate – aktuell (15.10.2026)
+
+Upgrade-Scrollwahl: Die persönliche [bot.js](bot.js) verwendet 65 % globale Mindestchance. Bei unzureichender scroll0-Chance prüft die Gear-Produktion scroll1, verwendet vorhandene Exemplare oder fordert ein Exemplar beim NPC an. Der echte Upgrade-Aufruf benötigt weiterhin eine frische ausreichende Servervorschau mit scroll1. 806/806 Offlinetests bestanden; Runtime, persönliche Bundleparität und Werkstatt geprüft. Neue Liveabnahme offen. [Befund, Ablauf und Grenzen](docs/CHANGELOG-0.10.8.md).
+
+# ALBot 0.10.7-candidate (14.10.2026)
 
 **Direkt einsetzbare [bot.js](bot.js)** mit automatischer Account-Erkennung, vorbeugender Lagerplanung und auf ausdrücklichen Benutzerwunsch `maxAggro=12`. Compounds und geprüfte Verkäufe können Platz schaffen, bevor Inventar und Bank vollständig belegt sind. Zufällige Exchanges müssen ihren ungünstigsten Slotbedarf gegen den freien Arbeitsraum prüfen. 3-shot darf drei freigegebene Ziele einschließlich neutraler Farmmonster treffen; die aktuelle Encounter-/Sicherheitsfreigabe bleibt zuständig. Persönliche Finanzsteuerung: `account-loss`, 85 % belegter Accountgoldverlust in 15 Minuten; vier bestätigte Offlinegold-Startwerte sind enthalten.
 

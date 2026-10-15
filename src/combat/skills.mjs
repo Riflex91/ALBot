@@ -111,7 +111,7 @@ export function createSkills(bot){
        else if(!plan||e.mtype!==plan)reason='different-or-missing-farm-target';
        else if(!bot.allowed(e)||bot.strategy?.safeTarget?.(e.mtype,e)===false)reason='unsafe-target';
        else if(phase?.phase!=='BUILD')reason='encounter-not-building';
-       else if(additional===0)reason='encounter-capacity-or-aggro-limit';
+       else if(additional<=candidates.filter(x=>!x.target).length)reason='encounter-capacity-or-aggro-limit';
        return {id:e.id,reason};
       });
       return {thirdTargetBlocked:candidates.length<3,

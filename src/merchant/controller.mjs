@@ -572,8 +572,11 @@ export function createMerchant(bot){
     return projected.known&&projected.worstFree<exchangeReserve;
    }));
   if(freeSlots<=minimum||exchangeNeedsSlot)capacityRecovery=true;
-  if(freeSlots>=Math.min(p.c.items.length,Math.max(exchangeReserve+1,minimum+5)))
-   capacityRecovery=false;
+  // Preserve the original emergency-recovery hysteresis (4 -> 8 slots).
+  // Only a currently blocked, verified exchange asks for a ninth slot.
+  const recoveredAt=exchangeNeedsSlot?Math.max(exchangeReserve+1,minimum+5):
+   Math.max(8,minimum+4);
+  if(freeSlots>=Math.min(p.c.items.length,recoveredAt))capacityRecovery=false;
   const fingerprint=pressureFingerprint();
   if(capacityBlock&&(capacityBlock.fingerprint!==fingerprint||Date.now()>=capacityBlock.until))capacityBlock=null;
   if(me.role!=='merchant'||!cfg.merchant.enabled||!capacityRecovery||

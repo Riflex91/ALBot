@@ -1,6 +1,7 @@
 import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
 export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
+ const marketProbes=new Map(),MARKET_REPROBE_MS=120000;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
  const historyKey='albot:market:'+bot.me.name+':offers';let history=[],lastObserve=0;
  const cached=cfg.merchant.marketHistory?p.read(historyKey):null;if(Array.isArray(cached))history=cached.filter(x=>x&&typeof x.item?.name==='string'&&Number.isFinite(x.price)&&x.price>0&&Number.isFinite(x.at)&&x.at<=Date.now()&&Date.now()-x.at<(cfg.merchant.marketHistoryTtlMs??21600000)).slice(-128);
@@ -39,7 +40,27 @@ export function createMarket(bot){
     if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
     return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>p.call('trade_buy',bot.entity(player.id??player.name),slot,q),observe:()=>e.count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
    }
-  }const d=cfg.merchant.position.enabled?{...cfg.merchant.position,in:cfg.merchant.position.map}:e.destination('citizen22');if(d&&!(cfg.merchant.position.enabled?e.at(d):e.npcAt(d))){if(cfg.merchant.position.enabled)e.travel(d,'Marktsuche');else e.npcTravel(d,'Marktsuche');return true;}return false;
+  }
+  // A search for missing live player offers is not an admitted purchase.
+  // The first trip is allowed; subsequent bank->market journeys are bounded
+  // per item. New valid live offers are checked before this cooldown.
+  const key=identity(item),now=Date.now();
+  const d=cfg.merchant.position.enabled?{...cfg.merchant.position,in:cfg.merchant.position.map}:e.destination('citizen22');
+  const at=d&&(cfg.merchant.position.enabled?e.at(d):e.npcAt(d));
+  if(at){
+   if((marketProbes.get(key)??0)<=now)
+    bot.event?.('market.noOffer',{item:item.name,level:item.level??0,
+     reason:'Kein freigegebenes Live-Marktangebot; kein Kauf ausgeführt',
+     retryMs:MARKET_REPROBE_MS});
+   marketProbes.set(key,now+MARKET_REPROBE_MS);
+   if(marketProbes.size>64)marketProbes.delete(marketProbes.keys().next().value);
+   return false;
+  }
+  if(!d||now<(marketProbes.get(key)??0))return false;
+  marketProbes.set(key,now+MARKET_REPROBE_MS);
+  if(cfg.merchant.position.enabled)e.travel(d,'Marktsuche');
+  else e.npcTravel(d,'Marktsuche');
+  return bot.movement?.order?.owner==='economy';
  }
  function wishlist(item,r){
   const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice,tradeSlot=r.slot;

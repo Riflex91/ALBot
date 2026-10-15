@@ -262,3 +262,28 @@ test('missing token supply may trigger bounded non-mutating bank verification',(
  assert.equal(f.acquisition.eligible(),false,'verification tour is rate-limited');
  assert.equal(f.acquisition.status().reason,'bank-stock-verification');
 });
+
+test('stale catalog stock cannot send Merchant to bank repeatedly after a failed tracker verification',()=>{
+ const f=fixture({tokens:0,own:null});
+ f.G.bank_packs={items0:['bank',42]};
+ f.bot.bank.catalogStock=()=>[{pack:'items0',item:{name:'tracker',level:0}}];
+ let checks=0;
+ f.bot.bank.ready=()=>{checks++;return true;};
+ const oldNow=Date.now;let t=oldNow();Date.now=()=>t;
+ try{
+  assert.equal(f.acquisition.eligible(),true);
+  assert.equal(f.acquisition.tick(),true);
+  assert.equal(checks,1);
+  for(let i=0;i<10;i++){
+   t+=10000;
+   assert.equal(f.acquisition.eligible(),false);
+   assert.equal(f.acquisition.tick(),false);
+  }
+  assert.equal(checks,1,'no bank/market bounce while stale catalog persists');
+  t+=81000;
+  assert.equal(f.acquisition.eligible(),true);
+  assert.equal(f.acquisition.tick(),true);
+  assert.equal(checks,2,'rechecks after bounded three-minute interval');
+  assert.equal(f.calls.length,0,'no unverified bank withdrawal or token spend');
+ }finally{Date.now=oldNow;}
+});

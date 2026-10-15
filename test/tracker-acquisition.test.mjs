@@ -86,10 +86,10 @@ test('durable recipient assignment blocks duplicate purchases across reloads unt
  assert.equal(next.status().pendingRecipient,null);
  assert.equal(f.records.get('albot:tracker-exchange:Merchant'),null);
 });
-test('wrong token count, malformed price, locked source and no own carrier do not spend',()=>{
+test('wrong token count, malformed price and locked source never spend',()=>{
  for(const opts of [
   {tokens:3},{tokens:0},{price:5},{price:null},{tokenLocked:true},
-  {own:null},{peerCarrier:'unknown'},{peerCarrier:'tracker'},
+  {peerCarrier:'unknown'},{peerCarrier:'tracker'},
   {peerCarrier:'supercomputer'},{free:4},{reserved:1}
  ]){
   const f=fixture(opts);
@@ -97,6 +97,12 @@ test('wrong token count, malformed price, locked source and no own carrier do no
   assert.equal(f.acquisition.tick(),false,JSON.stringify(opts));
   assert.equal(f.calls.length,0);
  }
+});
+test('merchant without carried tracker can still supply one to a verified farmer',()=>{
+ const f=fixture({own:null});
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(f.c.items.some(i=>i?.name==='tracker'),true);
 });
 test('spare Tracktrix or user-authored token rule blocks unnecessary exchange',()=>{
  const spare=fixture();

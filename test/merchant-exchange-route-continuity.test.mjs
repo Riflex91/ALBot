@@ -94,8 +94,10 @@ test('failed/cancelled or expired route never reuses old exchange ticket',()=>{
  a.c.x=0;a.c.y=0;
  a.merchant.tick();
  assert.equal(a.resumes(),0,'must not exchange away from original NPC');
- assert.equal(a.merchant.status().productionContinuation,null);
- const b=fixture();b.merchant.tick();b.c.x=b.target.x;b.c.y=b.target.y;
+ assert.notEqual(a.merchant.status().productionContinuation?.kind,'exchange',
+  'original Seashell ticket discarded; unrelated production may start a new route');
+ const b=fixture();b.merchant.tick();b.phase('marketBuy');
+ b.c.x=b.target.x;b.c.y=b.target.y;
  b.bot.movement.order=null;
  const original=Date.now;Date.now=()=>original()+181000;
  try{b.merchant.tick();assert.equal(b.resumes(),0,'expired ticket is not valid');}

@@ -718,7 +718,10 @@ export function createMerchant(bot){
   // Delivery routes are owned by logistics.travel(): that controller owns
   // fresh-heartbeat retargeting. Do not cancel a valid route using its old
   // coordinates here, before logistics can replan it.
-  const route=bot.movement.order;if(route?.owner==='gold'){const peer=bot.transport?.fresh?.(route.dest.name);if(route.dest.name&&(!peer?.running||bot.strategy?.canVisit?.(peer)===false))bot.movement.stop();}
+  const route=bot.movement.order;if(route?.owner==='gold'){
+   bot.movement.stop();bot.event?.('gold.standaloneCancelled',{
+    reason:'Goldüberschuss nur während einer Item- oder Versorgungsfahrt abholen'});
+  }
   // Keep the admitted depot cycle intact across normal background work.
   if(depot&&depotTick())return;
   // Cast first at the arrived position: logistics.travel() can initiate

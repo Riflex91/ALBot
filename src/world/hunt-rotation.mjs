@@ -24,9 +24,16 @@ export function advanceHuntCycle(state,roster,hunt){
  if(!names.length)return {state:current,objective:null,changed:false};
  if(hunt===undefined)return {state:current,objective:{owner:names[current.index],phase:'unknown'},changed:!valid};
  let next={...current};
- if(next.phase==='turnin'&&(hunt===null||hunt.c>0||hunt?.ms===0)){
+ // An actual exhausted server timer is never a confirmed turn-in.
+ // Suspend that hunt for a bounded period, so three expired quests do not
+ // cause a perpetual A->B->C->A rotation on every scheduler tick.
+ if(hunt?.ms===0){
+  next.skipped={...(next.skipped??{}),[names[next.index]]:{
+   id:hunt.id,until:Date.now()+60000}};
   next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
- }else if(hunt?.ms===0||hunt===null&&next.phase==='combat'){
+ }else if(next.phase==='turnin'&&(hunt===null||hunt.c>0)){
+  next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
+ }else if(hunt===null&&next.phase==='combat'){
   next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
  }else if(hunt&&hunt.c===0){next.phase='turnin';next.lastId=hunt.id;}
  else if(hunt&&hunt.c>0){next.phase='combat';next.lastId=hunt.id;}

@@ -56,10 +56,13 @@ export function createImpactIntents({
    action:p.action,kind:p.kind,targets:p.targets,
    remainingMs:Math.max(0,p.expires-now()),confirmed:p.confirmed.length
   })),events:events.slice(-8)};}
- function heartbeat(){prune();return [...pending.values()].slice(-3).map(p=>({
-  action:p.action,kind:p.kind,targets:p.targets.slice(0,5),
-  at:p.at,expires:p.expires,session:p.session,realm:p.realm,damage:p.damage
- }));}
+ function heartbeat(){prune();return [...pending.values()].slice(-3).map(p=>{
+  const outstanding=p.targets.filter(id=>!p.confirmed.includes(id)).slice(0,5);
+  return {action:p.action,kind:p.kind,targets:outstanding,
+   at:p.at,expires:p.expires,session:p.session,realm:p.realm,
+   damage:Object.fromEntries(outstanding.filter(id=>p.damage?.[id]>0)
+    .map(id=>[id,p.damage[id]]))};
+ });}
  return {launched,confirmedHit,settle,snapshot,heartbeat,prune,
   close(){pending.clear();}};
 }

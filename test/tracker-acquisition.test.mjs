@@ -86,10 +86,10 @@ test('durable recipient assignment blocks duplicate purchases across reloads unt
  assert.equal(next.status().pendingRecipient,null);
  assert.equal(f.records.get('albot:tracker-exchange:Merchant'),null);
 });
-test('wrong token count, malformed price, locked source and no own carrier do not spend',()=>{
+test('wrong token count, malformed price and locked source never spend',()=>{
  for(const opts of [
   {tokens:3},{tokens:0},{price:5},{price:null},{tokenLocked:true},
-  {own:null},{peerCarrier:'unknown'},{peerCarrier:'tracker'},
+  {peerCarrier:'unknown'},{peerCarrier:'tracker'},
   {peerCarrier:'supercomputer'},{free:4},{reserved:1}
  ]){
   const f=fixture(opts);
@@ -97,6 +97,12 @@ test('wrong token count, malformed price, locked source and no own carrier do no
   assert.equal(f.acquisition.tick(),false,JSON.stringify(opts));
   assert.equal(f.calls.length,0);
  }
+});
+test('merchant without carried tracker can still supply one to a verified farmer',()=>{
+ const f=fixture({own:null});
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(f.c.items.some(i=>i?.name==='tracker'),true);
 });
 test('spare Tracktrix or user-authored token rule blocks unnecessary exchange',()=>{
  const spare=fixture();
@@ -241,4 +247,18 @@ test('NPC role and monetary token value are pinned through the dispatch guard',(
  other.acquisition.tick();
  other.G.npcs.monsterhunter.role='merchant';
  assert.equal(guard(),false);
+});
+
+test('missing token supply may trigger bounded non-mutating bank verification',()=>{
+ const f=fixture({tokens:0,own:null});
+ f.G.bank_packs={items0:['bank',42]};
+ let inspected=0;
+ f.bot.bank.ready=pack=>{assert.equal(pack,'items0');inspected++;return true;};
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(inspected,1);
+ assert.equal(f.calls.length,0,'no tokens may be spent');
+ assert.equal(f.actions.length,0,'no bank item may be withdrawn before live slot evidence');
+ assert.equal(f.acquisition.eligible(),false,'verification tour is rate-limited');
+ assert.equal(f.acquisition.status().reason,'bank-stock-verification');
 });

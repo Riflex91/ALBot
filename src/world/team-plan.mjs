@@ -38,6 +38,7 @@ export function areaPressure(row,now=Date.now(),freshMs=21600000){
 export function farmAreaHistoryKey(realm,hour,spawnKey,gears){
  return realm+':'+hour+':'+spawnKey+':'+knowledgeFingerprint(gears.map(semanticGear));
 }
+import {huntForFarmer,advanceHuntCycle} from './hunt-rotation.mjs';
 export function createTeamPlan(bot){
  const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
@@ -46,11 +47,40 @@ export function createTeamPlan(bot){
    bot.farmers.map(n=>n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear));
  }
  function areaQuarantined(key){const until=dangerousAreas.get(key);if(!until)return false;if(until>Date.now())return true;dangerousAreas.delete(key);return false;}
+ const huntKey='albot:teamhunt:'+me.group;
+ let huntState=p.read?.(huntKey)??null,huntObjective=null;
+ function orderedHunt(){
+  if(me.role!=='farmer'||!cfg.world.quests||!cfg.world.questTargets||
+     !Array.isArray(bot.farmers)||!bot.farmers.length)return null;
+  if(me.name!==bot.leader){
+   const h=bot.transport?.fresh?.(bot.leader);
+   return h?.running&&h.realm===p.realm()?h.huntObjective??null:null;
+  }
+  const valid=JSON.stringify(huntState?.names)===JSON.stringify(bot.farmers)&&
+   Number.isSafeInteger(huntState?.index)&&huntState.index>=0&&
+   huntState.index<bot.farmers.length;
+  const name=valid?bot.farmers[huntState.index]:bot.farmers[0];
+  const q=huntForFarmer(name,me.name,p.c.s?.monsterhunt,
+   bot.transport?.fresh?.(name),p.realm());
+  const next=advanceHuntCycle(huntState,bot.farmers,q);
+  if(next.changed){
+   if(p.write?.(huntKey,next.state)!==true){
+    bot.event?.('hunt.persistenceBlocked',{owner:name});return {owner:name,phase:'unknown'};
+   }
+   huntState=next.state;
+  }
+  const owner=bot.farmers[huntState?.index??0];
+  const active=huntForFarmer(owner,me.name,p.c.s?.monsterhunt,
+   bot.transport?.fresh?.(owner),p.realm());
+  huntObjective={owner,phase:active===undefined?'unknown':active===null?'acquire':
+   active.c===0?'turnin':'combat',monster:active?.id??null,remaining:active?.c??null};
+  return huntObjective;
+ }
  function candidates(){const explicit=me.farmTargets?.length?me.farmTargets:cfg.farming.targets;return cfg.farming.autoTargets===false||me.farmTargets?.length?explicit:Object.keys(p.G.monsters??{}).filter(id=>{const m=p.G.monsters[id];return !m.boss&&!(m.respawn<0)&&!m.cooperative&&!m.stationary;});}
  function allowed(id){return candidates().includes(id)&&materialEvent(p.G,id,p.root.S??p.parent.S).active&&bot.strategy.safeTarget(id,undefined,true,true);}
  function materialRequests(){return bot.transport.fresh(cfg.party.merchant)?.materials??[];}
  function valid(plan){if(!Number.isInteger(bot.decisionEpoch))return validRaw(plan);if(validEpoch!==bot.decisionEpoch){validEpoch=bot.decisionEpoch;validCache.clear();}if(!validCache.has(plan))validCache.set(plan,validRaw(plan));return validCache.get(plan);}
- function validRaw(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
+ function validRaw(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir','hunt'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
   const source=spawnLocations(p.G,[plan.target],cfg.world.excludedMaps,cfg.farming.pvp).find(s=>s.key===plan.key);if(!source||areaQuarantined(plan.key)||plan.definition!==source.definition||bot.content?.approve('farm:'+plan.map+':'+plan.target,[p.G.monsters[plan.target],p.G.maps[plan.map]?.monsters?.filter(s=>s.type===plan.target)])===false)return false;
   if(!plan.objective)return true;if(plan.kind==='elixir')return bot.elixirs?.objective()?.objective===plan.objective||bot.transport.fresh(plan.leader)?.elixir?.item===plan.item;
   return materialRequests().some(r=>r.objective===plan.objective&&
@@ -98,14 +128,19 @@ export function createTeamPlan(bot){
      bot.transport?.fresh?.(name)?.capabilities;
    return (cap?.aoe?.length??0)>0;
   });
+  const hunt=orderedHunt();
   const types=candidates().filter(allowed),locations=spawnLocations(p.G,types,cfg.world.excludedMaps,cfg.farming.pvp),teamDps=Math.max(1,combat.reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0));
   ranking=locations.filter(s=>!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);
    const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:Math.sqrt(Math.max(1,xp)*Math.max(1,gold));return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,pressure:empty>.6?'spawn-starved':foreign>2?'contested':'healthy'};}).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
-  let next=ranking[0];let selectedRequest=next?.target===request?.monster?request:null;const old=ranking.find(r=>r.key===current?.key);if(old&&valid(current)&&!selectedRequest&&Date.now()-current.started<(cfg.farming.planHoldMs??60000)||old&&valid(current)&&!selectedRequest&&next&&next.score<old.score*(1+(cfg.farming.switchImprovement??.2)))next=old;selectedRequest=next?.target===request?.monster?request:null;
-  if(!next){current=null;return;}const same=current?.key===next.key&&current.objective===(selectedRequest?.objective??null);const bounds=next.bounds;const proposal={...next,bounds,definition:knowledgeFingerprint([p.G.monsters[next.target],bounds]),kind:selectedRequest?(selectedRequest.elixir?'elixir':'material'):'farm',objective:selectedRequest?.objective??null,item:selectedRequest?.item??null,leader:bot.leader,realm:p.realm(),id:same?current.id:bot.session+':plan:'+(++generation),started:same?current.started:Date.now(),expires:Date.now()+cfg.general.messageTtlMs*2,reason:selectedRequest?'Gemeinsamer Material-/Elixierbedarf':'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
+  let next=hunt?.phase==='combat'?ranking.find(r=>r.target===hunt.monster):
+   hunt?null:ranking[0];let selectedRequest=next?.target===request?.monster?request:null;const old=ranking.find(r=>r.key===current?.key);if(!hunt&&old&&valid(current)&&!selectedRequest&&Date.now()-current.started<(cfg.farming.planHoldMs??60000)||!hunt&&old&&valid(current)&&!selectedRequest&&next&&next.score<old.score*(1+(cfg.farming.switchImprovement??.2)))next=old;selectedRequest=next?.target===request?.monster?request:null;
+  if(!next){if(hunt&&current){current=null;bot.target=null;
+    if(['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();}
+   if(hunt?.phase==='combat')bot.reason='Monsterhunt '+hunt.owner+' / '+hunt.monster+': kein sicherer Spawn';
+   return;}const same=current?.key===next.key&&current.objective===(selectedRequest?.objective??null);const bounds=next.bounds;const proposal={...next,bounds,definition:knowledgeFingerprint([p.G.monsters[next.target],bounds]),kind:hunt?.phase==='combat'?'hunt':selectedRequest?(selectedRequest.elixir?'elixir':'material'):'farm',objective:selectedRequest?.objective??null,item:selectedRequest?.item??null,leader:bot.leader,realm:p.realm(),id:same?current.id:bot.session+':plan:'+(++generation),started:same?current.started:Date.now(),expires:Date.now()+cfg.general.messageTtlMs*2,reason:hunt?.phase==='combat'?'Monsterhunt '+hunt.owner+' / '+hunt.monster+' ('+hunt.remaining+' offen)':selectedRequest?'Gemeinsamer Material-/Elixierbedarf':'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
   if(!same){bot.target=null;if(['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
- return {tick,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){if(!valid(current)||bot.strategy.busy)return false;if(cfg.party.enabled&&me.name!==bot.leader)return false;if(me.name===bot.leader&&cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()))){bot.reason='Warte auf aktive Gruppe vor Farmreise';return true;}// A 250-unit exit stranded ranged farmers outside verified spawn areas.
+ return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){if(!valid(current)||bot.strategy.busy)return false;if(cfg.party.enabled&&me.name!==bot.leader)return false;if(me.name===bot.leader&&cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()))){bot.reason='Warte auf aktive Gruppe vor Farmreise';return true;}// A 250-unit exit stranded ranged farmers outside verified spawn areas.
   if(samePlace(p.c,current)&&distance(p.c,current)<=Math.min(85,Math.max(40,(cfg.farming.orbitRadius??220)/2)))return false;bot.reason='Gemeinsamer Plan: '+current.target;bot.movement.go({...current,radius:65},'farm');return true;},materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
   return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
    if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:absence,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};

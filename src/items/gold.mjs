@@ -63,17 +63,9 @@ export function createGoldLogistics(bot){
   // goldTransferMax field remains importable but no longer splits pickups.
   job={id:bot.session+':gold:'+(++serial),peer:cfg.party.merchant,session:peer.session,state:'offered',quantity,before:p.c.gold,until:now+cfg.general.messageTtlMs,lastOffer:now};send('goldOffer',{quantity:job.quantity});
  }
- function travel(){if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
-  // Shared merchant route ownership: do not preempt item delivery or a
-  // selected economy job while smart_move/town pathfinding is underway.
-  if(['logistics','economy'].includes(bot.movement?.order?.owner))return false;
-  for(const name of bot.farmers){const h=transport.fresh(name);if(!h?.running||h.rip||h.journal||h.pending||h.realm!==p.realm()||!(h.goldSurplus>=cfg.merchant.goldCollectBelow))continue;
-   if(bot.strategy?.canVisit?.(h)===false||bot.merchant?.claimService?.(name)===false)continue;
-   if(bot.services?.waiting)bot.services.interrupt();if(samePlace(p.c,h)&&distance(p.c,h)<200)return false;
-   if(bot.movement.order?.owner!=='gold'&&bot.merchant?.prepareGoldPickup?.(h)===false)return true;
-   if(bot.movement.order?.owner==='economy')bot.movement.stop();bot.reason='Goldüberschuss abholen: '+name;bot.movement.go({...h,radius:120},'gold');return true;
-  }return false;
- }
+ // Surplus collection is intentionally onsite-only: item/supply travel brings
+ // the merchant to farmers, and poll() retains the durable gold handshake.
+ function travel(){return false;}
  function yieldUnsent(reason='Itemübergabe hat Vorrang'){
   if(!job||!['offered','accepted'].includes(job.state))return false;
   const previous=job;job=null;next=Date.now()+15000;

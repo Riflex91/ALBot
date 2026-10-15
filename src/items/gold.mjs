@@ -63,7 +63,8 @@ export function createGoldLogistics(bot){
   // goldTransferMax field remains importable but no longer splits pickups.
   job={id:bot.session+':gold:'+(++serial),peer:cfg.party.merchant,session:peer.session,state:'offered',quantity,before:p.c.gold,until:now+cfg.general.messageTtlMs,lastOffer:now};send('goldOffer',{quantity:job.quantity});
  }
- function travel(){if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
+ function travel(){return false; /* Gold is collected opportunistically on existing item/supply visits. */
+  if(bot.recovering||!cfg.merchant.collectGold||me.name!==cfg.party.merchant||job||!idle())return false;
   // Shared merchant route ownership: do not preempt item delivery or a
   // selected economy job while smart_move/town pathfinding is underway.
   if(['logistics','economy'].includes(bot.movement?.order?.owner))return false;

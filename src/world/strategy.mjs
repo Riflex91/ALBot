@@ -18,6 +18,12 @@ export function farmRiskHp(base,live){
   Number.isFinite(live.max_hp)&&live.max_hp>ordinary)return ordinary;
  return Math.max(ordinary,live?.max_hp??live?.hp??0);
 }
+// A monsterhunt's ms changes continuously. That countdown is not evidence
+// that Daisy accepted or completed a quest; only id, count, realm or presence
+// changes qualify as a meaningful authoritative state transition.
+export function questIdentity(q){
+ return JSON.stringify(q?{id:q.id??null,c:q.c??null,sn:q.sn??null}:null);
+}
 export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null,questVisit=null,nextQuest=0;
  const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();
@@ -106,7 +112,7 @@ export function createStrategy(bot){
  }
  function quest(){
   if(questVisit){
-   if(JSON.stringify(p.c.s?.monsterhunt??null)!==questVisit.before&&questVisit.phase==='observing'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Aktueller Queststatus hat sich geändert'});questVisit=null;nextQuest=Date.now()+5000;plannedAt=0;return false;}
+   if(questIdentity(p.c.s?.monsterhunt)!==questVisit.before&&questVisit.phase==='observing'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Aktueller Queststatus hat sich geändert'});questVisit=null;nextQuest=Date.now()+5000;plannedAt=0;return false;}
    if(Date.now()>questVisit.until){const phase=questVisit.phase;questVisit=null;nextQuest=Date.now()+60000;bot.event('quest.timeout',{phase});if(phase==='observing')bot.pause('Monsterhunt ungeklärt: Queststatus prüfen');return true;}
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
   }
@@ -121,10 +127,10 @@ export function createStrategy(bot){
   if(q&&Number.isFinite(q.ms)&&q.ms<=0)return false;
   if(q?.c>0)return false;
   if(Date.now()<nextQuest||!p.has('interact')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
-  if(!questVisit){questVisit={phase:'travel',before:JSON.stringify(q??null),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Aktiver Farmer nimmt eigenen Auftrag an oder gibt ihn ab'});}
+  if(!questVisit){questVisit={phase:'travel',before:questIdentity(q),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Aktiver Farmer nimmt eigenen Auftrag an oder gibt ihn ab'});}
   if(!bot.economy.at(d,70)){bot.reason='Unterwegs: Monsterhunt';bot.movement.go({...d,radius:60},'quest');return true;}
   const visit=questVisit;
-  const accepted=exec.run('quest.monsterhunt',['quest'],()=>bot.running&&!bot.journal&&!bot.logistics.reserved&&bot.economy.at(d,70),()=>{visit.phase='observing';visit.until=Date.now()+15000;return p.call('interact','monsterhunt');},{timeout:10000,delay:5000,observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==visit.before,onSettle:(result,error)=>{
+  const accepted=exec.run('quest.monsterhunt',['quest'],()=>bot.running&&!bot.journal&&!bot.logistics.reserved&&bot.economy.at(d,70),()=>{visit.phase='observing';visit.until=Date.now()+15000;return p.call('interact','monsterhunt');},{timeout:10000,delay:5000,observe:()=>questIdentity(p.c.s?.monsterhunt)!==visit.before,onSettle:(result,error)=>{
    if(questVisit!==visit)return;if(result==='confirmed'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Beobachteter Queststatus'});questVisit=null;nextQuest=Date.now()+60000;plannedAt=0;}
    else if(result==='rejected'){bot.event('quest.rejected',{reason:error?.reason??error?.message??'Server lehnt Interaktion ab'});questVisit=null;nextQuest=Date.now()+60000;}
   }});return accepted||!!questVisit;

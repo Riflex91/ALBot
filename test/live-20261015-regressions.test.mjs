@@ -81,3 +81,16 @@ test('countdown update alone is never treated as completed or reassigned hunt',(
  assert.notEqual(questIdentity(a),questIdentity(null));
  assert.notEqual(questIdentity(a),questIdentity({...a,sn:'EU II'}));
 });
+
+test('all expired hunts stop rotating until an actual new timer or quest appears',()=>{
+ const roster=['My_Ranger1','My_Ranger2','My_Ranger3'];
+ let state=advanceHuntCycle(null,roster,{id:'goo',c:2,ms:0}).state;
+ assert.equal(state.index,1);
+ state=advanceHuntCycle(state,roster,{id:'bee',c:3,ms:0}).state;
+ assert.equal(state.index,2);
+ state=advanceHuntCycle(state,roster,{id:'snake',c:3,ms:0}).state;
+ assert.equal(state.index,0);
+ const again=advanceHuntCycle(state,roster,{id:'goo',c:2,ms:0});
+ assert.equal(again.state.index,0,'bounded cooldown, no infinite A/B/C rotation');
+ assert.equal(again.changed,false);
+});

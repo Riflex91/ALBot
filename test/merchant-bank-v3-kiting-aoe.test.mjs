@@ -90,7 +90,7 @@ test('support ranger does not wander from shared fight and melee rogue is never 
 });
 test('eligible 3shot uses all available mana instead of requiring 35-percent MP reserve',()=>{
  const c={name:'Ranger',ctype:'ranger',level:60,map:'main',in:'main',x:0,y:0,range:145,mp:320,max_mp:1000,attack:50,hp:1000,max_hp:1000,slots:{},s:{}};
- const mobs=[0,1].map(i=>({id:'bee-'+i,type:'monster',mtype:'bee',map:'main',in:'main',x:30+i*5,y:0,hp:400,max_hp:400,target:'Ranger'}));
+ const mobs=[0,1,2].map(i=>({id:'bee-'+i,type:'monster',mtype:'bee',map:'main',in:'main',x:30+i*5,y:0,hp:400,max_hp:400,target:'Ranger'}));
  const casts=[];
  const bot={p:{c,parent:{is_pvp:false},G:{items:{},skills:{'3shot':{class:['ranger'],level:60,mp:300,range:145,hostile:true}},monsters:{bee:{}},maps:{main:{}}},call:(action,...args)=>{if(action==='is_on_cooldown')return false;if(action==='use_skill')casts.push({skill:args[0],targets:args[1]});}},
  cfg:{general:{testLogging:true},farming:{pvp:false,maxAggro:5},party:{aoe:true,aoeMaxTargets:5},skills:[]},
@@ -99,7 +99,7 @@ test('eligible 3shot uses all available mana instead of requiring 35-percent MP 
  allies:()=>[],count:()=>0,event:()=>{}};
  createSkills(bot).rotation(mobs[0]);
  assert.deepEqual(casts.map(x=>x.skill),['3shot']);
- assert.equal(casts[0].targets.length,2);
+ assert.equal(casts[0].targets.length,3);
 });
 
 
@@ -144,14 +144,11 @@ test('3shot exposes why only two neutral targets can be admitted without bypassi
   exec:{run:(_key,_locks,guard,fn)=>{if(!guard())return false;fn();return true;}},
   allies:()=>[],count:()=>0,event:(type,data)=>events.push({type,data})};
  createSkills(bot).rotation(mobs[0]);
- assert.equal(casts.length,1);
- assert.equal(casts[0].length,2);
- const decision=events.find(e=>e.type==='skill.decision');
- assert.equal(decision.data.thirdTargetBlocked,true);
- assert.equal(decision.data.encounterCapacity,2);
- assert.equal(decision.data.rejectedTargets.length,3);
- assert.ok(decision.data.rejectedTargets.every(x=>x.reason==='encounter-capacity-or-aggro-limit'));
- assert.match(decision.data.rejectedTargetReasons,/bee-2:encounter-capacity-or-aggro-limit/);
+ assert.equal(casts.length,0,'a 2-target 3shot must not be cast');
+ const waiting=events.find(e=>e.type==='skill.waitingForThree');
+ assert.equal(waiting?.data?.available,2);
+ assert.equal(waiting?.data?.capacity,2);
+ assert.match(waiting?.data?.rejected??'',/bee-2:encounter-capacity-or-aggro-limit/);
 });
 test('leader fills 3shot with safe third neutral bee when encountered size is approved',()=>{
  const c={name:'Ranger',ctype:'ranger',level:65,map:'main',in:'main',

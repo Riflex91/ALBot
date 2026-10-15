@@ -1,5 +1,6 @@
 import {potionTarget,onlineSupplyFarmers,teamPotionRefillSnapshot} from '../items/potion-supply.mjs';
 import {createTrackerAcquisition} from './tracker-acquisition.mjs';
+import {forecastExchange} from './storage-plan.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
@@ -555,10 +556,24 @@ export function createMerchant(bot){
  }
  function relieveInventoryPressure(){
   const minimum=Math.max(0,cfg.merchant.minFreeSlots??4),freeSlots=bot.free();
-  // Hysteresis: once slots reach the emergency threshold, finish opening a
-  // useful working margin before admitting more nonessential acquisitions.
-  if(freeSlots<=minimum)capacityRecovery=true;
-  if(freeSlots>=Math.min(p.c.items.length,Math.max(8,minimum+4)))capacityRecovery=false;
+  // An exchange with documented rewards may need one extra output slot
+  // above the preventive reserve. Only existing safe banking/selling or
+  // confirmed non-destructive parking can clear that physical space.
+  const exchangeReserve=bot.storage?.status?.()?.reserve??Math.max(8,minimum+4);
+  const exchangeNeedsSlot=!!(cfg.production?.exchange&&bot.storage?.active&&
+   freeSlots<=exchangeReserve&&(p.c.items??[]).some((item,slot)=>{
+    if(!e.safe(item))return false;
+    const q=p.G.items?.[item.name]?.e;
+    if(!Number.isSafeInteger(q)||q<1)return false;
+    const rules=[e.rules(item,'inventory'),e.rules(item,'production')];
+    if(!rules.some(rule=>rule?.action==='exchange'&&e.remaining(rule)&&
+      e.spare(slot,rule)>=q))return false;
+    const projected=forecastExchange(p.G,p.c.items,slot,q);
+    return projected.known&&projected.worstFree<exchangeReserve;
+   }));
+  if(freeSlots<=minimum||exchangeNeedsSlot)capacityRecovery=true;
+  if(freeSlots>=Math.min(p.c.items.length,Math.max(exchangeReserve+1,minimum+5)))
+   capacityRecovery=false;
   const fingerprint=pressureFingerprint();
   if(capacityBlock&&(capacityBlock.fingerprint!==fingerprint||Date.now()>=capacityBlock.until))capacityBlock=null;
   if(me.role!=='merchant'||!cfg.merchant.enabled||!capacityRecovery||

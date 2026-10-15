@@ -10,6 +10,7 @@ import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
+import {prioritizeAdmittedProductionGoal} from '../merchant/production-priority.mjs';
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
 export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
@@ -84,7 +85,7 @@ export function unbankedDemand(rows,bankItems,name,level){
  return remaining;
 }
 export function createProduction(bot){
- let helperSearch=null,demandBusy=false;
+ let helperSearch=null,demandBusy=false,admittedGoalKey=null,admittedAt=0;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const blockedMutations=new Map();const helperRequests=new Map();const scrollFallbacks=new Map();
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
@@ -459,7 +460,14 @@ export function createProduction(bot){
     // A five-minute remote-exchange hold must not starve ready local gear.
     return effective(b)-effective(a)||Number(held(b))-Number(held(a))||
       (bot.progression?.goalPriority(b)??0)-(bot.progression?.goalPriority(a)??0)||
-      b.utilityPerHour-a.utilityPerHour;});for(const g of ranked){
+      b.utilityPerHour-a.utilityPerHour;});
+   const ordered=prioritizeAdmittedProductionGoal(ranked,{
+    admittedKey:admittedGoalKey,admittedAt,now:Date.now(),
+    keyOf:goalKey,
+    scoreOf:g=>(g.priority??0)+(fastGear(g)?65:0),
+    maxHoldMs:45000,maxPriorityDeficit:15
+   });
+   for(const g of ordered){
    const wait=waiting.get(goalKey(g));
    if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step))continue;
    if(wait)waiting.delete(goalKey(g));
@@ -517,7 +525,11 @@ export function createProduction(bot){
   const r=e.rules(item,['buy','retrieve','farm','marketBuy'].includes(step.kind)?'acquisition':'production');
   if(!r||r.action!==step.kind){const reason='Produktionskette benötigt passende '+step.kind+'-Regel für '+step.item;e.note(reason);bot.event?.('production.blocked',{goal:goal.name,item:step.item,step:step.kind,reason});return false;}
   if(!e.remaining(r))return false;
-  const attempt=fn=>{bot.reason='Produktionsschritt '+step.kind+' / '+step.item+': Voraussetzungen prüfen';const accepted=fn();if(cfg.general.testLogging!==undefined&&!accepted&&!bot.movement.order&&!bot.journal&&!exec.pending.size){const entry={goal:goal.name,item:step.item,kind:step.kind,
+  const attempt=fn=>{bot.reason='Produktionsschritt '+step.kind+' / '+step.item+': Voraussetzungen prüfen';const accepted=fn();
+    // Only a genuinely admitted action can temporarily stabilize this goal;
+    // mere selection, missing stock or failed availability checks cannot.
+    if(accepted===true&&goal){admittedGoalKey=goalKey(goal);admittedAt=Date.now();}
+    if(cfg.general.testLogging!==undefined&&!accepted&&!bot.movement.order&&!bot.journal&&!exec.pending.size){const entry={goal:goal.name,item:step.item,kind:step.kind,
    step:{item:step.item,level:step.level,kind:step.kind},
    fingerprint:availabilityFingerprint(step),
    reservations:structuredClone(plan.reservations??[]),

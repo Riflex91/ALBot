@@ -38,7 +38,7 @@ export function areaPressure(row,now=Date.now(),freshMs=21600000){
 export function farmAreaHistoryKey(realm,hour,spawnKey,gears){
  return realm+':'+hour+':'+spawnKey+':'+knowledgeFingerprint(gears.map(semanticGear));
 }
-import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHunts} from './hunt-rotation.mjs';
+import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHunts,huntDeadlineStatus} from './hunt-rotation.mjs';
 // A pending, unobservable or unsafe monsterhunt may not starve the shared
 // farming plan. Only the verified quest monster earns quest priority.
 // Existing safely ranked farm targets remain available as temporary work.
@@ -101,7 +101,8 @@ export function createTeamPlan(bot){
   const owner=bot.farmers[huntState?.index??0];
   const active=lookup(owner);
   huntObjective={owner,phase:active===undefined?'unknown':active===null?'acquire':
-   active.c===0?'turnin':'combat',monster:active?.id??null,remaining:active?.c??null};
+   active.c===0?'turnin':'combat',monster:active?.id??null,remaining:active?.c??null,
+   remainingMs:active?.ms??null,server:active?.sn??null};
   return huntObjective;
  }
  function candidates(){const explicit=me.farmTargets?.length?me.farmTargets:cfg.farming.targets;return cfg.farming.autoTargets===false||me.farmTargets?.length?explicit:Object.keys(p.G.monsters??{}).filter(id=>{const m=p.G.monsters[id];return !m.boss&&!(m.respawn<0)&&!m.cooperative&&!m.stationary;});}
@@ -163,7 +164,18 @@ export function createTeamPlan(bot){
   // Rank the complete set of *approved* spawns before deciding a quest has
   // nowhere safe to run. Persist only an ordering decision, never forge quest
   // completion or clear any farmer's actual monsterhunt state.
-  if(hunt?.phase==='combat'&&!ranking.some(x=>x.target===hunt.monster)){
+  const huntRow=hunt?.phase==='combat'?
+   ranking.find(x=>x.target===hunt.monster):null;
+  const huntHorizon=hunt?.phase==='combat'?
+   huntDeadlineStatus({id:hunt.monster,c:hunt.remaining,
+    ...(hunt.remainingMs===null?{}:{ms:hunt.remainingMs}),
+    ...(hunt.server?{sn:hunt.server}:{})},p.realm(),huntRow?.travelSeconds??0,
+    huntRow?Math.max(1,p.G.monsters[hunt.monster].hp/
+      Math.max(1,huntRow.composition?.effectiveDps??teamDps)):0):null;
+  const noApprovedSpawn=hunt?.phase==='combat'&&!huntRow;
+  const infeasibleHunt=hunt?.phase==='combat'&&
+   ['expired','insufficient-time','wrong-realm'].includes(huntHorizon?.state);
+  if(noApprovedSpawn||infeasibleHunt){
    const skipped=skipHuntWithoutSpawn(huntState,bot.farmers,{
     owner:hunt.owner,monster:hunt.monster,remaining:hunt.remaining,
     safeSpawnChecked:true
@@ -174,7 +186,9 @@ export function createTeamPlan(bot){
      bot.event?.('hunt.noApprovedSpawn',{owner:hunt.owner,monster:hunt.monster,
       remaining:hunt.remaining,nextOwner:bot.farmers[huntState.index],
       retryAfter:huntState.skipped[hunt.owner].until,
-      reason:'Kein freigegebener sicherer Spawn; Auftrag bleibt bestehen'});
+      reason:infeasibleHunt?'Monsterhunt-Zeitfenster / Server nicht passend: '+huntHorizon.state:
+        'Kein freigegebener sicherer Spawn; Auftrag bleibt bestehen',
+       remainingMs:hunt.remainingMs??null,neededMs:huntHorizon?.neededMs??null});
      hunt=orderedHunt();
     }else bot.event?.('hunt.persistenceBlocked',{owner:hunt.owner,
      reason:'Kein Wechsel ohne dauerhaft gespeicherten Rotationszustand'});

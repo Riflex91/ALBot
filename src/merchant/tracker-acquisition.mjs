@@ -78,8 +78,8 @@ export function createTrackerAcquisition(bot){
    tokensBefore:p.c.items.reduce((n,i)=>n+(i?.name==='monstertoken'?(i.q??1):0),0),
    trackersBefore:p.c.items.filter(i=>i?.name==='tracker').length};
  }
- function eligible(){return !!bankCandidate()||!!candidate()||!!recipient()&&
-   bot.bank?.catalogStock?.().some(r=>r.item?.name==='tracker'&&!protectedItem(r.item));}
+ function eligible(){return !!bankCandidate()||!!candidate()||!!(recipient()&&
+   bot.bank?.catalogStock?.()?.some(r=>r.item?.name==='tracker'&&!protectedItem(r.item)));}
  function tick(){
   if(pending){
    const h=bot.transport?.fresh?.(pending.recipient);

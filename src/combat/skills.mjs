@@ -141,6 +141,11 @@ export function createSkills(bot){
        maximumSafeTargets:candidates.length,skillCapacity:limit};
     };
     const selected=multi?candidates.slice(0,limit):[];
+    // Deliberately do NOT fire a 2-target 3shot. Keep ordinary attacks
+    // available while waiting for three real, separately approved entities.
+    if(id==='3shot'&&(limit<3||selected.length!==3)){
+      count(id,'targetBlocked');return false;
+    }
     // Retain an approved one-target opener when it has a real purpose.
     // Only avoid spending 200/320 MP and the shared attack opportunity if
     // an immediately available normal attack can already finish that mob.

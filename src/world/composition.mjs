@@ -1,4 +1,5 @@
 import {distance,samePlace} from '../core/policy.mjs';
+import {damageMultiplier,outgoingDamageEstimate} from '../combat/damage-model.mjs';
 
 // Ownership/online supply discovery never enlarges the combat roster.
 export function combatMembers(bot,planned=false){
@@ -9,7 +10,7 @@ export function combatMembers(bot,planned=false){
  return [{...p.c,capabilities:bot.capabilities?.snapshot()},...peers].filter(c=>c.name!==cfg.party.merchant&&!c.rip&&c.hp>0);
 }
 export function compositionOptions(bot,planned=false){
- return {G:bot.p.G,healing:bot.cfg.party.enabled!==false&&bot.cfg.party.healing===true,
+ return {G:bot.p.G,outgoingUncertainty:0,healing:bot.cfg.party.enabled!==false&&bot.cfg.party.healing===true,
   aoe:bot.cfg.party.aoe===true,planned,leader:bot.leader,ttl:bot.cfg.general.messageTtlMs??10000};
 }
 function freshCapability(c,id,options){
@@ -38,9 +39,12 @@ export function farmHealing(healer,members,seconds,options={}){
 }
 export function farmThroughput(monster,members,count,options={}){
  const healer=farmHealer(members,options),active=members.filter(c=>c!==healer&&c.attack>0&&c.frequency>0);
- const armor=Math.max(0,monster.armor??0,monster.resistance??0),factor=Math.max(.05,1/(1+armor/100));
- const perMember=c=>(monster['1hp']?1:c.attack*factor*farmFearFactor(c,monster,count))*c.frequency*(1-Math.min(100,Math.max(0,monster.avoidance??0))/100)*
-  (1-Math.min(100,Math.max(0,(c.damage_type??(['mage','priest'].includes(c.ctype??c.class)?'magical':'physical'))==='magical'?monster.reflection??0:monster.evasion??0))/100);
+ // Every member uses its own damage type and armor/resistance piercing.
+ // Safety uncertainty is distinct from the official damage multiplier.
+ const perMember=c=>outgoingDamageEstimate(c,monster,{
+  fearFactor:farmFearFactor(c,monster,count),
+  uncertainty:options.outgoingUncertainty??0
+ }).damage*c.frequency;
  const base=active.reduce((n,c)=>n+perMember(c),0),seconds=Math.max(1,monster.hp/Math.max(1,base)),horizon=Math.max(10,seconds*count);
  const damage=active.reduce((sum,c)=>{
   let multiplier=1;
@@ -70,13 +74,7 @@ export function farmFearFactor(c,monster,count){
 
 // Official damage_multiplier curve; unlike 1/(1+armor/100), it does not
 // overstate the protection of modest armor. Monster piercing remains effective.
-export function farmDamageMultiplier(defense){
- if(!Number.isFinite(defense))return 1.32;
- const weights=[.001,.001,.00095,.0009,.00082,.0007,.0006,.0005];
- const reduction=weights.reduce((n,w,i)=>n+Math.max(0,Math.min(100,defense-i*100))*w,0)+Math.max(0,defense-800)*.0004;
- const negative=Math.max(0,Math.min(50,-defense))*.001+Math.max(0,Math.min(50,-50-defense))*.00075+Math.max(0,Math.min(50,-100-defense))*.0005+Math.max(0,-150-defense)*.00025;
- return Math.min(1.32,Math.max(.05,1-reduction+negative));
-}
+export const farmDamageMultiplier=damageMultiplier;
 function effectLasts(c,id,seconds){
  const effect=c.s?.[id];if(!effect||typeof effect!=='object')return false;
  const age=Math.max(0,Date.now()-(c.received??Date.now()));

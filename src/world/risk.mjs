@@ -1,4 +1,5 @@
 import {farmHealer,farmHealing,farmDefense,farmFearFactor} from './composition.mjs';
+import {outgoingDamageEstimate} from '../combat/damage-model.mjs';
 // Conservative planning estimate: unknown healing, kiting and critical hits are not guaranteed.
 export function assessCombat(monster,members,mode='balanced',aggro=1,options={}){
  const limits={conservative:{hit:.12,seconds:12,exposure:.35},balanced:{hit:.25,seconds:25,exposure:.55},aggressive:{hit:.4,seconds:45,exposure:.75}}[mode]??{hit:.12,seconds:12,exposure:.35};
@@ -8,15 +9,20 @@ export function assessCombat(monster,members,mode='balanced',aggro=1,options={})
  if(unsupported.length||monster.reflection>0||monster.explosion||monster.respawn_as||monster.spawns||monster.aura)
   return {safe:false,reason:'Spezialmechanik benötigt validiertes Kampfprofil: '+(unsupported.join(',')||'Phasen/Reflexion/Aura'),mechanics:true};
  if(monster.s?.fullguard||monster.s?.fullguardx)return {safe:false,reason:'Aktive Schutzphase',mechanics:true};
- const weakest=Math.min(...alive.map(c=>Math.min(c.hp,c.max_hp))),armor=Math.max(0,Math.max(monster.armor??0,monster.resistance??0));
- // Ignoring the attackers' piercing overestimates fight duration for safety.
- const damageFactor=Math.max(.05,1/(1+armor/100));
- const avoidance=1-Math.min(100,Math.max(0,monster.avoidance??0))/100;
+ const weakest=Math.min(...alive.map(c=>Math.min(c.hp,c.max_hp)));
  const healer=farmHealer(alive,options);
- const rawOutgoing=alive.filter(c=>c!==healer).reduce((sum,c)=>{
-  const avoid=avoidance*(1-Math.min(100,Math.max(0,(c.damage_type??(['mage','priest'].includes(c.ctype??c.class)?'magical':'physical'))==='magical'?monster.reflection??0:monster.evasion??0))/100);
-  return sum+(monster['1hp']?1:c.attack*damageFactor*farmFearFactor(c,monster,aggro))*c.frequency*avoid;
- },0);
+ // Preserve the old exclusive healer budget until full heal/attack scheduling
+ // is validated. A solo priest continues to attack, never heal simultaneously.
+ const damageRows=alive.filter(c=>c!==healer).map(c=>({
+  c,estimate:outgoingDamageEstimate(c,monster,{
+   fearFactor:farmFearFactor(c,monster,aggro),
+   uncertainty:options.outgoingUncertainty??0
+  })
+ }));
+ if(damageRows.some(r=>!r.estimate.valid))
+  return {safe:false,reason:'Schadensmodell: unbestätigter Gegner- oder Angreiferwert',model:'unsupported'};
+ const rawOutgoing=damageRows.reduce((sum,{c,estimate})=>
+  sum+estimate.damage*c.frequency,0);
  const healing=Object.values(monster.abilities??{}).reduce((n,a)=>n+(a.heal>0&&a.cooldown>0?a.heal*1000/a.cooldown:0),0);
  const lifesteal=monster.attack*1.1*(monster.crit>0?2+Math.max(0,monster.critdamage??0)/100:1)*monster.frequency*Math.max(0,monster.lifesteal??0)/100;
  const outgoing=rawOutgoing-healing-lifesteal;

@@ -59,7 +59,7 @@ test('inventory changes between stable probes restart the exchange confirmation 
  try{
   const recovery=createRecovery(bot);
   assert.equal(recovery.reconcile(),false);
-  now+=800;bot.p.c.items[2].q=2;
+  now+=800;bot.p.c.items[3]=bot.p.c.items[2];bot.p.c.items[2]=null;
   assert.equal(recovery.reconcile(),false);
   now+=300;assert.equal(recovery.reconcile(),false);
   now+=700;assert.equal(recovery.reconcile(),true);

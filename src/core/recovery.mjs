@@ -79,7 +79,96 @@ export function inspectExchangeRecovery(bot){
    c.items.map(x=>x?fingerprint(x):null)])};
 }
 
-export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null,exchangeSample=null,exchangeStatus=null;
+// Recover only a *corroborated* persisted gold handoff. Never send gold again.
+export function goldRecoveryEvidence(j,balance,realm,locked=true){
+ if(!locked||!['gold.send','gold.receive'].includes(j?.kind)||
+  typeof j.id!=='string'||!j.id.includes(':gold:')||
+  typeof j.peer!=='string'||!j.peer||
+  !Number.isSafeInteger(j.quantity)||j.quantity<1||
+  !Number.isSafeInteger(j.before)||j.before<0||
+  !Number.isSafeInteger(balance)||balance<0||
+  j.evidence?.realm!==realm||!Number.isFinite(j.at))return null;
+ return {kind:j.kind,id:j.id,peer:j.peer,quantity:j.quantity,
+  before:j.before,balance,realm,session:j.session??null,at:j.at};
+}
+export function inspectGoldRecovery(bot){
+ const deny=reason=>({eligible:false,reason});
+ const j=bot.journal,c=bot.p?.c,realm=bot.p?.realm?.();
+ if(!bot.inventoryBlocked||!['gold.send','gold.receive'].includes(j?.kind))
+  return deny('not-a-blocked-gold-transfer');
+ if(bot.checkpoint?.durable===false||bot.exec?.pending?.size)
+  return deny('checkpoint-or-value-action-pending');
+ const local=goldRecoveryEvidence(j,c?.gold,realm);
+ if(!local)return deny('invalid-local-journal-or-balance');
+ const peer=bot.transport?.fresh?.(j.peer);
+ if(!peer||peer.running!==true||peer.rip||peer.realm!==realm)
+  return deny('no-fresh-same-realm-peer');
+ const other=peer.goldReconcile;
+ if(!other||other.id!==local.id||other.peer!==bot.me.name||
+    other.quantity!==local.quantity||other.realm!==realm||
+    other.kind!==(j.kind==='gold.send'?'gold.receive':'gold.send')||
+    !Number.isSafeInteger(other.before)||other.before<0||
+    !Number.isSafeInteger(other.balance)||other.balance<0||
+    (!other.verified&&(!peer.inventoryBlocked||peer.journal!==true))||
+    (!other.verified&&peer.goldBalance!==undefined&&peer.goldBalance!==null&&
+      peer.goldBalance!==other.balance))
+  return deny('peer-journal-or-live-balance-mismatch');
+ const senderSession=local.id.split(':gold:')[0];
+ if(!senderSession||(j.kind==='gold.receive'?local.session:other.session)!==senderSession)
+  return deny('sender-session-mismatch');
+ const sender=j.kind==='gold.send'?local:other;
+ const receiver=j.kind==='gold.receive'?local:other;
+ if(sender.before<sender.quantity||sender.balance!==sender.before-sender.quantity)
+  return deny('sender-exact-loss-not-observed');
+ const received=receiver.balance-receiver.before;
+ if(!Number.isSafeInteger(received)||received<receiver.quantity)
+  return deny('receiver-minimum-gain-not-observed');
+ // Other legitimate income at the Merchant is possible (+15 in the report);
+ // two independent journal identities and an exact sender loss are mandatory.
+ return {eligible:true,reason:'paired-journals-and-exact-sender-loss',
+  local,extraReceived:received-receiver.quantity,
+  signature:JSON.stringify([local.id,sender.balance,receiver.balance,
+   sender.before,receiver.before,realm])};
+}
+export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null,exchangeSample=null,exchangeStatus=null,goldSample=null,goldStatus=null;
+ const goldAckKey='albot:gold:'+me.name+':recovery-receipt';
+ const oldGoldAck=p.read?.(goldAckKey);
+ let goldAck=oldGoldAck?.until>Date.now()?oldGoldAck:null;
+ function goldEvidence(){
+  const evidence=goldRecoveryEvidence(bot.journal,p.c?.gold,p.realm(),bot.inventoryBlocked);
+  if(evidence)return evidence;
+  return goldAck?.until>Date.now()?{...goldAck.evidence,verified:true}:null;
+ }
+ function reconcileGold(){
+  const result=inspectGoldRecovery(bot);
+  goldStatus={eligible:result.eligible,reason:result.reason,
+   extraReceived:result.extraReceived??null};
+  if(!result.eligible){goldSample=null;return false;}
+  const now=Date.now();
+  if(now-result.local.at<1500)return false;
+  if(goldSample?.signature!==result.signature){
+   goldSample={signature:result.signature,at:now};return false;
+  }
+  if(now-goldSample.at<1000)return false;
+  const j=bot.journal;
+  // Publish a durable receipt before unlocking. A slower partner can use it
+  // after this journal is cleared or this browser tab restarts.
+  const receipt={evidence:result.local,at:now,until:now+120000};
+  if(p.write?.(goldAckKey,receipt)!==true){
+   goldStatus={eligible:false,reason:'recovery-receipt-write-failed'};
+   return false;
+  }
+  goldAck=receipt;
+  bot.inventoryBlocked=false;
+  bot.endValue('confirmed');
+  if(bot.journal){bot.inventoryBlocked=true;return false;}
+  bot.event?.('recovery.goldConfirmed',{id:j.id,kind:j.kind,peer:j.peer,
+   quantity:j.quantity,extraReceived:result.extraReceived,
+   reason:'Matching old journals, exact sender balance loss and receiver gain; no resend'});
+  goldSample=null;goldStatus={eligible:false,reason:'confirmed',extraReceived:result.extraReceived};
+  return true;
+ }
+
  function authorize(kind){if(!kind.startsWith('bank.'))return true;if(me.name!==cfg.party.merchant)return false;const other=[...bot.transport.peers].map(([name,h])=>({name,...h})).find(h=>h.bankOwner&&h.name!==me.name&&h.running&&Date.now()-h.received<cfg.general.messageTtlMs);if(other){conflict=other.name;bot.report('Bankbesitz-Konflikt: '+other.name);return false;}conflict=null;lease={owner:me.name,session:bot.session,realm:p.realm(),epoch:Date.now(),purpose:kind,expires:Date.now()+cfg.general.messageTtlMs};return true;}
  // Resolve a legacy bank_store that the server executed as a stack swap.
  // Both addressed slots, the complete before-inventory and gold must match.
@@ -137,6 +226,7 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return true;
  }
  function reconcile(){const j=bot.journal;if(!j)return false;
+  if(['gold.send','gold.receive'].includes(j.kind))return reconcileGold();
   if(j.kind==='exchange')return reconcileExchange();
   if(unchangedGatherJournal(bot)){
    bot.inventoryBlocked=false;
@@ -152,5 +242,5 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   if(confirmed){bot.event('recovery.confirmed',{kind:j.kind,reason:'Gepinnte Bestände und Gold-/Equipänderung stimmen überein'});bot.inventoryBlocked=false;bot.endValue('confirmed');return !bot.journal;}
   bot.event('recovery.unresolved',{kind:j.kind,reason:'Beobachtung ist nicht eindeutig; kein erneuter Versand'});return false;
  }
- return {authorize,reconcile,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus}),close(){lease=null;}};
+ return {authorize,reconcile,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus}),goldEvidence,close(){lease=null;}};
 }

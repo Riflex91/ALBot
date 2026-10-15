@@ -34,3 +34,9 @@ export function prioritizeAdmittedProductionGoal(ranked,{
  jobs.unshift(old);
  return jobs;
 }
+
+// A market search only admits movement, not an item transaction.
+// Keep the goal stable for a market buy only after executor/journal admission.
+export function admittedProductionAction(step,accepted,{journal=false,pending=false}={}){
+ return accepted===true&&(step?.kind!=='marketBuy'||journal===true||pending===true);
+}

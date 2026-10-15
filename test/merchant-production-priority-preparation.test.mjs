@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {merchantItemTaskId,prioritizeAdmittedProductionGoal}
+import {merchantItemTaskId,prioritizeAdmittedProductionGoal,admittedProductionAction}
  from '../src/merchant/production-priority.mjs';
 import {createFairTasks} from '../src/core/fair-tasks.mjs';
 
@@ -69,4 +69,13 @@ test('missing goals, malformed snapshots and empty plan never fabricate work',()
   ...cfg,scoreOf:()=>NaN}),[a]);
  assert.deepEqual(prioritizeAdmittedProductionGoal([a],{
   ...cfg,admittedAt:NaN}),[a]);
+});
+
+test('market travel never locks a speculative production goal; admitted trade may hold',()=>{
+ assert.equal(admittedProductionAction({kind:'marketBuy'},true),false);
+ assert.equal(admittedProductionAction({kind:'marketBuy'},false,{journal:true}),false);
+ assert.equal(admittedProductionAction({kind:'marketBuy'},true,{journal:true}),true);
+ assert.equal(admittedProductionAction({kind:'marketBuy'},true,{pending:true}),true);
+ assert.equal(admittedProductionAction({kind:'exchange'},true),true);
+ assert.equal(admittedProductionAction({kind:'exchange'},false),false);
 });

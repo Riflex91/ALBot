@@ -2,6 +2,7 @@ import {potionTarget,onlineSupplyFarmers,teamPotionRefillSnapshot} from '../item
 import {createTrackerAcquisition} from './tracker-acquisition.mjs';
 import {forecastExchange} from './storage-plan.mjs';
 import {distance,samePlace,identity} from '../core/policy.mjs';
+import {exchangeSource} from '../production/materials.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
 import {merchantItemTaskId} from './production-priority.mjs';
@@ -16,6 +17,13 @@ export function wholeBankRule(item,rule,{reserved=0,explicit=false}={}){
    !rule||rule.action!=='bank'||rule._autoDisposition!==true||
    explicit||reserved!==0)return rule;
  return {...rule,batch:Math.max(rule.batch??1,item.q??1),keep:0,teamReserve:0};
+}
+// Distinguish an actual quest/Exchange-NPC journey from a bank preflight
+// that happened to be selected while the production step was an exchange.
+export function exchangeNpcJourneyMatches(order,destination){
+ return !!order&&order.owner==='economy'&&
+  !!order.dest&&!!destination&&samePlace(order.dest,destination)&&
+  distance(order.dest,destination)<=25;
 }
 export function canOpenMerchantStand(bot){
  const {p,cfg,me,exec}=bot;
@@ -521,6 +529,19 @@ export function createMerchant(bot){
  }
  function rememberProductionRoute(step,rule=null){
   if(bot.movement.order?.owner!=='economy'||!step)return;
+  if(step.kind==='exchange'){
+   const verified=exchangeSource(p.G,step.item,p.root?.S??p.parent?.S??{});
+   const destination=verified.quest?verified.destination:e.destination?.('exchange');
+   if(!verified.ready||!exchangeNpcJourneyMatches(bot.movement.order,destination)){
+    // An initial production.tick() may travel to the bank just to refresh
+    // storage evidence. That trip is NOT an admitted exchange journey.
+    bot.event?.('merchant.exchangeRouteNotQuestNpc',{
+     item:step.item,atMap:bot.movement.order.dest?.map??null,
+     expectedMap:destination?.map??null,
+     reason:'Production-Bankvorprüfung ist kein Exchange-NPC-Auftrag'});
+    return;
+   }
+  }
   const ticket=step.kind==='exchange'?
    (rule?.action==='exchange'?(()=>{
     const i=p.c.items.find(x=>x?.name===step.item&&

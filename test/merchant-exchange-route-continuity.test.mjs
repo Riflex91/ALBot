@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMerchant} from '../src/merchant/controller.mjs';
+import {createMerchant,exchangeNpcJourneyMatches} from '../src/merchant/controller.mjs';
 
 function fixture({validTicket=true}={}){
  const events=[],c={name:'My_Merchant',map:'main',in:'main',
@@ -12,7 +12,7 @@ function fixture({validTicket=true}={}){
  const bot={
   running:true,recovering:false,inventoryBlocked:false,journal:null,
   me:{name:c.name,role:'merchant'},farmers:[],
-  p:{c,G:{items:{seashell:{e:10}},maps:{main:{}},skills:{}},
+  p:{c,G:{items:{seashell:{e:10,quest:'seashells'}},quests:{seashells:{map:'main',x:550,y:50}},maps:{main:{}},skills:{}},
    root:{},parent:{},read:()=>null,write:()=>true,
    realm:()=> 'USIV',call:()=>null},
   cfg:{merchant:{enabled:true,stand:false,supply:false,bank:false,
@@ -116,4 +116,33 @@ test('movement must finish before exchange is attempted and original ticket is r
  missing.merchant.tick();
  assert.equal(missing.merchant.status().productionContinuation,null,
   'do not invent exchange authority if initial rule could not be verified');
+});
+
+test('bank preflight must NEVER count as arrived Seashell quest journey',()=>{
+ const f=fixture();
+ const bank={map:'bank',x:0,y:-100,radius:90};
+ f.bot.production.tick=()=>{
+  f.bot.movement.order={owner:'economy',dest:bank};return true;
+ };
+ f.merchant.tick();
+ assert.equal(f.merchant.status().productionContinuation,null,
+  'bank inspection cannot be labeled as pending elixir exchange');
+ assert.ok(f.events.some(e=>e.name==='merchant.exchangeRouteNotQuestNpc'&&
+  e.data.atMap==='bank'&&e.data.expectedMap==='main'));
+ assert.ok(!f.events.some(e=>e.name==='merchant.exchangeRouteHeld'));
+ f.bot.movement.order=null;f.c.map='bank';f.c.in='bank';f.c.x=0;f.c.y=-100;
+ f.phase('marketBuy');
+ f.merchant.tick();
+ assert.equal(f.resumes(),0,'no value action at bank');
+});
+
+test('exchange destination matching checks actual quest coordinates and map',()=>{
+ const route={owner:'economy',dest:{map:'main',x:550,y:50,radius:375}};
+ const quest={map:'main',x:550,y:50};
+ assert.equal(exchangeNpcJourneyMatches(route,quest),true);
+ assert.equal(exchangeNpcJourneyMatches({...route,dest:{...route.dest,x:565}},quest),true);
+ assert.equal(exchangeNpcJourneyMatches({...route,dest:{...route.dest,x:600}},quest),false);
+ assert.equal(exchangeNpcJourneyMatches({...route,dest:{...route.dest,map:'bank'}},quest),false);
+ assert.equal(exchangeNpcJourneyMatches({...route,owner:'logistics'},quest),false);
+ assert.equal(exchangeNpcJourneyMatches({...route,dest:null},quest),false);
 });

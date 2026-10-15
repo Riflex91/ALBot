@@ -110,7 +110,7 @@ export function inspectGoldRecovery(bot){
     !Number.isSafeInteger(other.before)||other.before<0||
     !Number.isSafeInteger(other.balance)||other.balance<0||
     (!other.verified&&(!peer.inventoryBlocked||peer.journal!==true))||
-    (peer.goldBalance!==undefined&&peer.goldBalance!==null&&
+    (!other.verified&&peer.goldBalance!==undefined&&peer.goldBalance!==null&&
       peer.goldBalance!==other.balance))
   return deny('peer-journal-or-live-balance-mismatch');
  const senderSession=local.id.split(':gold:')[0];

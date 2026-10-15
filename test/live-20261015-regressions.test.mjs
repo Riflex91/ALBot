@@ -47,8 +47,8 @@ test('serial monsterhunt follows actual quest receipt and later rotation',()=>{
 
 test('official monsterhunt duration is 30 minutes and live remaining ms governs planning',()=>{
  assert.equal(OFFICIAL_HUNT_DURATION_MS,1800000);
- const q=normalizedHunt({id:'booboo',c:12,ms:120000,sn:'US IV'});
- assert.deepEqual(q,{id:'booboo',c:12,ms:120000,sn:'US IV'});
+ const q=normalizedHunt({id:'booboo',c:12,ms:150000,sn:'US IV'});
+ assert.deepEqual(q,{id:'booboo',c:12,ms:150000,sn:'US IV'});
  assert.equal(huntDeadlineStatus(q,'USIV',20,5).state,'viable');
  assert.equal(huntDeadlineStatus({...q,ms:60000},'USIV',20,5).state,'insufficient-time');
  assert.equal(huntDeadlineStatus({...q,ms:0},'USIV',20,5).state,'expired');

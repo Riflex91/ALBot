@@ -34,6 +34,20 @@ export function selectCatchUpSwap(members,current,{levelGap=2,protectedNames=[]}
   gap:outgoing.level-incoming.level};
 }
 export function chooseCombatLeader(members){return members.filter(x=>x.running&&!x.rip&&x.hp>0&&x.stats?.attack>0).map(x=>({...x,leaderScore:(['warrior','paladin'].includes(x.class)?5:0)+Math.log1p(x.stats.attack*(x.stats.frequency??1))+Math.log1p(x.stats.armor??0)/2+(x.hp/Math.max(1,x.max_hp))*3})).sort((a,b)=>b.leaderScore-a.leaderScore||a.name.localeCompare(b.name))[0]?.name??null;}
+// Keep a currently healthy, selected farming leader stable. Re-ranking by
+// short-lived health/armor/damage observations every account tick otherwise
+// discards shared farm plans and sends followers across the map. A boss/event
+// may deliberately elect its best available combat leader instead.
+export function electStableCombatLeader(members,target,current,{
+ explicit='',bossOrEvent=false
+}={}){
+ const selected=new Set(target??[]);
+ if(explicit&&selected.has(explicit))return explicit;
+ const active=(members??[]).filter(m=>selected.has(m.name)&&m.running&&!m.rip&&
+  Number.isFinite(m.hp)&&m.hp>0);
+ if(!bossOrEvent&&active.some(m=>m.name===current))return current;
+ return chooseCombatLeader(active)??(active[0]?.name??null);
+}
 // Wealth snapshots contain monetary balances only; inventories and transferred
 // gold are never added as estimates. Missing/future/stale peers fail conservative.
 export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conservative'){
@@ -258,9 +272,10 @@ export function createAccount(bot){
   bot.accountChoice={names:target,reason:training?'Levelausgleich aus belegten Charakterleveln (kein Wechsel ohne Rückstand und Mindesthaltezeit)':
    cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder',
    catchUp:swap??null,nextEligibleAt:training?changed+Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000):null};
-  const elected=cfg.party.leader||chooseCombatLeader(members.filter(x=>target.includes(x.name)))||
-   (target.includes(bot.leader)?bot.leader:null)||
-   target.find(name=>members.some(x=>x.name===name&&x.running))||target[0]||bot.leader;
+  const elected=electStableCombatLeader(members,target,bot.leader,{
+   explicit:cfg.party.leader,
+   bossOrEvent:!!bossObjective||['boss','event'].includes(task)
+  })||target[0]||bot.leader;
   if(JSON.stringify(target)===JSON.stringify(bot.farmers)){if(elected!==bot.leader&&apply(target,elected)){sequence++;bot.event('account.leader',{leader:elected,reason:'Bekannte aktuelle Fähigkeiten, Schutz und Kampfstärke'});}return;}
   const out=bot.farmers.find(n=>!target.includes(n)),into=target.find(n=>!bot.farmers.includes(n));
   if(out&&into&&out!==me.name&&p.headless===false){

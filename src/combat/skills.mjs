@@ -1,6 +1,7 @@
 import {distance,samePlace,matches} from '../core/policy.mjs';
 import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
+import {provisionalImpactDamage} from './impact-coordination.mjs';
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 // AoE is a normal farmer capability. Limits on hostile targets, pulls,
 // mana, PVP, weapons and cooldowns are still enforced in use().
@@ -195,10 +196,15 @@ export function createSkills(bot){
       // Returning a promise from the skill is not equivalent to a hit.
       const affected=multi?selected.map(x=>x.id):
        target?.id?[target.id]:target?.name?[target.name]:[];
-      if((s.hostile||id==='heal')&&affected.length)
+      if((s.hostile||id==='heal')&&affected.length){
+       const damage=s.hostile?Object.fromEntries(affected.map(targetId=>{
+        const live=bot.entity(targetId);
+        return [targetId,provisionalImpactDamage(p.c,live,s)];
+       }).filter(([,amount])=>amount>0)):{};
        dispatchedIntent=bot.impactIntents?.launched(id,affected,{
-        kind:id==='heal'?'heal':'damage'
+        kind:id==='heal'?'heal':'damage',damage
        })??null;
+      }
       if(!['3shot','5shot'].includes(id))return invoked;
       const noTarget=x=>['no_target','not_there'].includes(String(x?.reason??x?.message??''));
       const transient=()=>{bot.target=null;
@@ -206,7 +212,7 @@ export function createSkills(bot){
         return {transient:'no_target'};};
       return Promise.resolve(invoked).then(v=>noTarget(v)?transient():v,
         err=>{if(noTarget(err))return transient();throw err;});
-    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:(state,result)=>{if(dispatchedIntent)bot.impactIntents?.settle(dispatchedIntent,state);if(consume)bot.endValue(state);if(result?.transient==='no_target'){count(id,'targetBlocked');return;}if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
+    },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:(state,result)=>{if(dispatchedIntent)bot.impactIntents?.settle(dispatchedIntent,result?.transient?'rejected':state);if(consume)bot.endValue(state);if(result?.transient==='no_target'){count(id,'targetBlocked');return;}if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
     if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve,
      ...(multi?{targetCount:selected.length,targetIds:selected.map(e=>e.id),engagedTargets:engaged.length,visibleTargets:visible.length,neutralTargets:neutralCount,targetLimit:limit,newPullLimit:cfg.farming.maxAggro??1,extraPullAllowance:additional,...(thirdTargetDiagnostics()??{})}: {})});}return accepted;
   }

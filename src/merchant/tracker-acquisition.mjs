@@ -93,8 +93,16 @@ export function createTrackerAcquisition(bot){
    !p.c.items.some(i=>i?.name==='monstertoken'&&!protectedItem(i)&&i.q>=4)&&
    !!recipient();
  }
- function eligible(){return !!bankCandidate()||!!candidate()||!!(recipient()&&
-   bot.bank?.catalogStock?.()?.some(r=>r.item?.name==='tracker'&&!protectedItem(r.item)))||bankProbeDue();}
+ function catalogCandidate(){
+  // Planning-only bank rows can justify a fresh inspection, but they are
+  // never retrieval authority. A previously failed verification must not
+  // trigger another bank journey every time the Merchant leaves the bank.
+  return Date.now()>=nextBankProbe&&!p.c.bank&&!!recipient()&&
+   bot.bank?.catalogStock?.()?.some(r=>r.item?.name==='tracker'&&
+    !protectedItem(r.item))===true;
+ }
+ function eligible(){return !!bankCandidate()||!!candidate()||
+   catalogCandidate()||bankProbeDue();}
  function tick(){
   if(pending){
    const h=bot.transport?.fresh?.(pending.recipient);
@@ -105,9 +113,16 @@ export function createTrackerAcquisition(bot){
    }else{reason=pending.invalid?'invalid-durable-state':'await-recipient';return false;}
   }
   // A fresh catalog may justify travel, never withdrawal without live slots.
-  if(!bankCandidate()&&recipient()&&!p.c.bank){
+  if(catalogCandidate()&&!bankCandidate()){
    const row=bot.bank?.catalogStock?.().find(r=>r.item?.name==='tracker'&&!protectedItem(r.item));
-   if(row){reason='bank-travel-for-verified-stock';bot.bank.ready(row.pack);return true;}
+   if(row){
+    // Positive cached stock is a planning hint only. Bounded one probe per
+    // three minutes, even when the live pack lacks the promised Tracker.
+    nextBankProbe=Date.now()+180000;
+    reason='bank-travel-for-verified-stock';
+    const arrived=bot.bank.ready(row.pack);
+    return !!arrived||bot.movement?.order?.owner==='economy';
+   }
   }
   const stored=bankCandidate();
   if(stored){

@@ -39,8 +39,24 @@ export function farmAreaHistoryKey(realm,hour,spawnKey,gears){
  return realm+':'+hour+':'+spawnKey+':'+knowledgeFingerprint(gears.map(semanticGear));
 }
 import {huntForFarmer,advanceHuntCycle} from './hunt-rotation.mjs';
+// A pending, unobservable or unsafe monsterhunt may not starve the shared
+// farming plan. Only the verified quest monster earns quest priority.
+// Existing safely ranked farm targets remain available as temporary work.
+export function selectHuntArea(ranking,hunt){
+ const ordinary=ranking?.[0]??null;
+ if(!hunt)return {area:ordinary,kind:'farm',deferred:null};
+ if(hunt.phase==='combat'){
+  const matching=ranking?.find(row=>row.target===hunt.monster);
+  return matching?{area:matching,kind:'hunt',deferred:null}:
+   {area:ordinary,kind:'farm',deferred:'NO_SAFE_HUNT_SPAWN'};
+ }
+ const deferred=hunt.phase==='turnin'?'HUNT_TURNIN_PENDING':
+  hunt.phase==='acquire'?'HUNT_ACQUIRE_PENDING':'HUNT_STATUS_UNVERIFIED';
+ return {area:ordinary,kind:'farm',deferred};
+}
+
 export function createTeamPlan(bot){
- const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
+ const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
   return farmAreaHistoryKey(p.realm(),new Date(now).getUTCHours(),spawnKey,
@@ -132,16 +148,46 @@ export function createTeamPlan(bot){
   const types=candidates().filter(allowed),locations=spawnLocations(p.G,types,cfg.world.excludedMaps,cfg.farming.pvp),teamDps=Math.max(1,combat.reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0));
   ranking=locations.filter(s=>!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);
    const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:Math.sqrt(Math.max(1,xp)*Math.max(1,gold));return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,pressure:empty>.6?'spawn-starved':foreign>2?'contested':'healthy'};}).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
-  let next=hunt?.phase==='combat'?ranking.find(r=>r.target===hunt.monster):
-   hunt?null:ranking[0];let selectedRequest=next?.target===request?.monster?request:null;const old=ranking.find(r=>r.key===current?.key);if(!hunt&&old&&valid(current)&&!selectedRequest&&Date.now()-current.started<(cfg.farming.planHoldMs??60000)||!hunt&&old&&valid(current)&&!selectedRequest&&next&&next.score<old.score*(1+(cfg.farming.switchImprovement??.2)))next=old;selectedRequest=next?.target===request?.monster?request:null;
-  if(!next){if(hunt&&current){current=null;bot.target=null;
+  const selected=selectHuntArea(ranking,hunt);
+  let next=selected.area,selectedRequest=!hunt&&next?.target===request?.monster?request:null;
+  const old=ranking.find(r=>r.key===current?.key);
+  // Keep existing hold-time for safe ordinary farming while waiting for
+  // the active farmer's quest NPC or an independently verified hunt spawn.
+  const holdOrdinary=selected.kind==='farm'&&current?.kind==='farm';
+  if(holdOrdinary&&old&&valid(current)&&!selectedRequest&&
+    (Date.now()-current.started<(cfg.farming.planHoldMs??60000)||
+     !!next&&next.score<old.score*(1+(cfg.farming.switchImprovement??.2))))
+   next=old;
+  selectedRequest=!hunt&&next?.target===request?.monster?request:null;
+  const fallbackKey=selected.deferred?selected.deferred+':'+hunt?.owner+':'+(hunt?.monster??''):null;
+  if(fallbackKey!==huntFallback){
+   huntFallback=fallbackKey;
+   if(fallbackKey)bot.event?.('hunt.farmFallback',{owner:hunt.owner,phase:hunt.phase,
+    monster:hunt.monster??null,reason:selected.deferred,alternative:next?.target??null});
+  }
+  if(!next){
+   if(current){current=null;bot.target=null;
     if(['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();}
-   if(hunt?.phase==='combat')bot.reason='Monsterhunt '+hunt.owner+' / '+hunt.monster+': kein sicherer Spawn';
-   return;}const same=current?.key===next.key&&current.objective===(selectedRequest?.objective??null);const bounds=next.bounds;const proposal={...next,bounds,definition:knowledgeFingerprint([p.G.monsters[next.target],bounds]),kind:hunt?.phase==='combat'?'hunt':selectedRequest?(selectedRequest.elixir?'elixir':'material'):'farm',objective:selectedRequest?.objective??null,item:selectedRequest?.item??null,leader:bot.leader,realm:p.realm(),id:same?current.id:bot.session+':plan:'+(++generation),started:same?current.started:Date.now(),expires:Date.now()+cfg.general.messageTtlMs*2,reason:hunt?.phase==='combat'?'Monsterhunt '+hunt.owner+' / '+hunt.monster+' ('+hunt.remaining+' offen)':selectedRequest?'Gemeinsamer Material-/Elixierbedarf':'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
+   if(selected.deferred)bot.reason='Monsterhunt '+hunt.owner+': '+selected.deferred+'; kein sicheres Farmziel';
+   return;
+  }
+  const planKind=selected.kind==='hunt'?'hunt':selectedRequest?
+   (selectedRequest.elixir?'elixir':'material'):'farm';
+  const same=current?.key===next.key&&current.kind===planKind&&
+   current.objective===(selectedRequest?.objective??null);
+  const bounds=next.bounds;
+  const proposal={...next,bounds,definition:knowledgeFingerprint([p.G.monsters[next.target],bounds]),
+   kind:planKind,objective:selectedRequest?.objective??null,item:selectedRequest?.item??null,
+   leader:bot.leader,realm:p.realm(),id:same?current.id:bot.session+':plan:'+(++generation),
+   started:same?current.started:Date.now(),expires:Date.now()+cfg.general.messageTtlMs*2,
+   reason:selected.kind==='hunt'?'Monsterhunt '+hunt.owner+' / '+hunt.monster+' ('+hunt.remaining+' offen)':
+    selected.deferred?'Sicheres Zwischenfarming: '+selected.deferred+' ('+hunt.owner+')':
+    selectedRequest?'Gemeinsamer Material-/Elixierbedarf':
+    'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
   if(!same){bot.target=null;if(['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){if(!valid(current)||bot.strategy.busy)return false;if(cfg.party.enabled&&me.name!==bot.leader)return false;if(me.name===bot.leader&&cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()))){bot.reason='Warte auf aktive Gruppe vor Farmreise';return true;}// A 250-unit exit stranded ranged farmers outside verified spawn areas.
   if(samePlace(p.c,current)&&distance(p.c,current)<=Math.min(85,Math.max(40,(cfg.farming.orbitRadius??220)/2)))return false;bot.reason='Gemeinsamer Plan: '+current.target;bot.movement.go({...current,radius:65},'farm');return true;},materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
   return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
-   if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:absence,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
+   if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
 }

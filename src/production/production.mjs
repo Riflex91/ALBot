@@ -214,11 +214,23 @@ export function createProduction(bot){
       },()=>{if(helperSearch===search){search.quotes.push({...candidate,chance:NaN});search.index++;}}),{delay:1000});
    }
    const input=e.value(i),output=e.value({...i,level:(i.level??0)+1});
-   const choice=search.quotes.length&&search.quotes.every(q=>Number.isFinite(q.chance))?
-    planMutationHelpers(bot,i,search.quotes,kind,Math.max(r.minChance,cfg.production.minChance)):
-    {action:'bank',ev:input,reason:'helper-preview-unverified'};
+   // Invalid or unsupported preview combinations cannot poison the entire
+   // candidate list: only individually server-verified quotes may compete.
+   // Wait for every attempted preview before planning a finite helper choice.
+   const verifiedQuotes=search.quotes.filter(q=>Number.isFinite(q.chance)&&
+    q.chance>=0&&q.chance<=1&&Number.isFinite(q.cost)&&q.cost>=0);
+   const choice=search.index>=search.rows.length&&verifiedQuotes.length?
+    planMutationHelpers(bot,i,verifiedQuotes,kind,Math.max(r.minChance,cfg.production.minChance)):
+    {action:'bank',ev:input,reason:search.index<search.rows.length?
+     'helper-preview-incomplete':'helper-preview-unverified'};
    bot.intelligence?.recordHelpers(i,choice);
-   if(choice.action!==kind)return false;
+   if(choice.action!==kind){
+    if(search.reported!==true){search.reported=true;
+     bot.event?.('production.helperDeferred',{item:i.name,level:i.level??0,kind,
+      checked:search.quotes.length,verified:verifiedQuotes.length,
+      reason:choice.reason??'no-profitable-safe-helper',minimum:Math.max(r.minChance,cfg.production.minChance)});
+    }return false;
+   }
    r={...r,scroll:choice.scroll,offering:choice.offering};
   }
   const scrollName=useScroll1?'scroll1':r.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',i));

@@ -1,7 +1,7 @@
 import {potionTarget,onlineSupplyFarmers,teamPotionRefillSnapshot} from '../items/potion-supply.mjs';
 import {createTrackerAcquisition} from './tracker-acquisition.mjs';
 import {forecastExchange} from './storage-plan.mjs';
-import {distance,samePlace} from '../core/policy.mjs';
+import {distance,samePlace,identity} from '../core/policy.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
 import {planPickupCapacity,pickupCleanupCandidates,pickupOperatingTarget} from './pickup-capacity.mjs';
@@ -520,19 +520,46 @@ export function createMerchant(bot){
  }
  function rememberProductionRoute(step,rule=null){
   if(bot.movement.order?.owner!=='economy'||!step)return;
+  const ticket=step.kind==='exchange'?
+   (rule?.action==='exchange'?(()=>{
+    const i=p.c.items.find(x=>x?.name===step.item&&
+     (x.level??0)===(step.level??0)&&e.safe(x));
+    return i?{kind:'exchange',item:step.item,level:step.level??0,
+     rule:structuredClone(rule),variant:identity(i),
+     sourceProof:step.sourceProof??null}:null;
+   })():bot.production?.captureExchangeRoute?.(step)??null):null;
+  if(step.kind==='exchange'&&!ticket)return;
   productionContinuation={kind:step.kind,item:step.item,level:step.level??0,
-   action:rule?.action??null,at:Date.now(),until:Date.now()+90000};
+   action:rule?.action??null,ticket,
+   destination:{...bot.movement.order.dest},
+   at:Date.now(),until:Date.now()+180000};
+  if(ticket)bot.event?.('merchant.exchangeRouteHeld',{
+   item:step.item,recipe:ticket.rule.recipe??null,
+   reason:'Original freigegebener Exchange-Auftrag wartet auf NPC-Ankunft'});
  }
  function resumeProductionAtNpc(){
   if(!productionContinuation||bot.movement.order||
    bot.journal||bot.inventoryBlocked)return false;
   const route=productionContinuation;
   if(Date.now()>route.until){productionContinuation=null;return false;}
-  // An arriving NPC route is an admitted job; resume before the pressure
-  // planner can issue an opposing bank journey.
+  if(route.kind==='exchange'){
+   // Never use a stale admission to execute at another NPC, or while still
+   // physically moving. A canceled route yields to normal work.
+   if(!route.destination||!samePlace(p.c,route.destination)||
+      distance(p.c,route.destination)>(route.destination.radius??375)){
+    productionContinuation=null;return false;
+   }
+   if(p.c.moving)return true;
+  }
+  // The active production plan may have changed during this journey.
+  // Only the original scoped exchange ticket can execute, and the
+  // Production controller rechecks every source/stock/capacity/value guard.
   const step=bot.production?.status?.()?.steps?.[0];
   let accepted=false;
-  if(step?.kind===route.kind&&step.item===route.item&&
+  if(route.kind==='exchange'){
+   accepted=!!route.ticket&&
+    !!bot.production?.resumeExchangeRoute?.(route.ticket);
+  }else if(step?.kind===route.kind&&step.item===route.item&&
    (step.level??0)===route.level)accepted=bot.production.tick();
   else if(['upgrade','compound'].includes(route.action)){
    const slot=p.c.items.findIndex(i=>i?.name===route.item&&(i.level??0)===route.level);
@@ -547,6 +574,8 @@ export function createMerchant(bot){
    if(bot.movement.order?.owner==='economy')rememberProductionRoute(step??route);
    return true;
   }
+  if(route.kind==='exchange')bot.event?.('merchant.exchangeResumeRejected',{
+   item:route.item,reason:'Zielbedarf, NPC, Bestand oder Sicherheitsfreigabe geändert'});
   return false;
  }
  function pressureFingerprint(){
@@ -831,7 +860,7 @@ export function createMerchant(bot){
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
    const accepted=job.run();
    if(bot.movement.order?.owner==='economy'&&
-     (job.id==='production'||['upgrade','compound'].includes(job.r?.action))){
+     (job.id==='production'||['upgrade','compound','exchange'].includes(job.r?.action))){
     const step=job.id==='production'?bot.production?.status?.()?.steps?.[0]:
      {kind:job.r.action,item:job.r.item,level:job.r.minLevel};
     rememberProductionRoute(step,job.id==='production'?null:job.r);

@@ -60,7 +60,7 @@ export function createMarket(bot){
   marketProbes.set(key,now+MARKET_REPROBE_MS);
   if(cfg.merchant.position.enabled)e.travel(d,'Marktsuche');
   else e.npcTravel(d,'Marktsuche');
-  return !!bot.movement?.order?.owner==='economy';
+  return bot.movement?.order?.owner==='economy';
  }
  function wishlist(item,r){
   const unitPrice=price(item,r),q=Math.floor(Math.min(r.batch,r.targetCount-e.count(item),r.maxCount-e.count(item))),cost=q*unitPrice,tradeSlot=r.slot;

@@ -31,7 +31,7 @@ export function verifiedAdaptiveCapacity(profiles,context,max,healthy,enabled=tr
 // still vetoes the attempt. No boss/event/foreign or unknown-risk pull.
 export function safeThreeShotOpportunity({healthy,max,failed,planned,visible,safe,teamNames=[]}){
  return !!(healthy&&max>=3&&!failed&&planned&&
-  (visible??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&!m.target&&
+  (visible??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
    m.type==='monster'&&m.mtype===planned&&(!m.target||teamNames.includes(m.target))&&safe(m))
    .filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).length>=3);
 }

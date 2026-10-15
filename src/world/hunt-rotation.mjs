@@ -26,3 +26,47 @@ export function advanceHuntCycle(state,roster,hunt){
  const changed=JSON.stringify(next)!==JSON.stringify(state);
  return {state:next,objective:{owner:names[next.index],phase:next.phase},changed};
 }
+
+
+// An active quest is never altered by an unavailable spawn. Suspend its
+// prioritization for a bounded interval, then offer the next farmer a turn.
+// Only the leader may call this AFTER a complete safe-spawn evaluation.
+export function skipHuntWithoutSpawn(state,roster,verified,now=Date.now(),retryMs=300000){
+ const names=(roster??[]).filter(n=>typeof n==='string'&&n);
+ const index=state?.index;
+ if(!names.length||!Number.isInteger(index)||index<0||index>=names.length||
+    verified?.safeSpawnChecked!==true||verified?.owner!==names[index]||
+    typeof verified?.monster!=='string'||!verified.monster||
+    !Number.isSafeInteger(verified.remaining)||verified.remaining<=0||
+    !Number.isFinite(now)||retryMs<1000)
+  return {state,changed:false};
+ const skipped={...(state.skipped??{})};
+ skipped[verified.owner]={id:verified.monster,until:now+retryMs};
+ const next={...state,skipped,index:(index+1)%names.length,
+  phase:'acquire',lastId:null};
+ return {state:next,changed:true};
+}
+
+// Re-evaluate previously deferred requests only when their time expires or
+// their actual quest changes. A complete round of rejected hunts yields one
+// stable "blocked" objective rather than endlessly rotating the team.
+export function advancePastSkippedHunts(state,roster,lookup,now=Date.now()){
+ const names=(roster??[]).filter(n=>typeof n==='string'&&n);
+ if(!names.length||!state||!Number.isInteger(state.index)||
+    state.index<0||state.index>=names.length)
+  return {state,changed:false,allBlocked:false};
+ const original=state.index;
+ let index=original;
+ for(let i=0;i<names.length;i++){
+  const name=names[index],q=lookup(name);
+  const entry=state.skipped?.[name];
+  if(q===undefined||q===null||q.c===0||!entry||
+     entry.id!==q.id||!Number.isFinite(entry.until)||entry.until<=now){
+   if(index===original)return {state,changed:false,allBlocked:false};
+   return {state:{...state,index,phase:'acquire',lastId:null},
+    changed:true,allBlocked:false};
+  }
+  index=(index+1)%names.length;
+ }
+ return {state,changed:false,allBlocked:true};
+}

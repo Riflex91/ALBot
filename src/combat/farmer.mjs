@@ -182,10 +182,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
     const planned=bot.teamPlan?.target(),visible=planned?bot.monsters().filter(m=>m.mtype===planned):[];if(me.name===bot.leader&&visible.length&&visible.every(m=>bot.strategy?.safeTarget(planned,m,true)===false)){
-     const template=p.G.monsters?.[planned];
-     if(template?.hp>0&&visible.every(m=>Number.isFinite(m.max_hp)&&m.max_hp>template.hp)){
-      bot.reason='Starker Altbestand am Farmspawn: Spawnziel beibehalten';return;
-     }
+     // Species baseline HP is already applied by strategy.risk(). Rejection
+     // here therefore represents REAL danger, e.g. high current attack,
+     // rather than the old monster's accumulated hit points alone.
      bot.strategy.failActivity('Sichtbare Gegner stärker als Farmplan; neues sicheres Ziel wählen',planned);bot.reason='Farmziel neu bewerten: sichtbare Gegner zu stark';return;}if(!storageHold&&bot.encounter?.pull()){bot.reason='Kontrollierter Team-Mehrfachpull';return;}
     const mobs=bot.monsters().filter(m=>bot.allowed(m)&&
       (!storageHold||defensiveFarmTarget(m,bot.teamNames)));

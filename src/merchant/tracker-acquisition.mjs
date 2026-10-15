@@ -12,7 +12,7 @@ export function createTrackerAcquisition(bot){
  let pending=saved===null||saved===undefined?null:
    saved&&typeof saved.recipient==='string'&&
    Number.isFinite(saved.at)?saved:{recipient:'',at:0,invalid:true};
- let reason=pending?'await-recipient':'no-need';
+ let reason=pending?'await-recipient':'no-need',nextBankProbe=0;
 
  function recipient(){
   if(!Array.isArray(bot.farmers))return null;
@@ -78,8 +78,23 @@ export function createTrackerAcquisition(bot){
    tokensBefore:p.c.items.reduce((n,i)=>n+(i?.name==='monstertoken'?(i.q??1):0),0),
    trackersBefore:p.c.items.filter(i=>i?.name==='tracker').length};
  }
+ function bankProbeDue(){
+  // A stale bank catalog is NOT evidence for a withdrawal, but it is safe
+  // to revisit the real bank, at a bounded frequency, for missing Tracktrix.
+  return me.role==='merchant'&&cfg.merchant?.enabled&&cfg.merchant.supply&&
+   cfg.merchant.bank&&bot.running&&bot.checkpoint?.durable&&
+   !pending&&!bot.journal&&!bot.inventoryBlocked&&!bot.bank?.pending&&
+   !bot.logistics?.reserved&&Date.now()>=nextBankProbe&&
+   !!p.G?.bank_packs?.items0&&!p.c.bank&&
+   typeof bot.bank?.ready==='function'&&
+   !(cfg.items??[]).some(r=>r?.enabled&&['tracker','monstertoken'].includes(r.item))&&
+   p.c.items.filter(i=>!i).length>(cfg.merchant.minFreeSlots??4)&&
+   !p.c.items.some(i=>i?.name==='tracker'&&!protectedItem(i))&&
+   !p.c.items.some(i=>i?.name==='monstertoken'&&!protectedItem(i)&&i.q>=4)&&
+   !!recipient();
+ }
  function eligible(){return !!bankCandidate()||!!candidate()||!!(recipient()&&
-   bot.bank?.catalogStock?.()?.some(r=>r.item?.name==='tracker'&&!protectedItem(r.item)));}
+   bot.bank?.catalogStock?.()?.some(r=>r.item?.name==='tracker'&&!protectedItem(r.item)))||bankProbeDue();}
  function tick(){
   if(pending){
    const h=bot.transport?.fresh?.(pending.recipient);
@@ -101,6 +116,11 @@ export function createTrackerAcquisition(bot){
     {enabled:true,name:'Bankreserve Tracktrix für Farmer',item:'tracker',
      action:'retrieve',pack:stored.pack,batch:1,maxCount:9999,
      keep:0,teamReserve:0,maxActions:0},1)??false;
+  }
+  if(bankProbeDue()){
+   nextBankProbe=Date.now()+180000;reason='bank-stock-verification';
+   const arrived=bot.bank.ready('items0');
+   return !!arrived||bot.movement?.order?.owner==='economy';
   }
   const plan=candidate();if(!plan)return false;
   const e=bot.economy,d=e?.destination?.('monsterhunter');
@@ -138,5 +158,5 @@ export function createTrackerAcquisition(bot){
   });
  }
  return {eligible,tick,status:()=>({pendingRecipient:pending?.recipient||null,
-   reason}),close(){}};
+   reason,nextBankProbe}),close(){}};
 }

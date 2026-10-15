@@ -20,7 +20,16 @@ export function createStrategy(bot){
  const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':activity?.kind==='quest'?'quest':me.role==='merchant'?'supply':'farm');
  const permittedMap=map=>!!p.G.maps?.[map]&&!w.excludedMaps.includes(map)&&(!p.G.maps[map].pvp||cfg.farming.pvp);
  function members(planned=false){return combatMembers(bot,planned); }
- function risk(id,live,planned=false){const boss=bot.bosses?.evaluate(id,live,planned||!live);if(boss)return boss;return assessCombat({...p.G.monsters?.[id],...live,hp:Math.max(p.G.monsters?.[id]?.hp??0,live?.max_hp??live?.hp??0)},members(planned),w.risk,cfg.farming.maxAggro,{...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
+ function risk(id,live,planned=false){const boss=bot.bosses?.evaluate(id,live,planned||!live);if(boss)return boss;
+ const base=p.G.monsters?.[id];
+ // Naturally grown monsters are a temporary occupant, not a new species
+ // or a permanently dangerous respawn. Calculate spot viability with base
+ // HP while retaining LIVE attack, frequency, mechanics and defenses.
+ const aged=!!(live&&Number.isFinite(base?.hp)&&base.hp>0&&
+   Number.isFinite(live.max_hp)&&live.max_hp>base.hp);
+ const hp=aged?base.hp:Math.max(base?.hp??0,live?.max_hp??live?.hp??0);
+ return assessCombat({...base,...live,hp},members(planned),w.risk,cfg.farming.maxAggro,
+  {...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
  function safeTarget(id,live,quiet=false,planned=false){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm
@@ -93,7 +102,7 @@ export function createStrategy(bot){
  }
  function quest(){
   if(questVisit){
-   if(JSON.stringify(p.c.s?.monsterhunt??null)!==questVisit.before&&questVisit.phase==='observing'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Aktueller Queststatus hat sich geändert'});questVisit=null;nextQuest=Date.now()+60000;plannedAt=0;return false;}
+   if(JSON.stringify(p.c.s?.monsterhunt??null)!==questVisit.before&&questVisit.phase==='observing'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Aktueller Queststatus hat sich geändert'});questVisit=null;nextQuest=Date.now()+5000;plannedAt=0;return false;}
    if(Date.now()>questVisit.until){const phase=questVisit.phase;questVisit=null;nextQuest=Date.now()+60000;bot.event('quest.timeout',{phase});if(phase==='observing')bot.pause('Monsterhunt ungeklärt: Queststatus prüfen');return true;}
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
   }
@@ -105,7 +114,7 @@ export function createStrategy(bot){
   if(!questVisit){questVisit={phase:'travel',before:JSON.stringify(q??null),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Aktiver Farmer nimmt eigenen Auftrag an oder gibt ihn ab'});}
   if(!bot.economy.at(d,70)){bot.reason='Unterwegs: Monsterhunt';bot.movement.go({...d,radius:60},'quest');return true;}
   const visit=questVisit;
-  const accepted=exec.run('quest.monsterhunt',['quest'],()=>bot.running&&!bot.journal&&!bot.logistics.reserved&&bot.economy.at(d,70),()=>{visit.phase='observing';visit.until=Date.now()+15000;return p.call('interact','monsterhunt');},{timeout:10000,delay:60000,observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==visit.before,onSettle:(result,error)=>{
+  const accepted=exec.run('quest.monsterhunt',['quest'],()=>bot.running&&!bot.journal&&!bot.logistics.reserved&&bot.economy.at(d,70),()=>{visit.phase='observing';visit.until=Date.now()+15000;return p.call('interact','monsterhunt');},{timeout:10000,delay:5000,observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==visit.before,onSettle:(result,error)=>{
    if(questVisit!==visit)return;if(result==='confirmed'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Beobachteter Queststatus'});questVisit=null;nextQuest=Date.now()+60000;plannedAt=0;}
    else if(result==='rejected'){bot.event('quest.rejected',{reason:error?.reason??error?.message??'Server lehnt Interaktion ab'});questVisit=null;nextQuest=Date.now()+60000;}
   }});return accepted||!!questVisit;

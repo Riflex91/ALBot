@@ -37,13 +37,14 @@ test('every farmer is permitted to use AoE despite a saved global false flag',()
 });
 test('safe ranger 3shot uses multiple engaged targets with disabled party.aoe',()=>{
  const f=testBot('ranger'),t1={id:'s1',type:'monster',name:'snake',mtype:'snake',map:'main',x:30,y:0,target:'Ranger1',hp:500},
- t2={id:'s2',type:'monster',name:'snake',mtype:'snake',map:'main',x:45,y:0,target:'Ranger2',hp:500};
- f.bot.monsters=()=>[t1,t2];
+ t2={id:'s2',type:'monster',name:'snake',mtype:'snake',map:'main',x:45,y:0,target:'Ranger2',hp:500},
+ t3={id:'s3',type:'monster',name:'snake',mtype:'snake',map:'main',x:50,y:0,target:'Ranger1',hp:500};
+ f.bot.monsters=()=>[t1,t2,t3];
  f.bot.encounter={status:()=>({phase:'BUILD',capacity:3})};
  assert.equal(createSkills(f.bot).use('3shot',t1,0,600),true);
  assert.equal(f.calls.length,1);
  assert.equal(f.calls[0][0],'3shot');
- assert.equal(f.calls[0][1].length,2);
+ assert.equal(f.calls[0][1].length,3);
 });
 test('Mage energize prioritizes maximum observed DPS rather than lowest mana ratio',()=>{
  const allies=[

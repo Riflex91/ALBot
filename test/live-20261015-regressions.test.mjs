@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {transientMovementInterruption} from '../src/core/movement.mjs';
 import {safeThreeShotOpportunity} from '../src/combat/encounter.mjs';
 import {farmRiskHp} from '../src/world/strategy.mjs';
-import {advanceHuntCycle} from '../src/world/hunt-rotation.mjs';
+import {advanceHuntCycle,normalizedHunt,huntForFarmer,huntDeadlineStatus,OFFICIAL_HUNT_DURATION_MS} from '../src/world/hunt-rotation.mjs';
 
 test('native move interruption is transient, not a failed/unreachable bank waypoint',()=>{
  for(const x of ['interrupted',{message:'interrupted'},{reason:'interrupted'},
@@ -43,4 +43,32 @@ test('serial monsterhunt follows actual quest receipt and later rotation',()=>{
  state=advanceHuntCycle(state,roster,{id:'booboo',c:0}).state;
  assert.equal(state.phase,'turnin');
  assert.equal(advanceHuntCycle(state,roster,null).state.index,1);
+});
+
+test('official monsterhunt duration is 30 minutes and live remaining ms governs planning',()=>{
+ assert.equal(OFFICIAL_HUNT_DURATION_MS,1800000);
+ const q=normalizedHunt({id:'booboo',c:12,ms:120000,sn:'US IV'});
+ assert.deepEqual(q,{id:'booboo',c:12,ms:120000,sn:'US IV'});
+ assert.equal(huntDeadlineStatus(q,'USIV',20,5).state,'viable');
+ assert.equal(huntDeadlineStatus({...q,ms:60000},'USIV',20,5).state,'insufficient-time');
+ assert.equal(huntDeadlineStatus({...q,ms:0},'USIV',20,5).state,'expired');
+ assert.equal(huntDeadlineStatus(q,'EUI',20,5).state,'wrong-realm');
+ assert.equal(huntDeadlineStatus({id:'booboo',c:12},'USIV').state,'unverified');
+});
+test('expired hunt rotates without inventing kills or claiming reward',()=>{
+ const roster=['My_Ranger1','My_Ranger2','My_Ranger3'];
+ let r=advanceHuntCycle(null,roster,{id:'booboo',c:2,ms:15000});
+ assert.equal(r.objective.owner,'My_Ranger1');
+ r=advanceHuntCycle(r.state,roster,{id:'booboo',c:2,ms:0});
+ assert.equal(r.objective.owner,'My_Ranger2');
+ assert.equal(r.state.phase,'acquire');
+});
+test('peer monsterhunt timer is reduced by age of last authenticated heartbeat',()=>{
+ const before=Date.now();
+ const q=huntForFarmer('My_Ranger2','My_Ranger1',null,{
+  running:true,rip:false,realm:'USIV',
+  received:before-5000,monsterhunt:{id:'booboo',c:2,ms:12000,sn:'US IV'}
+ },'USIV');
+ assert.ok(q.ms>=6000&&q.ms<=7000);
+ assert.equal(q.sn,'US IV');
 });

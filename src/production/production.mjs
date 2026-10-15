@@ -510,9 +510,44 @@ export function createProduction(bot){
   routeCache.set(cacheKey,rows);return rows.find(r=>r.kind===step.kind)?.score??Infinity;
  }
  const allowedMonsters=()=>bot.teamPlan?bot.teamPlan.candidates().filter(id=>bot.strategy.safeTarget(id,undefined,true,true)):[...new Set(cfg.characters.filter(c=>c.enabled&&c.role==='farmer'&&(!bot.farmers||bot.farmers.includes(c.name))).flatMap(c=>c.farmTargets.length?c.farmTargets:cfg.farming.targets))];
+ // A fully verified local exchange must not be displaced by an unrelated
+ // bank catalog refresh. Normal exchange() remains the sole value authority.
+ function locallyExecutableExchange(){
+  const step=plan[0];
+  if(step?.kind!=='exchange'||!goal||!cfg.production.exchange)return false;
+  const item={name:step.item,level:step.level,
+   ...(step.item===goal.item?goal.variant:{})};
+  const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));
+  if(slot<0)return false;
+  const live=p.c.items[slot],rule=e.rules(item,'production'),
+   quantity=p.G.items?.[live.name]?.e;
+  if(!e.safe(live)||rule?.action!=='exchange'||!e.remaining(rule)||
+     !Number.isSafeInteger(quantity)||quantity<1||
+     e.spare(slot,rule)<quantity||
+     e.count(live)-quantity<(rule.keep??0)+(rule.teamReserve??0)+
+      reserveOther(live.name,live.level??0)||
+     bot.storage?.exchangeAllowed?.(slot,quantity)===false||
+     !capacity([{slot,quantity}]))return false;
+  if(rule.recipe&&(!exchangeDrops(p.G,p.G.drops?.[live.name])
+     .some(x=>x.item===rule.recipe)||
+     qty(rule.recipe,0)>=Math.min(rule.targetCount,rule.maxCount)))
+   return false;
+  const source=exchangeSource(p.G,live.name,p.root?.S??p.parent?.S??{});
+  if(!source.ready)return false;
+  if(step.sourceProof){
+   const proof=JSON.stringify({quest:source.quest,npc:source.npc,
+    destination:source.destination,event:source.event});
+   if(proof!==JSON.stringify(step.sourceProof))return false;
+  }
+  return true;
+ }
  function tick(){
   if(intentBlocked||!goal||!plan.length)return false;
-  if(cfg.production.autonomy&&cfg.merchant.bank&&cfg.production.acquireBy.includes('bank')&&!bot.bank.observed){bot.bank.inspect();return true;}
+  if(cfg.production.autonomy&&cfg.merchant.bank&&
+     cfg.production.acquireBy.includes('bank')&&!bot.bank.observed&&
+     !locallyExecutableExchange()){
+   bot.bank.inspect();return true;
+  }
   const step=plan[0],item={name:step.item,level:step.level,...(step.item===goal.item?goal.variant:{})};
   const r=e.rules(item,['buy','retrieve','farm','marketBuy'].includes(step.kind)?'acquisition':'production');
   if(!r||r.action!==step.kind){const reason='Produktionskette benötigt passende '+step.kind+'-Regel für '+step.item;e.note(reason);bot.event?.('production.blocked',{goal:goal.name,item:step.item,step:step.kind,reason});return false;}

@@ -28,9 +28,12 @@ export function advanceHuntCycle(state,roster,hunt){
  // Suspend that hunt for a bounded period, so three expired quests do not
  // cause a perpetual A->B->C->A rotation on every scheduler tick.
  if(hunt?.ms===0){
-  next.skipped={...(next.skipped??{}),[names[next.index]]:{
-   id:hunt.id,until:Date.now()+60000}};
-  next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
+  const prior=next.skipped?.[names[next.index]];
+  if(!(prior?.id===hunt.id&&prior.until>Date.now())){
+   next.skipped={...(next.skipped??{}),[names[next.index]]:{
+    id:hunt.id,until:Date.now()+60000}};
+   next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
+  }
  }else if(next.phase==='turnin'&&(hunt===null||hunt.c>0)){
   next.index=(next.index+1)%names.length;next.phase='acquire';next.lastId=null;
  }else if(hunt===null&&next.phase==='combat'){

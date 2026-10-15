@@ -44,12 +44,13 @@ test('preventive unallocated triple goes through real preview, budget journal an
  assert.equal(bot.storage.tick(),true);await new Promise(r=>setImmediate(r));assert.equal(bot.storage.tick(),true);
  assert.equal(previews,1);assert.equal(mutations,1);assert.equal(bot.economy.ledger.productionExposure,40);
 });
-test('merchant gold route waits for inventory preparation and does not repeat it en route',()=>{
- const {bot,peers,calls}=fixture();peers.get('A').goldSurplus=100000;peers.get('A').x=1000;let ready=false,preparations=0;
- bot.merchant={prepareGoldPickup:()=>{preparations++;return ready;}};bot.movement={order:null,go:(d,owner)=>{calls.push(owner);bot.movement.order={owner};},stop(){}};
- const gold=createGoldLogistics(bot);assert.equal(gold.travel(),true);assert.equal(calls.length,0);assert.equal(preparations,1);
- ready=true;assert.equal(gold.travel(),true);assert.deepEqual(calls,['gold']);assert.equal(preparations,2);
- gold.travel();assert.equal(preparations,2);
+test('gold surplus no longer initiates a standalone merchant journey',()=>{
+ const {bot,peers,calls}=fixture();peers.get('A').goldSurplus=100000;peers.get('A').x=1000;
+ let preparations=0;
+ bot.merchant={prepareGoldPickup:()=>{preparations++;return true;}};
+ bot.movement={order:null,go:(d,owner)=>{calls.push(owner);bot.movement.order={owner};},stop(){}};
+ const gold=createGoldLogistics(bot);assert.equal(gold.travel(),false);
+ assert.deepEqual(calls,[]);assert.equal(preparations,0);
 });
 
 test('Town channel refuses a late gold offer without cancelling or journaling it',()=>{

@@ -89,7 +89,7 @@ export function huntDeadlineStatus(hunt,realm,estimatedTravelSeconds=0,
  if(!Number.isFinite(hunt.ms))return {state:'unverified',remainingMs:null};
  if(hunt.ms<=0)return {state:'expired',remainingMs:0};
  if(hunt.sn&&typeof realm==='string'&&
-  hunt.sn.replace(/[\\s_-]+/g,'').toUpperCase()!==realm.replace(/[\\s_-]+/g,'').toUpperCase())
+  hunt.sn.replace(/[\s_-]+/g,'').toUpperCase()!==realm.replace(/[\s_-]+/g,'').toUpperCase())
   return {state:'wrong-realm',remainingMs:hunt.ms};
  const neededMs=Math.ceil((Math.max(0,estimatedTravelSeconds)+
   Math.max(0,estimatedSecondsPerKill)*Math.max(0,hunt.c)+

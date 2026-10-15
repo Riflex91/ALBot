@@ -72,7 +72,7 @@ export function createStrategy(bot){
   let next=null;
   if(manual&&['boss','event'].includes(manual.task))next=encounter(manual.task,manual.id);
   else if(!manual){const options=[...(w.events?w.allowedEvents:[]).map(id=>encounter('event',id)),...(w.bosses?w.allowedBosses:[]).map(id=>encounter('boss',id))].filter(Boolean);if(full){const score=a=>{const m=p.G.monsters[a.target],travel=samePlace(p.c,a)?distance(p.c,a)/Math.max(1,p.c.speed??40):60,dps=members(true).reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0),seconds=Math.max(1,m.hp/Math.max(1,dps)),xp=(m.xp??0)*3600/(seconds+travel),gold=expectedMonsterGold(p.G,a.target)*3600/(seconds+travel);return (cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:Math.sqrt(Math.max(1,xp)*Math.max(1,gold)))*1.25;};options.sort((a,b)=>score(b)-score(a));const farm=bot.teamPlan?.status().current?.score??0;next=options[0]&&score(options[0])>=farm?options[0]:null;}else next=options[0]??null;}
-  if(!next&&!manual&&w.quests&&w.questTargets&&p.c.s?.monsterhunt?.c>0){const id=p.c.s.monsterhunt.id,d=safeMonster(id)&&bot.movement.farmLocation?.(id);if(d&&permittedMap(d.map)&&(!full||(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/Math.max(1,p.c.attack*p.c.frequency))*(cfg.world.questPreference??1.1)>=(bot.teamPlan?.status().current?.score??0)))next={...d,kind:'quest',id,target:id,definition:knowledgeFingerprint(p.G.monsters[id]),expires:now+Math.max(10000,w.cacheTtlMs*2)};}
+  if(!next&&!manual&&w.quests&&w.questTargets&&!bot.teamPlan?.orderedHunt?.()&&p.c.s?.monsterhunt?.c>0){const id=p.c.s.monsterhunt.id,d=safeMonster(id)&&bot.movement.farmLocation?.(id);if(d&&permittedMap(d.map)&&(!full||(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/Math.max(1,p.c.attack*p.c.frequency))*(cfg.world.questPreference??1.1)>=(bot.teamPlan?.status().current?.score??0)))next={...d,kind:'quest',id,target:id,definition:knowledgeFingerprint(p.G.monsters[id]),expires:now+Math.max(10000,w.cacheTtlMs*2)};}
   if(activity?.id!==next?.id){bot.target=null;if(bot.movement.order?.owner==='farm'||bot.movement.order?.owner==='world')bot.movement.stop();bot.event('strategy.activity',{kind:next?.kind??'farm',id:next?.id??null});}activity=next;
  }
  function sample(){
@@ -98,10 +98,11 @@ export function createStrategy(bot){
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
   }
   if(bot.teamPlan?.materialActive())return false;
-  if(!w.quests||me.role!=='farmer'||cfg.party.enabled&&me.name!==bot.leader||activity||bot.journal||bot.logistics.reserved)return false;
+  if(!w.quests||me.role!=='farmer'||cfg.party.enabled&&
+    (bot.teamPlan?.orderedHunt?.()?.owner??bot.leader)!==me.name||activity||bot.journal||bot.logistics.reserved)return false;
   const q=p.c.s?.monsterhunt;if(q?.c>0)return false;
   if(Date.now()<nextQuest||!p.has('interact')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
-  if(!questVisit){questVisit={phase:'travel',before:JSON.stringify(q??null),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Leader nimmt Auftrag an oder holt abgeschlossenen Auftrag ab'});}
+  if(!questVisit){questVisit={phase:'travel',before:JSON.stringify(q??null),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Aktiver Farmer nimmt eigenen Auftrag an oder gibt ihn ab'});}
   if(!bot.economy.at(d,70)){bot.reason='Unterwegs: Monsterhunt';bot.movement.go({...d,radius:60},'quest');return true;}
   const visit=questVisit;
   const accepted=exec.run('quest.monsterhunt',['quest'],()=>bot.running&&!bot.journal&&!bot.logistics.reserved&&bot.economy.at(d,70),()=>{visit.phase='observing';visit.until=Date.now()+15000;return p.call('interact','monsterhunt');},{timeout:10000,delay:60000,observe:()=>JSON.stringify(p.c.s?.monsterhunt??null)!==visit.before,onSettle:(result,error)=>{

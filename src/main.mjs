@@ -196,7 +196,7 @@ export function install(root){
     if(!p.c||!p.G){runtimeWarning('state','Spielzustand fehlt');return;}
     // The bank snapshot may arrive after the original action timed out. Only
     // exact, pinned source/destination evidence can release the value lock.
-    if(bot.inventoryBlocked&&(['bank.store','gather.fishing','gather.mining','exchange'].includes(bot.journal?.kind)))bot.recovery?.reconcile();
+    if(bot.inventoryBlocked&&(['bank.store','gather.fishing','gather.mining','exchange','gold.send','gold.receive'].includes(bot.journal?.kind)))bot.recovery?.reconcile();
     if(now()<retryAfter)return;
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;

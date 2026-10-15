@@ -151,6 +151,33 @@ test('3shot exposes why only two neutral targets can be admitted without bypassi
  assert.equal(decision.data.encounterCapacity,2);
  assert.equal(decision.data.rejectedTargets.length,3);
  assert.ok(decision.data.rejectedTargets.every(x=>x.reason==='encounter-capacity-or-aggro-limit'));
+ assert.match(decision.data.rejectedTargetReasons,/bee-2:encounter-capacity-or-aggro-limit/);
+});
+test('leader fills 3shot with safe third neutral bee when encountered size is approved',()=>{
+ const c={name:'Ranger',ctype:'ranger',level:65,map:'main',in:'main',
+  x:0,y:0,range:145,mp:900,max_mp:1000,attack:50,hp:1000,max_hp:1000,
+  slots:{},s:{}};
+ const mobs=Array.from({length:5},(_,i)=>({id:'bee-'+i,type:'monster',mtype:'bee',
+  map:'main',in:'main',x:30+i*5,y:0,hp:400,max_hp:400,
+  target:i<2?'Ranger':null}));
+ const casts=[],events=[];
+ const bot={p:{c,parent:{is_pvp:false},G:{items:{},skills:{'3shot':{
+  class:['ranger'],level:60,mp:200,range:145,hostile:true}},monsters:{bee:{}},
+  maps:{main:{}}},call:(id,...args)=>{
+   if(id==='is_on_cooldown')return false;
+   if(id==='use_skill')casts.push(args[1]);
+  }},cfg:{general:{testLogging:true},farming:{pvp:false,maxAggro:12},
+   party:{enabled:true,aoe:true,aoeMaxTargets:5},skills:[]},
+  me:{name:'Ranger',role:'farmer'},leader:'Ranger',teamNames:['Ranger'],
+  farmers:['Ranger'],teamPlan:{roles:()=>({}),target:()=> 'bee',wantsCombat:()=>true},
+  encounter:{status:()=>({phase:'BUILD',capacity:3})},
+  strategy:{safeTarget:()=>true},monsters:()=>mobs,
+  entity:id=>mobs.find(m=>m.id===id),allowed:()=>true,
+  exec:{run:(_id,_locks,guard,fn)=>guard()?!!(fn(),true):false},
+  allies:()=>[],count:()=>0,event:(type,data)=>events.push({type,data})};
+ createSkills(bot).rotation(mobs[0]);
+ assert.deepEqual(casts[0]?.map(m=>m.id),['bee-0','bee-1','bee-2']);
+ assert.equal(events.find(e=>e.type==='skill.decision')?.data.targetCount,3);
 });
 test('at 42/42, capacity parking preserves reserved gear and consumes only a verified empty bank slot',()=>{
  const gear={name:'ringsj',level:0},items=Array.from({length:42},()=>({...gear}));

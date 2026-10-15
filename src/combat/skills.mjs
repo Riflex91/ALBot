@@ -123,13 +123,20 @@ export function createSkills(bot){
        let reason='not-selected';
        if(e.target)reason=bot.teamNames.includes(e.target)?'party-target-unsafe':'other-target';
        else if(!plan||e.mtype!==plan)reason='different-or-missing-farm-target';
-       else if(!bot.allowed(e)||bot.strategy?.safeTarget?.(e.mtype,e)===false)reason='unsafe-target';
+       else if(bot.cfg.party.enabled&&bot.me?.name!==bot.leader)
+        reason='follower-not-authorized-to-pull';
        else if(phase?.phase!=='BUILD')reason='encounter-not-building';
-       else if(additional<=candidates.filter(x=>!x.target).length)reason='encounter-capacity-or-aggro-limit';
+       else if(additional<=candidates.filter(x=>!x.target).length)
+        reason='encounter-capacity-or-aggro-limit';
+       else if(bot.strategy?.safeTarget?.(e.mtype,e)===false)reason='risk-rejected';
+       else if(!bot.allowed(e))reason='global-target-policy-rejected';
        return {id:e.id,reason};
       });
       return {thirdTargetBlocked:candidates.length<3,
        rejectedTargets:reasons.slice(0,6),
+       // Event serialization flattens object arrays; preserve exact codes
+       // as a readable scalar in exported browser test logs.
+       rejectedTargetReasons:reasons.slice(0,10).map(x=>x.id+':'+x.reason).join('|'),
        encounterPhase:phase?.phase??'unavailable',encounterCapacity:phase?.capacity??null,
        maximumSafeTargets:candidates.length,skillCapacity:limit};
     };

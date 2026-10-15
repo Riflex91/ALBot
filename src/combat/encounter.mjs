@@ -1,5 +1,30 @@
 import {distance} from '../core/policy.mjs';
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
+// Promote one new concurrent pull only after the previous size has a
+// completed, failure-free episode. Unlike an XP-only gate, a successful
+// size-two encounter can progress to size three even when both sizes have
+// similar short-window XP rates. Any measured failure blocks escalation.
+export function verifiedAdaptiveCapacity(profiles,context,max,healthy,enabled=true){
+ const ceiling=Number.isFinite(max)?Math.max(1,Math.floor(max)):1;
+ let capacity=1;
+ for(let size=2;size<=ceiling;size++){
+  const previous=profiles?.[context+':'+(size-1)];
+  const row=profiles?.[context+':'+size];
+  const samples=Number.isSafeInteger(row?.samples)?row.samples:0;
+  const failures=Number.isSafeInteger(row?.failures)?row.failures:0;
+  if(samples>0&&failures>0)break; // fail closed; never probe higher sizes
+  if(samples>0&&failures===0){
+   // Size has been observed safe; it may be kept while testing a new size.
+   capacity=size;continue;
+  }
+  // Only one unmeasured size may be tried in a healthy complete team.
+  if(enabled&&healthy&&previous?.samples>=1&&previous.failures===0){
+   capacity=size;
+  }
+  break;
+ }
+ return capacity;
+}
 export function createEncounter(bot){
  const key='albot:pull:'+bot.me.name;let profiles=bot.p.read(key)??{},active=null,phase='RECOVER',capacity=1,context='',lastSave=0;
  function members(){return bot.farmers.map(n=>n===bot.me.name?{name:n,running:bot.running,hp:bot.p.c.hp,max_hp:bot.p.c.max_hp,mp:bot.p.c.mp,max_mp:bot.p.c.max_mp,gear:bot.gear?.snapshot(),capabilities:bot.capabilities?.snapshot()}:bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip);}
@@ -7,7 +32,8 @@ export function createEncounter(bot){
  function tick(){const ms=members(),target=bot.strategy?.heartbeat?.()?.target??bot.teamPlan?.target(),mobs=bot.monsters().filter(m=>bot.teamNames.includes(m.target)),healthy=ms.length===bot.farmers.length&&ms.every(h=>h.hp/h.max_hp>=(bot.cfg.farming.pullHp??.8)&&h.mp/Math.max(1,h.max_mp)>=(bot.cfg.farming.pullMp??.5));
   context=knowledgeFingerprint([ms.map(h=>[h.name,h.gear?.slots,h.gear?.stats]),target,bot.p.G.monsters?.[target]]);
   const aoe=ms.flatMap(h=>h.capabilities?.aoe??[]),max=(bot.me?.role==='farmer'||bot.cfg.party.aoe)&&aoe.length?Math.min(bot.cfg.farming.maxAggro,bot.cfg.party.aoeMaxTargets,Math.max(...aoe.map(s=>s.capacity))):1;
-  capacity=1;for(let size=1;size<=max;size++){const row=profiles[context+':'+size];if(row?.failures&&row.failures/row.samples>.1)break;const prev=profiles[context+':'+capacity],rate=row?.xp/Math.max(1,row?.seconds??0),previous=prev?.xp/Math.max(1,prev?.seconds??0);if(size===1||row?.samples>=3&&rate>previous*1.05)capacity=size;else if(size===capacity+1&&healthy&&(prev?.samples??0)>=1&&!(prev?.failures)&&bot.cfg.farming.adaptivePull!==false){capacity=size;break;}}
+  capacity=verifiedAdaptiveCapacity(profiles,context,max,healthy,
+   bot.cfg.farming.adaptivePull!==false);
   if(bot.recovering||bot.p.c.rip||active&&ms.length!==bot.farmers.length||ms.some(h=>h.hp/h.max_hp<(bot.cfg.farming.restBelow??.3)||h.mp/Math.max(1,h.max_mp)<.15)){phase=mobs.length?'ABORT':'RECOVER';if(active)complete(true);}else if(!mobs.length){if(active)complete(false);phase=healthy?'BUILD':'RECOVER';}else if(!healthy)phase='HOLD';else if(mobs.length<capacity)phase='BUILD';else phase=mobs.every(m=>m.hp<(bot.p.c.attack??1)*2)?'FINISH':'BURN';
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={target,adaptiveContext:bot.adaptive?.context(),key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0};
  }

@@ -99,7 +99,25 @@ export function createSkills(bot){
         (cfg.farming.maxAggro??1)-allEngaged));
     }
     const additional=Math.floor(extraAllowance());
+    // Already engaged, party-safe targets always occupy the first slots.
+    // Extra targets require an explicit BUILD allowance; visible != safe.
     const candidates=aimed?[...engaged,...visible.filter(canPull).slice(0,additional)]:visible;
+    const thirdTargetDiagnostics=()=>{
+      if(id!=='3shot')return null;
+      const phase=bot.encounter?.status?.(),plan=bot.teamPlan?.target?.();
+      const reasons=visible.filter(e=>!candidates.includes(e)).map(e=>{
+       let reason='not-selected';
+       if(e.target)reason=bot.teamNames.includes(e.target)?'party-target-unsafe':'other-target';
+       else if(!plan||e.mtype!==plan)reason='different-or-missing-farm-target';
+       else if(!bot.allowed(e)||bot.strategy?.safeTarget?.(e.mtype,e)===false)reason='unsafe-target';
+       else if(phase?.phase!=='BUILD')reason='encounter-not-building';
+       else if(additional<=candidates.filter(x=>!x.target).length)reason='encounter-capacity-or-aggro-limit';
+       return {id:e.id,reason};
+      });
+      return {thirdTargetBlocked:candidates.length<3,
+       rejectedTargets:reasons.slice(0,6),
+       encounterPhase:phase?.phase??'unavailable',encounterCapacity:phase?.capacity??null};
+    };
     const selected=multi?candidates.slice(0,limit):[];
     // Retain an approved one-target opener when it has a real purpose.
     // Only avoid spending 200/320 MP and the shared attack opportunity if
@@ -146,7 +164,7 @@ export function createSkills(bot){
         err=>{if(noTarget(err))return transient();throw err;});
     },{delay:every,value:!!consume,observe:consume?()=>bot.count(consume)<prior:null,onSettle:(state,result)=>{if(consume)bot.endValue(state);if(result?.transient==='no_target'){count(id,'targetBlocked');return;}if(['returned','confirmed'].includes(state))count(id,'confirmed');else if(['rejected','timeout','unknown'].includes(state)){count(id,'failed');failedUntil.set(id,Date.now()+3000);}}});
     if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve,
-     ...(multi?{targetCount:selected.length,targetIds:selected.map(e=>e.id),engagedTargets:engaged.length,visibleTargets:visible.length,neutralTargets:neutralCount,targetLimit:limit,newPullLimit:cfg.farming.maxAggro??1,extraPullAllowance:additional}: {})});}return accepted;
+     ...(multi?{targetCount:selected.length,targetIds:selected.map(e=>e.id),engagedTargets:engaged.length,visibleTargets:visible.length,neutralTargets:neutralCount,targetLimit:limit,newPullLimit:cfg.farming.maxAggro??1,extraPullAllowance:additional,...(thirdTargetDiagnostics()??{})}: {})});}return accepted;
   }
   function support(){
     if(!cfg.party.enabled)return false;

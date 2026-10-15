@@ -668,7 +668,12 @@ export function createMerchant(bot){
   if(bot.recovering)return;
   if(bot.movement?.townActive||p.c.c?.town||exec.pending?.has('travel.town'))return;
   if(bot.bank.pending){if(!bot.bank.recoverCapacity())bot.bank.recover();return;}
-  if(!bot.running||p.c.rip||bot.inventoryBlocked||bot.journal||bot.logistics.reserved||exec.busy('inventory'))return;
+  if(!bot.running||p.c.rip||bot.logistics.reserved||exec.busy('inventory'))return;
+  // An unresolved value journal quarantines all new item/gold actions, but
+  // does not suspend read-only team stock observation or coordination.
+  if(bot.inventoryBlocked||bot.journal){
+   teamSupply();bot.reason='Inventar-Abgleich: Wertaktionen pausiert; Teambeobachtung aktiv';return;
+  }
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;
   if(bot.movement.order?.owner==='economy'){
    bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;

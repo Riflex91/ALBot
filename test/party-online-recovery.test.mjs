@@ -26,8 +26,8 @@ test('adaptive team replaces offline third ranger with already-running rogue wit
  try{
   const {bot,events,calls}=accountFixture(['My_Ranger1','My_Ranger2','My_Rogue']);
   const account=createAccount(bot);
-  now+=14999;account.tick();
-  assert.deepEqual(bot.farmers,['My_Ranger1','My_Ranger2','My_Ranger3'],'wait for short stability interval');
+  now+=2999;account.tick();
+  assert.deepEqual(bot.farmers,['My_Ranger1','My_Ranger2','My_Ranger3'],'wait for verified complete three-farmer roster');
   now+=2;account.tick();
   assert.deepEqual(bot.farmers,['My_Ranger1','My_Ranger2','My_Rogue']);
   assert.equal(bot.leader,'My_Ranger1');
@@ -190,4 +190,16 @@ test('no account lifecycle calls without trustworthy offline levels or available
   assert.deepEqual(calls,[]);
   assert.equal(account.status().choice.catchUp,null);
  }finally{Date.now=oldNow;}
+});
+
+test('partial observed farmer roster keeps the existing conservative 15-second stabilization',()=>{
+ const old=Date.now;let now=10000;Date.now=()=>now;
+ try{
+  const {bot}=accountFixture(['My_Ranger1','My_Rogue']);
+  const account=createAccount(bot);
+  now+=3001;account.tick();
+  assert.deepEqual(bot.farmers,['My_Ranger1','My_Ranger2','My_Ranger3']);
+  now+=12000;account.tick();
+  assert.deepEqual(bot.farmers,['My_Ranger1','My_Rogue']);
+ }finally{Date.now=old;}
 });

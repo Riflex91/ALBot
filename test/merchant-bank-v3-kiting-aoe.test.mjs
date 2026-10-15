@@ -102,6 +102,56 @@ test('eligible 3shot uses all available mana instead of requiring 35-percent MP 
  assert.equal(casts[0].targets.length,2);
 });
 
+
+test('3shot prioritizes three approved party-engaged mobs even when encounter cannot pull a new one',()=>{
+ const c={name:'Ranger',ctype:'ranger',level:60,map:'main',in:'main',
+  x:0,y:0,range:145,mp:900,max_mp:1000,attack:50,hp:1000,max_hp:1000,slots:{},s:{}};
+ const mobs=[0,1,2,3,4].map(i=>({id:'bee-'+i,type:'monster',mtype:'bee',
+  map:'main',in:'main',x:30+i*5,y:0,hp:400,max_hp:400,
+  target:i<3?'Ranger':null}));
+ const casts=[],events=[];
+ const bot={p:{c,parent:{is_pvp:false},G:{items:{},skills:{'3shot':{class:['ranger'],level:60,mp:200,range:145,hostile:true}},monsters:{bee:{}},maps:{main:{}}},call:(name,...args)=>{if(name==='is_on_cooldown')return false;if(name==='use_skill')casts.push(args[1]);}},
+  cfg:{general:{testLogging:true},farming:{pvp:false,maxAggro:12},party:{aoe:true,aoeMaxTargets:5},skills:[]},
+  me:{role:'farmer'},teamNames:['Ranger'],farmers:['Ranger'],
+  teamPlan:{roles:()=>({}),target:()=> 'bee',wantsCombat:()=>true},
+  encounter:{status:()=>({phase:'BUILD',capacity:3})},
+  strategy:{safeTarget:()=>true},
+  monsters:()=>mobs,entity:id=>mobs.find(x=>x.id===id),
+  allowed:m=>!!m&&(m.target==='Ranger'||!m.target),
+  exec:{run:(_key,_locks,guard,fn)=>{if(!guard())return false;fn();return true;}},
+  allies:()=>[],count:()=>0,event:(type,data)=>events.push({type,data})};
+ createSkills(bot).rotation(mobs[0]);
+ assert.equal(casts.length,1);
+ assert.deepEqual(casts[0].map(x=>x.id),['bee-0','bee-1','bee-2']);
+ const decision=events.find(e=>e.type==='skill.decision');
+ assert.equal(decision.data.targetCount,3);
+ assert.equal(decision.data.thirdTargetBlocked,false);
+});
+test('3shot exposes why only two neutral targets can be admitted without bypassing encounter safety',()=>{
+ const c={name:'Ranger',ctype:'ranger',level:60,map:'main',in:'main',x:0,y:0,
+  range:145,mp:900,max_mp:1000,attack:50,hp:1000,max_hp:1000,slots:{},s:{}};
+ const mobs=[0,1,2,3,4].map(i=>({id:'bee-'+i,type:'monster',mtype:'bee',
+  map:'main',in:'main',x:30+i*5,y:0,hp:400,max_hp:400,target:null}));
+ const casts=[],events=[];
+ const bot={p:{c,parent:{is_pvp:false},G:{items:{},skills:{'3shot':{class:['ranger'],level:60,mp:200,range:145,hostile:true}},monsters:{bee:{}},maps:{main:{}}},call:(name,...args)=>{if(name==='is_on_cooldown')return false;if(name==='use_skill')casts.push(args[1]);}},
+  cfg:{general:{testLogging:true},farming:{pvp:false,maxAggro:12},party:{aoe:true,aoeMaxTargets:5},skills:[]},
+  me:{role:'farmer'},teamNames:['Ranger'],farmers:['Ranger'],
+  teamPlan:{roles:()=>({}),target:()=> 'bee',wantsCombat:()=>true},
+  encounter:{status:()=>({phase:'BUILD',capacity:2})},
+  strategy:{safeTarget:()=>true},
+  monsters:()=>mobs,entity:id=>mobs.find(x=>x.id===id),
+  allowed:m=>!!m&&(m.target==='Ranger'||!m.target),
+  exec:{run:(_key,_locks,guard,fn)=>{if(!guard())return false;fn();return true;}},
+  allies:()=>[],count:()=>0,event:(type,data)=>events.push({type,data})};
+ createSkills(bot).rotation(mobs[0]);
+ assert.equal(casts.length,1);
+ assert.equal(casts[0].length,2);
+ const decision=events.find(e=>e.type==='skill.decision');
+ assert.equal(decision.data.thirdTargetBlocked,true);
+ assert.equal(decision.data.encounterCapacity,2);
+ assert.equal(decision.data.rejectedTargets.length,3);
+ assert.ok(decision.data.rejectedTargets.every(x=>x.reason==='encounter-capacity-or-aggro-limit'));
+});
 test('at 42/42, capacity parking preserves reserved gear and consumes only a verified empty bank slot',()=>{
  const gear={name:'ringsj',level:0},items=Array.from({length:42},()=>({...gear}));
  const bank=Array.from({length:42},()=>({name:'already-stored',level:0}));

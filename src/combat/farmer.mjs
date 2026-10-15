@@ -16,7 +16,7 @@ export function potionResource(c,threshold=300){
  return hp>threshold?'hp':mp>threshold?'mp':null;
 }
 export function createFarmer(bot){
-  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0};
+  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   // Observe real outgoing basic attacks in addition to skill casts. Failed
@@ -50,10 +50,16 @@ export function createFarmer(bot){
     selected:base,candidates:mobs,character:p.c,roster:bot.farmers,
     realm:p.realm(),now:currentTime,sources,maxRange:range
    });
-   if(chosen.changed)bot.event?.('combat.overkillRedirect',{
-    from:chosen.from,to:chosen.to,conservativePending:chosen.reserved,
-    currentHp:base.hp,mode:'engaged-only',source:'bounded-intents'
-   });
+   if(chosen.changed){
+    const key=chosen.from+':'+chosen.to;
+    if(key!==lastRedirect.key||currentTime-lastRedirect.at>1000){
+     lastRedirect={key,at:currentTime};
+     bot.event?.('combat.overkillRedirect',{
+      from:chosen.from,to:chosen.to,conservativePending:chosen.reserved,
+      currentHp:base.hp,mode:'engaged-only',source:'bounded-intents'
+     });
+    }
+   }
    return chosen.target??base;
   }
   function recover(){

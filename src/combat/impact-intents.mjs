@@ -12,15 +12,18 @@ export function createImpactIntents({
  const keepEvent=e=>{events.push(e);if(events.length>24)events.shift();};
  function prune(){for(const [id,p] of pending)
   if(now()>=p.expires){pending.delete(id);expired++;keepEvent({result:'ttl-expired',action:p.action});}}
- function launched(action,targets,{kind='damage'}={}){
+ function launched(action,targets,{kind='damage',damage=null}={}){
   prune();
   if(!validId(action)||!['damage','heal'].includes(kind)||!Array.isArray(targets)||
      !targets.length||targets.length>5||targets.some(t=>!validId(t))||
      new Set(targets).size!==targets.length||!validId(session)||!validId(realm))
    return null;
   const id=session+':intent:'+(++counter);
+  const budgets=kind==='damage'&&damage&&typeof damage==='object'?
+   Object.fromEntries(targets.filter(t=>Number.isSafeInteger(damage[t])&&
+     damage[t]>0&&damage[t]<=10000000).map(t=>[t,damage[t]])):{};
   const row={id,action,targets:[...targets],kind,actor:name,session,realm,
-   at:now(),expires:now()+ttl,confirmed:[]};
+   at:now(),expires:now()+ttl,confirmed:[],damage:budgets};
   if(pending.size>=bounded)pending.delete(pending.keys().next().value);
   pending.set(id,row);
   return id;
@@ -53,10 +56,13 @@ export function createImpactIntents({
    action:p.action,kind:p.kind,targets:p.targets,
    remainingMs:Math.max(0,p.expires-now()),confirmed:p.confirmed.length
   })),events:events.slice(-8)};}
- function heartbeat(){prune();return [...pending.values()].slice(-3).map(p=>({
-  action:p.action,kind:p.kind,targets:p.targets.slice(0,5),
-  at:p.at,expires:p.expires,session:p.session,realm:p.realm
- }));}
+ function heartbeat(){prune();return [...pending.values()].slice(-3).map(p=>{
+  const outstanding=p.targets.filter(id=>!p.confirmed.includes(id)).slice(0,5);
+  return {action:p.action,kind:p.kind,targets:outstanding,
+   at:p.at,expires:p.expires,session:p.session,realm:p.realm,
+   damage:Object.fromEntries(outstanding.filter(id=>p.damage?.[id]>0)
+    .map(id=>[id,p.damage[id]]))};
+ });}
  return {launched,confirmedHit,settle,snapshot,heartbeat,prune,
   close(){pending.clear();}};
 }

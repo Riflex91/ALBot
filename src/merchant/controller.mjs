@@ -5,6 +5,7 @@ import {distance,samePlace,identity} from '../core/policy.mjs';
 import {exchangeSource} from '../production/materials.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
+import {merchantItemTaskId} from './production-priority.mjs';
 import {planPickupCapacity,pickupCleanupCandidates,pickupOperatingTarget} from './pickup-capacity.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 // A stand may only open while idle. Native smart_move pathfinding can leave
@@ -839,7 +840,7 @@ export function createMerchant(bot){
      if(r.action==='exchange')run=()=>bot.production.exchange(slot,r);
      if(['upgrade','compound'].includes(r.action))run=()=>bot.production.mutate(slot,r);
     }
-    if(run)add(phase+':'+JSON.stringify([r.name,r.action,i.name,i.level??0,r.recipient]),r,()=>{
+    if(run)add(merchantItemTaskId(phase,r,i,slot),r,()=>{
      const done=run();if(done||bot.movement.order||bot.journal)return done;
      if(r.fallback==='bank'&&me.role==='merchant'&&r.action!=='bank')return bot.bank.store(slot,{...r,action:'bank',_originalAction:r.action});
      if(r.fallback==='notify')e.note(r.name+': Voraussetzungen fehlen; Item bleibt erhalten');return false;

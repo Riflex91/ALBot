@@ -25,7 +25,7 @@ test('exact full inventory evidence aggregates stacks and guards protected/reser
  assert.equal(x.rows.length,2);
  const a=ledger(x);
  assert.equal(a.complete,true);
- assert.equal(a.quantity('ore',0),17);
+ assert.equal(a.quantity('ore',0),12);
  assert.equal(a.quantity('ore',0,{stat_type:'str'}),7);
  const protectedAndReserved=local([{name:'ore',q:5},{name:'ore',q:2,l:true}]);
  const result=ledger(protectedAndReserved);

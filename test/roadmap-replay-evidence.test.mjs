@@ -78,7 +78,8 @@ test('low exposure and zero proof never become reliable learning results',()=>{
  assert.equal(compareReplayReports([report({dropped:4})],[report()]).valid,false);
 });
 test('runtime test report samples include XP/level and net potion stocks as observations',()=>{
- const p={c:{name:'Ranger',map:'main',items:[{name:'hpot0',q:240},
+ const p={h:{writeTestReport:()=> 'test-report.json'},log:()=>{},
+  c:{name:'Ranger',map:'main',items:[{name:'hpot0',q:240},
   {name:'mpot0',q:150}],xp:10350,level:47,hp:100,mp:60,
   gold:5000,rip:false},headless:true,G:{version:'test'},realm:()=> 'USIV'};
  const rpt=createTestReport(p,'test');

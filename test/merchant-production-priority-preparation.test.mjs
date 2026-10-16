@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {merchantItemTaskId,prioritizeAdmittedProductionGoal,admittedProductionAction}
+import {merchantItemTaskId,prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMarketPlan,firstEligibleProductionSlot}
  from '../src/merchant/production-priority.mjs';
 import {createFairTasks} from '../src/core/fair-tasks.mjs';
 
@@ -78,4 +78,23 @@ test('market travel never locks a speculative production goal; admitted trade ma
  assert.equal(admittedProductionAction({kind:'marketBuy'},true,{pending:true}),true);
  assert.equal(admittedProductionAction({kind:'exchange'},true),true);
  assert.equal(admittedProductionAction({kind:'exchange'},false),false);
+});
+
+test('market wait yields the active production slot but never suppresses local safe work',()=>{
+ const blocked={kind:'marketBuy',item:'ringsj',level:2};
+ const market={offerWaitMs:i=>i.name==='ringsj'?95000:0};
+ assert.equal(deferNoOfferMarketPlan(blocked,market),95000);
+ assert.equal(deferNoOfferMarketPlan({kind:'exchange',item:'seashell'},market),0);
+ assert.equal(deferNoOfferMarketPlan({kind:'compound',item:'ringsj'},market),0);
+ assert.equal(deferNoOfferMarketPlan(blocked,{offerWaitMs:()=>0}),0);
+ assert.equal(deferNoOfferMarketPlan(blocked,{offerWaitMs:()=>NaN}),0);
+});
+test('plan selects a later safe identical inventory stack, never a locked or kept first copy',()=>{
+ const items=[{name:'ringsj',level:0,l:true},{name:'ringsj',level:0,keep:true},
+  {name:'ringsj',level:0},{name:'ringsj',level:1}];
+ const eligible=i=>!i.l&&!i.keep;
+ assert.equal(firstEligibleProductionSlot(items,{name:'ringsj',level:0},eligible),2);
+ assert.equal(firstEligibleProductionSlot(items,{name:'ringsj',level:1},eligible),3);
+ assert.equal(firstEligibleProductionSlot(items,{name:'seashell',level:0},eligible),-1);
+ assert.equal(firstEligibleProductionSlot(items,{name:'ringsj',level:0},()=>false),-1);
 });

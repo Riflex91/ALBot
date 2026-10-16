@@ -63,3 +63,42 @@ test('a newly visible affordable seller bypasses probe cooldown immediately',()=
  assert.equal(f.orders[0].kind,'market.buy');
  assert.equal(f.travel.length,1);
 });
+
+test('confirmed empty market yields scheduling while another safe job can run',()=>{
+ const f=fixture(),item={name:'poison',level:0};
+ const old=Date.now;let now=old();Date.now=()=>now;
+ try{
+  f.market.buy(item,f.rule);
+  assert.equal(f.market.offerWaitMs(item),0,'travel alone is not proof of absent offers');
+  f.setAtMarket(true);now+=3000;
+  assert.equal(f.market.buy(item,f.rule),false);
+  assert.ok(f.market.offerWaitMs(item)>0,'arrival confirms temporarily empty market');
+  assert.equal(f.market.hasVisibleBuyOffer(item),false);
+  f.entities.seller={id:'s',name:'Seller',type:'character',stand:true,
+   map:'main',in:'main',x:100,y:0,
+   slots:{trade1:{name:'poison',level:0,rid:'live-1',price:10,q:3}}};
+  assert.equal(f.market.offerWaitMs(item),0,'live seller must bypass cooldown');
+  assert.equal(f.market.buy(item,f.rule),true);
+  assert.equal(f.purchases(),1);
+  f.entities.seller.slots={};
+  assert.equal(f.market.offerWaitMs(item),0,'accepted offer invalidates old no-offer evidence');
+  f.market.buy(item,f.rule);
+  assert.ok(f.market.offerWaitMs(item)>0);
+  now+=120001;
+  assert.equal(f.market.offerWaitMs(item),0,'bounded no-offer hint must expire');
+ }finally{Date.now=old;}
+});
+
+test('unverified or non-reachable listings never clear an observed no-offer wait',()=>{
+ const f=fixture(),item={name:'poison',level:0};
+ f.setAtMarket(true);f.market.buy(item,f.rule);
+ assert.ok(f.market.offerWaitMs(item)>0);
+ f.entities.bad={id:'bad',type:'character',name:'Bad',stand:true,
+  map:'main',in:'main',x:2000,y:0,
+  slots:{trade1:{name:'poison',rid:'offer',price:10,q:1}}};
+ assert.ok(f.market.offerWaitMs(item)>0);
+ f.entities.bad.x=0;f.entities.bad.slots.trade1.buy=true;
+ assert.ok(f.market.offerWaitMs(item)>0);
+ f.entities.bad.slots.trade1.buy=false;f.entities.bad.slots.trade1.price=-10;
+ assert.ok(f.market.offerWaitMs(item)>0);
+});

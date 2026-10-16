@@ -10,7 +10,7 @@ import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
-import {prioritizeAdmittedProductionGoal,admittedProductionAction} from '../merchant/production-priority.mjs';
+import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMarketPlan,firstEligibleProductionSlot} from '../merchant/production-priority.mjs';
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
 export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
@@ -88,6 +88,15 @@ export function createProduction(bot){
  let helperSearch=null,demandBusy=false,admittedGoalKey=null,admittedAt=0;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
  const blockedMutations=new Map();const helperRequests=new Map();const scrollFallbacks=new Map();
+ const marketDeferred=new Map(),actionDeferred=new Map();
+ function noteDeferred(kind,item,reason,extra={}){
+  if(cfg.general.testLogging===undefined)return;
+  const key=JSON.stringify([kind,item,reason]),now=Date.now();
+  if(now-(actionDeferred.get(key)??-Infinity)<60000)return;
+  if(actionDeferred.size>=64)actionDeferred.delete(actionDeferred.keys().next().value);
+  actionDeferred.set(key,now);
+  bot.event?.('production.actionDeferred',{kind,item,reason,...extra});
+ }
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
@@ -188,7 +197,10 @@ export function createProduction(bot){
   if(blocked&&blocked.until>Date.now()&&e.budget&&!e.budget(blocked.cost,blocked.loss,r))return false;
   blockedMutations.delete(blockKey);
   const inputs=[slot];if(kind==='compound')for(let n=0;n<p.c.items.length&&inputs.length<3;n++)if(n!==slot&&e.safe(p.c.items[n])&&identity(i)===identity(p.c.items[n]))inputs.push(n);
-  if(kind==='compound'&&inputs.length!==3)return false;
+  if(kind==='compound'&&inputs.length!==3){
+   noteDeferred(kind,i.name,'identical-safe-inputs-missing',{found:inputs.length,required:3});
+   return false;
+  }
   if(e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
   // Only implicit standard-scroll upgrades may opt into scroll1. Explicit
   // scrolls/offerings and the profit planner keep their own helper policies.
@@ -240,7 +252,10 @@ export function createProduction(bot){
   // Merchant-only helper request: only for a rule explicitly asking for it.
   if(r.offering&&offering<0)requestHelper(r.offering,1);
   if(scroll<0)requestHelper(scrollName,1,useScroll1?()=>fallbackKey()===fallbackProof&&fallback.until>Date.now():null);
-  if(scroll<0||(r.offering&&offering<0)){e.note('Produktion benötigt '+scrollName+(r.offering?' / '+r.offering:''));return false;}
+  if(scroll<0||(r.offering&&offering<0)){
+   noteDeferred(kind,i.name,'helpers-not-carried',{scroll:scrollName,offering:r.offering??null});
+   e.note('Produktion benötigt '+scrollName+(r.offering?' / '+r.offering:''));return false;
+  }
   const slots=[...inputs,scroll,...(offering===null?[]:[offering])];if(new Set(slots).size!==slots.length)return false;
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
   // Bind the preview to the current mutation definitions and user's rule.
@@ -269,7 +284,10 @@ export function createProduction(bot){
    bot.event?.('production.scroll-fallback',{item:i.name,level:i.level??0,scroll:scrollName,chance,minimum,estimatedScroll1Chance:estimate,next:upgrade?'scroll1':'deferred'});
    e.note(upgrade?'Upgrade: prüfe scroll1 statt scroll0':'Upgrade zurückgestellt: Chance '+(chance*100).toFixed(2)+' % unter '+(minimum*100).toFixed(0)+' %');return false;
   }
-  if(!Number.isFinite(chance)||chance>1||chance<minimum||!Number.isFinite(cost)||cost<0){e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;}
+  if(!Number.isFinite(chance)||chance>1||chance<minimum||!Number.isFinite(cost)||cost<0){
+   noteDeferred(kind,i.name,'chance-or-cost-unverified',{chance,cost,minimum});
+   e.note('Upgrade/Compound: Chance oder Kosten nicht freigegeben');return false;
+  }
   if(cfg.production.autoHelpers&&r._autoDisposition){
    const helperCost=slots.filter(n=>!inputs.includes(n)).reduce((sum,n)=>sum+Math.max(e.value(p.c.items[n]),p.G.items[p.c.items[n].name]?.g??0),0)+cost;
    const check=cfg.production.finiteHelpers?planMutationHelpers(bot,i,helperSearch.quotes.map(q=>q.scroll===scrollName&&q.offering===(r.offering??'')?{...q,chance,cost:helperCost}:q),kind,Math.max(r.minChance,cfg.production.minChance)):bestMutationHelper([{chance,cost:helperCost,preserves:kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6}],{
@@ -468,7 +486,10 @@ export function createProduction(bot){
   });
   for(const g of ordered){
    const wait=waiting.get(goalKey(g));
-   if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step))continue;
+   // New visible offers supersede earlier no-offer waits without waiting for
+   // unrelated inventory or gold fingerprints to change.
+   if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step)&&
+      !(wait.step?.kind==='marketBuy'&&bot.market?.hasVisibleBuyOffer?.({name:wait.step.item,level:wait.step.level})))continue;
    if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient
@@ -483,7 +504,20 @@ export function createProduction(bot){
      return [{item:scroll,quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];
     },score:step=>routeScore(step,new Set(),0)}:{};
     plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,state:p.root?.S??p.parent?.S??{},...options});
-   }catch(err){plan=[];goal=null;planningReason=err.message;e.note(err.message);continue;}planningReason=null;const objective=knowledgeFingerprint(goalKey(g));const previous=intent?.objective;if(previous&&previous!==objective)bot.event('production.cancel',{objective:previous,reason:'Bedarf/Ziel geändert'});persistIntent({objective,goal:goalKey(g),item:g.item,level:g.level,quantity:needed,recipient:g.recipient,realm:p.realm(),phase:'planned',at:Date.now(),definition:knowledgeFingerprint([p.G.items[g.item],p.G.craft]),steps:plan.slice(0,32),reservations:plan.reservations??[]});break;
+   }catch(err){plan=[];goal=null;planningReason=err.message;e.note(err.message);continue;}
+   const marketWait=deferNoOfferMarketPlan(plan[0],bot.market);
+   if(marketWait>0){
+    const key=goalKey(g),until=Date.now()+marketWait,prev=marketDeferred.get(key);
+    if(!prev||prev.until<=Date.now())bot.event?.('production.marketDeferred',{
+     goal:g.name,item:plan[0].item,level:plan[0].level??0,
+     reason:'NO_LIVE_MARKET_OFFER',retryMs:marketWait});
+    if(marketDeferred.size>=64&&!marketDeferred.has(key))marketDeferred.delete(marketDeferred.keys().next().value);
+    marketDeferred.set(key,{goal:g.name,item:plan[0].item,level:plan[0].level??0,until});
+    goal=null;plan=[];planningReason='Marktangebot für '+g.item+' ausstehend; andere Produktion prüfen';
+    continue;
+   }
+   marketDeferred.delete(goalKey(g));
+   planningReason=null;const objective=knowledgeFingerprint(goalKey(g));const previous=intent?.objective;if(previous&&previous!==objective)bot.event('production.cancel',{objective:previous,reason:'Bedarf/Ziel geändert'});persistIntent({objective,goal:goalKey(g),item:g.item,level:g.level,quantity:needed,recipient:g.recipient,realm:p.realm(),phase:'planned',at:Date.now(),definition:knowledgeFingerprint([p.G.items[g.item],p.G.craft]),steps:plan.slice(0,32),reservations:plan.reservations??[]});break;
   }
   if(!goal&&intent&&!bot.journal){const pending=goals().some(g=>g.recipient?(deliveries[goalKey(g)]?.quantity??0)<g.quantity:qty(g.item,g.level,g)<g.quantity);if(pending)persistIntent({...intent,phase:'waiting'});else{bot.event('production.intent.complete',{objective:intent.objective,reason:'Bedarf erfüllt oder ausdrücklich entfernt'});persistIntent(null);}}
   if(!goal||plan[0]?.kind!=='farm')materials=[];else updateMaterials();
@@ -569,11 +603,25 @@ export function createProduction(bot){
    step:{item:step.item,level:step.level,kind:step.kind},
    fingerprint:availabilityFingerprint(step),
    reservations:structuredClone(plan.reservations??[]),
-   reason:bot.reason||'Voraussetzungen/Angebot fehlen',until:Date.now()+120000};waiting.set(goalKey(goal),entry);if(waiting.size>64)waiting.delete(waiting.keys().next().value);bot.event('production.wait',entry);}return accepted;};
+   reason:bot.reason||'Voraussetzungen/Angebot fehlen',until:Date.now()+120000};waiting.set(goalKey(goal),entry);if(waiting.size>64)waiting.delete(waiting.keys().next().value);bot.event('production.wait',{
+    goal:entry.goal,item:entry.item,kind:entry.kind,
+    fingerprint:knowledgeFingerprint(entry.fingerprint),
+    reservationCount:entry.reservations.length,reason:entry.reason,until:entry.until
+   });}return accepted;};
   if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));
   if(step.kind==='retrieve')return attempt(()=>bot.bank.retrieve(item,r,step.quantity));
-  if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));return attempt(()=>slot>=0&&exchange(slot,r,step));}
-  if(['upgrade','compound'].includes(step.kind)){const slot=p.c.items.findIndex(i=>i&&identity(i)===identity(item));return attempt(()=>slot>=0&&mutate(slot,r));}
+  if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){
+   const slot=firstEligibleProductionSlot(p.c.items,item,i=>e.safe(i)&&
+    e.explicit(i,'inventory')?.action!=='keep'&&e.explicit(i,'production')?.action!=='keep');
+   if(slot<0)noteDeferred(step.kind,step.item,'no-safe-matching-inventory-slot');
+   return attempt(()=>slot>=0&&exchange(slot,r,step));
+  }
+  if(['upgrade','compound'].includes(step.kind)){
+   const slot=firstEligibleProductionSlot(p.c.items,item,i=>e.safe(i)&&
+    e.explicit(i,'inventory')?.action!=='keep'&&e.explicit(i,'production')?.action!=='keep');
+   if(slot<0)noteDeferred(step.kind,step.item,'no-safe-matching-inventory-slot');
+   return attempt(()=>slot>=0&&mutate(slot,r));
+  }
   if(step.kind==='farm'){
    updateMaterials();
    e.note(materials.length?'Materialauftrag: '+step.item+' bei '+materials[0].monster:'Kein erlaubter Farmweg im Zeitbudget: '+step.item);
@@ -641,5 +689,5 @@ export function createProduction(bot){
  return [{...first,...plan}];},
  reserved:i=>reservedQuantity(i)>0,
  farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.teamPlan?.candidates()??(bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets);for(const request of merchant.materials){if(request.expires&&request.expires<Date.now()||!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.explicit({name:request.item,level:0},'acquisition');if((r?.action==='farm'||!r&&cfg.production.autonomy)&&qty(request.item,0)<Math.min(r?.targetCount??request.quantity,materialQuotaCap(request,bot.me.name)))return [request.monster];}return null;},
- status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,autonomy:!!cfg.production.autonomy,waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialRequests:materials.slice(0,5).map(x=>({item:x.item,monster:x.monster,quantity:x.quantity})),farmOrderReceipts:materials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===materials[0].objective&&h.materialAck.item===materials[0].item&&h.materialAck.monster===materials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];planningReason=null;}};
+ status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,autonomy:!!cfg.production.autonomy,marketDeferred:[...marketDeferred.values()].filter(x=>x.until>Date.now()).slice(0,20),waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialRequests:materials.slice(0,5).map(x=>({item:x.item,monster:x.monster,quantity:x.quantity})),farmOrderReceipts:materials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===materials[0].objective&&h.materialAck.item===materials[0].item&&h.materialAck.monster===materials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];planningReason=null;}};
 }

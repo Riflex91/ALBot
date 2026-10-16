@@ -8,15 +8,10 @@ permissions:
   contents: read
 jobs:
   verify:
-    # TEMPORARY write on this PR only; restored before merge
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -25,16 +20,6 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build shared browser/headless runtime
         run: npm run build
-      - name: TEMPORARY sync generated bot.js on branch
-        if: github.head_ref == 'feat/roadmap-team-switch-capabilities-20261016' && github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        run: |
-          node scripts/sync-personal-code.mjs --write
-          git add -- bot.js
-          if ! git diff --cached --quiet; then
-            git -c user.name='ALBot CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build: synchronize personal runtime (config unchanged)'
-            git push origin "HEAD:refs/heads/feat/roadmap-team-switch-capabilities-20261016"
-          fi
       - name: Verify published bot.js matches source build and personal configuration
         run: node scripts/sync-personal-code.mjs --check
       - name: Full offline tests

@@ -5,33 +5,43 @@ export function createPorts(root){
   const ipc=!!(h?.apiVersion===1&&h.capabilities?.localMessages&&typeof h.send==='function'&&typeof h.onMessage==='function');
   const find=name=>typeof root[name]==='function'?[root,root[name]]:typeof parent[name]==='function'?[parent,parent[name]]:null;
   const owns=name=>{if(typeof parent.owned_character==='function')return parent.owned_character(name);const f=find('get_characters');if(!f)return null;const rows=f[1].call(f[0]);return Array.isArray(rows)?rows.find(c=>c?.name===name):null;};
+  // The CODE editor can select another slot while this runner stays alive.
+  // Bind rotation to the runner's slot/source, never to that mutable editor.
+  let rotationSlot=null;try{const f=find('get_active_code_slot');rotationSlot=f?f[1].call(f[0]):parent.code_slot;}catch{}
+  const rotationCode=typeof parent.the_code==='string'?parent.the_code:null;
+  const validSlot=()=>['string','number'].includes(typeof rotationSlot)&&String(rotationSlot).trim()!=='';
+  const directSave=()=>rotationCode!==null&&rotationCode.length>0&&!!find('upload_code');
   return {root,parent,headless,ipc,h,
     has:name=>!!find(name),
     characterSwitchCapability(name){
      let reason='';
      if(headless)reason='headless-host';
      else if(typeof parent.owned_character!=='function'&&!find('get_characters'))reason='owned-character-api-missing';
-     else if(typeof parent.code_persistence_logic!=='function')reason='code-persistence-api-missing';
-     else if(parent.code_slot===undefined||parent.code_slot===null||String(parent.code_slot)==='')reason='code-slot-missing';
+     else if(!directSave()&&typeof parent.code_persistence_logic!=='function')reason='code-persistence-api-missing';
+     else if(!validSlot())reason='code-slot-missing';
+     else if(!directSave()&&(parent.explicit_slot||String(parent.code_slot)!==String(rotationSlot)))reason='running-code-save-unavailable';
      else if(!parent.location?.assign||!parent.socket?.disconnect)reason='window-navigation-missing';
      if(!reason&&name){try{const own=owns(name);if(!own||own.name!==name)reason='target-not-owned';else if(own.online)reason='target-already-online';}catch{reason='owned-character-read-failed';}}
      if(!reason){try{const u=new URL(parent.location.href);if(!/^https?:$/.test(u.protocol)||u.pathname.split('/')[1]!=='character'||decodeURIComponent(u.pathname.split('/')[2])!==root.character?.name)reason='window-route-unsupported';}catch{reason='window-route-invalid';}}
      return {supported:!reason,reason:reason||'same-game-window'};
     },
     canSwitchCharacter(name){
-     if(headless||typeof parent.owned_character!=='function'&&!find('get_characters')||typeof parent.code_persistence_logic!=='function'||parent.code_slot===undefined||parent.code_slot===null||String(parent.code_slot)===''||!parent.location?.assign||!parent.socket?.disconnect)return false;
-     const owned=owns(name);
-     if(!owned||owned.name!==name||owned.online||name===root.character?.name)return false;
-     try{const u=new URL(parent.location.href);return /^https?:$/.test(u.protocol)&&u.pathname.split('/')[1]==='character'&&decodeURIComponent(u.pathname.split('/')[2])===root.character?.name;}catch{return false;}
+     return !!name&&name!==root.character?.name&&this.characterSwitchCapability(name).supported;
     },
     async switchCharacter(name,guard=()=>true){
      if(!guard()||!this.canSwitchCharacter(name))throw Error('Charakterwechsel im eigenen Fenster nicht verfügbar');
      // Persist the existing CODE slot before unloading its character. An
      // explicit code query runs that same saved bot on the incoming farmer.
-     const saved=await parent.code_persistence_logic();
-     if(saved?.failed||saved?.success===false||!guard()||!this.canSwitchCharacter(name))throw Error('CODE-Speicherung/Charakterwechsel nicht bestätigt');
+     // Let an already running editor save finish before persisting the exact
+     // running source. upload_code does not save unrelated editor contents and
+     // unlike code_persistence_logic also works with an explicit ?code= slot.
+     if(parent.code_save_promise)await parent.code_save_promise;
+     if(!guard()||!this.canSwitchCharacter(name))throw Error('Charakterwechsel nicht mehr freigegeben');
+     const upload=find('upload_code');
+     const saved=directSave()?await upload[1].call(upload[0],rotationSlot,undefined,rotationCode):await parent.code_persistence_logic();
+     if(!saved||saved.failed||saved.success===false||!guard()||!this.canSwitchCharacter(name))throw Error('CODE-Speicherung/Charakterwechsel nicht bestätigt');
      const u=new URL(parent.location.href),parts=u.pathname.split('/');
-     parts[2]=encodeURIComponent(name);u.pathname=parts.join('/');u.searchParams.set('code',String(parent.code_slot));
+     parts[2]=encodeURIComponent(name);u.pathname=parts.join('/');u.searchParams.set('code',String(rotationSlot));
      parent.socket.disconnect();parent.location.assign(u.href);return true;
     },
     hasProgression(){return typeof parent.progression_read==='function'||!!find('get_progression')||typeof (parent.ProgressionRuntime??root.ProgressionRuntime)?.create==='function';},

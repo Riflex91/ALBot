@@ -135,7 +135,7 @@ export function createAccount(bot){
   if(m.type==='accountReject'){
    if(me.name===coordinator&&transition?.browser&&from===transition.out&&m.id===transition.id){
     bot.event('account.swap-rejected',{id:m.id,peer:from,reason:String(m.data?.reason??'receiver-rejected').slice(0,100)});
-    if(['outgoing-session-changed','capability-unavailable','target-already-online','code-slot-missing','owned-character-api-missing','code-persistence-api-missing','window-route-unsupported','window-route-invalid','headless-host','window-navigation-missing','checkpoint-write-failed'].includes(m.data?.reason)){if(save(null))changed=Date.now();}
+    if(['outgoing-session-changed','capability-unavailable','target-already-online','code-slot-missing','owned-character-api-missing','code-persistence-api-missing','running-code-save-unavailable','window-route-unsupported','window-route-invalid','headless-host','window-navigation-missing','checkpoint-write-failed'].includes(m.data?.reason)){if(save(null))changed=Date.now();}
    }return;
   }
   if(m.type==='accountSwap'){

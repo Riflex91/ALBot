@@ -125,3 +125,21 @@ test('remote pack filling during travel cannot authorize a stale bank_store dest
  assert.deepEqual(f.performed,[]);
  assert.equal(f.c.items[0].name,'mat');
 });
+
+test('emergency bank parking never removes Seashell exchange inputs while market goals wait',()=>{
+ const f=fixture({items0:[]});
+ f.cfg.production.autoDisposition=true;
+ f.p.G.items.seashell={type:'material',e:10,s:9999};
+ f.c.items[0]={name:'seashell',level:0,q:345};
+ f.bot.production={status:()=>({steps:[{kind:'marketBuy',item:'poison'}]}),
+  reservedQuantity:()=>0};
+ assert.equal(f.bank.park(0),false,
+  'unreserved but still exchange-eligible Seashells must remain at the production hub');
+ assert.deepEqual(f.performed,[]);
+ // Proven ordinary reversible gear parking remains available during pressure.
+ f.p.G.items.ringsj={type:'ring'};
+ f.c.items[0]={name:'ringsj',level:0,q:1};
+ assert.equal(f.bank.park(0),true);
+ assert.equal(f.performed[0].kind,'bank.store');
+ assert.equal(f.performed[0].capacityRecovery,true);
+});

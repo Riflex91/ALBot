@@ -43,6 +43,37 @@ export function pendingImpactDamage(targetId,now,source,roster,realm){
  return damage;
 }
 
+// Advisory team-heal collision evidence. A projected heal has no calibrated
+// amount, so this NEVER blocks a real rescue heal, consumes resources, or
+// declares HP restored. Only fresh same-realm authenticated sessions count.
+export function pendingImpactHeals(targetName,now,sources,roster,realm){
+ if(typeof targetName!=='string'||!targetName||
+    !Number.isFinite(now)||!Array.isArray(sources)||
+    !(roster instanceof Set)||typeof realm!=='string')return 0;
+ const seen=new Set();let count=0;
+ for(const peer of sources){
+  if(!peer?.running||peer.rip||peer.realm!==realm||
+     !roster.has(peer.name)||typeof peer.session!=='string'||
+     !Array.isArray(peer.impactIntents)||
+     !Number.isFinite(peer.received)||peer.received>now||
+     now-peer.received>2500)continue;
+  for(const row of peer.impactIntents.slice(0,8)){
+   if(row?.kind!=='heal'||row.realm!==realm||
+      row.session!==peer.session||
+      !Number.isFinite(row.at)||!Number.isFinite(row.expires)||
+      row.at>now||now-row.at>2400||row.expires<=now||
+      row.expires-row.at>10000||row.expires-row.at<100||
+      !Array.isArray(row.targets)||row.targets.length>5||
+      !row.targets.includes(targetName))continue;
+   const id=peer.name+':'+peer.session+':'+row.at+':'+row.action;
+   if(seen.has(id))continue;
+   seen.add(id);count++;
+   if(count>=32)return 32;
+  }
+ }
+ return count;
+}
+
 // Active, fail-open focus preference only. The existing allowed() filter
 // produced all candidates; we NEVER pull a neutral monster or switch to
 // another species, or take precedence over self-defense. No target is removed.

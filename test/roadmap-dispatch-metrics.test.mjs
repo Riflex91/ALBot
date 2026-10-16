@@ -64,5 +64,5 @@ test('rolling percentiles retain a bounded tail instead of every action lifetime
  assert.equal(x.started,20);
  assert.equal(x.queueP99Ms,20);
  assert.equal(x.completionP99Ms,40);
- assert.equal(m.totalDispatches,20);
+ assert.equal(m.status().totalDispatches,20);
 });

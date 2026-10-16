@@ -47,7 +47,7 @@ export function inspectItemTransferEvidence({
  const sep=journal.id.lastIndexOf(':'),senderSession=journal.id.slice(0,sep);
  if(sep<1||!transferEvidenceName(senderSession)||
    (journal.kind==='send'&&senderSession!==session)||
-   (journal.kind==='receive'&&senderSession!==journal.session))
+   (journal.kind==='receive'&&(senderSession!==journal.session||journal.ownerSession!==session)))
   return invalid('sender-session-not-pinned');
  const item=journal.item;
  if(!item||!transferEvidenceName(item.name)||

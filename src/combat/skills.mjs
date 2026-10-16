@@ -322,6 +322,11 @@ export function createSkills(bot){
           b.damage-a.damage||fallbackOrder[a.id]-fallbackOrder[b.id]:
           fallbackOrder[a.id]-fallbackOrder[b.id]);
         ids=ranks.map(r=>r.id);
+        // Keep the existing 3shot shortfall diagnostic even when the damage
+        // planner finds no legal three-target cast. use() will never dispatch
+        // here: its exact-three guard reports what prevented the third slot.
+        if(!ids.length&&safeCount<3&&p.G.skills['3shot'])
+          use('3shot',t,0,600);
       }
       for(const id of ids){
         // Explicit user rules own their skills. Evaluate those through the

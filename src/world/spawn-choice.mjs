@@ -9,7 +9,7 @@ const spawnRoleSkills={
  speed:[['rogue','rspeed']],
  mark:[['ranger','huntersmark']]
 };
-export function verifiedTeamRoleOwner(members,role,{now=Date.now(),ttlMs=10000}={}){
+export function verifiedTeamRoleOwner(members,role,{now=Date.now(),ttlMs=10000,realm=null}={}){
  if(!Array.isArray(members)||members.length>8||
   !Array.isArray(spawnRoleSkills[role])||
   !Number.isFinite(now)||!Number.isFinite(ttlMs)||ttlMs<=0||ttlMs>120000)
@@ -17,6 +17,7 @@ export function verifiedTeamRoleOwner(members,role,{now=Date.now(),ttlMs=10000}=
  const options=spawnRoleSkills[role],candidates=[];
  for(const c of members){
   const skills=c?.capabilities;
+  if(realm!==null&&c?.realm!==realm)continue;
   if(!c?.running||c.rip||typeof c.name!=='string'||!c.name||
     !Number.isFinite(c.hp)||c.hp<=0||
     !Number.isFinite(c.max_hp)||c.max_hp<=0||

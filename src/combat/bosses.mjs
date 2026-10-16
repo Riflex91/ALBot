@@ -89,7 +89,8 @@ export function bossReadiness(G,id,live,members,{maxSeconds=300,planned=false,me
  // and full DPS. Existing evidence-based healing checks remain in force.
  const healers=members.filter(c=>(c.ctype??c.class)==='priest');
  damageShadow=bossDamageShadow(m,members,{physicalOnly:profile.physicalOnly,
-  mode:profile.mode,healer:healers[0]?.name??null});
+  mode:profile.mode,healer:healers.length&&members.length>1&&
+   metrics?.seconds>=10&&metrics?.healing>0?healers[0].name:null});
  if(!damageShadow.valid)return reject('Boss-Schadensmodell: '+damageShadow.reason);
  const measured=metrics?.seconds>=10&&metrics.damage>0?metrics.damage/metrics.seconds:null;
  const estimate=damageShadow.conservativeEstimate;

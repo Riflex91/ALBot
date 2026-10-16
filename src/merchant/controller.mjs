@@ -804,13 +804,15 @@ export function createMerchant(bot){
    teamSupply();bot.reason='Inventar-Abgleich: Wertaktionen pausiert; Teambeobachtung aktiv';return;
   }
   if(me.role==='merchant'&&!cfg.merchant.enabled)return;
+  // Check and invalidate the local burst even while an unrelated economy
+  // journey is already active. It may not silently survive a bank/market trip.
+  // A live route is never interrupted: continueConfirmedExchange yields when
+  // movement owns the character.
+  if(exchangeBurst&&continueConfirmedExchange())return;
   if(bot.movement.order?.owner==='economy'){
    bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
   }
   if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
-  // Continue only a server-confirmed series at its SAME NPC, before depot
-  // housekeeping, new market travel or optional stock reconciliation.
-  if(exchangeBurst&&continueConfirmedExchange())return;
   // A delivery of already finished, allocated gear can release a physical
   // slot without selling protected production stock.
   if((capacityRecovery||bot.storage?.active)&&bot.free()>(cfg.merchant.minFreeSlots??4)&&

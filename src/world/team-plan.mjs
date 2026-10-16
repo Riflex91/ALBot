@@ -1,4 +1,5 @@
 import {combatMembers,compositionOptions,farmThroughput} from './composition.mjs';
+import {verifiedTeamRoleOwner,chooseFarmAreaSwitch} from './spawn-choice.mjs';
 import {materialEvent} from '../production/probability.mjs';
 import {materialQuotaCap,materialRequestHasWork} from '../production/material-quotas.mjs';
 import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
@@ -56,7 +57,7 @@ export function selectHuntArea(ranking,hunt){
 }
 
 export function createTeamPlan(bot){
- const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
+ const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
   return farmAreaHistoryKey(p.realm(),new Date(now).getUTCHours(),spawnKey,
@@ -131,9 +132,18 @@ export function createTeamPlan(bot){
   samples++;
   history=Object.fromEntries(Object.entries(history).sort((a,b)=>b[1].at-a[1].at).slice(0,96));if(now-lastSave>30000){lastSave=now;p.write(key+':areas',history);}
  }
- function capabilities(){const names=bot.farmers??[],members=names.map(name=>{const h=name===me.name?{name,running:bot.running,hp:p.c.hp,max_hp:p.c.max_hp,mp:p.c.mp,max_mp:p.c.max_mp,class:p.c.ctype,map:p.c.map,in:p.c.in,stats:{attack:p.c.attack,frequency:p.c.frequency},skills:p.G.skills?Object.entries(p.G.skills).filter(([,s])=>(!s.class||s.class.includes?.(p.c.ctype))&&(s.level??0)<=p.c.level).map(([id])=>id):[]}:bot.transport.fresh(name);return h?{...h,name}:null;}).filter(h=>h?.running&&!h.rip);
-  const assign=(classes,skill)=>members.filter(h=>classes.includes(h.class)&&(h.name===me.name?bot.capabilities?.available(h.name,skill)??true:h.capabilities?h.capabilities.ready.includes(skill):(!h.skills||h.skills.includes(skill)))).sort((a,b)=>b.hp/Math.max(1,b.max_hp)-a.hp/Math.max(1,a.max_hp)||a.name.localeCompare(b.name))[0]?.name??null;
-  roles={heal:assign(['priest'],'heal'),aggro:assign(['warrior','paladin'],'taunt'),protect:assign(['paladin','mage'],'reflection'),energize:assign(['mage'],'energize'),speed:assign(['rogue'],'rspeed'),mark:assign(['ranger'],'huntersmark')};return roles;
+ function capabilities(){
+  const names=(bot.farmers??[]).slice(0,8),members=names.map(name=>{
+   if(name!==me.name)return bot.transport?.fresh?.(name)??null;
+   return {name,running:bot.running,rip:!!p.c.rip,
+    hp:p.c.hp,max_hp:p.c.max_hp,mp:p.c.mp,max_mp:p.c.max_mp,
+    class:p.c.ctype,ctype:p.c.ctype,s:p.c.s,
+    capabilities:bot.capabilities?.snapshot?.()};
+  }).filter(Boolean);
+  const context={now:Date.now(),ttlMs:cfg.general.messageTtlMs??10000};
+  roles=Object.fromEntries(['heal','aggro','protect','energize','speed','mark']
+   .map(role=>[role,verifiedTeamRoleOwner(members,role,context)?.name??null]));
+  return roles;
  }
  function tick(){if(cfg.general.testLogging===undefined||me.role!=='farmer')return;
   // Receipt is based on the actual merchant heartbeat and validated monster
@@ -200,10 +210,17 @@ export function createTeamPlan(bot){
   // Keep existing hold-time for safe ordinary farming while waiting for
   // the active farmer's quest NPC or an independently verified hunt spawn.
   const holdOrdinary=selected.kind==='farm'&&current?.kind==='farm';
-  if(holdOrdinary&&old&&valid(current)&&!selectedRequest&&
-    (Date.now()-current.started<(cfg.farming.planHoldMs??60000)||
-     !!next&&next.score<old.score*(1+(cfg.farming.switchImprovement??.2))))
-   next=old;
+  switchAdvice=null;
+  if(holdOrdinary&&old&&valid(current)&&!selectedRequest){
+   const choice=chooseFarmAreaSwitch({
+    current,candidate:next,currentRank:old,now:Date.now(),
+    holdMs:cfg.farming.planHoldMs??60000,
+    improvement:cfg.farming.switchImprovement??.2
+   });
+   switchAdvice={reason:choice.reason,threshold:choice.threshold,
+    from:old.key,to:next?.key??null};
+   next=choice.choice;
+  }
   selectedRequest=!hunt&&next?.target===request?.monster?request:null;
   const fallbackKey=selected.deferred?selected.deferred+':'+hunt?.owner+':'+(hunt?.monster??''):null;
   if(fallbackKey!==huntFallback){
@@ -235,5 +252,5 @@ export function createTeamPlan(bot){
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){if(!valid(current)||bot.strategy.busy)return false;if(cfg.party.enabled&&me.name!==bot.leader)return false;if(me.name===bot.leader&&cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()))){bot.reason='Warte auf aktive Gruppe vor Farmreise';return true;}// A 250-unit exit stranded ranged farmers outside verified spawn areas.
   if(samePlace(p.c,current)&&distance(p.c,current)<=Math.min(85,Math.max(40,(cfg.farming.orbitRadius??220)/2)))return false;bot.reason='Gemeinsamer Plan: '+current.target;bot.movement.go({...current,radius:65},'farm');return true;},materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
   return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
-   if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
+   if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,switchAdvice,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
 }

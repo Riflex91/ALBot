@@ -55,8 +55,8 @@ export function inspectItemTransferEvidence({
   return invalid('item-variant-unreadable');
  const key=identity(item),before=transferEvidenceCounts(journal.evidence.inventory),
   after=transferEvidenceCounts(inventory.map(i=>i?fingerprint(i):null));
- if(!before||!after||!before.has(key))return invalid('inventory-variants-unverified');
- if(before.get(key)!==journal.before)return invalid('journal-before-count-mismatch');
+ if(!before||!after)return invalid('inventory-variants-unverified');
+ if((before.get(key)??0)!==journal.before)return invalid('journal-before-count-mismatch');
  const delta=(after.get(key)??0)-before.get(key);
  const wanted=journal.kind==='send'?-journal.quantity:journal.quantity;
  if(delta!==wanted)return invalid('exact-transfer-delta-not-observed');

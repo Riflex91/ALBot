@@ -4,11 +4,16 @@ export class Executor {
   busy(resource){return [...this.pending.values()].some(p=>p.resources.includes(resource));}
   run(key,resources,guard,invoke,options={}){if(this.frame){if(!this.active()||this.frame.some(j=>j.key===key)||this.pending.has(key)||(this.cooldowns.get(key)||0)>this.now()||!guard())return false;if(!this.waiting.has(key))this.waiting.set(key,this.now());this.frame.push({key,resources,guard,invoke,options});return true;}return this.dispatch(key,resources,guard,invoke,options);}
   beginFrame(){this.frame=[];}
-  flush(){const jobs=this.frame??[];this.frame=null;const rank=j=>j.options.priority??(/respawn|potion|regen/.test(j.key)?1000:/send|gold|partial|reclaim/.test(j.key)?800:/heal|reflection|revive|energize/.test(j.key)?700:/attack|skill|target/.test(j.key)?500:/town|move/.test(j.key)?400:/giveaway|merrit/.test(j.key)?10:200);jobs.sort((a,b)=>rank(b)-rank(a)||(this.waiting.get(a.key)??0)-(this.waiting.get(b.key)??0));for(const j of jobs){this.onEvent('action.selection',{key:j.key,priority:rank(j),reason:'Aktuelle Voraussetzungen, Wichtigkeit und Wartealter; Ressourcen nur einmal vergeben'});if(this.dispatch(j.key,j.resources,j.guard,j.invoke,j.options))this.waiting.delete(j.key);else if(!j.options.value)j.options.onSettle?.('superseded');}for(const key of this.waiting.keys())if(!jobs.some(j=>j.key===key))this.waiting.delete(key);}
-  dispatch(key,resources,guard,invoke,{timeout=8000,delay=250,observe=null,value=false,waitForObservation=false,onSettle=()=>{}}={}){
+  flush(){const jobs=this.frame??[];this.frame=null;const rank=j=>j.options.priority??(/respawn|potion|regen/.test(j.key)?1000:/send|gold|partial|reclaim/.test(j.key)?800:/heal|reflection|revive|energize/.test(j.key)?700:/attack|skill|target/.test(j.key)?500:/town|move/.test(j.key)?400:/giveaway|merrit/.test(j.key)?10:200);jobs.sort((a,b)=>rank(b)-rank(a)||(this.waiting.get(a.key)??0)-(this.waiting.get(b.key)??0));for(const j of jobs){this.onEvent('action.selection',{key:j.key,priority:rank(j),reason:'Aktuelle Voraussetzungen, Wichtigkeit und Wartealter; Ressourcen nur einmal vergeben'});if(this.dispatch(j.key,j.resources,j.guard,j.invoke,{...j.options,queuedAt:this.waiting.get(j.key)??this.now()}))this.waiting.delete(j.key);else if(!j.options.value)j.options.onSettle?.('superseded');}for(const key of this.waiting.keys())if(!jobs.some(j=>j.key===key))this.waiting.delete(key);}
+  dispatch(key,resources,guard,invoke,{timeout=8000,delay=250,observe=null,value=false,waitForObservation=false,onSettle=()=>{},queuedAt=null}={}){
     if(!this.active()||this.pending.size>=this.limit||this.pending.has(key)||(this.cooldowns.get(key)||0)>this.now()||resources.some(r=>this.busy(r))||!guard())return false;
-    const p={key,resources,generation:this.generation,deadline:this.now()+timeout,settled:false,observe,value,waitForObservation,onSettle,delay};this.pending.set(key,p);
-    this.onEvent('action.start',{key,resources:resources.join(','),value});
+    const startedAt=this.now(),queueMs=Number.isFinite(queuedAt)?
+      Math.max(0,Math.min(600000,startedAt-queuedAt)):0;
+    const p={key,resources,generation:this.generation,startedAt,
+      deadline:startedAt+timeout,settled:false,observe,value,
+      waitForObservation,onSettle,delay};this.pending.set(key,p);
+    this.onEvent('action.start',{key,resources:resources.join(','),value,
+      queueMs,pending:this.pending.size});
     try {Promise.resolve(invoke()).then(v=>{if(p.generation===this.generation){p.settled=true;p.result=v;p.error=v?.failed||v?.success===false?v:null;}},e=>{if(p.generation===this.generation){p.settled=true;p.error=e;}});}catch(e){p.settled=true;p.error=e;}
     return true;
   }
@@ -20,7 +25,10 @@ export class Executor {
         this.pending.delete(key);
         const result=observed?'confirmed':p.value?'unknown':p.error?'rejected':p.settled&&!p.waitForObservation?'returned':'timeout';
         const randomFailure=observed&&['upgrade','compound'].includes(key)&&p.result?.success===false;
-        this.onEvent('action.end',{key,result,outcome:randomFailure?'randomFailure':result,error:p.error?.message??p.error?.reason??''});
+        this.onEvent('action.end',{key,result,outcome:randomFailure?'randomFailure':result,
+          error:p.error?.message??p.error?.reason??'',
+          elapsedMs:Math.max(0,Math.min(600000,now-p.startedAt)),
+          pending:this.pending.size});
         // Survival actions retain their ordinary retry window. Potion equip
         // uses value observation without creating an inventory journal.
         const survival=/^(potion|regen|heal|respawn)([.:_-]|$)/.test(key);

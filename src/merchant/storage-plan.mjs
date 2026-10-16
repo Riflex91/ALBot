@@ -65,7 +65,16 @@ export function createStoragePlanner(bot){
  }
  function exchangeAllowed(slot,q){
   if(!enabled())return true;refresh();const f=forecastExchange(p.G,p.c.items,slot,q);
-  const allowed=f.known&&(!active&&f.worstFree>=reserve()||active&&f.worstFree>f.freeBefore);
+  // Recovery hysteresis targets more free slots than the hard safety reserve.
+  // A verified exchange must not stall at 9 -> 8 just because earlier cleanup
+  // activated at 8. Preserve the strict worst-case reserve, even in recovery.
+  // Under bank pressure retain ONLY the old capacity-improving exception;
+  // never assume stale/unknown bank capacity is empty.
+  const pressure=bankPressure();
+  const allowed=f.known&&(
+   (!pressure&&f.worstFree>=reserve())||
+   (active&&f.worstFree>f.freeBefore)
+  );
   if(!allowed){last={kind:'exchange-deferred',item:p.c.items[slot]?.name,...f,requiredFree:reserve(),bankPressure:bankPressure()};
    const key=last.item+':'+(f.reason??'working-space');if(key!==lastReason||Date.now()-noteAt>30000){lastReason=key;noteAt=Date.now();bot.event?.('storage.exchangeDeferred',last);}}
   return allowed;

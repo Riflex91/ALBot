@@ -5,7 +5,8 @@ export function createImpactIntents({
  name,session,realm,now=()=>Date.now(),limit=48,ttlMs=2500
 }={}){
  const pending=new Map(),events=[];
- let counter=0,confirmed=0,expired=0,failed=0;
+ let counter=0,confirmed=0,confirmedHeals=0,expired=0,failed=0;
+ const observedEventIds=new Set();
  const validId=id=>typeof id==='string'&&id.length>0&&id.length<128;
  const bounded=Array.isArray([])&&Math.max(4,Math.min(64,limit));
  const ttl=Math.max(250,Math.min(10000,ttlMs));
@@ -28,6 +29,9 @@ export function createImpactIntents({
   pending.set(id,row);
   return id;
  }
+ // Preserve the public legacy damage confirmation API. The live game event
+ // handler uses observe() below, which rejects hit notifications lacking an
+ // explicit positive damage/heal field.
  function confirmedHit(event){
   prune();
   const actor=typeof event?.actor==='string'?event.actor:event?.actor?.name;
@@ -42,6 +46,40 @@ export function createImpactIntents({
   }
   return false;
  }
+ function confirmedHeal(event){
+  prune();
+  const actor=typeof event?.actor==='string'?event.actor:event?.actor?.name;
+  const target=typeof event?.target==='string'?event.target:
+   event?.target?.name??event?.target?.id;
+  if(actor!==name||!validId(target)||!Number.isFinite(event?.heal)||
+   event.heal<=0||event.heal>10000000||event?.realm&&event.realm!==realm)
+   return false;
+  for(const [id,p] of pending){
+   if(p.kind!=='heal'||!p.targets.includes(target)||p.confirmed.includes(target))
+    continue;
+   p.confirmed.push(target);confirmedHeals++;
+   keepEvent({action:p.action,result:'observed-heal',target,amount:event.heal});
+   if(p.confirmed.length===p.targets.length)pending.delete(id);
+   return true;
+  }
+  return false;
+ }
+ // A single server hit event must not be credited twice, nor can healing
+ // be mistaken for damage. Unidentified duplicate server callbacks are only
+ // advisory and never authorize actions. Bounded ID cache is per session.
+ function observe(event){
+  const eventId=typeof event?.id==='string'&&event.id.length<=128?
+   event.id:null;
+  if(eventId&&observedEventIds.has(eventId))return false;
+  const result=Number.isFinite(event?.heal)&&event.heal>0?
+   confirmedHeal(event):Number.isFinite(event?.damage)&&event.damage>0?
+   confirmedHit(event):false;
+  if(result&&eventId){
+   if(observedEventIds.size>=64)observedEventIds.delete(observedEventIds.values().next().value);
+   observedEventIds.add(eventId);
+  }
+  return result;
+ }
  function settle(id,result){
   prune();const p=pending.get(id);if(!p)return false;
   if(['rejected','unknown','timeout','superseded'].includes(result)){
@@ -51,7 +89,7 @@ export function createImpactIntents({
   return false;
  }
  function snapshot(){prune();return {mode:'shadow-only',
-  session,realm,active:pending.size,confirmed,expired,failed,
+  session,realm,active:pending.size,confirmed,confirmedHeals,expired,failed,
   recent:[...pending.values()].slice(-8).map(p=>({
    action:p.action,kind:p.kind,targets:p.targets,
    remainingMs:Math.max(0,p.expires-now()),confirmed:p.confirmed.length
@@ -63,6 +101,6 @@ export function createImpactIntents({
    damage:Object.fromEntries(outstanding.filter(id=>p.damage?.[id]>0)
     .map(id=>[id,p.damage[id]]))};
  });}
- return {launched,confirmedHit,settle,snapshot,heartbeat,prune,
-  close(){pending.clear();}};
+ return {launched,confirmedHit,confirmedHeal,observe,settle,snapshot,heartbeat,prune,
+  close(){pending.clear();observedEventIds.clear();}};
 }

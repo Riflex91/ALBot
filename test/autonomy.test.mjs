@@ -45,7 +45,17 @@ test('follower adopts same objective and never invents independent fallback when
 test('material request outranks XP and validates source definition and expiry',()=>{const {bot,peers,G}=fixture();peers.M={running:true,materials:[{monster:'goo',item:'mat',quantity:5,objective:'job-1',expires:Date.now()+30000,sourceFingerprint:knowledgeFingerprint([G.monsters.goo,G.drops.monsters.goo])}]};bot.teamPlan.tick();assert.equal(bot.teamPlan.target(),'goo');assert.equal(bot.teamPlan.materialActive(),true);peers.M.materials[0].remaining=0;assert.equal(bot.teamPlan.wantsCombat(),false);G.monsters.goo.hp=200;assert.equal(bot.teamPlan.target(),null);});
 test('group travel can assess known remote peers while actual attack remains locally gated',()=>{const {bot,peers}=fixture();peers.B.map='other';assert.equal(bot.strategy.safeTarget('bee',undefined,true,true),true);bot.teamPlan.tick();assert.equal(bot.teamPlan.target(),'bee');});
 test('spawn changes invalidate propagated plan and graph retains directed connections',()=>{const {bot,G}=fixture();bot.teamPlan.tick();G.monsters.bee.attack=50000;assert.equal(bot.teamPlan.target(),null);const graph=mapGraph(G);assert.equal(mapHops(graph,'main','other'),1);assert.equal(mapHops(graph,'other','main'),Infinity);});
-test('planner assigns healer and support from fresh capabilities',()=>{const {bot,peers}=fixture();peers.B.class='priest';peers.B.skills=['heal'];bot.teamPlan.tick();assert.equal(bot.teamPlan.roles().heal,'B');assert.equal(bot.teamPlan.roles().energize,null);});
+test('planner assigns healer and support only from actually fresh capabilities',()=>{
+ const without=fixture();without.peers.B.class='priest';without.peers.B.skills=['heal'];
+ without.bot.teamPlan.tick();
+ assert.equal(without.bot.teamPlan.roles().heal,null,'claimed skill list is not proof of readiness');
+ const {bot,peers}=fixture();peers.B.class='priest';peers.B.skills=['heal'];
+ peers.B.mp=1000;peers.B.max_mp=1000;
+ peers.B.capabilities={at:Date.now(),ready:['heal'],sustainable:['heal']};
+ bot.teamPlan.tick();
+ assert.equal(bot.teamPlan.roles().heal,'B');
+ assert.equal(bot.teamPlan.roles().energize,null);
+});
 test('spawn pressure observations survive restart with bounded site history',()=>{const {bot,data}=fixture();bot.teamPlan.tick();bot.teamPlan.tick();assert.ok(data.get('albot:teamplan:A:areas'));const restored=createTeamPlan(bot);assert.ok(restored.status().areas>0);});
 test('material estimate distinguishes expectation/P90 and excludes inactive or too-short events',()=>{const {G}=fixture();const rows=materialSources(G,'mat',3,['bee'],20,()=>({value:100,source:'observed-team'}));assert.ok(rows[0].p90Hours>rows[0].estimatedHours);G.monsters.bee.event='beetime';assert.deepEqual(materialSources(G,'mat',3,['bee'],20,undefined,{state:{}}),[]);const active=materialSources(G,'mat',3,['bee'],20,()=>({value:100,source:'observed-team'}),{state:{beetime:{live:true,expires:Date.now()+86400000}}});assert.equal(active[0].sourceKind,'event-drop');});
 test('elixir selection follows class stat and utility instead of any consumable',()=>{const {G}=fixture();G.items={dex:{type:'elixir',dex:10,duration:1,g:10},str:{type:'elixir',str:20,duration:1,g:10},bad:{type:'pot',dex:100,duration:1,g:1}};assert.equal(chooseElixir(G,'ranger').name,'dex');assert.equal(chooseElixir(G,'warrior').name,'str');});

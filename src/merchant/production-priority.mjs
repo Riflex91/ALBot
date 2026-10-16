@@ -40,3 +40,21 @@ export function prioritizeAdmittedProductionGoal(ranked,{
 export function admittedProductionAction(step,accepted,{journal=false,pending=false}={}){
  return accepted===true&&(step?.kind!=='marketBuy'||journal===true||pending===true);
 }
+
+// Keep a purely speculative market request out of the active production slot
+// only after an actual observed no-offer visit. Any visible matching listing
+// or expiration immediately restores normal planning/price guards.
+export function deferNoOfferMarketPlan(step,market){
+ if(step?.kind!=='marketBuy'||typeof market?.offerWaitMs!=='function')return 0;
+ const wait=market.offerWaitMs({name:step.item,level:step.level??0});
+ return Number.isFinite(wait)&&wait>0?wait:0;
+}
+
+// Never select a locked or explicitly protected first copy when another
+// identical physical stack is suitable. The caller supplies its live guards;
+// this helper does not grant mutation authority.
+export function firstEligibleProductionSlot(items,item,eligible){
+ if(!Array.isArray(items)||!item||typeof eligible!=='function')return -1;
+ const wanted=identity(item);
+ return items.findIndex(x=>!!x&&identity(x)===wanted&&eligible(x));
+}

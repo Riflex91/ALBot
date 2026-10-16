@@ -149,6 +149,10 @@ export function createBank(bot){
  function parkable(slot){
   const item=p.c.items?.[slot],meta=p.G.items?.[item?.name];
   if(!cfg.merchant.bank||!cfg.production?.autoDisposition||!e.safe(item)||
+     // The private emergency park route must never move an exchange source
+     // away from the NPC production hub merely because a market plan is active.
+     // Only the ordinary explicit bank rule can deliberately store it.
+     (Number.isSafeInteger(meta?.e)&&meta.e>0)||
      !meta||!['ring','earring','belt','amulet','helmet','chest','pants','shoes','gloves',
       'cape','orb','weapon','shield','source','quiver','misc_offhand','material'].includes(meta.type)||
      e.explicit(item)||e.explicit(item,'production')||e.explicit(item,'acquisition')||

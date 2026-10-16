@@ -1,7 +1,7 @@
 import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
 export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
- const marketProbes=new Map(),MARKET_REPROBE_MS=120000;
+ const marketProbes=new Map(),noOffers=new Map(),MARKET_REPROBE_MS=120000;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
  const historyKey='albot:market:'+bot.me.name+':offers';let history=[],lastObserve=0;
  const cached=cfg.merchant.marketHistory?p.read(historyKey):null;if(Array.isArray(cached))history=cached.filter(x=>x&&typeof x.item?.name==='string'&&Number.isFinite(x.price)&&x.price>0&&Number.isFinite(x.at)&&x.at<=Date.now()&&Date.now()-x.at<(cfg.merchant.marketHistoryTtlMs??21600000)).slice(-128);
@@ -31,6 +31,21 @@ export function createMarket(bot){
     Number.isSafeInteger(currentFloor)&&unitPrice>=currentFloor;
   },call:()=>p.call('trade',slot,tradeSlot,unitPrice,q),observe:()=>{const x=p.c.slots[tradeSlot];return x&&variant(x,item)&&x.price===unitPrice&&e.count(item)<=before-q;},onConfirmed:()=>bot.marketDemand?.posted(tradeSlot,item,r)??true,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
+ // Only a currently visible matching seller can interrupt the no-offer cooldown.
+ // Price, remaining quantity, budgets and slot capacity are ALWAYS rechecked
+ // independently inside buy() and economy.perform before spending any gold.
+ function hasVisibleBuyOffer(item){
+  return Object.values(p.entities??{}).some(player=>player&&
+   player.name!==p.c.name&&player.type==='character'&&player.stand&&
+   samePlace(p.c,player)&&distance(p.c,player)<=300&&
+   Object.entries(player.slots??{}).some(([slot,offer])=>
+    /^trade([1-9]|1[0-6])$/.test(slot)&&offer?.rid&&
+    !offer.b&&!offer.giveaway&&!offer.buy&&
+    Number.isFinite(offer.price)&&offer.price>0&&variant(offer,item)));
+ }
+ function offerWaitMs(item){
+  return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());
+ }
  function buy(item,r){
   for(const player of Object.values(p.entities)){
    if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
@@ -38,6 +53,7 @@ export function createMarket(bot){
     const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!variant(offer,item)||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
     const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
     if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
+    noOffers.delete(identity(item));
     return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>p.call('trade_buy',bot.entity(player.id??player.name),slot,q),observe:()=>e.count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
    }
   }
@@ -48,6 +64,10 @@ export function createMarket(bot){
   const d=cfg.merchant.position.enabled?{...cfg.merchant.position,in:cfg.merchant.position.map}:e.destination('citizen22');
   const at=d&&(cfg.merchant.position.enabled?e.at(d):e.npcAt(d));
   if(at){
+   // An observed empty market is a *read-only* planning signal. Let other
+   // safe production goals run until the next bounded search or live offer.
+   noOffers.set(key,now+MARKET_REPROBE_MS);
+   if(noOffers.size>64)noOffers.delete(noOffers.keys().next().value);
    if((marketProbes.get(key)??0)<=now)
     bot.event?.('market.noOffer',{item:item.name,level:item.level??0,
      reason:'Kein freigegebenes Live-Marktangebot; kein Kauf ausgeführt',
@@ -182,5 +202,9 @@ export function createMarket(bot){
    covered,npcUnit:base,future,reason:covered?'net-visible-bid-discounted':'npc-only'};
  }
  function analysis(item){observe();const rows=history.filter(x=>variant(x.item,item)&&Date.now()-x.at<cfg.merchant.marketHistoryTtlMs),asks=rows.filter(x=>!x.side||x.side==='SELL').map(x=>x.price),bids=rows.filter(x=>x.side==='BUY').map(x=>x.price);const ask=asks.length?Math.min(...asks):null,bid=bids.length?Math.max(...bids):null;return {askingOnly:true,providers:new Set(rows.map(x=>x.seller)).size,ask,bid,spread:ask&&bid?(ask-bid)/ask:null,reference:quote(item),reason:'Beobachtete Angebote, keine bestätigten Handelsumsätze'};}
- return {listing,sellToBid,buy,wishlist,background,quote,analysis,liveBids,bidValuation,status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000}),close(){scanGeneration++;secondhand=[];}};
+ return {listing,sellToBid,buy,wishlist,background,quote,analysis,liveBids,bidValuation,
+  hasVisibleBuyOffer,offerWaitMs,
+  status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000,
+   noOfferWaits:[...noOffers].filter(([,until])=>until>Date.now()).map(([item,until])=>({item,retryAt:until})).slice(0,20)}),
+  close(){scanGeneration++;secondhand=[];noOffers.clear();}};
 }

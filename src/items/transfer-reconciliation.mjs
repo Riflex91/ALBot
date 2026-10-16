@@ -57,7 +57,7 @@ export function inspectItemTransferEvidence({
   after=transferEvidenceCounts(inventory.map(i=>i?fingerprint(i):null));
  if(!before||!after)return invalid('inventory-variants-unverified');
  if((before.get(key)??0)!==journal.before)return invalid('journal-before-count-mismatch');
- const delta=(after.get(key)??0)-before.get(key);
+ const delta=(after.get(key)??0)-(before.get(key)??0);
  const wanted=journal.kind==='send'?-journal.quantity:journal.quantity;
  if(delta!==wanted)return invalid('exact-transfer-delta-not-observed');
  for(const id of new Set([...before.keys(),...after.keys()])){

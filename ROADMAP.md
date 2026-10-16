@@ -1,3 +1,7 @@
+# Browser-Rotation: laufenden CODE-Slot erhalten (16.10.2026)
+
+Der zuvor nur lokale Fix `1f06f0b` wurde auf Mainbasis `47095a9` (PR #110) integriert. Browserwechsel bindet den aktiven Runner-Slot und speichert den laufenden Code über `upload_code`; veränderter Editor-Slot und unbestätigte Speicherung führen nicht zum falschen Neustart. 904/904 lokale Offlinetests bestanden, Runtime/Werkstatt und persönliche bot.js neu gebaut. Echte Browserrotation noch nicht live bestätigt. [Implementierung, Herkunft und Testablauf](docs/BROWSER-ROTATION-2026-10-15.md).
+
 # Upgrade-Scrollwahl 0.10.8-candidate (15.10.2026)
 
 Benutzerauftrag umgesetzt: 65 % globale Mindestchance im persönlichen Bot und in neuen Full-Profilen; nach unzureichender scroll0-Vorschau passende scroll1 prüfen, vorhandene verwenden oder genau eine kaufen, echte Servervorschau vor Upgrade. Kaufanforderung für tatsächliche Scroll-IDs korrigiert. 806/806 Offlinetests; Runtime/Werkstatt und persönliche Bundleparität geprüft. Neue Spiel-Liveabnahme offen. [Details](docs/CHANGELOG-0.10.8.md).

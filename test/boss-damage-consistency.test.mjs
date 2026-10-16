@@ -69,7 +69,8 @@ test('healer attack time cannot also count as full attack DPS',()=>{
  assert.ok(exclusive.valid);
  assert.ok(exclusive.newEstimate<concurrent.newEstimate);
  assert.equal(exclusive.rows.find(x=>x.name==='Priest').newDps,0);
- const gate=bossReadiness(game(m),'phoenix',null,[r,p]);
+ const gate=bossReadiness(game(m),'phoenix',null,[r,p],{
+  metrics:{seconds:30,damage:2000,healing:1200}});
  assert.equal(gate.damageShadow.rows.find(x=>x.name==='Priest').newDps,0);
 });
 

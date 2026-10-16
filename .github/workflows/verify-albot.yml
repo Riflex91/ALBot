@@ -7,6 +7,33 @@ on:
 permissions:
   contents: read
 jobs:
+  sync-personal-code:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 108 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Rebuild and synchronize only the personal CODE runtime
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+      - name: Commit only bot.js to the PR branch
+        shell: bash
+        run: |
+          git add -- bot.js
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Sync personal bot.js for safe exchange workspace fix'
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,5 +1,6 @@
 import {findRecipe,recipeIngredients} from '../production/recipes.mjs';
 import {knowledgeFingerprint} from './knowledge.mjs';
+import {inventoryStockEvidence,reconcileStockEvidence} from '../items/stock-evidence.mjs';
 
 // P1-1 read-only objective DAG. This is intentionally NOT an execution path:
 // purchases, mutations, bank retrievals and sends remain exclusively in their
@@ -117,7 +118,7 @@ export function buildObjectiveGraph({
 export function createObjectives(bot){
  const {p,me,cfg}=bot,owns=me.role==='merchant',
   key='albot:objectives:v1:'+me.name;
- let last=null,failedPersistence=false;
+ let last=null,stockState=null,failedPersistence=false;
  const currentRealm=()=>p.realm();
  function goals(){
   // Only the EXISTING production plan can propose a current objective.
@@ -129,21 +130,25 @@ export function createObjectives(bot){
  function tick(){
   if(!owns||!cfg.production?.enabled)return;
   const goalRows=goals();
-  const items=p.c.items??[];
-  const exactStock=(name,level,variant)=>items.reduce((n,item)=>{
-   if(item?.name!==name||(item.level??0)!==level)return n;
-   if(variant&&objectiveVariantFields.some(k=>variant[k]!==undefined&&
-      JSON.stringify(item[k]??null)!==JSON.stringify(variant[k])))return n;
-   return n+(Number.isSafeInteger(item.q)&&item.q>0?item.q:1);
-  },0);
+  const at=Date.now(),local=inventoryStockEvidence(p.c.items??[],{
+   owner:me.name,session:bot.session,realm:currentRealm(),at,
+   reserved:i=>bot.production?.reservedQuantity?.(i)??0
+  });
+  const names=[...new Set((bot.farmers??[]).filter(n=>n!==me.name))];
+  stockState=reconcileStockEvidence({
+   local,owner:me.name,session:bot.session,realm:currentRealm(),now:at,
+   ttlMs:Math.min(120000,cfg.general?.messageTtlMs??10000),
+   expected:names,peers:names.map(n=>bot.transport?.fresh?.(n)).filter(Boolean),
+   bank:bot.bank?.catalogStock?.()??[]
+  });
   const next=buildObjectiveGraph({
-   G:p.G,goals:goalRows,stock:exactStock,owner:me.name,
+   G:p.G,goals:goalRows,stock:stockState.quantity,owner:me.name,
    realm:currentRealm(),session:bot.session
   });
   last=next;
   // Persist bounded diagnostics, never an actionable queue. A session or
   // realm change invalidates the old candidate; no resumed purchases.
-  const stamp=knowledgeFingerprint([next.roots,next.nodes,next.reason,next.realm]);
+  const stamp=knowledgeFingerprint([next.roots,next.nodes,next.reason,next.realm,stockState.complete,stockState.sources]);
   if(stamp===tick.lastStamp)return;
   const record={version:1,mode:'shadow-only',authority:'none',
    realm:next.realm,session:bot.session,owner:me.name,at:next.at,
@@ -156,6 +161,7 @@ export function createObjectives(bot){
   ...(last??{version:1,mode:'shadow-only',authority:'none',
    reason:owns?'not-sampled':'merchant-only',roots:[],nodes:[]}),
   persistence:failedPersistence?'unavailable':'bounded',
+  inventoryEvidence:stockState?{complete:stockState.complete,reasons:stockState.reasons,sources:stockState.sources,bankAdvisoryCount:stockState.bank.length}:null,
   executable:false
  }),close(){last=null;}};
 }

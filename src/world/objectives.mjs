@@ -118,7 +118,7 @@ export function buildObjectiveGraph({
 export function createObjectives(bot){
  const {p,me,cfg}=bot,owns=me.role==='merchant',
   key='albot:objectives:v1:'+me.name;
- let last=null,stockState=null,failedPersistence=false;
+ let last=null,stockState=null,bankState=null,failedPersistence=false;
  const currentRealm=()=>p.realm();
  function goals(){
   // Only the EXISTING production plan can propose a current objective.
@@ -135,6 +135,7 @@ export function createObjectives(bot){
    reserved:i=>bot.production?.reservedQuantity?.(i)??0
   });
   const names=[...new Set((bot.farmers??[]).filter(n=>n!==me.name))];
+  bankState=bot.bank?.liveEvidence?.()??null;
   stockState=reconcileStockEvidence({
    local,owner:me.name,session:bot.session,realm:currentRealm(),now:at,
    ttlMs:Math.min(120000,cfg.general?.messageTtlMs??10000),
@@ -162,6 +163,7 @@ export function createObjectives(bot){
    reason:owns?'not-sampled':'merchant-only',roots:[],nodes:[]}),
   persistence:failedPersistence?'unavailable':'bounded',
   inventoryEvidence:stockState?{complete:stockState.complete,reasons:stockState.reasons,sources:stockState.sources,bankAdvisoryCount:stockState.bank.length}:null,
+  currentMapBankEvidence:bankState?{complete:bankState.complete,reason:bankState.reason,scope:bankState.scope,map:bankState.map,packs:bankState.packs.length,variants:bankState.rows.length,executable:false}:null,
   executable:false
  }),close(){last=null;}};
 }

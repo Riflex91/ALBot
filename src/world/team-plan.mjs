@@ -137,10 +137,10 @@ export function createTeamPlan(bot){
    if(name!==me.name)return bot.transport?.fresh?.(name)??null;
    return {name,running:bot.running,rip:!!p.c.rip,
     hp:p.c.hp,max_hp:p.c.max_hp,mp:p.c.mp,max_mp:p.c.max_mp,
-    class:p.c.ctype,ctype:p.c.ctype,s:p.c.s,
+    class:p.c.ctype,ctype:p.c.ctype,s:p.c.s,realm:p.realm(),
     capabilities:bot.capabilities?.snapshot?.()};
   }).filter(Boolean);
-  const context={now:Date.now(),ttlMs:cfg.general.messageTtlMs??10000};
+  const context={now:Date.now(),ttlMs:cfg.general.messageTtlMs??10000,realm:p.realm()};
   roles=Object.fromEntries(['heal','aggro','protect','energize','speed','mark']
    .map(role=>[role,verifiedTeamRoleOwner(members,role,context)?.name??null]));
   return roles;

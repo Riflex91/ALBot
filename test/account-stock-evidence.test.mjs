@@ -105,8 +105,9 @@ test('objectives integration accepts only fresh peer evidence, never authorizes 
    production:{enabled:true},general:{messageTtlMs:10000}},
   farmers:['R1'],p,bank:{catalogStock:()=>[]},
   production:{activeGoal:{name:'Craft bar',enabled:true,item:'bar',level:0,quantity:1}},
-  transport:{fresh:()=>peer(inventoryStockEvidence([{name:'ore',q:2}],{
-   owner:'R1',session:'fresh',realm,at:Date.now()}),{received:Date.now()})}};
+  transport:{fresh:()=>{const observedAt=Date.now()-250;
+   return peer(inventoryStockEvidence([{name:'ore',q:2}],{
+    owner:'R1',session:'fresh',realm,at:observedAt}),{received:observedAt});}}};
  const view=createObjectives(bot);view.tick();
  assert.equal(view.status().inventoryEvidence.complete,true);
  assert.equal(view.status().nodes.find(x=>x.item==='ore').state,'fulfilled');

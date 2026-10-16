@@ -36,7 +36,14 @@ export function createTestReport(p,version){
   return {event,text,document,setProvider:f=>provider=f,
     configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,
     error(where,e){event('error',{where,name:e?.name,message:e?.message??e?.reason??e,stack:e?.stack});},
-    sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,map:c?.map,x:c?.real_x??c?.x,y:c?.real_y??c?.y,hp:c?.hp,mp:c?.mp,gold:c?.gold,target:c?.target,rip:!!c?.rip});if(continuous){const d=provider(),decision=JSON.stringify({reason:state.reason,target:d.status?.target,task:d.status?.task,movement:d.movement?.owner,merchantTask:d.merchantTask?.task,productionGoal:d.production?.goal,blocked:d.production?.blocked,team:d.account?.names});if(decision!==lastDecision){lastDecision=decision;event('decision',{state:decision});}}}if((p.headless||continuous&&directory)&&now-lastSave>=10000){lastSave=now;save();}},
+    sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,task:state.task,
+      farmArea:state.farmArea,farmContext:state.farmContext,
+      inventoryBlocked:state.inventoryBlocked,valueActionPending:state.valueActionPending,
+      map:c?.map,x:c?.real_x??c?.x,y:c?.real_y??c?.y,
+      hp:c?.hp,mp:c?.mp,gold:c?.gold,xp:c?.xp,level:c?.level,
+      hpPotions:(c?.items??[]).reduce((n,i)=>n+(i?.name==='hpot0'?(i.q??1):0),0),
+      mpPotions:(c?.items??[]).reduce((n,i)=>n+(i?.name==='mpot0'?(i.q??1):0),0),
+      target:c?.target,rip:!!c?.rip});if(continuous){const d=provider(),decision=JSON.stringify({reason:state.reason,target:d.status?.target,task:d.status?.task,movement:d.movement?.owner,merchantTask:d.merchantTask?.task,productionGoal:d.production?.goal,blocked:d.production?.blocked,team:d.account?.names});if(decision!==lastDecision){lastDecision=decision;event('decision',{state:decision});}}}if((p.headless||continuous&&directory)&&now-lastSave>=10000){lastSave=now;save();}},
     flush(automatic=false){if(p.headless||continuous&&directory)return save();if(automatic){if(automaticDownload)return;automaticDownload=true;}return save();}
   };
 }

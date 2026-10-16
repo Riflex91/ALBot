@@ -17,9 +17,7 @@ if(files.length!==2){
 }else{
  try{
   const [base,next]=await Promise.all(files.map(load));
-  const result=compareReplayReports([base],[next],{
-   minimumEpisodes:1,minExposureMs:60000
-  });
+  const result=compareReplayReports([base],[next]);
   console.log(JSON.stringify(result,null,2));
   if(!result.valid)process.exitCode=1;
  }catch(e){

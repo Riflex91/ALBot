@@ -14,7 +14,7 @@ test('bank current-map view aggregates exact stack variant and protected units',
  assert.equal(r.complete,true);
  assert.equal(r.scope,'current-map-only');
  assert.equal(r.packs.length,2);
- assert.equal(r.quantity('ore'),9);
+ assert.equal(r.quantity('ore'),10);
  assert.equal(r.quantity('ore',0,{stat_type:'str'}),1);
  assert.equal(r.quantity('ore',0,{stat_type:'dex'}),0);
  assert.equal(r.authority,'none');

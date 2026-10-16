@@ -146,3 +146,61 @@ test('exchange destination matching checks actual quest coordinates and map',()=
  assert.equal(exchangeNpcJourneyMatches({...route,owner:'logistics'},quest),false);
  assert.equal(exchangeNpcJourneyMatches({...route,dest:null},quest),false);
 });
+
+test('confirmed Seashell batch stays at the same quest NPC before optional depot travel',()=>{
+ const f=fixture();const calls=[];
+ f.c.x=f.target.x;f.c.y=f.target.y;
+ f.bot.economy.rules=(item,phase)=>phase==='production'?
+  {name:'Autonomer verified Seashell exchange',item:'seashell',
+   action:'exchange',recipe:'elixirdex0',keep:0,teamReserve:0}:null;
+ f.bot.production.exchange=(slot,rule)=>{
+  calls.push({slot,action:rule.action});
+  return true;
+ };
+ f.bot.logistics.travel=()=>assert.fail('unrelated pickup must not interrupt confirmed exchange');
+ f.merchant.confirmedExchange('seashell',25);
+ assert.equal(f.merchant.status().exchangeBurst?.count,1);
+ f.merchant.tick();
+ assert.deepEqual(calls,[{slot:25,action:'exchange'}]);
+ assert.equal(f.c.items[25].q,345,'confirmed callback cannot consume an item itself');
+ assert.ok(f.events.some(e=>e.name==='merchant.exchangeLocalContinuation'));
+});
+test('local exchange series yields when rule, item, NPC or journal guard changes',()=>{
+ const f=fixture(),calls=[];
+ f.c.x=f.target.x;f.c.y=f.target.y;
+ f.bot.economy.rules=()=>null;
+ f.bot.production.exchange=()=>{calls.push('exchange');return true;};
+ f.merchant.confirmedExchange('seashell',25);
+ f.merchant.tick();
+ assert.equal(calls.length,0);
+ assert.equal(f.merchant.status().exchangeBurst,null);
+ f.bot.economy.rules=()=>({action:'exchange',item:'seashell'});
+ f.merchant.confirmedExchange('seashell',25);
+ f.c.x=0;f.c.y=0;
+ f.merchant.tick();
+ assert.equal(calls.length,0,'leaving verified NPC voids local lease');
+ assert.equal(f.merchant.status().exchangeBurst,null);
+ f.c.x=f.target.x;f.c.y=f.target.y;
+ f.merchant.confirmedExchange('seashell',25);
+ f.bot.journal={kind:'exchange'};
+ f.merchant.tick();
+ assert.equal(calls.length,0,'unresolved value journal cannot dispatch another exchange');
+ f.bot.journal=null;
+ f.bot.inventoryBlocked=true;
+ f.merchant.tick();
+ assert.equal(calls.length,0,'inventory quarantine blocks all additional value actions');
+});
+test('local Seashell affinity expires and does not silently authorize an unlimited exchange loop',()=>{
+ const f=fixture(),calls=[];
+ f.c.x=f.target.x;f.c.y=f.target.y;
+ f.bot.economy.rules=()=>({action:'exchange',item:'seashell'});
+ f.bot.production.exchange=()=>{calls.push('exchange');return true;};
+ const before=Date.now;let now=before();Date.now=()=>now;
+ try{
+  f.merchant.confirmedExchange('seashell',25);
+  now+=120001;
+  f.merchant.tick();
+  assert.equal(calls.length,0);
+  assert.equal(f.merchant.status().exchangeBurst,null);
+ }finally{Date.now=before;}
+});

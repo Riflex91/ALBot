@@ -2,6 +2,7 @@ import {distance,samePlace,matches} from '../core/policy.mjs';
 import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 import {provisionalImpactDamage} from './impact-coordination.mjs';
+import {outgoingDamageEstimate} from './damage-model.mjs';
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 // AoE is a normal farmer capability. Limits on hostile targets, pulls,
 // mana, PVP, weapons and cooldowns are still enforced in use().
@@ -35,6 +36,23 @@ export function maximalSafeAimedTargets(engaged,neutral,extra,limit){
  for(const mob of neutral??[]){if(!mob?.id||seen.has(mob.id)||out.length>=slots||added>=pulls)continue;
   seen.add(mob.id);out.push(mob);added++;}
  return out;
+}
+// Rank offensive AoE by effective damage dealt NOW (bounded by remaining HP).
+// MP cost is deliberately not a scoring input. The existing legal-cast
+// checks still enforce sufficient MP, cooldowns, gear and safe pull capacity.
+export function aoeDamageScore(attacker,skill,targets,basicTarget=targets?.[0]){
+ if(!basicTarget||!Array.isArray(targets)||!targets.length)return null;
+ const basic=outgoingDamageEstimate(attacker,basicTarget);
+ if(!basic.valid||!Number.isFinite(basicTarget.hp)||basicTarget.hp<=0)return null;
+ let effectiveDamage=0;
+ for(const mob of targets){
+  if(!mob||!Number.isFinite(mob.hp)||mob.hp<=0)return null;
+  const hit=outgoingDamageEstimate(attacker,mob,{skill});
+  if(!hit.valid)return null;
+  effectiveDamage+=Math.min(mob.hp,Math.max(0,hit.damage));
+ }
+ const normalDamage=Math.min(basicTarget.hp,Math.max(0,basic.damage));
+ return {effectiveDamage,normalDamage,gain:effectiveDamage-normalDamage};
 }
 export function createSkills(bot){
   const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map(),invalidAoENotices=new Set(),lastShotShortfall=new Map();
@@ -166,6 +184,14 @@ export function createSkills(bot){
       p.call('can_attack',selected[0])===true&&
       !p.call('is_on_cooldown','attack'))return false;
     const neutralCount=selected.filter(e=>!e.target).length;
+    // Fan of Knives / Cleave are attack substitutes. At one low-value
+    // target a basic attack can be equally effective: do not waste a
+    // shared attack opportunity. Never use MP per damage as a criterion.
+    // Missing combat data falls back to existing verified targeting guards.
+    if(!explicit&&['fanofknives','cleave'].includes(id)){
+      const score=aoeDamageScore(p.c,s,selected,target);
+      if(score&&score.gain<=0){count(id,'targetBlocked');return false;}
+    }
     if(multi){if(!aoePermitted(bot)||selected.length<(control?.minTargets??1)||
       (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):
         (visible.length>limit||visible.some(e=>!eligible(e)&&!canPull(e))))||
@@ -273,8 +299,46 @@ export function createSkills(bot){
         (!m.target&&remaining>0&&m.mtype===bot.teamPlan?.target()&&bot.allowed(m)&&
          bot.strategy?.safeTarget?.(m.mtype,m)!==false)));
       const safeCount=Math.min(cfg.party.aoeMaxTargets,engaged+Math.min(remaining,safe.filter(m=>!m.target).length));
-      const ids=c.ctype==='ranger'?(safeCount>=4?['5shot','3shot']:['3shot']):({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
-      for(const id of ids)if(use(id,t,0,600))return;
+      let ids=({warrior:['stomp','cleave'],rogue:['fanofknives']}[c.ctype]??[]);
+      if(c.ctype==='ranger'){
+        const ranks=['3shot','5shot'].flatMap(id=>{
+          const def=p.G.skills[id],capacity=id==='3shot'?3:5;
+          if(!def||!ready(id,t,0))return [];
+          const range=(def.range??c.range)-5;
+          const inRange=safe.filter(m=>distance(c,m)<range);
+          const engagedHere=inRange.filter(m=>m.target&&bot.teamNames.includes(m.target));
+          const neutralHere=inRange.filter(m=>!m.target).sort((a,b)=>distance(c,a)-distance(c,b));
+          const targets=maximalSafeAimedTargets(engagedHere,neutralHere,remaining,
+            Math.min(capacity,cfg.party.aoeMaxTargets));
+          if(id==='3shot'&&targets.length!==3||id==='5shot'&&targets.length<4)return [];
+          const score=aoeDamageScore(c,def,targets,t);
+          // Unknown damage data retains the previously established AoE order;
+          // known non-beneficial casts cannot displace a normal attack.
+          if(score&&score.gain<=0)return [];
+          return [{id,damage:score?.effectiveDamage??null}];
+        });
+        const fallbackOrder={ '5shot':0,'3shot':1 };
+        ranks.sort((a,b)=>a.damage!==null&&b.damage!==null?
+          b.damage-a.damage||fallbackOrder[a.id]-fallbackOrder[b.id]:
+          fallbackOrder[a.id]-fallbackOrder[b.id]);
+        ids=ranks.map(r=>r.id);
+        // Keep the existing 3shot shortfall diagnostic even when the damage
+        // planner finds no legal three-target cast. use() will never dispatch
+        // here: its exact-three guard reports what prevented the third slot.
+        if(!ids.length&&safeCount<3&&p.G.skills['3shot'])
+          use('3shot',t,0,600);
+      }
+      for(const id of ids){
+        // Explicit user rules own their skills. Evaluate those through the
+        // custom rule engine rather than bypassing their conditions/priority.
+        if(cfg.skills.some(r=>r.enabled&&r.skill===id&&
+          (!r.character||r.character===c.name)&&
+          (r.class==='auto'||r.class===c.ctype))){
+          if(custom(t))return;
+          continue;
+        }
+        if(use(id,t,0,600))return;
+      }
     }
     if(p.c.ctype==='mage'&&bot.me?.role==='farmer'?
       support()||custom(t):custom(t)||support())return;

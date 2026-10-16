@@ -39,6 +39,65 @@ export function createMerchant(bot){
  let standIdleSince=null,lastPickupWarning=0,pickupStatus=null,departure=null,
   standRequestedUntil=0,lastSupplyCheck=0,lastPressureNote=0,capacityRecovery=false;
  let capacityBlock=null,productionContinuation=null,lastProgressTravel=null;
+ // A confirmed exchange at a verified NPC earns a short *local scheduling*
+ // lease, not stock/budget authority. Every batch still passes production's
+ // current live rule, source, capacity, risk, journal and confirmation guards.
+ let exchangeBurst=null;
+ const MAX_EXCHANGE_BURST=20,EXCHANGE_BURST_MS=120000;
+ function confirmedExchange(item,slot){
+  if(me.role!=='merchant'||!bot.running||bot.inventoryBlocked||
+     typeof item!=='string'||!Number.isSafeInteger(slot)||slot<0)return;
+  const live=p.c.items[slot],source=exchangeSource(p.G,item,p.root?.S??p.parent?.S??{});
+  const dest=source.quest?source.destination:e.destination?.('exchange');
+  if(live?.name!==item||!source.ready||!dest||p.c.moving||
+     !samePlace(p.c,dest)||!e.npcAt?.(dest))return;
+  const now=Date.now(),previous=exchangeBurst;
+  const same=previous?.item===item&&previous?.slot===slot&&
+   previous?.until>now&&previous?.count<MAX_EXCHANGE_BURST&&
+   JSON.stringify(previous.destination)===JSON.stringify(dest);
+  const count=same?previous.count+1:1,started=same?previous.started:now;
+  exchangeBurst=count<MAX_EXCHANGE_BURST&&now-started<EXCHANGE_BURST_MS?
+   {item,slot,started,count,until:Math.min(started+EXCHANGE_BURST_MS,now+45000),
+    destination:{...dest}}:null;
+  bot.event?.('merchant.exchangeConfirmed',{item,quantity:p.G.items?.[item]?.e,
+   burstCount:count,continueLocal:!!exchangeBurst});
+ }
+ function continueConfirmedExchange(){
+  const burst=exchangeBurst;if(!burst)return false;
+  if(Date.now()>=burst.until||me.role!=='merchant'||!cfg.merchant.enabled||
+     !cfg.production.enabled||!cfg.production.exchange||
+     bot.bank?.pending||bot.journal||bot.inventoryBlocked||
+     bot.logistics?.reserved||bot.gold?.reserved||
+     p.c.moving||bot.movement?.order||bot.movement?.townActive||
+     !samePlace(p.c,burst.destination)||!e.npcAt?.(burst.destination)){
+   // Do not defer a journaled transaction; it resumes on its next tick.
+   if(!bot.journal)exchangeBurst=null;
+   return false;
+  }
+  const item=p.c.items[burst.slot],source=exchangeSource(
+   p.G,burst.item,p.root?.S??p.parent?.S??{});
+  const dest=source.quest?source.destination:e.destination?.('exchange');
+  if(item?.name!==burst.item||!e.safe(item)||!source.ready||
+     JSON.stringify(dest)!==JSON.stringify(burst.destination)){
+   exchangeBurst=null;return false;
+  }
+  const candidates=[e.rules(item,'production'),e.rules(item,'inventory')];
+  for(const rule of candidates){
+   if(rule?.action!=='exchange'||!e.remaining(rule))continue;
+   // The direct exchange executes exactly one API batch and must re-confirm
+   // against the same inventory slot. Never pre-authorize a second batch.
+   const accepted=bot.production?.exchange?.(burst.slot,rule)??false;
+   if(accepted||bot.journal){
+    bot.event?.('merchant.exchangeLocalContinuation',{item:burst.item,
+     burstCount:burst.count,atNpc:true});
+    return true;
+   }
+  }
+  exchangeBurst=null;
+  bot.event?.('merchant.exchangeBurstYield',{item:burst.item,
+   reason:'No longer eligible under current production and safety rules'});
+  return false;
+ }
  // The alert arms one persisted team refill tour. A changed roster or
  // missing heartbeat suspends buying until every selected farmer is verified.
  const potionCycleKey='albot:potion-tour:'+me.name;
@@ -748,6 +807,9 @@ export function createMerchant(bot){
    bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
   }
   if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
+  // Continue only a server-confirmed series at its SAME NPC, before depot
+  // housekeeping, new market travel or optional stock reconciliation.
+  if(exchangeBurst&&continueConfirmedExchange())return;
   // A delivery of already finished, allocated gear can release a physical
   // slot without selling protected production stock.
   if((capacityRecovery||bot.storage?.active)&&bot.free()>(cfg.merchant.minFreeSlots??4)&&
@@ -894,10 +956,12 @@ export function createMerchant(bot){
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
- return {tick,preparePickup,prepareGoldPickup:peer=>preparePickup(peer,true),prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
+ return {tick,confirmedExchange,preparePickup,prepareGoldPickup:peer=>preparePickup(peer,true),prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
   claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':
    capacityBlock?'SAFE_MARGIN_BLOCKED':'NORMAL',
    capacityBlock:capacityBlock?{reason:capacityBlock.reason,free:capacityBlock.free,
     requiredFree:Math.max(8,(cfg.merchant.minFreeSlots??4)+4),retryAt:capacityBlock.until}:null,
-   storagePlan:bot.storage?.status?.()??null,productionContinuation:productionContinuation?{...productionContinuation}:null,depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){tasks.clear();service.clear();}};
+   storagePlan:bot.storage?.status?.()??null,productionContinuation:productionContinuation?{...productionContinuation}:null,
+   exchangeBurst:exchangeBurst?{item:exchangeBurst.item,count:exchangeBurst.count,until:exchangeBurst.until}:null,
+   depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){exchangeBurst=null;tasks.clear();service.clear();}};
 }

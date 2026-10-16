@@ -37,7 +37,7 @@ export function inventoryStockEvidence(items,{
   row.quantity+=quantity;
   if(protectedItem(entry))row.protectedUnits+=quantity;
   else{
-   const held=reserved(entry);
+   let held;try{held=reserved(entry);}catch{return bad('reservation-unverified');}
    if(!accountStockInt(held))return bad('reservation-unverified');
    // One owner-level reservation applies to a whole variant, not per stack.
    row.reservedUnits=Math.max(row.reservedUnits,held);
@@ -51,13 +51,30 @@ export function reconcileStockEvidence({
  ttlMs=10000,expected=[]
 }={}){
  const reasons=[],sources=[],bankRows=[];
- const valid=(r,s)=>!!r&&r.version===1&&r.complete===true&&
-  r.owner===s.owner&&r.session===s.session&&r.realm===realm&&
-  accountStockInt(r.at,Number.MAX_SAFE_INTEGER)&&r.at<=now&&
-  now-r.at<=ttlMs&&Array.isArray(r.rows)&&r.rows.length<=12&&
-  r.rows.every(x=>accountStockValidId(x?.item?.name)&&accountStockInt(x.item.level??0,99)&&
-   accountStockInt(x.quantity)&&accountStockInt(x.protectedUnits)&&
-   accountStockInt(x.reservedUnits)&&x.protectedUnits<=x.quantity);
+ const valid=(r,s)=>{
+  if(!r||r.version!==1||r.complete!==true||
+    r.owner!==s.owner||r.session!==s.session||r.realm!==realm||
+    !accountStockInt(r.at,Number.MAX_SAFE_INTEGER)||r.at>now||
+    now-r.at>ttlMs||!Array.isArray(r.rows)||r.rows.length>12||
+    !accountStockInt(r.slotCount,50))return false;
+  const unique=new Set();
+  for(const x of r.rows){
+   if(!accountStockValidId(x?.item?.name)||
+     !accountStockInt(x.item.level??0,99)||
+     accountStockFields.some(k=>x.item[k]!==undefined&&(
+       ['acc','rid'].includes(k)?
+        !['string','number'].includes(typeof x.item[k]):
+       typeof x.item[k]!=='string'||x.item[k].length>(k==='data'?120:80)))||
+     !accountStockInt(x.quantity)||x.quantity<1||
+     !accountStockInt(x.protectedUnits)||
+     !accountStockInt(x.reservedUnits)||
+     x.protectedUnits>x.quantity)return false;
+   const key=accountStockKey(x.item);
+   if(unique.has(key))return false;
+   unique.add(key);
+  }
+  return r.slotCount>=r.rows.length;
+ };
  const emit=(name,proof,trusted)=>{
   const status=trusted&&valid(proof,{owner:name,session:trusted.session})?
    'fresh':'unverified';

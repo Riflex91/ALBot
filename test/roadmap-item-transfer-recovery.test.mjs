@@ -13,7 +13,7 @@ function journal(kind,{
  id='s1:9',session=kind==='send'?'r1':'s1',at=now-1000,
  itemValue=item
 }={}){
- return {kind,id,session,item:itemValue,quantity,before,at,
+ return {kind,id,session,...(kind==='receive'?{ownerSession:'r1'}:{}),item:itemValue,quantity,before,at,
   ...(kind==='send'?{to:'Receiver'}:{from:'Sender'}),
   evidence:{realm,gold,inventory:oldItems(items)}};
 }
@@ -145,9 +145,10 @@ test('recovery remains manual-only despite paired corroboration',()=>{
   session:'s1',cfg:{general:{messageTtlMs:10000}},checkpoint:{durable:true},
   p:{c:{items:[{name:'ore',q:2},null],gold:100},
    realm:()=>realm,read:()=>null},
-  transport:{fresh:()=>peer({...r,observedAt:Date.now()-100})}};
+  transport:{fresh:()=>peer({...r,observedAt:Date.now()-100},{received:Date.now()-50})}};
  const status=createRecovery(bot).itemStatus();
  assert.equal(status.localVerified,true);
+ assert.equal(status.paired,true);
  assert.equal(status.requiresManualReview,true);
  assert.equal(status.unlocksValueActions,false);
  assert.equal(status.executable,false);

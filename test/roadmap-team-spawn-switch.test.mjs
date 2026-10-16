@@ -28,6 +28,11 @@ test('role owner requires fresh capability with actual ready skill',()=>{
   member('Priest','priest',['heal'],{mp:30})
  ]) assert.equal(verifiedTeamRoleOwner([stale],'heal',{now,ttlMs:2000}),null);
 });
+test('peer role cannot be credited across realm boundaries',()=>{
+ const peer=member('Priest','priest',['heal'],{realm:'EU2'});
+ assert.equal(verifiedTeamRoleOwner([peer],'heal',{now,ttlMs:2000,realm:'USIV'}),null);
+ assert.equal(verifiedTeamRoleOwner([peer],'heal',{now,ttlMs:2000,realm:'EU2'}).name,'Priest');
+});
 test('tank and protection assignment match the skill actually supported',()=>{
  const a=member('Tank','warrior',['agitate']);
  const b=member('Paladin','paladin',['guardians_oath']);

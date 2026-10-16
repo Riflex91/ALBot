@@ -50,7 +50,7 @@ export function createMerchant(bot){
   const live=p.c.items[slot],source=exchangeSource(p.G,item,p.root?.S??p.parent?.S??{});
   const dest=source.quest?source.destination:e.destination?.('exchange');
   if(live?.name!==item||!source.ready||!dest||p.c.moving||
-     !samePlace(p.c,dest)||!e.npcAt?.(dest))return;
+     !samePlace(p.c,dest)||distance(p.c,dest)>110||!e.npcAt?.(dest))return;
   const now=Date.now(),previous=exchangeBurst;
   const same=previous?.item===item&&previous?.slot===slot&&
    previous?.until>now&&previous?.count<MAX_EXCHANGE_BURST&&
@@ -69,7 +69,8 @@ export function createMerchant(bot){
      bot.bank?.pending||bot.journal||bot.inventoryBlocked||
      bot.logistics?.reserved||bot.gold?.reserved||
      p.c.moving||bot.movement?.order||bot.movement?.townActive||
-     !samePlace(p.c,burst.destination)||!e.npcAt?.(burst.destination)){
+     !samePlace(p.c,burst.destination)||distance(p.c,burst.destination)>110||
+     !e.npcAt?.(burst.destination)){
    // Do not defer a journaled transaction; it resumes on its next tick.
    if(!bot.journal)exchangeBurst=null;
    return false;

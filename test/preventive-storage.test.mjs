@@ -25,6 +25,38 @@ test('exchange below preventive margin is refused; enough margin admits it witho
  const a=fixture(8);a.c.items[0]={name:'gift',q:500};assert.equal(a.planner.exchangeAllowed(0,1),false);
  const b=fixture(9);b.c.items[0]={name:'gift',q:500};assert.equal(b.planner.exchangeAllowed(0,1),true);
 });
+test('Seashell exchange can keep eight safe slots while storage hysteresis remains active',()=>{
+ const f=fixture(8);
+ f.c.items[0]={name:'gift',q:345};
+ assert.equal(f.planner.exchangeAllowed(0,1),false,'8 -> 7 must remain blocked');
+ assert.equal(f.planner.active,true);
+ // A separately confirmed storage operation has released one unrelated slot.
+ f.c.items[1]=null;
+ assert.equal(f.bot.free(),9);
+ assert.equal(f.planner.active,true,'recovery state remains active until target 12');
+ assert.equal(f.planner.exchangeAllowed(0,1),true,
+  '9 -> 8 is safe; a higher cleanup target must not veto the transaction');
+ assert.equal(f.c.items[0].q,345,'authorization only, no fabricated exchange');
+ // After a worst-case output consumes the ninth slot the next exchange
+ // must recheck current physical capacity, not reuse the previous admission.
+ f.c.items[1]={name:'ring'};
+ assert.equal(f.planner.exchangeAllowed(0,1),false,'8 -> 7 still blocked');
+});
+test('workspace recovery preserves bank-pressure and unknown-output refusals',()=>{
+ const f=fixture(8);f.c.items[0]={name:'gift',q:345};
+ assert.equal(f.planner.exchangeAllowed(0,1),false);
+ f.c.items[1]=null;assert.equal(f.bot.free(),9);
+ f.setBank(0);
+ assert.equal(f.planner.exchangeAllowed(0,1),false,
+  'full bank cannot be bypassed by recovery hysteresis');
+ f.setBank(10);
+ f.G.drops.gift=[[1,'open','unverified']];
+ assert.equal(f.planner.exchangeAllowed(0,1),false,
+  'unknown reward output must remain fail-closed');
+ f.G.drops.gift=[[1,'ring',3]];
+ assert.equal(f.planner.exchangeAllowed(0,1),false,
+  'three separate worst-case reward slots need extra headroom');
+});
 test('full bank defers exchanges even when carried inventory is roomy',()=>{
  const {c,planner,setBank}=fixture(20);setBank(0);c.items[0]={name:'gift',q:500};assert.equal(planner.exchangeAllowed(0,1),false);
 });

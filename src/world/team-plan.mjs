@@ -134,7 +134,7 @@ export function createTeamPlan(bot){
  }
  function capabilities(){
   const names=(bot.farmers??[]).slice(0,8),members=names.map(name=>{
-   if(name!==me.name)return bot.transport?.fresh?.(name)??null;
+   if(name!==me.name){const h=bot.transport?.fresh?.(name);return h?.name===name?h:null;}
    return {name,running:bot.running,rip:!!p.c.rip,
     hp:p.c.hp,max_hp:p.c.max_hp,mp:p.c.mp,max_mp:p.c.max_mp,
     class:p.c.ctype,ctype:p.c.ctype,s:p.c.s,realm:p.realm(),

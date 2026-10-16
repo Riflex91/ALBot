@@ -94,7 +94,7 @@ test('objective graph uses vetted aggregate quantity and blocks on missing peer 
  const missing=ledger(local([]),[],['R1']);
  const fail=buildObjectiveGraph({G:game,goals,stock:missing.quantity,owner,session,realm,now:at});
  assert.equal(fail.blocked,true);
- assert.equal(fail.nodes.find(x=>x.item==='ore').blocker,'stock-unverified');
+ assert.equal(fail.nodes.find(x=>x.item==='bar').blocker,'stock-unverified');
 });
 
 test('objectives integration accepts only fresh peer evidence, never authorizes execution',()=>{
@@ -114,5 +114,5 @@ test('objectives integration accepts only fresh peer evidence, never authorizes 
  bot.transport.fresh=()=>null;
  view.tick();
  assert.equal(view.status().inventoryEvidence.complete,false);
- assert.equal(view.status().nodes.find(x=>x.item==='ore').state,'blocked');
+ assert.equal(view.status().nodes.find(x=>x.item==='bar').state,'blocked');
 });

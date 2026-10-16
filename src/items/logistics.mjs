@@ -153,8 +153,21 @@ export function createLogistics(bot){
     // exactly-four-slot fallback is still allowed until that state starts.
     const pressure=me.role==='merchant'&&cfg.merchant.enabled&&
       bot.merchant?.status?.()?.capacityRecovery===true;
-    const maxNewSlots=Math.min(pressure&&!verifiedGear&&!verifiedElixir?0:Infinity,
-      verifiedGear||verifiedElixir?Infinity:bot.storage?.receiveNewSlots?.()??Infinity);
+    // Preventive storage's 8-slot margin is a production/exchange guard,
+    // not an embargo on an already offered, in-range farmer pickup.
+    // A live known-item pickup may spend ONLY the space above the Merchant's
+    // separate configured minimum (4 by default). Actual single-stack
+    // headroom, variant matching and the durable receive journal still gate
+    // the acceptance. Capacity-recovery mode remains an absolute veto on
+    // allocating a new slot (compatible stack merges remain possible).
+    const storageSlots=bot.storage?.receiveNewSlots?.()??Infinity;
+    const merchantMin=Math.max(0,cfg.merchant.minFreeSlots??4);
+    const pickupSlots=me.role==='merchant'&&pickup>0?
+      Math.max(0,bot.free()-merchantMin):0;
+    const maxNewSlots=Math.min(
+      pressure&&!verifiedGear&&!verifiedElixir?0:Infinity,
+      verifiedGear||verifiedElixir?Infinity:
+        pickup>0?Math.max(storageSlots,pickupSlots):storageSlots);
     return Math.min(nominal,physicalReceiveCapacity(p.c.items,i,
       p.G.items[i.name],{maxNewSlots}));}
   function receive(from,m){

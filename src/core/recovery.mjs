@@ -1,4 +1,5 @@
 import {identity,fingerprint} from './policy.mjs';
+import {inspectItemTransferEvidence,inspectPairedItemTransfer} from '../items/transfer-reconciliation.mjs';
 import {exchangeDrops} from '../production/materials.mjs';
 // A gathering skill may time out without producing an item. Only a complete,
  // untouched, durable before-image can release that uncertainty automatically.
@@ -132,6 +133,23 @@ export function inspectGoldRecovery(bot){
 }
 export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null,exchangeSample=null,exchangeStatus=null,goldSample=null,goldStatus=null;
  const goldAckKey='albot:gold:'+me.name+':recovery-receipt';
+ function itemStatus(){
+  const j=bot.journal;
+  if(!['send','receive'].includes(j?.kind))return null;
+  const at=Date.now(),local=inspectItemTransferEvidence({
+   journal:j,inventory:p.c?.items,gold:p.c?.gold,owner:me.name,
+   session:bot.session,realm:p.realm(),now:at
+  });
+  const recipient=j.kind==='send'?j.to:j.from;
+  const peer=bot.transport?.fresh?.(recipient);
+  const result=inspectPairedItemTransfer(local,peer,{
+   realm:p.realm(),now:at,ttlMs:cfg.general?.messageTtlMs??10000
+  });
+  return {localVerified:!!local?.verified,localReason:local?.reason??null,
+   peer:recipient,peerSession:peer?.session??null,
+   paired:result.eligible,pairedReason:result.reason,
+   requiresManualReview:true,unlocksValueActions:false,executable:false};
+ }
  const oldGoldAck=p.read?.(goldAckKey);
  let goldAck=oldGoldAck?.until>Date.now()?oldGoldAck:null;
  function goldEvidence(){
@@ -242,5 +260,5 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   if(confirmed){bot.event('recovery.confirmed',{kind:j.kind,reason:'Gepinnte Bestände und Gold-/Equipänderung stimmen überein'});bot.inventoryBlocked=false;bot.endValue('confirmed');return !bot.journal;}
   bot.event('recovery.unresolved',{kind:j.kind,reason:'Beobachtung ist nicht eindeutig; kein erneuter Versand'});return false;
  }
- return {authorize,reconcile,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus}),goldEvidence,close(){lease=null;}};
+ return {authorize,reconcile,itemStatus,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus}),goldEvidence,close(){lease=null;}};
 }

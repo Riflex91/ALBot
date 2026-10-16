@@ -179,7 +179,7 @@ export function createLogistics(bot){
        return;
       }
       if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
-      if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
+      if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,ownerSession:bot.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.
       try{bot.beginValue({kind:'receive',...incoming});}catch(e){incoming=null;throw e;}counters.acceptsSent++;transport.send(from,'accept',{quantity,gearAck:d.gear?d.gear.expected:null},m.id);
     }else if(m.type==='itemCancel'&&incoming&&m.id===incoming.id&&from===incoming.from&&m.session===incoming.session

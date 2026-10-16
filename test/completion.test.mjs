@@ -131,7 +131,9 @@ test('reflection excludes magical damage, vampire reward is not an aura, and she
 test('boss readiness includes freeze slowdown, accumulated burn, critical burst and lifesteal',()=>{
  const G={monsters:{icegolem:{hp:1000,attack:10,frequency:1,abilities:{multi_freeze:{damage:10,cooldown:2000}}},dragold:{hp:1000,attack:100,frequency:1,abilities:{multi_burn:{damage:100,cooldown:4000}}},jr:{hp:1000,attack:100,frequency:1,crit:100,critdamage:200}}};
  const c={name:'P',ctype:'priest',hp:10000,max_hp:10000,mp:1000,max_mp:1000,attack:100,frequency:1};
- assert.equal(bossReadiness(G,'icegolem',null,[c]).dps,30);
+ const frozen=bossReadiness(G,'icegolem',null,[c]);
+ assert.ok(frozen.dps>0&&frozen.dps<30,'typed shadow gate applies a conservative planning margin');
+ assert.ok(frozen.damageShadow.newEstimate<frozen.damageShadow.oldEstimate);
  assert.ok(bossReadiness(G,'dragold',null,[c]).incoming>350,'burn damage must include its accumulating five-second DoT');
  assert.equal(bossReadiness(G,'jr',null,[{...c,hp:1000,max_hp:1000}]).safe,false);
  G.monsters.jr.lifesteal=100;assert.equal(bossReadiness(G,'jr',null,[c]).safe,false);

@@ -4,12 +4,12 @@ import {knowledgeFingerprint} from './knowledge.mjs';
 // P1-1 read-only objective DAG. This is intentionally NOT an execution path:
 // purchases, mutations, bank retrievals and sends remain exclusively in their
 // existing preflighted modules. A graph NEVER authorizes a value operation.
-const finite=(n,lo,hi)=>Number.isSafeInteger(n)&&n>=lo&&n<=hi;
-const validItem=x=>typeof x==='string'&&x.length>0&&x.length<=80;
-const validOwner=x=>typeof x==='string'&&x.length>0&&x.length<=80;
-const variantFields=['stat_type','p','title','data'];
-const identity=(name,level,variant)=>knowledgeFingerprint([name,level,variant??null]);
-const safeCount=(stock,name,level,variant)=>{try{
+const objectiveFinite=(n,lo,hi)=>Number.isSafeInteger(n)&&n>=lo&&n<=hi;
+const objectiveValidItem=x=>typeof x==='string'&&x.length>0&&x.length<=80;
+const objectiveValidOwner=x=>typeof x==='string'&&x.length>0&&x.length<=80;
+const objectiveVariantFields=['stat_type','p','title','data'];
+const objectiveNodeIdentity=(name,level,variant)=>knowledgeFingerprint([name,level,variant??null]);
+const objectiveSafeCount=(stock,name,level,variant)=>{try{
  const n=stock(name,level,variant);
  return Number.isSafeInteger(n)&&n>=0&&n<=1e7?n:null;
 }catch{return null;}};
@@ -19,9 +19,9 @@ export function buildObjectiveGraph({
 }={}){
  const empty=reason=>({version:1,mode:'shadow-only',authority:'none',
   owner,session,realm,at:now,expires:now,reason,roots:[],nodes:[],blocked:true});
- if(!G?.items||!validOwner(owner)||!validOwner(session)||!validOwner(realm)||
+ if(!G?.items||!objectiveValidOwner(owner)||!objectiveValidOwner(session)||!objectiveValidOwner(realm)||
     !Number.isFinite(now)||!Array.isArray(goals)||goals.length>16||
-    !finite(ttlMs,30000,3600000))return empty('invalid-context');
+    !objectiveFinite(ttlMs,30000,3600000))return empty('invalid-context');
  const nodes=new Map(),roots=[];
  let expanded=0,blocked=false,reason=null;
  function expand(item,missing,depth,ancestors){
@@ -38,7 +38,7 @@ export function buildObjectiveGraph({
   const recipe=level===0?findRecipe(G,name)?.recipe:null;
   if(!recipe){item.state='blocked';item.blocker='source-not-verified';return;}
   const yieldCount=recipe.q??recipe.quantity??1;
-  if(!finite(yieldCount,1,1000000))throw Error('invalid-recipe-yield');
+  if(!objectiveFinite(yieldCount,1,1000000))throw Error('invalid-recipe-yield');
   for(const ingredient of recipeIngredients(recipe)){
    const units=ingredient.quantity*Math.ceil(missing/yieldCount);
    if(!Number.isSafeInteger(units)||units>1000000)throw Error('demand-overflow');
@@ -46,10 +46,10 @@ export function buildObjectiveGraph({
   }
  }
  function node(name,level,variant,quantity,depth=0,ancestors=[]){
-  if(++expanded>128||depth>8||!validItem(name)||!G.items[name]||
-     !finite(level,0,99)||!finite(quantity,1,1000000))
+  if(++expanded>128||depth>8||!objectiveValidItem(name)||!G.items[name]||
+     !objectiveFinite(level,0,99)||!objectiveFinite(quantity,1,1000000))
    throw Error('unsupported-or-unbounded-objective');
-  const id='item:'+identity(name,level,variant);
+  const id='item:'+objectiveNodeIdentity(name,level,variant);
   if(ancestors.includes(id))throw Error('cyclic-objective');
   const seen=nodes.get(id);
   if(seen){
@@ -66,7 +66,7 @@ export function buildObjectiveGraph({
    expand(seen,newMissing-oldMissing,depth,ancestors);
    return id;
   }
-  const available=safeCount(stock,name,level,variant);
+  const available=objectiveSafeCount(stock,name,level,variant);
   const item={id,kind:'material',item:name,level,variant:variant??null,
    required:quantity,observed:available,prerequisites:[],state:'candidate',
    blocker:null};
@@ -79,12 +79,12 @@ export function buildObjectiveGraph({
  try{
   for(const g of goals){
    if(!g?.enabled)continue;
-   if(!validItem(g.item)||!finite(g.level??0,0,99)||
-      !finite(g.quantity,1,1000000)||
+   if(!objectiveValidItem(g.item)||!objectiveFinite(g.level??0,0,99)||
+      !objectiveFinite(g.quantity,1,1000000)||
       typeof g.name!=='string'||g.name.length>100||
       g.variant!==undefined&&g.variant!==null&&(
        typeof g.variant!=='object'||Array.isArray(g.variant)||
-       Object.keys(g.variant).some(k=>!variantFields.includes(k)))){
+       Object.keys(g.variant).some(k=>!objectiveVariantFields.includes(k)))){
     throw Error('invalid-goal');}
    const goalId='goal:'+knowledgeFingerprint([g.name,g.item,g.level??0,
     g.recipient??'',g.gearSlot??'',g.variant??null]);
@@ -92,7 +92,7 @@ export function buildObjectiveGraph({
    const dep=node(g.item,g.level??0,g.variant??null,g.quantity);
    roots.push({id:goalId,kind:g.gearSlot?'gear':'material',
     label:g.name,item:g.item,level:g.level??0,quantity:g.quantity,
-    recipient:g.recipient??null,owner,priority:finite(g.priority??0,-10000,10000)?
+    recipient:g.recipient??null,owner,priority:objectiveFinite(g.priority??0,-10000,10000)?
      g.priority??0:0,prerequisites:[dep],state:'candidate',blocker:null});
   }
   for(const n of nodes.values())if(n.prerequisites.some(x=>nodes.get(x)?.state==='blocked')){
@@ -132,7 +132,7 @@ export function createObjectives(bot){
   const items=p.c.items??[];
   const exactStock=(name,level,variant)=>items.reduce((n,item)=>{
    if(item?.name!==name||(item.level??0)!==level)return n;
-   if(variant&&variantFields.some(k=>variant[k]!==undefined&&
+   if(variant&&objectiveVariantFields.some(k=>variant[k]!==undefined&&
       JSON.stringify(item[k]??null)!==JSON.stringify(variant[k])))return n;
    return n+(Number.isSafeInteger(item.q)&&item.q>0?item.q:1);
   },0);

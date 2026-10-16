@@ -22,8 +22,29 @@ export function buildObjectiveGraph({
  if(!G?.items||!validOwner(owner)||!validOwner(session)||!validOwner(realm)||
     !Number.isFinite(now)||!Array.isArray(goals)||goals.length>16||
     !finite(ttlMs,30000,3600000))return empty('invalid-context');
- const nodes=new Map(),roots=[],active=new Set();
+ const nodes=new Map(),roots=[];
  let expanded=0,blocked=false,reason=null;
+ function expand(item,missing,depth,ancestors){
+  if(missing<=0)return;
+  const {id,level,variant}=item,name=item.item,meta=G.items[name];
+  const add=(child)=>{if(!item.prerequisites.includes(child))
+   item.prerequisites.push(child);};
+  if(level>0&&(meta.upgrade||meta.compound)){
+   const units=missing*(meta.compound?3:1);
+   if(!Number.isSafeInteger(units)||units>1000000)throw Error('demand-overflow');
+   add(node(name,level-1,variant,units,depth+1,[...ancestors,id]));
+   return;
+  }
+  const recipe=level===0?findRecipe(G,name)?.recipe:null;
+  if(!recipe){item.state='blocked';item.blocker='source-not-verified';return;}
+  const yieldCount=recipe.q??recipe.quantity??1;
+  if(!finite(yieldCount,1,1000000))throw Error('invalid-recipe-yield');
+  for(const ingredient of recipeIngredients(recipe)){
+   const units=ingredient.quantity*Math.ceil(missing/yieldCount);
+   if(!Number.isSafeInteger(units)||units>1000000)throw Error('demand-overflow');
+   add(node(ingredient.item,ingredient.level,null,units,depth+1,[...ancestors,id]));
+  }
+ }
  function node(name,level,variant,quantity,depth=0,ancestors=[]){
   if(++expanded>128||depth>8||!validItem(name)||!G.items[name]||
      !finite(level,0,99)||!finite(quantity,1,1000000))
@@ -32,11 +53,17 @@ export function buildObjectiveGraph({
   if(ancestors.includes(id))throw Error('cyclic-objective');
   const seen=nodes.get(id);
   if(seen){
-   // Merge identical variants and levels, never pretend a unit satisfies
-   // two different dependencies. All node quantities are gross demand.
+   // The same physical units cannot satisfy multiple roots. Extra gross
+   // demand expands ONLY the new shortfall, with strict variant separation.
    if(!Number.isSafeInteger(seen.required+quantity)||
       seen.required+quantity>1000000)throw Error('demand-overflow');
+   const oldMissing=seen.observed===null?0:
+    Math.max(0,seen.required-seen.observed);
    seen.required+=quantity;
+   const newMissing=seen.observed===null?0:
+    Math.max(0,seen.required-seen.observed);
+   if(seen.state==='fulfilled'&&newMissing>0)seen.state='candidate';
+   expand(seen,newMissing-oldMissing,depth,ancestors);
    return id;
   }
   const available=safeCount(stock,name,level,variant);
@@ -46,28 +73,7 @@ export function buildObjectiveGraph({
   nodes.set(id,item);
   if(available===null){item.state='blocked';item.blocker='stock-unverified';return id;}
   if(available>=quantity){item.state='fulfilled';return id;}
-  const missing=quantity-available,meta=G.items[name];
-  if(level>0&&(meta.upgrade||meta.compound)){
-   const multiplier=meta.compound?3:1;
-   if(missing*multiplier>1000000)throw Error('demand-overflow');
-   item.prerequisites.push(node(name,level-1,variant,missing*multiplier,
-    depth+1,[...ancestors,id]));
-  }else{
-   const recipe=level===0?findRecipe(G,name)?.recipe:null;
-   if(recipe){
-    const yieldCount=recipe.q??recipe.quantity??1;
-    if(!finite(yieldCount,1,1000000))throw Error('invalid-recipe-yield');
-    const batches=Math.ceil(missing/yieldCount);
-    for(const ingredient of recipeIngredients(recipe)){
-     const units=ingredient.quantity*batches;
-     if(!Number.isSafeInteger(units)||units>1000000)throw Error('demand-overflow');
-     item.prerequisites.push(node(ingredient.item,ingredient.level,null,
-      units,depth+1,[...ancestors,id]));
-    }
-   }else{
-    item.state='blocked';item.blocker='source-not-verified';
-   }
-  }
+  expand(item,quantity-available,depth,ancestors);
   return id;
  }
  try{

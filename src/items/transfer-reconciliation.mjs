@@ -119,3 +119,37 @@ export function inspectPairedItemTransfer(local,peer,{
   mode:'shadow-only',authority:'none',executable:false,
   conclusion:'corroborated-snapshots-not-server-receipt'};
 }
+
+// Detect a genuine counterparty restart while an existing, durable RECEIVE
+// journal still names the old sender session. This is NOT a no-send receipt.
+// A sender could have dispatched send_item immediately before restarting.
+export function inspectReceiveSenderSession({
+ journal,peer,ownerSession,realm,now=Date.now(),ttlMs=10000
+}={}){
+ const result=(reason,changed=false,newSession=null)=>({
+  reason,changed,newSession,mode:'shadow-only',authority:'none',
+  executable:false,unlock:false,retry:false,requiresManualReview:true
+ });
+ if(!journal||journal.kind!=='receive')return result('no-open-receive-journal');
+ if(!transferEvidenceName(journal.from)||
+    !transferEvidenceName(journal.session)||
+    !transferEvidenceName(journal.ownerSession)||
+    !transferEvidenceName(journal.id)||
+    !journal.id.startsWith(journal.session+':')||
+    !transferEvidenceName(ownerSession)||
+    journal.ownerSession!==ownerSession)
+  return result('receiver-session-unpinned-or-restarted');
+ if(!transferEvidenceName(realm)||!Number.isFinite(now)||
+    !Number.isFinite(ttlMs)||ttlMs<1000||ttlMs>120000)
+  return result('invalid-observation-context');
+ if(!peer)return result('sender-status-unavailable');
+ if(peer.name!==journal.from||
+    !transferEvidenceName(peer.session)||
+    peer.realm!==realm||peer.running!==true||peer.rip===true||
+    !Number.isFinite(peer.received)||peer.received>now||
+    now-peer.received>ttlMs)
+  return result('fresh-same-realm-sender-not-verified');
+ if(peer.session===journal.session)
+  return result('original-sender-session-still-live',false,peer.session);
+ return result('sender-session-changed-during-receive',true,peer.session);
+}

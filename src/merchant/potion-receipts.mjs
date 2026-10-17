@@ -44,6 +44,28 @@ export function confirmedPotionRunway(before,after,{
   owner:after.name,session:after.session,at:after.received,
   windowMs:interval,rows};
 }
+// Planning estimate, never a route claim or proof of ETA. Allows time for
+// validated bank/NPC stock, serial stops and weathered same/cross-map travel.
+// The existing service leases, budgets and guard checks still own execution.
+export function supplyTourLeadSeconds({farmers=[],merchant=null}={}){
+ if(!Array.isArray(farmers)||!farmers.length)return 180;
+ const same=(a,b)=>a&&b&&a.map===b.map&&
+  (a.in??a.map)===(b.in??b.map);
+ let extra=0;
+ for(const f of farmers.slice(0,8)){
+  if(!same(merchant,f)){extra+=120;continue;}
+  if(!Number.isFinite(merchant?.x)||!Number.isFinite(merchant?.y)||
+     !Number.isFinite(f?.x)||!Number.isFinite(f?.y)||
+     !Number.isFinite(merchant?.speed)||merchant.speed<=0){
+   extra+=90;continue;
+  }
+  // Straight-line travel is only a lower bound; travel may need detours.
+  const d=Math.hypot(merchant.x-f.x,merchant.y-f.y);
+  extra+=Math.min(300,Math.max(60,Math.ceil(d/merchant.speed*2)));
+ }
+ return Math.min(1800,Math.max(180,90+120+60+
+  farmers.length*75+extra));
+}
 export function proactivePotionAlarm(forecasts,farmers,{
  target={},thresholdSeconds=180,minimumCount=3
 }={}){
@@ -63,7 +85,8 @@ export function proactivePotionAlarm(forecasts,farmers,{
       row.remainingSeconds<=thresholdSeconds&&
       farmer.potions[item]<(target[item]??0))
     return {trigger:true,reason:'verified-consumption-runway',
-     owner:farmer.name,item,remainingSeconds:row.remainingSeconds};
+     owner:farmer.name,item,remainingSeconds:row.remainingSeconds,
+     thresholdSeconds};
   }
  }
  return {trigger:false,reason:'runway-sufficient-or-no-proven-consumption'};

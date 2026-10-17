@@ -123,3 +123,47 @@ test('a gold increase only clears exchange journal when ONE exact official payou
  bot.p.c.items[9].q=1046;bot.p.c.gold=209999;
  assert.equal(inspectExchangeRecovery(bot).eligible,false,'gold loss is not an exchange reward');
 });
+
+test('consumed but unverifiable exchange is archived after stable live snapshots, never replayed',()=>{
+ const {bot,events}=fixture();const old=Date.now;let now=200000;
+ // The server demonstrably consumed one source, but the drop table is not
+ // currently available after boot. Local inventory is authoritative; an
+ // unknown output is never marked confirmed or redispatched.
+ bot.p.G.drops={};
+ bot.p.write=()=>true;
+ let cleared=0;
+ bot.checkpoint.clear=()=>{cleared++;return true;};
+ bot.p.call=()=>assert.fail('No original exchange replay is allowed');
+ Date.now=()=>now;
+ try{
+  const r=createRecovery(bot);
+  assert.equal(r.reconcile(),false,'first snapshot is not sufficient');
+  now+=4000;assert.equal(r.reconcile(),false,'stability lease not finished');
+  now+=1000;assert.equal(r.reconcile(),true);
+  assert.equal(cleared,1);
+  assert.equal(bot.inventoryBlocked,false);
+  assert.equal(bot.journal,null);
+  assert.equal(events.filter(x=>x.type==='recovery.exchangeUnconfirmedReleased').length,1);
+  assert.equal(events.filter(x=>x.type==='recovery.exchangeVerified').length,0);
+ }finally{Date.now=old;}
+});
+test('no value checkpoint is discarded if source was not consumed or archive cannot be written',()=>{
+ for(const modify of [
+  bot=>{bot.p.c.items[0].q=16;},
+  bot=>{bot.p.c.q.exchange={};},
+  bot=>{bot.p.write=()=>false;},
+  bot=>{bot.checkpoint.clear=()=>false;}
+ ]){
+  const {bot}=fixture(),old=Date.now;let now=200000;
+  bot.p.G.drops={};bot.p.write=()=>true;
+  bot.checkpoint.clear=()=>true;
+  modify(bot);
+  Date.now=()=>now;
+  try{const r=createRecovery(bot);
+   assert.equal(r.reconcile(),false);
+   now+=6000;
+   assert.equal(r.reconcile(),false);
+   assert.ok(bot.journal);assert.equal(bot.inventoryBlocked,true);
+  }finally{Date.now=old;}
+ }
+});

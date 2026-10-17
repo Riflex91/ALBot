@@ -53,8 +53,13 @@ export function createMovement(bot){
     // samePlace restriction suppressed the town shortcut precisely for
     // these journeys, making a merchant walk back from remote farms.
     const crossBank=p.c.map==='main'&&d.map==='bank';
-    if(bot.me?.role==='merchant'&&bot.cfg.merchant.townTravel!==false&&
-       (samePlace(p.c,d)||crossBank)&&Array.isArray(spawn)&&
+    // A farmer accepting/turning in a monsterhunt may use the same
+    // measured Town shortcut as the merchant. Never teleport for ordinary
+    // farm/combat/cohesion travel or an unrelated movement owner.
+    const merchantTown=bot.me?.role==='merchant'&&bot.cfg.merchant?.townTravel!==false;
+    const questTown=bot.me?.role==='farmer'&&owner==='quest';
+    if((merchantTown||questTown)&&
+       (samePlace(p.c,d)||merchantTown&&crossBank)&&Array.isArray(spawn)&&
        p.has('town')&&!p.c.c?.town&&Date.now()-lastTown>30000&&
        !bot.monsters().some(m=>m.target===p.c.name)){
      const speed=Math.max(1,p.c.speed??40),toSpawn=Math.hypot(
@@ -67,10 +72,10 @@ export function createMovement(bot){
      const town=townMs+tail;
      bot.event?.('travel.compare',{owner,walkMs:Math.round(walk),
        townMs:Math.round(town),savedMs:Math.round(walk-town),
-       threshold:bot.cfg.merchant.townMinSavingsMs??3000,
+       threshold:bot.cfg.merchant?.townMinSavingsMs??3000,
        reason:crossBank?'Town-Kanal vor Bankportal gegen Rückweg zu Fuß':
         'Town-Kanal plus Restweg gegen direkten Laufweg'});
-     if(walk-town>(bot.cfg.merchant.townMinSavingsMs??3000)){
+     if(walk-town>(bot.cfg.merchant?.townMinSavingsMs??3000)){
       let at=0;const origin=p.c.map;townQueued=true;
       const accepted=exec.run('travel.town',['movement'],
        ()=>bot.running&&!bot.monsters().some(m=>m.target===p.c.name),

@@ -103,7 +103,9 @@ export function createFarmer(bot){
           bot.event('inventory.intent',{kind:'consume',item:item.name,before,journaled:false});
           return p.call('equip',slot);
         },{delay:2000,value:true,observe:()=>bot.count(item.name)<before,
-         onSettle:state=>bot.event('inventory.result',{kind:'consume',result:state,journaled:false,valueActionsBlocked:false})});
+         onSettle:state=>{if(state==='confirmed'&&bot.count(item.name)<before)
+            bot.event('potion.consumeConfirmed',{item:item.name,before,after:bot.count(item.name)});
+           bot.event('inventory.result',{kind:'consume',result:state,journaled:false,valueActionsBlocked:false});}});
       }else if(resource){
         exec.run('regen',['potion'],()=>!p.call('is_on_cooldown','use_hp'),
           ()=>p.call('use_skill','regen_'+resource),{delay:4000});

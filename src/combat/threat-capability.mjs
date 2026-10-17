@@ -165,9 +165,13 @@ export function createCombatAssessment(bot){
  function emergency(){
   const mobs=bot.monsters().filter(m=>m.target&&bot.farmers.includes(m.target)&&
    isNaturallyAggressive(bot.p.G,m));
-  const remote=bot.farmers.map(n=>n===bot.me.name?bot.p.c:bot.transport.fresh(n))
-   .filter(x=>x?.running!==false&&!x.rip&&Number.isFinite(x.hp)&&
-    Number.isFinite(x.max_hp)&&x.max_hp>0&&x.hp/x.max_hp<.85&&
+  const nowAt=now(),realm=bot.p.realm();
+  const remote=bot.farmers.map(n=>n===bot.me.name?bot.p.c:bot.transport?.fresh?.(n)??null)
+   .filter(x=>x!==null&&typeof x==='object'&&x.rip!==true&&
+    x.running!==false&&(!x.realm||x.realm===realm)&&
+    (!Number.isFinite(x.received)||nowAt-x.received>=0&&nowAt-x.received<=4000)&&
+    Number.isFinite(x.hp)&&Number.isFinite(x.max_hp)&&
+    x.max_hp>0&&x.hp>0&&x.hp/x.max_hp<.85&&
     (x.threats>0||mobs.some(m=>m.target===x.name)));
   return {active:mobs.length>0||remote.length>0,
    monsters:mobs,critical:remote,anchor:remote[0]??null};

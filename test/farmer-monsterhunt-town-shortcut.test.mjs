@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createMovement} from '../src/core/movement.mjs';
+import {createStrategy} from '../src/world/strategy.mjs';
 import {Executor} from '../src/core/executor.mjs';
 
 const npc={map:'main',in:'main',x:-35,y:-162,radius:60};
@@ -95,4 +96,29 @@ test('Farmer Town remains independent of Merchant-only preference, while Merchan
   assert.equal(m.movement.order?.mode,'smart_move');
   m.movement.stop();
  }finally{Date.now=previous;}
+});
+
+test('threat interrupt cancels a pending monsterhunt Town channel as well as walking',()=>{
+ const stops=[],events=[];
+ const c={name:'My_Ranger1',s:{},map:'main'};
+ const p={c,G:{maps:{main:{}}},root:{},parent:{},has:()=>true,read:()=>null};
+ const movement={townActive:false,order:null,stop:()=>stops.push('stop'),
+   go:(d,owner)=>{events.push([owner,d]);return false;}};
+ const bot={p,me:{name:c.name,role:'farmer',farmTargets:[]},cfg:{
+   general:{testLogging:true},world:{quests:true,questTargets:true,excludedMaps:[]},
+   party:{enabled:false},farming:{}
+  },running:true,leader:c.name,farmers:[c.name],journal:null,
+  logistics:{reserved:false},movement,
+  economy:{destination:id=>id==='monsterhunter'?npc:null,at:()=>false},
+  event:(...args)=>events.push(args),
+  teamPlan:{materialActive:()=>false,orderedHunt:()=>null}};
+ const strategy=createStrategy(bot);
+ assert.equal(strategy.quest(),true);
+ assert.equal(strategy.busy,true);
+ assert.equal(stops.length,1,'first stop cancels previous travel before quest');
+ movement.townActive=true;
+ strategy.interruptQuest();
+ assert.equal(strategy.busy,false);
+ assert.equal(stops.length,2,'queued Town must be stopped on new aggro');
+ assert.ok(events.some(x=>x[0]==='quest.interrupted'));
 });

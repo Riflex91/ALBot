@@ -235,7 +235,7 @@ export function createLogistics(bot){
        });
       }
       if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(incoming.lastReceipt===undefined||now-incoming.lastReceipt>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
-      if(now>incoming.until){const expired=incoming;incoming=null;counters.timeouts++;bot.event?.('logistics.timeout',{
+      if(now>incoming.until){const expired=incoming;incoming=null;completed.set(expired.id,now);counters.timeouts++;bot.event?.('logistics.timeout',{
        id:expired.id,state:'receiving',item:expired.item,
        observed:!!expired.observed,
        senderSessionChanged:!!sessionCheck.changed||
@@ -244,8 +244,8 @@ export function createLogistics(bot){
        originalSenderSession:expired.session,
        currentSenderSession:sessionCheck.newSession,
        senderAnnouncedDispatch:!!expired.sent,
-       journalPreserved:true,autoRetry:false,
-       reason:'Empfang nicht vollständig bestätigt; kein Serverbeleg, keine Wiederholung'
+       journalPreserved:false,autoRetry:false,
+       reason:'Itemempfang nicht bestätigt; Versuch abgeschlossen, keine Wiederholung derselben Transfer-ID'
       });bot.endValue('unknown');}
     }
     if(job){
@@ -259,7 +259,7 @@ export function createLogistics(bot){
           if(peer?.session===job.session){job.lastOffer=now;transport.send(job.to,'offer',{item:job.item,quantity:job.quantity,gear:job.gear,elixir:job.elixir},job.id);}
         }
       }
-      if(now>job.until){const expired=job;job=null;counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht vollständig bestätigt; keine Wiederholung'});if(expired.state==='sent')bot.endValue('unknown');else cancelUnsent(expired,'Angebot ohne Versand abgelaufen');return;}
+      if(now>job.until){const expired=job;job=null;completed.set(expired.id,now);counters.timeouts++;nextOffer.set(expired.offerKey??offerKey(expired.to,expired.item.name),now+10000);bot.event?.('logistics.timeout',{id:expired.id,state:expired.state,item:expired.item,reason:'Übergabe nicht bestätigt; keine Wiederholung derselben Transfer-ID'});if(expired.state==='sent')bot.endValue('unknown');else cancelUnsent(expired,'Angebot ohne Versand abgelaufen');return;}
       if(job.state==='accepted'&&!bot.inventoryBlocked){
         const j=job,peer=transport.fresh(j.to);
         // An acceptance is bound to its receiver session. After a reload the

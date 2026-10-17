@@ -64,7 +64,7 @@ import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
 import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
-import {createCheckpoint,isPotionConsumption} from './core/checkpoint.mjs';
+import {createCheckpoint,isPotionConsumption,isItemHandoffJournal,releaseItemHandoffJournal} from './core/checkpoint.mjs';
 export function selectedPartyMember(bot,name){
   return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
     (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
@@ -145,6 +145,18 @@ export function install(root){
      report.event('checkpoint.potionReleased',{kind:previous.kind,item:previous.item,persisted,reason:'Potion outcome can remain unknown; no inventory lock'});
      journal=null;
    }
+  // Upgrade old send/receive journals without inferring successful delivery
+  // or replaying an unknown item handoff. Persistence failure retains the lock.
+  if(isItemHandoffJournal(journal)){
+   const previous=journal;
+   if(releaseItemHandoffJournal(checkpoint,previous)){
+    journal=null;report.event('checkpoint.itemHandoffReleased',{
+     kind:previous.kind,id:previous.id??null,
+     item:typeof previous.item==='string'?previous.item:previous.item?.name??null,
+     outcome:'unconfirmed',autoRetry:false,valueActionsBlocked:false});
+   }else report.event('checkpoint.itemHandoffReleaseFailed',{
+    kind:previous.kind,id:previous.id??null,valueActionsBlocked:true});
+  }
   if(journal?.kind==='quest.monsterhunt'&&journal.quest==='monsterhunt'&&journal.cost===0&&journal.loss===0&&Array.isArray(journal.slots)&&journal.slots.length===0&&!p.G.skills?.monsterhunt){if(checkpoint.clear(journal)){report.event('checkpoint.repaired',{kind:journal.kind,reason:'Alter ungültiger use_skill(monsterhunt)-Aufruf ohne Inventarwirkung'});journal=null;}}
   const bot={p,cfg,me,supplyOnly,session:me.name+'-'+now().toString(36)+'-'+Math.random().toString(36).slice(2,8),running:false,reason:'Bereit',target:null,teamNames:team.map(c=>c.name),farmers,leader:cfg.party.leader||farmers[0]||me.name,journal,inventoryBlocked:!!journal,
     checkpoint,
@@ -161,7 +173,31 @@ export function install(root){
     consumable(i){if(protectedItem(i)||bot.bank?.pending)return false;const r=bot.rule(i);return !r||(r.action==='consume'&&variantCount(p.c.items,i)>r.keep+r.teamReserve);},
     canConsumeImplicit(name){if(bot.inventoryBlocked||bot.logistics?.reserved)return false;const first=p.c.items.find(i=>i?.name===name);return !!first&&bot.consumable(first);},
     beginValue(j){if(bot.journal)throw Error('Andere Inventaraktion offen');const next={...j,at:now(),evidence:{realm:p.realm(),gold:p.c.gold,inventory:(p.c.items??[]).map(i=>i?fingerprint(i):null)}};if(!checkpoint.begin(next)){const e=new Error('Lieferung vor Versand blockiert: Checkpoint-Speicher fehlt');e.code='NOT_DISPATCHED';throw e;}bot.journal=next;report.event('inventory.intent',{kind:j.kind,item:typeof j.item==='string'?j.item:JSON.stringify(j.item),before:j.before,quantity:j.quantity,to:j.to,details:JSON.stringify(j)});},
-    endValue(result){if(!bot.journal||result==='unknown'&&bot.inventoryBlocked)return;report.event('inventory.result',{result,kind:bot.journal.kind});if(result==='confirmed'&&(bot.allocation?.settle(bot.journal,result)??true)&&(bot.production?.recordDelivery(bot.journal)??true)&&checkpoint.clear(bot.journal)){bot.journal=null;bot.intelligence?.invalidate();bot.production?.invalidate();}else {bot.allocation?.settle(bot.journal,'unknown');bot.inventoryBlocked=true;bot.reason='Inventaraktion ungeklärt: Bestand prüfen';report.event('runtime.warning',{where:'inventory',reason:bot.reason,kind:bot.journal?.kind,continued:true,valueActionsBlocked:true});bot.report(bot.reason);}},
+    endValue(result){
+     if(!bot.journal||result==='unknown'&&bot.inventoryBlocked)return;
+     // A lost CM receipt is not a failed game-server send_item. End the
+     // best-effort handoff as unconfirmed without blocking unrelated work.
+     if(result!=='confirmed'&&isItemHandoffJournal(bot.journal)){
+      const old=bot.journal,persisted=releaseItemHandoffJournal(checkpoint,old);
+      report.event('inventory.result',{result,kind:old.kind,
+       valueActionsBlocked:!persisted,deliveryConfirmed:false});
+      bot.allocation?.settle(old,'unknown');
+      if(persisted){
+       bot.journal=null;bot.inventoryBlocked=false;
+       bot.production?.invalidate?.();
+       bot.reason='Itemübergabe unbestätigt – Betrieb läuft weiter';
+       report.event('logistics.unconfirmed',{kind:old.kind,id:old.id??null,
+        item:typeof old.item==='string'?old.item:old.item?.name??null,
+        peer:old.to??old.from??null,quantity:old.quantity??null,
+        outcome:'unconfirmed',autoRetry:false,valueActionsBlocked:false});
+      }else{
+       bot.inventoryBlocked=true;
+       bot.reason='Inventar-Checkpoint konnte nicht gespeichert werden';
+       report.event('runtime.warning',{where:'inventory',reason:bot.reason,
+        kind:old.kind,continued:true,valueActionsBlocked:true});
+      }
+      return;
+     }report.event('inventory.result',{result,kind:bot.journal.kind});if(result==='confirmed'&&(bot.allocation?.settle(bot.journal,result)??true)&&(bot.production?.recordDelivery(bot.journal)??true)&&checkpoint.clear(bot.journal)){bot.journal=null;bot.intelligence?.invalidate();bot.production?.invalidate();}else {bot.allocation?.settle(bot.journal,'unknown');bot.inventoryBlocked=true;bot.reason='Inventaraktion ungeklärt: Bestand prüfen';report.event('runtime.warning',{where:'inventory',reason:bot.reason,kind:bot.journal?.kind,continued:true,valueActionsBlocked:true});bot.report(bot.reason);}},
     measure(target=null){const targetHpRatio=target&&Number.isFinite(target.hp)&&Number.isFinite(target.max_hp)&&target.max_hp>0?target.hp/target.max_hp:undefined;return {hpRatio:p.c.hp/p.c.max_hp,targetHpRatio,mpRatio:p.c.mp/p.c.max_mp,freeSlots:bot.free(),gold:p.c.gold,enemyCount:bot.monsters().filter(e=>distance(p.c,e)<p.c.range).length,map:p.c.map,rip:!!p.c.rip,task:bot.task(),count:bot.count};}
   };
   bot.metrics=createRuntimeMetrics({now,memoryBytes:()=>root.performance?.memory?.usedJSHeapSize??null});

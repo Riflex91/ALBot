@@ -1,5 +1,13 @@
 // Only consumptions positively identified as game potions are non-durable.
 // An unknown consume item is NOT safe to discard; other transactions retain journals.
+// Item handoffs are best-effort game transfers. The CM handshake can time out
+// after send_item has already reached the game server. Never treat a timeout
+// as proof of failure or automatically replay the same transfer ID.
+export const isItemHandoffJournal=journal=>
+ journal?.kind==='send'||journal?.kind==='receive';
+export function releaseItemHandoffJournal(checkpoint,journal){
+ return isItemHandoffJournal(journal)&&checkpoint?.clear?.(journal)===true;
+}
 export function isPotionConsumption(journal,G){
  return journal?.kind==='consume'&&typeof journal.item==='string'&&G?.items?.[journal.item]?.type==='pot';
 }

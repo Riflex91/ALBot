@@ -6,11 +6,23 @@ export function createImpactIntents({
 }={}){
  const pending=new Map(),events=[];
  let counter=0,confirmed=0,confirmedHeals=0,expired=0,failed=0;
+ let observedDamage=0,observedHealing=0;
+ const observedLatencies=[];
  const observedEventIds=new Set();
  const validId=id=>typeof id==='string'&&id.length>0&&id.length<128;
  const bounded=Array.isArray([])&&Math.max(4,Math.min(64,limit));
  const ttl=Math.max(250,Math.min(10000,ttlMs));
  const keepEvent=e=>{events.push(e);if(events.length>24)events.shift();};
+ const keepLatency=p=>{
+  const elapsed=Math.max(0,Math.min(ttl,now()-p.at));
+  observedLatencies.push(elapsed);
+  if(observedLatencies.length>32)observedLatencies.shift();
+ };
+ const latencyP95=()=>{
+  if(!observedLatencies.length)return null;
+  const sorted=[...observedLatencies].sort((a,b)=>a-b);
+  return sorted[Math.ceil(sorted.length*.95)-1];
+ };
  function prune(){for(const [id,p] of pending)
   if(now()>=p.expires){pending.delete(id);expired++;keepEvent({result:'ttl-expired',action:p.action});}}
  function launched(action,targets,{kind='damage',damage=null}={}){
@@ -36,11 +48,16 @@ export function createImpactIntents({
   prune();
   const actor=typeof event?.actor==='string'?event.actor:event?.actor?.name;
   const target=typeof event?.target==='string'?event.target:event?.target?.id;
-  if(actor!==name||!validId(target))return false;
+  if(actor!==name||!validId(target)||event?.realm&&event.realm!==realm)return false;
   for(const [id,p] of pending){
    if(p.kind!=='damage'||!p.targets.includes(target)||p.confirmed.includes(target))continue;
    p.confirmed.push(target);confirmed++;
-   keepEvent({action:p.action,result:'observed-hit',target});
+   keepLatency(p);
+   const amount=Number.isFinite(event.damage)&&event.damage>0&&
+    event.damage<=10000000?event.damage:null;
+   if(amount!==null)observedDamage+=amount;
+   keepEvent({action:p.action,result:'observed-hit',target,
+    amount,latencyMs:Math.max(0,Math.min(ttl,now()-p.at))});
    if(p.confirmed.length===p.targets.length)pending.delete(id);
    return true;
   }
@@ -58,7 +75,10 @@ export function createImpactIntents({
    if(p.kind!=='heal'||!p.targets.includes(target)||p.confirmed.includes(target))
     continue;
    p.confirmed.push(target);confirmedHeals++;
-   keepEvent({action:p.action,result:'observed-heal',target,amount:event.heal});
+   keepLatency(p);
+   observedHealing+=event.heal;
+   keepEvent({action:p.action,result:'observed-heal',target,
+    amount:event.heal,latencyMs:Math.max(0,Math.min(ttl,now()-p.at))});
    if(p.confirmed.length===p.targets.length)pending.delete(id);
    return true;
   }
@@ -71,6 +91,10 @@ export function createImpactIntents({
   const eventId=typeof event?.id==='string'&&event.id.length<=128?
    event.id:null;
   if(eventId&&observedEventIds.has(eventId))return false;
+  // Do not decide whether a mixed damage/healing server record describes a
+  // projectile hit or an independently launched heal without a distinct ID.
+  if(Number.isFinite(event?.damage)&&event.damage>0&&
+     Number.isFinite(event?.heal)&&event.heal>0)return false;
   const result=Number.isFinite(event?.heal)&&event.heal>0?
    confirmedHeal(event):Number.isFinite(event?.damage)&&event.damage>0?
    confirmedHit(event):false;
@@ -90,6 +114,8 @@ export function createImpactIntents({
  }
  function snapshot(){prune();return {mode:'shadow-only',
   session,realm,active:pending.size,confirmed,confirmedHeals,expired,failed,
+  observedDamage,observedHealing,observedLatencyP95Ms:latencyP95(),
+  observedLatencySamples:observedLatencies.length,
   recent:[...pending.values()].slice(-8).map(p=>({
    action:p.action,kind:p.kind,targets:p.targets,
    remainingMs:Math.max(0,p.expires-now()),confirmed:p.confirmed.length
@@ -102,5 +128,5 @@ export function createImpactIntents({
     .map(id=>[id,p.damage[id]]))};
  });}
  return {launched,confirmedHit,confirmedHeal,observe,settle,snapshot,heartbeat,prune,
-  close(){pending.clear();observedEventIds.clear();}};
+  close(){pending.clear();observedEventIds.clear();observedLatencies.length=0;}};
 }

@@ -74,6 +74,35 @@ export function pendingImpactHeals(targetName,now,sources,roster,realm){
  return count;
 }
 
+// Automatic non-emergency SINGLE-TARGET healing may defer very briefly to
+// one live teammate already casting on that exact player. The evidence TTL
+// is short; missing/cross-realm/uncertain status is always fail-open. This
+// function cannot defer a rescue heal or a user-authored explicit skill.
+export function healCollisionDecision({
+ target,now,sources,roster,realm,emergencyRatio=.65,
+ healThreshold=.85
+}={}){
+ const pass=reason=>({defer:false,reason,pending:0,authority:'bounded-noncritical-only'});
+ if(!target||typeof target.name!=='string'||!target.name||
+  target.rip||!Number.isFinite(target.hp)||!Number.isFinite(target.max_hp)||
+  target.max_hp<=0||target.hp<=0||target.hp>target.max_hp||
+  !Number.isFinite(now)||!Array.isArray(sources)||
+  !(roster instanceof Set)||!roster.has(target.name)||
+  typeof realm!=='string'||!realm||
+  !Number.isFinite(emergencyRatio)||emergencyRatio<.4||
+  emergencyRatio>.75||!Number.isFinite(healThreshold)||
+  healThreshold<=emergencyRatio||healThreshold>1)
+  return pass('target-or-team-unverified');
+ const ratio=target.hp/target.max_hp;
+ if(ratio<emergencyRatio)return pass('critical-heal-must-proceed');
+ if(ratio>=healThreshold)return pass('target-above-heal-threshold');
+ const pending=pendingImpactHeals(target.name,now,sources,roster,realm);
+ return pending>0?
+  {defer:true,reason:'fresh-team-heal-pending',
+   pending,authority:'bounded-noncritical-only'}:
+  pass('no-fresh-team-heal');
+}
+
 // Active, fail-open focus preference only. The existing allowed() filter
 // produced all candidates; we NEVER pull a neutral monster or switch to
 // another species, or take precedence over self-defense. No target is removed.

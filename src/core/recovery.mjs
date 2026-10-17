@@ -1,5 +1,5 @@
 import {identity,fingerprint} from './policy.mjs';
-import {inspectItemTransferEvidence,inspectPairedItemTransfer} from '../items/transfer-reconciliation.mjs';
+import {inspectItemTransferEvidence,inspectPairedItemTransfer,inspectReceiveSenderSession} from '../items/transfer-reconciliation.mjs';
 import {exchangeDrops} from '../production/materials.mjs';
 // A gathering skill may time out without producing an item. Only a complete,
  // untouched, durable before-image can release that uncertainty automatically.
@@ -145,8 +145,16 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   const result=inspectPairedItemTransfer(local,peer,{
    realm:p.realm(),now:at,ttlMs:cfg.general?.messageTtlMs??10000
   });
+  const senderSession=j.kind==='receive'?inspectReceiveSenderSession({
+   journal:j,peer,ownerSession:bot.session,realm:p.realm(),now:at,
+   ttlMs:cfg.general?.messageTtlMs??10000
+  }):null;
   return {localVerified:!!local?.verified,localReason:local?.reason??null,
    peer:recipient,peerSession:peer?.session??null,
+   originalSenderSession:j.kind==='receive'?j.session:null,
+   senderSessionChanged:senderSession?.changed??false,
+   senderSessionReason:senderSession?.reason??null,
+   senderSessionRestartObserved:senderSession?.changed??false,
    paired:result.eligible,pairedReason:result.reason,
    requiresManualReview:true,unlocksValueActions:false,executable:false};
  }

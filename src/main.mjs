@@ -41,6 +41,7 @@ import {createMarket} from './merchant/market.mjs';
 import {createProduction} from './production/production.mjs';
 import {createGear} from './production/gear.mjs';
 import {createMerchant} from './merchant/controller.mjs';
+import {merchantActionDue} from './merchant/action-cadence.mjs';
 import {createSupplyForecast} from './merchant/supply-forecast.mjs';
 import {VERSION} from './version.mjs';
 import {DESCRIPTOR} from '../editor/lib/schema.mjs';
@@ -128,7 +129,7 @@ export function install(root){
   if(!me){p.log('Eigenen Namen zuerst in der Werkstatt aktivieren.');failed('unconfigured','Eigenen Namen zuerst aktivieren');return;}
   report.configure?.({continuous:cfg.general.testLogging===true});
   const team=cfg.characters.filter(c=>c.enabled&&c.group===me.group),farmers=team.filter(c=>c.role==='farmer').map(c=>c.name);if(cfg.general.testLogging===undefined)farmers.sort();
-  const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastTransfer=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,lastPublished='',panel;const schedulerTiming={ticks:0,totalMs:0,maxMs:0,lastMs:0};let lastSlow=0;
+  const key='albot:live-a:'+me.name+':checkpoint';let timer=null,generation=0,disposed=false,lastEconomy=0,lastMerchant=0,lastTransfer=0,lastPlanning=0,lastHeartbeat=0,reportText='',reportTime=0,lastPublished='',panel;const schedulerTiming={ticks:0,totalMs:0,maxMs:0,lastMs:0};let lastSlow=0;
   const checkpoint=createCheckpoint(p,key,report);let journal=checkpoint.journal;
    // Old releases journaled potion equips. A delayed/unknown potion outcome
    // is not a bank, transfer, gold, or item-upgrade ambiguity. Remove ONLY
@@ -216,16 +217,25 @@ export function install(root){
     const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();const transferDue=now()-lastTransfer>=(cfg.general.transferIntervalMs??cfg.general.economyTickMs);if(transferDue)lastTransfer=now();bot.gold?.poll(transferDue);bot.logistics.poll(transferDue);
     if(!bot.running)return;
     bot.allocation?.tick();bot.adaptive?.tick();if(economyDue)bot.supplyForecast?.tick();if(economyDue)bot.metrics.measure('objectives',()=>bot.objectives?.tick());bot.metrics.measure('team-plan',()=>bot.teamPlan?.tick());bot.metrics.measure('encounter',()=>bot.encounter?.tick());bot.metrics.measure('bosses',()=>bot.bosses?.tick());bot.adaptive?.flush();bot.content?.flush();bot.learning.flush();if(economyDue)bot.cloud.tick();if(economyDue){bot.strategy?.plan();bot.strategy?.sample();}
+    const merchantDue=merchantActionDue({
+      now:now(),last:lastMerchant,normalDue:economyDue,
+      merchant:me.role==='merchant',
+      depotActive:!!bot.merchant?.status?.()?.depot,
+      hasPending:exec.pending.size>0,
+      blocked:!!bot.journal||!!bot.inventoryBlocked||
+       !!bot.logistics?.reserved||!!bot.gold?.reserved,
+      moving:!!bot.movement.order||!!bot.movement.townActive
+    });
     if(bot.priority){bot.priority.run([
      {id:'recovery',kind:'emergency',exclusive:true,run:()=>bot.farmer.safety()},
      {id:'elixir',kind:'safety',guard:()=>economyDue&&!bot.recovering,run:()=>bot.elixirs.tick()},
      {id:'world',kind:bot.teamPlan.materialActive()?'background':'normal',priority:20,exclusive:true,guard:()=>economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name),run:()=>bot.strategy.anniversary()||bot.strategy.quest()},
      {id:'combat',kind:'normal',priority:10,run:()=>{bot.metrics.measure('farmer',()=>bot.farmer.tick());return !!bot.target||bot.recovering;}},
-     {id:'merchant',kind:'normal',guard:()=>economyDue&&!bot.recovering&&!bot.strategy.busy,run:()=>{const before=exec.pending.size;bot.metrics.measure('merchant',()=>bot.merchant.tick());return exec.pending.size>before;}},
+     {id:'merchant',kind:'normal',guard:()=>merchantDue&&!bot.recovering&&!bot.strategy.busy,run:()=>{lastMerchant=now();const before=exec.pending.size;bot.metrics.measure('merchant',()=>bot.merchant.tick());return exec.pending.size>before;}},
      {id:'aura',kind:'safety',run:()=>bot.aura.tick()}
     ]);}else{
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
-    if(!worldAction)bot.metrics.measure('farmer',()=>bot.farmer.tick());if(economyDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy)bot.metrics.measure('merchant',()=>bot.merchant?.tick());bot.aura?.tick();
+    if(!worldAction)bot.metrics.measure('farmer',()=>bot.farmer.tick());if(merchantDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy){lastMerchant=now();bot.metrics.measure('merchant',()=>bot.merchant?.tick());}bot.aura?.tick();
     }
     if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&(p.c.party===me.name||me.name===bot.leader&&!p.c.party&&!currentPartyOwner(bot))){
       const memberNames=[...new Set([...bot.farmers,...(bot.teamNames.includes(cfg.party.merchant)?[cfg.party.merchant]:[])])];

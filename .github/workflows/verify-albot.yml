@@ -20,10 +20,6 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build shared browser/headless runtime
         run: npm run build
-      # Temporary read-only generated runtime export for personal byte-exact sync.
-      - name: Temporary generated runtime export
-        run: |
-          node -e 'const fs=require("fs");const data=fs.readFileSync("dist/albot.runtime.js").toString("base64");console.log("ALBOT_RUNTIME_BEGIN");for(let p=0;p<data.length;p+=3000)console.log("ALBOT_RUNTIME_B64:"+data.slice(p,p+3000));console.log("ALBOT_RUNTIME_END")'
       - name: Verify published bot.js matches source build and personal configuration
         run: node scripts/sync-personal-code.mjs --check
       - name: Full offline tests

@@ -153,6 +153,9 @@ export function createTeamPlan(bot){
   return roles;
  }
  function tick(){if(cfg.general.testLogging===undefined||me.role!=='farmer')return;
+    // Freeze leader plan selection and follower adoption during hostile team
+    // emergencies. Keep the prior plan for diagnostics, not for fresh pulls.
+    if(bot.combatAssessment?.emergency?.().active)return;
   // Receipt is based on the actual merchant heartbeat and validated monster
   // source, rather than merely assuming send_cm reached every farmer.
   const incomingOrder=materialRequests().find(x=>x.objective&&x.item&&x.monster&&

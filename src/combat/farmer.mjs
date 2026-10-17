@@ -116,7 +116,31 @@ export function createFarmer(bot){
     if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>isOwnAggressiveThreat(p.G,e,c.name)).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
-  function retreat(t){if(!isNaturallyAggressive(p.G,t))return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
+  function retreat(t){if(!isNaturallyAggressive(p.G,t))return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c);
+    // If the aggressive enemy has driven the patient out of the Priest's
+    // reach, try a physically safe convergence step before fleeing farther.
+    const healer=(bot.farmers??[]).filter(n=>n!==c.name)
+      .map(n=>bot.transport?.fresh?.(n))
+      .find(h=>h?.class==='priest'&&h.running&&!h.rip&&
+        samePlace(c,h)&&Number.isFinite(h.x)&&Number.isFinite(h.y)&&
+        Number.isFinite(h.stats?.range)&&h.stats.range>50);
+    const healRange=healer?Math.max(55,healer.stats.range-20):0;
+    if(healer&&c.hp/c.max_hp<.85&&distance(c,healer)>healRange&&
+       distance(c,healer)<550){
+      const dx=healer.x-from.x,dy=healer.y-from.y,len=Math.hypot(dx,dy);
+      const step=Math.max(25,Math.min(85,(c.speed??40)*1.4));
+      const x=from.x+dx/len*step,y=from.y+dy/len*step;
+      if(p.call('can_move_to',x,y)&&
+         bot.monsters().every(m=>m.target!==c.name||
+           distance({x,y},m)>=distance(c,m)-8)){
+        if(bot.movement.order?.owner!=='kite')bot.movement.stop();
+        bot.movement.local(x,y,'kite');
+        bot.event?.('combat.healerTether',{healer:healer.name,
+          gap:Math.round(len),range:healRange,step:Math.round(step)});
+        return true;
+      }
+    }
+    const threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function helpEngagedTeamFight(leader){
   // Soft follow distance must not suppress safe, reachable assistance to an
   // EXISTING team fight. This path never pulls an unattached monster.
@@ -124,7 +148,7 @@ export function createFarmer(bot){
   const range=Math.max(5,(p.c.range??0)-Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
   const enemy=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&m.target&&
     bot.teamNames.includes(m.target)&&bot.allowed(m)&&
-    bot.strategy?.safeTarget?.(m.mtype,m)!==false&&
+    (bot.strategy?.safeTarget?.(m.mtype,m)!==false||bot.combatAssessment?.canDefend(m)===true)&&
     samePlace(p.c,m)&&
     distance(p.c,m)<=Math.max(range,cfg.party.followDistance*2)&&
     distance(leader,m)<=cfg.party.followDistance*2).sort((a,b)=>
@@ -151,7 +175,7 @@ export function createFarmer(bot){
   exec.run('attack',['attack','mana'],()=>{
     const live=bot.entity(enemy.id);
     return live&&live.target&&bot.teamNames.includes(live.target)&&
-      bot.allowed(live)&&bot.strategy?.safeTarget?.(live.mtype,live)!==false&&
+      bot.allowed(live)&&(bot.strategy?.safeTarget?.(live.mtype,live)!==false||bot.combatAssessment?.canDefend(live)===true)&&
       distance(p.c,live)<=range&&p.call('can_attack',live)&&
       !p.call('is_on_cooldown','attack');
   },attack.invoke,{delay:100,onSettle:attack.settle});
@@ -188,13 +212,80 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
    bot.strategy?.failActivity?.('Gefährliche Aggro beim Sammeln',threat.mtype);
   retreat(threat);
  }else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
+  function rescueTeam(emergency){
+    if(p.c.ctype!=='priest'||!cfg.party.enabled||!cfg.party.healing||
+       !emergency?.critical?.length)return false;
+    const endangered=emergency.critical.filter(h=>h.name!==p.c.name)
+     .sort((a,b)=>a.hp/a.max_hp-b.hp/b.max_hp)[0];
+    if(!endangered||!samePlace(p.c,endangered))return false;
+    const range=p.G.skills?.heal?.range??p.c.range;
+    if(!Number.isFinite(range)||range<50)return true;
+    const visible=bot.entity(endangered.name),d=distance(p.c,endangered);
+    if(visible&&distance(p.c,visible)<=range-10){
+      bot.reason='Notfallheilung: '+endangered.name;
+      bot.target=null;bot.skills.rescue?.(visible);
+      return true;
+    }
+    if(d>600||!Number.isFinite(d))return false;
+    const point=combatApproach(p.c,endangered,Math.max(40,range-25),
+      (x,y)=>p.call('can_move_to',x,y)&&
+       bot.monsters().every(m=>m.target!==endangered.name||
+        distance({x,y},m)>=Math.max(70,(m.range??20)+25)));
+    const current=bot.movement.order;
+    if(current&&current.owner!=='kite'&&
+      (current.owner!=='combat'||!current.dest||distance(current.dest,point)>40))
+      bot.movement.stop();
+    if(!bot.movement.order)bot.movement.go(point,'combat');
+    bot.reason='Heiler nähert sich '+endangered.name;
+    bot.target=null;
+    return true;
+  }
   function tick(){
     bot.recovering=false;
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
+    const emergency=bot.combatAssessment?.emergency?.();
+    if(emergency?.active&&rescueTeam(emergency))return;
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
+    const danger=threat??emergency?.monsters?.slice().sort((a,b)=>distance(c,a)-distance(c,b))[0];
+    if(danger){
+      const assessment=bot.combatAssessment?.assess(danger);
+      if(assessment?.viable&&bot.allowed(danger)){
+        bot.target=danger;bot.reason='Teamverteidigung: '+danger.mtype;
+        bot.skills.rotation(danger);
+        const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25));
+        if(distance(c,danger)>range){
+          if(!bot.movement.order)bot.movement.go(
+           combatApproach(c,danger,range,(x,y)=>p.call('can_move_to',x,y)),'combat');
+        }else{
+          if(p.c.target!==danger.id)exec.run('target',['target'],()=>bot.allowed(danger),
+            ()=>p.call('change_target',danger),{delay:500});
+          const attack=trackedAttack(danger.id);
+          exec.run('attack',['attack','mana'],()=>{
+            const live=bot.entity(danger.id);
+            return live&&bot.combatAssessment?.canDefend(live)===true&&
+              bot.allowed(live)&&distance(p.c,live)<=range&&
+              p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
+          },attack.invoke,{delay:100,onSettle:attack.settle});
+        }
+        return;
+      }
+      bot.target=null;bot.reason='Gefährliche Aggro: '+(assessment?.reason??'unverified');
+      bot.recovering=true;bot.strategy?.interruptQuest?.();
+      if(threat)retreat(threat);
+      else if(['farm','combat','follow','kite'].includes(bot.movement.order?.owner))
+        bot.movement.stop();
+      bot.skills.rotation(null);
+      return;
+    }
+    if(emergency?.active){
+      bot.target=null;bot.reason='Gruppe retten: keine neuen Farm-Pulls';
+      if(['farm','combat'].includes(bot.movement.order?.owner))bot.movement.stop();
+      bot.skills.rotation(null);
+      return;
+    }
     // A dangerous-looking roaming monster is not evidence of incoming
     // combat. Do not flee or quarantine the farm plan merely because its
     // definition has high damage or it wandered inside an arbitrary radius.

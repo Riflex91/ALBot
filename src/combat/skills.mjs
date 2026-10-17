@@ -264,6 +264,13 @@ export function createSkills(bot){
     if(accepted){last.set(id,Date.now());bot.event?.('skill.decision',{skill:id,target:target?.name??target?.id??'self',reason:explicit?'Passende individuelle Skill-Regel':'Klassenrotation oder situationsabhängige Gruppenunterstützung',mana:burstMana||extra||s.mp||0,reserve,
      ...(multi?{targetCount:selected.length,targetIds:selected.map(e=>e.id),engagedTargets:engaged.length,visibleTargets:visible.length,neutralTargets:neutralCount,targetLimit:limit,newPullLimit:cfg.farming.maxAggro??1,extraPullAllowance:additional,...(thirdTargetDiagnostics()??{})}: {})});}return accepted;
   }
+  function rescue(target){
+    if(p.c.ctype!=='priest'||!cfg.party.enabled||!cfg.party.healing||
+       !target||!Number.isFinite(target.hp)||!Number.isFinite(target.max_hp)||
+       target.max_hp<=0||target.hp/target.max_hp>=.85)return false;
+    // Critical rescue must not defer to an unverified projected impact heal.
+    return use('heal',target,0,160,cfg.party.aoeMaxTargets,true);
+  }
   function support(){
     if(!cfg.party.enabled)return false;
     const allies=bot.allies(),alive=allies.filter(e=>!e.rip),hurt=alive.slice().sort((a,b)=>a.hp/a.max_hp-b.hp/b.max_hp);
@@ -306,6 +313,19 @@ export function createSkills(bot){
     if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
   }return false;}
   function rotation(t){
+    if(p.c.ctype==='priest'){
+      const crisis=bot.combatAssessment?.emergency?.();
+      if(cfg.party.healing&&crisis?.active&&crisis.critical.length){
+        const critical=crisis.critical.filter(h=>h.name!==p.c.name)
+         .map(h=>bot.entity(h.name)).filter(h=>h&&h.hp>0)
+         .sort((a,b)=>a.hp/a.max_hp-b.hp/b.max_hp)[0];
+        if(critical)rescue(critical);
+        else if(crisis.critical.some(h=>h.name===p.c.name))rescue(p.c);
+        // Do not use the shared attack cooldown on offense while a teammate
+        // is critical. If heal isn't ready this turn, reserve the opportunity.
+        return;
+      }
+    }
     const c=p.c,hp=c.hp/c.max_hp,long=t&&t.hp>c.attack*4;
     // Highest priority for an eligible AoE, while still honoring cooldown,
     // weapon, legal targets, mana cost and approved encounter capacity.
@@ -384,5 +404,5 @@ export function createSkills(bot){
     };
     for(const [ok,id,target,delay] of choices[c.ctype]??[])if(ok&&use(id,target,.3,delay))return;
   }
-  return {ready,use,rotation,diagnostics};
+  return {ready,use,rescue,rotation,diagnostics};
 }

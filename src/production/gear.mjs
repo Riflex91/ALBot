@@ -101,15 +101,39 @@ export function createGear(bot){
   }
  }return result.slice(0,20);}
  function targets(){const result=[...(bot.intelligence?.targets()??[]),...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
-  // A completely unarmed Mage or Priest requires a usable level-0 staff
-  // before any speculative +level upgrade. The server's compatibility,
-  // item-property and budget checks still govern its actual acquisition.
+  // Prefer a server-compatible, non-protected weapon already in Merchant
+  // inventory. A +3 staff held in stock must beat buying/delivering +0.
+  // No speculative bank item is counted as a physically available transfer.
   if(cfg.production.gear&&p.G.items?.staff)for(const member of cfg.characters.filter(c=>c.enabled&&c.role==='farmer')){
    const profile=member.name===me.name?snapshot():profiles[member.name];
    if(!['mage','priest'].includes(profile?.class)||!profile.slots||profile.slots.mainhand)continue;
+   const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':'dps'):member.gearRole;
+   const ready=me.role==='merchant'?(p.c.items??[]).filter(i=>{
+    if(!i||!e.safe(i)||i.l||i.b||
+       !gearCompatible(p.G,profile,i,'mainhand'))return false;
+    const rule=e.explicit?.(i,'inventory');
+    return !rule||rule.action==='send'&&rule.recipient===member.name;
+   }).flatMap(i=>{
+     try{const stats=p.call('item_properties',i);
+      if(!gearSuitability(null,stats,role,profile.class,member.merchantMobility).ok)return [];
+      return [{item:i,score:gearScore(stats,role,profile.class)}];
+     }catch{return [];}
+    }).filter(row=>Number.isFinite(row.score)&&row.score>0)
+    .sort((a,b)=>b.score-a.score||(b.item.level??0)-(a.item.level??0)):[],
+    best=ready[0]?.item;
+   if(best){
+    const existing=result.find(g=>g.character===member.name&&g.slot==='mainhand'&&
+     g.item===best.name&&g.level===(best.level??0));
+    if(existing){existing.priority=Math.max(existing.priority??0,1000);existing.urgentStarter=true;}
+    else result.unshift({name:'Vorratswaffe '+member.name,enabled:true,character:member.name,
+     slot:'mainhand',item:best.name,level:best.level??0,
+     budget:Math.max(10000,cfg.production.autoGearBudget??100000),
+     priority:1000,urgentStarter:true});
+    continue;
+   }
    result.unshift({name:'Startwaffe '+member.name,enabled:true,character:member.name,
     slot:'mainhand',item:'staff',level:0,budget:Math.max(10000,cfg.production.autoGearBudget??100000),
-    priority:1000});
+    priority:1000,urgentStarter:true});
   }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
    result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)});

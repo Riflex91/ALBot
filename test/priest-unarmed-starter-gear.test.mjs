@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {createGear} from '../src/production/gear.mjs';
 
 const gearSlots=['mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
-function fixture(ctype='priest',mainhand=null){
+function fixture(ctype='priest',mainhand=null,items=[],explicit=()=>null){
  const profile={class:ctype,level:32,slots:Object.fromEntries(gearSlots.map(slot=>[slot,slot==='mainhand'?mainhand:null])),at:Date.now(),complete:true};
- const p={c:{name:'My_Merchant',ctype:'merchant',level:58,slots:{},items:[]},
+ const p={c:{name:'My_Merchant',ctype:'merchant',level:58,slots:{},items},
   G:{items:{staff:{type:'weapon',wtype:'staff',upgrade:true,level:1}},
    classes:{priest:{mainhand:{staff:true}},mage:{mainhand:{staff:true}},
     ranger:{mainhand:{bow:true}}}},
@@ -16,7 +16,7 @@ function fixture(ctype='priest',mainhand=null){
    party:{selection:'adaptive'}};
  const bot={p,cfg,me:{name:'My_Merchant',role:'merchant'},
   teamNames:['My_Merchant','My_Caster'],
-  economy:{},transport:{fresh:()=>null},
+  economy:{safe:i=>!!i&&!i.l&&!i.b,explicit},transport:{fresh:()=>null},
   intelligence:{targets:()=>[{name:'Optimiertes Gear My_Caster mainhand',
    character:'My_Caster',slot:'mainhand',item:'staff',level:3,enabled:true,priority:31,budget:100000}]}};
  return createGear(bot);
@@ -43,4 +43,40 @@ for(const ctype of ['mage','priest']){
 test('Rangers do not receive an incompatible caster staff',()=>{
  const g=fixture('ranger');
  assert.ok(!g.goals().some(g=>g.name==='Gear: Startwaffe My_Caster'));
+});
+
+for(const ctype of ['mage','priest']){
+ test('available verified +3 is promoted instead of buying or delivering starter +0 for '+ctype,()=>{
+  const stock=[{name:'staff',level:3},{name:'staff',level:0},{name:'staff',level:3}];
+  const gear=fixture(ctype,null,stock),goals=gear.goals();
+  assert.equal(goals.filter(x=>x.gearSlot==='mainhand').length,1,
+   'the existing optimized +3 goal must be promoted, not duplicated');
+  assert.equal(goals[0].name,'Gear: Optimiertes Gear My_Caster mainhand');
+  assert.equal(goals[0].level,3);
+  assert.equal(goals[0].priority,1000);
+  assert.equal(goals[0].urgentStarter,true);
+  assert.ok(!goals.some(x=>x.name.includes('Startwaffe')));
+ });
+}
+test('explicitly kept or protected +3 cannot authorize stock-derived starter',()=>{
+ const hidden={name:'staff',level:3};
+ const kept=fixture('priest',null,[hidden],()=>({action:'keep'})).goals();
+ assert.ok(kept.some(x=>x.item==='staff'&&x.level===0&&x.urgentStarter));
+ assert.ok(!kept.some(x=>x.item==='staff'&&x.level===3&&x.urgentStarter));
+ const locked=fixture('priest',null,[{...hidden,l:true}]).goals();
+ assert.ok(locked.some(x=>x.item==='staff'&&x.level===0&&x.urgentStarter));
+ for(const rule of [{action:'bank'}, {action:'sell'},
+  {action:'send',recipient:'My_Ranger1'}]){
+  const reserved=fixture('priest',null,[hidden],()=>rule).goals();
+  assert.ok(reserved.some(x=>x.item==='staff'&&x.level===0&&x.urgentStarter),
+   'explicit item purpose must not be stolen: '+rule.action);
+ }
+});
+test('an available compatible non-optimized weapon can be sent as a priority-1000 gear goal',()=>{
+ // No optimizer result for the physically ready item.
+ const gear=fixture('priest',null,[{name:'staff',level:2}]);
+ const goals=gear.goals();
+ assert.ok(goals.some(x=>x.name==='Gear: Vorratswaffe My_Caster'&&
+  x.item==='staff'&&x.level===2&&x.priority===1000));
+ assert.ok(!goals.some(x=>x.name==='Gear: Startwaffe My_Caster'));
 });

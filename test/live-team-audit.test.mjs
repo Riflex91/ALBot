@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analyzeLiveTeam} from '../scripts/lib/live-team-audit.mjs';
+import {analyzeLiveTeam,parseLiveReport,joinLiveReportParts} from '../scripts/lib/live-team-audit.mjs';
 
 const start=Date.parse('2026-10-17T13:52:00.000Z');
 const ev=(sec,type,fields={})=>({time:new Date(start+sec*1000).toISOString(),
@@ -84,4 +84,46 @@ test('refuses duplicate reporters, mixed realms, and reports incomplete history'
  assert.ok(mixed.issues.some(i=>i.code==='INCOMPLETE_EVENT_HISTORY'));
  assert.equal(mixed.farmers.My_Priest.incompleteEvents,true);
  assert.equal(mixed.accepted,false);
+});
+
+
+test('JSONL stream restores full history despite snapshot ring drops',()=>{
+ const first=report('My_Priest',[
+  ev(1,'sample',{reason:'Suche Farmziel'}),
+  ev(2,'action.start',{key:'attack'})
+ ],{counts:{sample:1,'action.start':1},dropped:700});
+ const rows=[
+  {type:'session',time:first.started,character:first.character,version:first.version},
+  ...first.events.map((e,i)=>({...e,seq:i+1})),
+  {...first,type:'snapshot',events:undefined}
+ ];
+ const read=parseLiveReport(rows.map(x=>JSON.stringify(x)).join('\n'));
+ assert.equal(read.events.length,2);
+ assert.equal(read.dropped,0,'ring evictions are not losses in complete JSONL');
+ assert.equal(read.sourceFormat,'jsonl');
+});
+
+test('JSONL part gaps are reported, and same-session parts recombine safely',()=>{
+ const full=report('My_Ranger1',[],{
+  counts:{sample:3},dropped:2,
+  events:[ev(1,'sample',{reason:'Suche Farmziel'}),ev(2,'sample'),ev(3,'sample')]
+ });
+ const first=parseLiveReport([
+  {type:'session',time:full.started},
+  {...full.events[0],seq:1},
+  {...full,type:'snapshot',counts:{sample:1},events:undefined}
+ ].map(x=>JSON.stringify(x)).join('\n'));
+ const second=parseLiveReport([
+  {type:'session',time:full.started},
+  {...full.events[1],seq:2},
+  {...full.events[2],seq:3},
+  {...full,type:'snapshot',counts:{sample:3},events:undefined}
+ ].map(x=>JSON.stringify(x)).join('\n'));
+ assert.equal(second.dropped,1,'a single later part lacks prior events');
+ const together=joinLiveReportParts([first,second]);
+ assert.equal(together.length,1);
+ assert.equal(together[0].dropped,0);
+ assert.equal(together[0].events.length,3);
+ assert.throws(()=>joinLiveReportParts([first,{...second,started:'2026-10-17T16:00:00Z'}]),
+  /separate sessions/);
 });

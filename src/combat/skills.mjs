@@ -268,7 +268,8 @@ export function createSkills(bot){
     if(p.c.ctype!=='priest'||!cfg.party.enabled||!cfg.party.healing||
        !target||!Number.isFinite(target.hp)||!Number.isFinite(target.max_hp)||
        target.max_hp<=0||target.hp/target.max_hp>=.85)return false;
-    return use('heal',target,0,160);
+    // Critical rescue must not defer to an unverified projected impact heal.
+    return use('heal',target,0,160,cfg.party.aoeMaxTargets,true);
   }
   function support(){
     if(!cfg.party.enabled)return false;
@@ -314,7 +315,7 @@ export function createSkills(bot){
   function rotation(t){
     if(p.c.ctype==='priest'){
       const crisis=bot.combatAssessment?.emergency?.();
-      if(crisis?.active&&crisis.critical.length){
+      if(cfg.party.healing&&crisis?.active&&crisis.critical.length){
         const critical=crisis.critical.filter(h=>h.name!==p.c.name)
          .map(h=>bot.entity(h.name)).filter(h=>h&&h.hp>0)
          .sort((a,b)=>a.hp/a.max_hp-b.hp/b.max_hp)[0];

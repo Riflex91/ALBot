@@ -134,3 +134,32 @@ test('partially free bank pack still permits a real, non-speculative store route
  assert.equal(bot.bank.store(0,{action:'bank',batch:12,keep:0,teamReserve:0}),false);
  assert.equal(trips,1,'a proven pack with 3 free slots can be visited');
 });
+
+test('regression: after split 231 beewings to 131+100 the bank deposit wins over repeated inventory consolidation',()=>{
+ const {bot,c,actions}=fixture({bankStandCount:0});
+ const r={name:'Ökonomische Disposition beewings',action:'bank',item:'beewings',
+  batch:100,keep:0,teamReserve:0,enabled:true};
+ bot.p.G.items.beewings={type:'material',s:9999};
+ bot.economy.rules=()=>r;
+ bot.economy.spare=(slot,rule)=>
+  Math.min(c.items[slot]?.q??0,rule?.batch??0);
+ c.items[5]={name:'beewings',level:0,q:231};
+ assert.equal(bot.bank.store(5,r),true);
+ assert.equal(actions.at(-1)[0],'bank.split');
+ // Simulate exact confirmed game split at fresh slot 26.
+ c.items[5].q=131;c.items[26]={name:'beewings',level:0,q:100};
+ const before=actions.length;
+ assert.equal(bot.bank.consolidateInventory(),false,'never rejoin the new 100-piece bank parcel');
+ assert.equal(actions.length,before);
+ assert.equal(bot.bank.store(5,r),true);
+ assert.equal(actions.at(-1)[0],'bank.store','store the existing 100-piece sibling before splitting 131 again');
+ assert.equal(actions.at(-1)[1].sourceSlot,26);
+});
+test('unrestricted ordinary same-variant stacks still consolidate outside a bank disposition',()=>{
+ const {bot,c,actions}=fixture({bankStandCount:0});
+ c.items[5]={name:'mat',level:0,q:131};
+ c.items[26]={name:'mat',level:0,q:100};
+ bot.economy.rules=()=>null;
+ assert.equal(bot.bank.consolidateInventory(),true);
+ assert.equal(actions.at(-1)[0],'inventory.consolidate');
+});

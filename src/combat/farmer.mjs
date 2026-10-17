@@ -1,5 +1,6 @@
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
+import {neutralPullReadiness} from './team-readiness.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 export function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
@@ -115,11 +116,24 @@ export function createFarmer(bot){
   const enemy=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&m.target&&
     bot.teamNames.includes(m.target)&&bot.allowed(m)&&
     bot.strategy?.safeTarget?.(m.mtype,m)!==false&&
-    distance(p.c,m)<=range).sort((a,b)=>
+    samePlace(p.c,m)&&
+    distance(p.c,m)<=Math.max(range,cfg.party.followDistance*2)&&
+    distance(leader,m)<=cfg.party.followDistance*2).sort((a,b)=>
     Number(b.id===leader.target)-Number(a.id===leader.target)||
     distance(p.c,a)-distance(p.c,b))[0];
   if(!enemy)return false;
   bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
+  if(distance(p.c,enemy)>range){
+   // Keep the admitted combat route until it finishes; repeated replanning
+   // every farmer tick would otherwise abort every smart_move immediately.
+   if(bot.movement.order?.owner==='combat')return true;
+   if(['follow','farm'].includes(bot.movement.order?.owner))
+    bot.movement.stop();
+   bot.reason='Gruppenkampf unterstützen: '+enemy.mtype;
+   bot.movement.go(combatApproach(p.c,enemy,range,(x,y)=>p.call('can_move_to',x,y)),'combat');
+   bot.skills.rotation(null);
+   return true;
+  }
   bot.navigation?.rangePosition?.(enemy);
   bot.skills.rotation(enemy);
   if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&
@@ -158,7 +172,13 @@ function recoverCohesion(now){
   bot.event?.('party.cohesion-recovery',{peer:target.name,gap:Math.round(target.distance),reason:'45 Sekunden ohne Annäherung'});
   return true;
 }
-function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat){bot.recovering=true;bot.strategy?.failActivity?.('Gruppe nicht kampfbereit unter Beschuss',threat.mtype);retreat(threat);}else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
+function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat){bot.recovering=true;
+  // Ordinary incoming aggro while assembling is not proof that the entire
+  // shared spawn is unsafe. Quarantine only the actually rejected monster.
+  if(bot.strategy?.safeTarget?.(threat.mtype,threat)===false)
+   bot.strategy?.failActivity?.('Gefährliche Aggro beim Sammeln',threat.mtype);
+  retreat(threat);
+ }else if(['combat','farm','follow','kite','world'].includes(bot.movement.order?.owner))bot.movement.stop();bot.skills.rotation(null);}
   function tick(){
     bot.recovering=false;
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
@@ -226,6 +246,14 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
+    // The leader's first neutral pull is admitted only after all selected
+    // farmers have actually assembled at this spawn. Engaged-team defense
+    // stays available even if a member has fallen behind.
+    if(me.name===bot.leader&&!bot.monsters().some(m=>m.target&&bot.teamNames.includes(m.target))){
+     const ready=neutralPullReadiness(bot);
+     if(!ready.ready){waitSafely('Gruppe sammeln: '+(ready.peer??ready.reason));return;}
+    }
+    if(me.name!==bot.leader&&leader?.running&&helpEngagedTeamFight(leader))return;
     const planned=bot.teamPlan?.target(),visible=planned?bot.monsters().filter(m=>m.mtype===planned):[];if(me.name===bot.leader&&visible.length&&visible.every(m=>bot.strategy?.safeTarget(planned,m,true)===false)){
      // Species baseline HP is already applied by strategy.risk(). Rejection
      // here therefore represents REAL danger, e.g. high current attack,

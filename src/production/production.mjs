@@ -36,10 +36,11 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
 export function reservationGoalsForUrgentDelivery(goals,item,recipient){
  if(!Array.isArray(goals)||goals.length>64||!recipient||
     typeof item?.name!=='string'||!Number.isInteger(item.level))return goals;
- const urgent=goals.find(g=>g.enabled&&g.urgentStarter===true&&
-   g.gearSlot==='mainhand'&&g.recipient===recipient&&
-   g.item===item.name&&g.level===item.level&&g.quantity===1&&
-   Number.isFinite(g.priority)&&g.priority>=1000);
+ const urgent=goals.find(g=>g.enabled&&
+   (g.urgentStarter===true&&g.gearSlot==='mainhand'&&g.priority>=1000||
+    g.urgentVacancy===true&&typeof g.gearSlot==='string'&&g.priority>=900)&&
+   g.recipient===recipient&&g.item===item.name&&g.level===item.level&&
+   g.quantity===1&&Number.isFinite(g.priority));
  return urgent?goals.filter(g=>(Number.isFinite(g.priority)?g.priority:0)>=urgent.priority):goals;
 }
 export function needsProductionStock(available,required){return available<required;}

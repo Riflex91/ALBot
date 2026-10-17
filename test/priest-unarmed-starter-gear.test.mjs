@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {createGear} from '../src/production/gear.mjs';
 
 const gearSlots=['mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
-function fixture(ctype='priest',mainhand=null,items=[],explicit=()=>null){
+function fixture(ctype='priest',mainhand=null,items=[],explicit=()=>null,prepared=false){
  const profile={class:ctype,level:32,slots:Object.fromEntries(gearSlots.map(slot=>[slot,slot==='mainhand'?mainhand:null])),at:Date.now(),complete:true};
- const p={c:{name:'My_Merchant',ctype:'merchant',level:58,slots:{},items},
-  G:{items:{staff:{type:'weapon',wtype:'staff',upgrade:true,level:1}},
+ const p={realm:()=> 'USV',c:{name:'My_Merchant',ctype:'merchant',level:58,slots:{},items},
+  G:{items:{staff:{type:'weapon',wtype:'staff',upgrade:true,level:1},coat:{type:'chest',upgrade:true},shield:{type:'shield',upgrade:true}},
    classes:{priest:{mainhand:{staff:true}},mage:{mainhand:{staff:true}},
     ranger:{mainhand:{bow:true}}}},
   read:()=>({'My_Caster':profile}),
@@ -14,9 +14,9 @@ function fixture(ctype='priest',mainhand=null,items=[],explicit=()=>null){
  const cfg={production:{gear:true,offlineProfiles:true,gearTargets:[],autoGear:false,autoGearBudget:100000,autoGearMaxLevel:5,minImprovement:.1},
    characters:[{name:'My_Caster',class:ctype,role:'farmer',enabled:true,gearRole:'auto'}],
    party:{selection:'adaptive'}};
- const bot={p,cfg,me:{name:'My_Merchant',role:'merchant'},
+ const bot={p,cfg,me:{name:'My_Merchant',role:'merchant'},farmers:prepared?['My_Caster']:[],
   teamNames:['My_Merchant','My_Caster'],
-  economy:{safe:i=>!!i&&!i.l&&!i.b,explicit},transport:{fresh:()=>null},
+  economy:{safe:i=>!!i&&!i.l&&!i.b,explicit},transport:{fresh:()=>prepared?{running:true,rip:false,realm:'USV'}:null},
   intelligence:{targets:()=>[{name:'Optimiertes Gear My_Caster mainhand',
    character:'My_Caster',slot:'mainhand',item:'staff',level:3,enabled:true,priority:31,budget:100000}]}};
  return createGear(bot);
@@ -79,4 +79,25 @@ test('an available compatible non-optimized weapon can be sent as a priority-100
  assert.ok(goals.some(x=>x.name==='Gear: Vorratswaffe My_Caster'&&
   x.item==='staff'&&x.level===2&&x.priority===1000));
  assert.ok(!goals.some(x=>x.name==='Gear: Startwaffe My_Caster'));
+});
+
+test('unfilled Priest chest prioritizes compatible, physically carried coat +5',()=>{
+ const gear=fixture('priest',{name:'staff',level:3},[
+  {name:'coat',level:5}],()=>null,true);
+ const goal=gear.goals().find(g=>g.name==='Gear: Vorratsausrüstung My_Caster chest');
+ assert.ok(goal);
+ assert.equal(goal.item,'coat');
+ assert.equal(goal.level,5);
+ assert.equal(goal.recipient,'My_Caster');
+ assert.ok(goal.urgentVacancy);
+ assert.ok(goal.priority>=900);
+});
+test('protected or explicitly reserved chest gear cannot trigger an urgent delivery',()=>{
+ for(const item of [{name:'coat',level:5,l:true},{name:'coat',level:5,b:true}]){
+  const goals=fixture('priest',{name:'staff',level:3},[item],()=>null,true).goals();
+  assert.ok(!goals.some(g=>g.urgentVacancy));
+ }
+ const goals=fixture('priest',{name:'staff',level:3},[{name:'coat',level:5}],
+  ()=>({action:'bank'}),true).goals();
+ assert.ok(!goals.some(g=>g.urgentVacancy));
 });

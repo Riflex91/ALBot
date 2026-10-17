@@ -3,6 +3,18 @@ import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {knowledgeFingerprint} from './knowledge.mjs';
 import {combatMembers,compositionOptions} from './composition.mjs';
 import {assessCombat} from './risk.mjs';
+// A theoretical 12-target battle is not the actual normal farm pull.
+// Preserve a conservative 3-target floor for 3shot, the configured AoE
+// exposure and all verified already-engaged hostiles. This never authorizes
+// a target: the complete Legacy combat/defense/mechanics gate still runs.
+export function effectiveFarmAggro(maxAggro,aoeMaxTargets,engaged=0){
+ if(!Number.isSafeInteger(maxAggro)||maxAggro<1||maxAggro>100||
+    !Number.isSafeInteger(engaged)||engaged<0||engaged>100)return maxAggro;
+ const aoe=Number.isSafeInteger(aoeMaxTargets)&&aoeMaxTargets>=1?
+   aoeMaxTargets:3;
+ return Math.max(Math.min(maxAggro,Math.max(3,aoe)),
+  Math.min(100,engaged));
+}
 export function rankFarmTargets(G,character,targets,mode='balanced',learned={},weight=0){
  return targets.filter(id=>G.monsters?.[id]).map((id,index)=>{
   const m=G.monsters[id],seconds=Math.max(1,(m.hp??100)/Math.max(1,(character.attack??1)*(character.frequency??1))),xp=(m.xp??1)/seconds;
@@ -38,7 +50,11 @@ export function createStrategy(bot){
  // or a permanently dangerous respawn. Calculate spot viability with base
  // HP while retaining LIVE attack, frequency, mechanics and defenses.
  const hp=farmRiskHp(base,live);
- return assessCombat({...base,...live,hp},members(planned),w.risk,cfg.farming.maxAggro,
+ const liveEngaged=(bot.monsters?.()??[]).filter(m=>m.target&&
+  (bot.teamNames??[]).includes(m.target)&&m.hp>0&&samePlace(p.c,m)).length;
+ const aggro=effectiveFarmAggro(cfg.farming.maxAggro,
+  cfg.party?.aoeMaxTargets,liveEngaged);
+ return assessCombat({...base,...live,hp},members(planned),w.risk,aggro,
   {...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
  function safeTarget(id,live,quiet=false,planned=false){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(result.timelineShadow&&Date.now()-(lastRisk.get('shadow:sample')??0)>30000){lastRisk.set('shadow:sample',Date.now());const s=result.timelineShadow;bot.event('combat.timelineShadow',{monster:id,safe:result.safe,legacySeconds:result.seconds??null,projectedSeconds:s.projectedSeconds,deltaSeconds:s.deltaSeconds,lowerBoundDps:s.lowerBoundDps,expectedDps:s.expectedDps,expectedCritScenarioDps:s.expectedCritScenarioDps,healerDuty:s.healerDuty,healerManaLimited:s.healerManaLimited,healerProjectedHeals:s.healerProjectedHeals,healerCastSlots:s.healerCastSlots,healerAttackSlots:s.healerAttackSlots,attackIntervalsMs:JSON.stringify(s.attackIntervalsMs),authority:s.authority});}if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;

@@ -39,3 +39,17 @@ test('generic, unrelated, unknown, non urgent or wrongly addressed gear never re
  unverified[0].priority=50;
  assert.equal(reservationGoalsForUrgentDelivery(unverified,{name:'staff',level:3},'My_Priest'),unverified);
 });
+
+test('an exact verified empty chest claim frees only subordinate coat upgrade reservations',()=>{
+ const urgent={name:'Gear: Vorratsausrüstung My_Priest chest',enabled:true,
+  item:'coat',level:5,quantity:1,recipient:'My_Priest',
+  gearSlot:'chest',priority:975,urgentVacancy:true};
+ const subordinate={name:'Gear: Auto-Gear My_Ranger2 chest',enabled:true,
+  item:'coat',level:5,quantity:1,recipient:'My_Ranger2',
+  gearSlot:'chest',priority:30};
+ const rows=[urgent,subordinate];
+ const filtered=reservationGoalsForUrgentDelivery(rows,{name:'coat',level:5},'My_Priest');
+ assert.deepEqual(filtered,[urgent]);
+ assert.equal(reservationGoalsForUrgentDelivery(rows,{name:'coat',level:5},'My_Ranger2'),rows);
+ assert.equal(reservationGoalsForUrgentDelivery(rows,{name:'coat',level:4},'My_Priest'),rows);
+});

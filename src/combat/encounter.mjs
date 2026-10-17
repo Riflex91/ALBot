@@ -1,3 +1,4 @@
+import {neutralPullReadiness} from './team-readiness.mjs';
 import {distance} from '../core/policy.mjs';
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
 // Promote one new concurrent pull only after the previous size has a
@@ -65,6 +66,7 @@ export function createEncounter(bot){
  function permit(m){
   if(m.target)return true;
   if(bot.me.name!==bot.leader&&bot.cfg.party.enabled)return false;
+  if(!neutralPullReadiness(bot).ready)return false;
   const engaged=bot.monsters().filter(x=>x.target&&bot.teamNames.includes(x.target)).length;
   const planned=m.mtype&&m.mtype===bot.teamPlan?.target();
   if(planned&&bot.teamPlan?.wantsCombat?.()===false)return false;
@@ -83,7 +85,8 @@ export function createEncounter(bot){
   return false;
  }
  function pull(){
-  if(bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.teamPlan?.target()||!bot.teamPlan.wantsCombat())return false;
+  if(bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.teamPlan?.target()||!bot.teamPlan.wantsCombat()||
+     !neutralPullReadiness(bot).ready)return false;
   const engaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target));
   if(!engaged.length||engaged.length>=capacity||bot.recovering)return false;
   if(bot.capabilities?.available(bot.me.name,'agitate')){
@@ -97,7 +100,7 @@ export function createEncounter(bot){
   if(!candidate)return false;
   const guard=()=>{
    const m=bot.entity(candidate.id);
-   return bot.running&&phase==='BUILD'&&capacity>1&&bot.teamPlan.target()===candidate.mtype&&m&&!m.target&&
+   return bot.running&&phase==='BUILD'&&capacity>1&&neutralPullReadiness(bot).ready&&bot.teamPlan.target()===candidate.mtype&&m&&!m.target&&
     bot.monsters().filter(t=>t.target&&bot.teamNames.includes(t.target)).length<capacity&&
     bot.allowed(m)&&bot.strategy.safeTarget(m.mtype,m)&&distance(bot.p.c,m)<=range&&
     bot.p.call('can_attack',m)&&!bot.p.call('is_on_cooldown','attack');

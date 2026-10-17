@@ -306,7 +306,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // actually targets THIS character (see isOwnAggressiveThreat above).
     // The existing safety branch below still handles that confirmed threat.
     if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährlicher Gegner greift an',threat.mtype);bot.target=null;bot.reason='Rückzug: '+threat.mtype;retreat(threat);bot.skills.rotation(null);return;}
-    if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason='Inventar ungeklärt';return;}
+    if(me.role==='merchant'){if(bot.inventoryBlocked)bot.reason=bot.journal?.kind==='exchange'?'Exchange-Buchung wird anhand von Inventar und Gold geprüft':'Offene Werttransaktion wird geprüft';return;}
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
     if(bot.strategy?.busy&&bot.monsters().some(m=>m.target===c.name))bot.strategy.interruptQuest?.();
     if(bot.strategy?.busy||bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}

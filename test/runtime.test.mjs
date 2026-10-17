@@ -284,3 +284,29 @@ test('U07 full runtime manages official factory observers across pause/reload',(
  a.load();assert.equal(states[1].detached,true);
  a.root.ALBot.dispose();
 });
+
+test('browser/headless FULL farmer tolerates transient null game entities at startup',()=>{
+ for(const browser of [true,false]){
+  const a=harness('A'),cfg=defaultsFor(FULL_DESCRIPTOR.schema);
+  cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),
+   name:'A',class:'ranger',role:'farmer'}];
+  cfg.general.ui=false;cfg.party.enabled=false;
+  cfg.farming.autoTravel=false;cfg.farming.loot=false;
+  a.root.ALBotConfig=cfg;
+  a.root.parent.entities={despawning:null,pending:undefined,
+   m1:{name:'bee',type:'monster',id:'m1',mtype:'bee',
+    map:'main',in:'main',hp:100,x:1000,y:1000},
+   member:{name:'Other',type:'character',map:'main',x:10,y:20}};
+  a.root.G.monsters.bee={hp:100,xp:10,attack:1,frequency:1};
+  if(browser){delete a.root.parent.headless;
+   delete a.root.parent.caracAL;a.root.performance_trick=()=>{};}
+  a.load();
+  assert.equal(a.root.ALBot.start(),true);
+  const report=JSON.parse(a.root.ALBot.testReport());
+  assert.equal(report.counts.error??0,0,
+   'No null name/type dereference while starting the farmer');
+  assert.doesNotMatch(a.root.ALBot.status().reason,/Cannot read properties of null/,
+   'Farmer remains active without the screenshot error');
+  a.root.ALBot.dispose();
+ }
+});

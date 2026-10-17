@@ -1,6 +1,6 @@
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
-import {neutralPullReadiness} from './team-readiness.mjs';
+import {neutralPullReadiness,followerReassemblyDistance} from './team-readiness.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 // A validated, already engaged team threat remains eligible for defensive
@@ -249,7 +249,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}
-      if(!samePlace(c,leader)||distance(c,leader)>cfg.party.followDistance){if(helpEngagedTeamFight(leader))return;bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:cfg.party.followDistance/2},'follow');bot.skills.rotation(null);return;}
+      if(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg)){if(helpEngagedTeamFight(leader))return;bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:Math.min(cfg.party.followDistance/2,Math.max(20,followerReassemblyDistance(cfg)/2))},'follow');bot.skills.rotation(null);return;}
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();

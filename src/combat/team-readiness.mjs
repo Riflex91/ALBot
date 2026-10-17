@@ -2,6 +2,19 @@ import {distance,samePlace} from '../core/policy.mjs';
 
 // Neutral pulls require live, healthy, colocated participants. Defensive
 // combat against an existing attacker remains allowed independently.
+// Keep the follower rendezvous trigger aligned with the stricter neutral-pull
+// clearance. A 180-unit follow threshold with 140-unit pull clearance leaves
+// a 140..180 dead zone in which neither character moves nor can pull.
+export function neutralPullDistance(cfg){
+ const value=cfg?.party?.followDistance;
+ return Math.min(140,Math.max(1,Number.isFinite(value)?value:140));
+}
+export function followerReassemblyDistance(cfg){
+ const value=cfg?.party?.followDistance;
+ return cfg?.party?.waitForTeam===true?
+  Math.max(1,neutralPullDistance(cfg)-20):
+  Math.max(1,Number.isFinite(value)?value:140);
+}
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;
  if(cfg.party?.enabled===false||cfg.party?.waitForTeam!==true)
@@ -9,7 +22,7 @@ export function neutralPullReadiness(bot){
  if(me.name!==bot.leader)return {ready:false,reason:'follower-cannot-pull'};
  const names=bot.farmers??[];
  if(!names.length)return {ready:false,reason:'missing-roster'};
- const maxDistance=Math.min(140,Math.max(1,cfg.party.followDistance??140));
+ const maxDistance=neutralPullDistance(cfg);
  for(const name of names){
   if(name===me.name)continue;
   const peer=bot.transport?.fresh?.(name);

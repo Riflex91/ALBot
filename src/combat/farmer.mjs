@@ -124,7 +124,10 @@ export function createFarmer(bot){
   if(!enemy)return false;
   bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
   if(distance(p.c,enemy)>range){
-   if(['follow','farm','combat'].includes(bot.movement.order?.owner))
+   // Keep the admitted combat route until it finishes; repeated replanning
+   // every farmer tick would otherwise abort every smart_move immediately.
+   if(bot.movement.order?.owner==='combat')return true;
+   if(['follow','farm'].includes(bot.movement.order?.owner))
     bot.movement.stop();
    bot.reason='Gruppenkampf unterstützen: '+enemy.mtype;
    bot.movement.go(combatApproach(p.c,enemy,range,(x,y)=>p.call('can_move_to',x,y)),'combat');

@@ -16,6 +16,19 @@ export function chooseStockedElixir(G,ctype,stock){
    duration:G.items[name].duration}))
   .sort((a,b)=>b.utility-a.utility||b.score-a.score||a.name.localeCompare(b.name))[0]??null;
 }
+// Vitality is a genuinely useful, class-neutral interim buff, unlike
+// distributing INT elixirs to a DEX ranger. Prefer class-specialized stock,
+// then physically held VIT stock, and retain market acquisition for DEX.
+export function chooseStockedVitalityElixir(G,stock){
+ if(!Array.isArray(stock))return null;
+ return [...new Set(stock.filter(i=>i&&typeof i.name==='string'&&
+  G.items?.[i.name]?.type==='elixir'&&G.items[i.name].vit>0&&
+  G.items[i.name].duration>0).map(i=>i.name))]
+  .map(name=>({name,stat:'vit',utility:G.items[name].vit*G.items[name].duration,
+   score:G.items[name].vit*G.items[name].duration/Math.max(1,G.items[name].g??1),
+   duration:G.items[name].duration}))
+  .sort((a,b)=>b.utility-a.utility||b.score-a.score||a.name.localeCompare(b.name))[0]??null;
+}
 export function createElixirs(bot){const {p,cfg,me}=bot;let last=0,cycle=p.read('albot:elixir:'+me.name)?.cycle??0,requested=false;
  const remaining=slot=>{if(Number.isFinite(slot?.ms))return slot.ms;const value=typeof slot?.expires==='number'?slot.expires:Date.parse(slot?.expires??'');return Number.isFinite(value)?Math.max(0,value-Date.now()):Infinity;};
  const enabled=()=>cfg.general.testLogging!==undefined&&cfg.farming.elixirs!==false;
@@ -26,14 +39,16 @@ export function createElixirs(bot){const {p,cfg,me}=bot;let last=0,cycle=p.read(
  // Do not replace a suitable active elixir simply because a different
  // Merchant stock item appeared on a newer heartbeat.
  if(active?.name&&p.G.items?.[active.name]?.type==='elixir'&&
-  chooseStockedElixir(p.G,p.c.ctype,[active])&&remaining(active)>60000)
+  (chooseStockedElixir(p.G,p.c.ctype,[active])||
+   me.role==='farmer'&&chooseStockedVitalityElixir(p.G,[active]))&&remaining(active)>60000)
   return {...preferred,name:active.name};
  const inventory=(p.c.items??[]).filter(i=>i&&!protectedItem(i)&&
   bot.consumable(i));
  const merchant=bot.transport?.fresh?.(cfg.party.merchant);
  const stocked=merchant?.running&&!merchant.rip&&merchant.realm===p.realm()?
   merchant.elixirStock??merchant.stock??[]:[];
- const best=chooseStockedElixir(p.G,p.c.ctype,[...inventory,...stocked]);
+ const best=chooseStockedElixir(p.G,p.c.ctype,[...inventory,...stocked])??
+  (me.role==='farmer'?chooseStockedVitalityElixir(p.G,[...inventory,...stocked]):null);
  const selected=best??preferred;
  const r=bot.economy?.explicit({name:selected.name,level:0});
  return r?.action==='keep'?null:selected;

@@ -70,3 +70,37 @@ export function chooseFarmAreaSwitch({
   result(candidate,'evidence-supported-switch',threshold):
   result(currentRank,'switch-benefit-unproven',threshold);
 }
+
+// Unlike ordinary farming, priority monsterhunts previously bypassed ALL
+// spawn hysteresis. They could ping-pong between two locations for the SAME
+// monster every ten seconds as the travel score changed with position. Hold
+// the verified quest location unless there is independent, sufficiently
+// sampled evidence that another known spawn has lower pressure. Stable
+// observation also enables the separate, guarded server-hop policy.
+export function chooseHuntSpawn({
+ current,currentRank,candidate,now=Date.now(),holdMs=180000
+}={}){
+ const keep=reason=>({choice:currentRank??null,reason,authority:'hunt-location-only'});
+ if(!currentRank||!current||current.kind!=='hunt'||!candidate||
+    currentRank.key!==current.key||candidate.target!==current.target)
+  return {choice:candidate??null,reason:'new-or-invalid-hunt',authority:'hunt-location-only'};
+ if(candidate.key===current.key)return keep('same-hunt-spawn');
+ if(!Number.isFinite(now)||!Number.isFinite(current.started)||
+    current.started>now||!Number.isFinite(holdMs)||
+    holdMs<60000||holdMs>3600000)return keep('unverified-hunt-switch-context');
+ if(now-current.started<holdMs)return keep('hunt-spawn-observation-hold');
+ // Pressure is not proof merely because a server is busy, or because the
+ // party has just arrived. Demand >=90s of observations on BOTH sites.
+ const sufficient=row=>Number.isFinite(row?.evidenceSeconds)&&
+  row.evidenceSeconds>=90&&Number.isFinite(row?.pressureRatio)&&
+  row.pressureRatio>=0&&row.pressureRatio<=1;
+ if(!sufficient(currentRank)||!sufficient(candidate))
+  return keep('no-comparable-crowd-evidence');
+ if(currentRank.pressureRatio<.65||candidate.pressureRatio>.3)
+  return keep('stay-for-hunt-or-server-hop');
+ if(!Number.isFinite(currentRank.score)||!Number.isFinite(candidate.score)||
+    candidate.score<=currentRank.score*1.5)
+  return keep('no-verified-spawn-advantage');
+ return {choice:candidate,reason:'verified-less-crowded-hunt-spawn',
+  authority:'hunt-location-only'};
+}

@@ -136,3 +136,18 @@ test('objectives integration accepts only fresh peer evidence, never authorizes 
  assert.equal(view.status().inventoryEvidence.complete,false);
  assert.equal(view.status().nodes.find(x=>x.item==='bar').state,'blocked');
 });
+
+test('Merchant objective ledger represents 27 distinct local item variants within bounded 32-row budget',()=>{
+ const rows=Array.from({length:27},(_,n)=>({name:'inventory'+n,q:1}));
+ rows[9]={name:'anniversarygift',q:1046};
+ const localStock=inventoryStockEvidence(rows,{
+  owner,session,realm,at,maxRows:32,reserved:()=>0
+ });
+ assert.equal(localStock.complete,true);
+ assert.equal(localStock.rows.length,27);
+ const result=ledger(localStock);
+ assert.equal(result.complete,true);
+ assert.equal(result.quantity('anniversarygift'),1046);
+ assert.equal(inventoryStockEvidence(rows,{owner,session,realm,at,maxRows:12}).complete,
+  false,'default small remote heartbeat budget remains bounded');
+});

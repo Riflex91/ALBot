@@ -25,7 +25,8 @@ export function inspectExchangeRecovery(bot){
  if(!bot.inventoryBlocked||j?.kind!=='exchange'||bot.me?.role!=='merchant')
   return deny('not-a-blocked-merchant-exchange');
  if(!snap||snap.realm!==bot.p.realm()||!Number.isSafeInteger(snap.gold)||
-   c?.gold!==snap.gold||!Array.isArray(snap.inventory)||!Array.isArray(c?.items)||
+   !Number.isSafeInteger(c?.gold)||c.gold<snap.gold||
+   !Array.isArray(snap.inventory)||!Array.isArray(c?.items)||
    snap.inventory.length!==c.items.length)return deny('before-after-evidence-incomplete');
  if(bot.exec?.pending?.size||c.q?.exchange||c.items.some(x=>x?.name==='placeholder')||
    bot.checkpoint?.durable===false)return deny('exchange-or-checkpoint-pending');
@@ -68,16 +69,30 @@ export function inspectExchangeRecovery(bot){
    rewards.push({item,quantity:delta});
   }
  }
- if(!rewards.length)return deny('reward-not-observed');
  const table=exchangeDrops(G,G?.drops?.[j.item]);
  if(!table.length)return deny('exchange-reward-table-unavailable');
- const permitted=new Set(table.map(x=>x.item));
- if(rewards.length!==1||!table.some(x=>x.item===rewards[0].item&&x.quantity===rewards[0].quantity))
-  return deny('reward-not-an-exact-official-outcome');
- return {eligible:true,reason:'exact-input-consumption-and-verified-reward',
-  consumed:j.quantity,source:j.item,rewards,
+ const goldGain=c.gold-snap.gold;
+ // The game can pay gold instead of an inventory item (notably the 10-year
+ // anniversary gift: +5000 or +20000). Previously a genuine, completed
+ // exchange with an exact gold prize was permanently quarantined because the
+ // recovery insisted on unchanged gold AND a physical reward. Prove exactly
+ // one official outcome using the pinned source, all other inventory
+ // variants, and the exact observed wallet delta. Never replay an exchange.
+ const officialGold=table.some(x=>x.item==='gold'&&
+  Number.isSafeInteger(x.quantity)&&x.quantity>0&&x.quantity===goldGain);
+ let outcome=null;
+ if(goldGain>0&&!rewards.length&&officialGold)
+  outcome={reason:'exact-input-consumption-and-official-gold-reward',
+   rewards:[{item:'gold',quantity:goldGain}]};
+ else if(goldGain===0&&rewards.length===1&&
+  table.some(x=>x.item===rewards[0].item&&x.quantity===rewards[0].quantity))
+  outcome={reason:'exact-input-consumption-and-verified-reward',rewards};
+ if(!outcome)return deny(goldGain>0?'gold-reward-not-an-exact-official-outcome':
+  !rewards.length?'reward-not-observed':'reward-not-an-exact-official-outcome');
+ return {eligible:true,reason:outcome.reason,
+  consumed:j.quantity,source:j.item,rewards:outcome.rewards,
   signature:JSON.stringify([j.at,j.item,j.quantity,snap.realm,snap.gold,
-   c.items.map(x=>x?fingerprint(x):null)])};
+   c.gold,c.items.map(x=>x?fingerprint(x):null)])};
 }
 
 // Recover only a *corroborated* persisted gold handoff. Never send gold again.
@@ -230,10 +245,67 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return !bot.journal;
  }
 
+ // When a previously dispatched exchange has definitely consumed its
+ // pinned source stack, but the reward cannot be reconstructed after a
+ // restart, archive the uncertainty and resume using the live inventory.
+ // Never assume a reward, confirm a delivery or replay the old command.
+ // Unlike a speculative timeout this requires 60s of elapsed time, two
+ // unchanged samples and durable archive+checkpoint writes.
+ let unknownExchangeSample=null;
+ function releaseConsumedExchange(j){
+  const c=p.c,snap=j?.evidence;
+  if(me.role!=='merchant'||!bot.inventoryBlocked||j?.kind!=='exchange'||
+    !Array.isArray(snap?.inventory)||!Array.isArray(c?.items)||
+    snap.realm!==p.realm()||snap.inventory.length!==c.items.length||
+    !Number.isSafeInteger(j.quantity)||j.quantity<1||
+    !Number.isFinite(j.at)||Date.now()-j.at<60000||
+    bot.exec?.pending?.size||c.q?.exchange||
+    c.items.some(x=>x?.name==='placeholder')||
+    bot.checkpoint?.durable===false||
+    !Number.isSafeInteger(c.gold)||c.gold<0||
+    !Array.isArray(j.slots)||j.slots.length!==1){
+    unknownExchangeSample=null;return false;
+  }
+  const [slot,source]=j.slots[0];
+  if(!Number.isSafeInteger(slot)||slot<0||slot>=c.items.length||
+    typeof source!=='string'||snap.inventory[slot]!==source){
+    unknownExchangeSample=null;return false;
+  }
+  const colon=source.lastIndexOf(':'),qty=Number(source.slice(colon+1));
+  if(colon<=0||!Number.isSafeInteger(qty)||qty<j.quantity){
+   unknownExchangeSample=null;return false;
+  }
+  const live=c.items[slot]?fingerprint(c.items[slot]):null;
+  const expected=qty===j.quantity?null:source.slice(0,colon)+':'+(qty-j.quantity);
+  if(live!==expected){unknownExchangeSample=null;return false;}
+  const sign=JSON.stringify([j.at,source,live,c.gold,
+   c.items.map(i=>i?fingerprint(i):null)]);
+  const now=Date.now();
+  if(!unknownExchangeSample||unknownExchangeSample.sign!==sign){
+   unknownExchangeSample={sign,at:now};return false;
+  }
+  if(now-unknownExchangeSample.at<5000)return false;
+  const record={version:1,kind:'exchange',item:j.item,
+   quantity:j.quantity,sourceSlot:slot,at:now,originalAt:j.at,
+   realm:p.realm(),status:'consumed-unverified-no-replay',
+   before:source,after:live,observedGold:c.gold};
+  // An archive write is required BEFORE clearing the original value journal.
+  if(p.write?.('albot:exchange-unconfirmed:'+me.name,record)!==true||
+     bot.checkpoint?.clear?.(j)!==true)return false;
+  bot.allocation?.settle?.(j,'unknown');
+  bot.journal=null;bot.inventoryBlocked=false;
+  bot.production?.invalidate?.();bot.intelligence?.invalidate?.();
+  unknownExchangeSample=null;
+  exchangeStatus={eligible:false,reason:'archived-consumed-unverified',rewards:[]};
+  bot.event?.('recovery.exchangeUnconfirmedReleased',{
+   item:j.item,quantity:j.quantity,slot,ageMs:now-j.at,
+   reason:'Original-Eingang nachgewiesen; unbekannter Output archiviert, kein Replay'});
+  return true;
+ }
  function reconcileExchange(){
   const audit=inspectExchangeRecovery(bot);
   exchangeStatus={eligible:audit.eligible,reason:audit.reason,rewards:audit.rewards??[]};
-  if(!audit.eligible){exchangeSample=null;return false;}
+  if(!audit.eligible){exchangeSample=null;return releaseConsumedExchange(bot.journal);}
   const now=Date.now();
   // Require two *identical* completed inventory observations at least one
   // second apart, after the original exchange was dispatched.
@@ -247,7 +319,7 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   bot.endValue('confirmed');
   if(bot.journal){bot.inventoryBlocked=true;return false;}
   bot.event?.('recovery.exchangeVerified',{item:j.item,consumed:audit.consumed,
-   rewards:audit.rewards,reason:'Exakter Bestandsvergleich, bekannte Drops, unverändertes Gold und zwei stabile Beobachtungen'});
+   rewards:audit.rewards,reason:'Exakter Bestands- und Goldvergleich, offizielle Exchange-Belohnung und zwei stabile Beobachtungen'});
   exchangeSample=null;exchangeStatus={eligible:false,reason:'confirmed',rewards:audit.rewards};
   return true;
  }

@@ -132,6 +132,10 @@ export function createObjectives(bot){
   const goalRows=goals();
   const at=Date.now(),local=inventoryStockEvidence(p.c.items??[],{
    owner:me.name,session:bot.session,realm:currentRealm(),at,
+   // Local inventory is complete and authoritative for its OWN slots, even
+   // when the Merchant carries >12 distinct variants. This is read-only
+   // evidence, never spend authorization or a bank/peer transfer receipt.
+   maxRows:32,
    reserved:i=>bot.production?.reservedQuantity?.(i)??0
   });
   const names=[...new Set((bot.farmers??[]).filter(n=>n!==me.name))];

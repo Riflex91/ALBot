@@ -213,12 +213,17 @@ export function createTeamPlan(bot){
      reason:'Kein Wechsel ohne dauerhaft gespeicherten Rotationszustand'});
    }
   }
-  const selected=selectHuntArea(ranking,hunt);
-  let next=selected.area,selectedRequest=!hunt&&next?.target===request?.monster?request:null;
+  let selected=selectHuntArea(ranking,hunt);
+  // A high-priority Seashell refill must select an approved spawn rather
+  // than merely rewarding it in the ordinary XP/Gold ranking.
+  const shellRefill=request?.item==='seashell'&&request.priority>=300;
+  if(shellRefill){const source=ranking.find(r=>r.target===request.monster);
+   if(source)selected={kind:'farm',area:source,deferred:null};}
+  let next=selected.area,selectedRequest=(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
   const old=ranking.find(r=>r.key===current?.key);
   // Keep existing hold-time for safe ordinary farming while waiting for
   // the active farmer's quest NPC or an independently verified hunt spawn.
-  const holdOrdinary=selected.kind==='farm'&&current?.kind==='farm';
+  const holdOrdinary=!shellRefill&&selected.kind==='farm'&&current?.kind==='farm';
   switchAdvice=null;
   // Monsterhunt priority must not erase *location* hysteresis. A switch
   // between two osnake spawns is still an ordinary travel decision, not a
@@ -244,7 +249,7 @@ export function createTeamPlan(bot){
     from:old.key,to:next?.key??null};
    next=choice.choice;
   }
-  selectedRequest=!hunt&&next?.target===request?.monster?request:null;
+  selectedRequest=(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
   const fallbackKey=selected.deferred?selected.deferred+':'+hunt?.owner+':'+(hunt?.monster??''):null;
   if(fallbackKey!==huntFallback){
    huntFallback=fallbackKey;

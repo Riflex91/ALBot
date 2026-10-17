@@ -70,6 +70,45 @@ test('guaranteed whole-stack gold-only exchange can release a slot under pressur
  const {c,G,planner}=fixture(3);c.items[0]={name:'gift',q:1};G.drops.gift=[[1,'gold',1000]];
  assert.equal(planner.exchangeAllowed(0,1),true);c.items[0].q=2;assert.equal(planner.exchangeAllowed(0,1),false);
 });
+
+test('official Anniversary Gift pool may pay currency shells and gold without inventing inventory slots',()=>{
+ const f=fixture(13);
+ f.c.items[0]={name:'anniversarygift',q:1088};
+ f.G.items.anniversarygift={type:'gem',s:9999,e:1,exclusive:true};
+ f.G.items.cxjar={type:'jar'};
+ f.G.items.candleward={type:'weapon'};
+ f.G.drops.anniversarygift=[
+  [608910,'gold',5000],[200000,'gold',20000],
+  [190000,'open','anniversary_legacy'],
+  [990,'open','anniversary_equipment'],
+  [99,'cxjar',1,'makeawish'],[1,'cxjar',1,'ikissyou']
+ ];
+ f.G.drops.anniversary_legacy=[
+  [20,'shells',200],[20,'empty'],
+  [100,'gold',5000],[1,'cxjar',1,'legacy-emote']
+ ];
+ f.G.drops.anniversary_equipment=[[15,'candleward']];
+ const forecast=forecastExchange(f.G,f.c.items,0,1);
+ assert.equal(forecast.known,true,'official wallet/empty rewards do not consume item slots');
+ assert.equal(forecast.worstOutputSlots,1);
+ assert.equal(forecast.worstFree,12);
+ assert.equal(f.planner.exchangeAllowed(0,1),true,
+  '1088 gifts can be exchanged one by one with physical headroom');
+ assert.equal(f.c.items[0].q,1088,'forecast cannot consume a single gift');
+});
+test('gift outcome variants remain fail closed if a nested result is unknown',()=>{
+ const f=fixture(13);f.c.items[0]={name:'anniversarygift',q:1088};
+ f.G.items.anniversarygift={e:1,s:9999};
+ f.G.drops.anniversarygift=[[1,'gold',5000],[1,'shells',100],[1,'open','prizes']];
+ f.G.drops.prizes=[[1,'unseen-limited-item']];
+ assert.equal(forecastExchange(f.G,f.c.items,0,1).reason,'unknown-output');
+ assert.equal(f.planner.exchangeAllowed(0,1),false);
+ f.G.drops.prizes=[[1,'empty']];
+ assert.equal(forecastExchange(f.G,f.c.items,0,1).known,true);
+ f.G.drops.prizes=[[1,'open','missing']];
+ assert.equal(f.planner.exchangeAllowed(0,1),false);
+});
+
 test('unknown, cyclic and multi-unit reward definitions never become zero-risk exchanges',()=>{
  const {c,G}=fixture();c.items[0]={name:'gift',q:10};G.drops.gift=[[1,'open','missing']];assert.equal(forecastExchange(G,c.items,0,1).known,false);
  G.drops.missing=[[1,'open','missing']];assert.equal(forecastExchange(G,c.items,0,1).known,false);

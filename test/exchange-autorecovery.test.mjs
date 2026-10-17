@@ -69,3 +69,57 @@ test('non-exchange journals do not inherit exchange auto-confirmation',()=>{
  const {bot}=fixture();bot.journal.kind='send';
  assert.equal(inspectExchangeRecovery(bot).eligible,false);
 });
+
+test('live 1047->1046 anniversarygift and +20000 gold clears stale journal without replay',()=>{
+ const {bot,events}=fixture(),old=Date.now;let now=1792268750000;
+ const before=Array(42).fill(null);
+ before[9]={name:'anniversarygift',q:1047};
+ const after=Array(42).fill(null);
+ after[9]={name:'anniversarygift',q:1046};
+ bot.journal={kind:'exchange',item:'anniversarygift',quantity:1,before:1047,
+  at:1792268717316,slots:[[9,fingerprint(before[9])]],cost:0,loss:60,
+  evidence:{gold:210000,realm:'USIV',
+   inventory:before.map(x=>x?fingerprint(x):null)}};
+ bot.p.c.items=after;bot.p.c.gold=230000;
+ bot.p.G.drops.anniversarygift=[
+  [608910,'gold',5000],[200000,'gold',20000],
+  [190000,'open','anniversary_legacy'],[990,'open','anniversary_equipment']
+ ];
+ bot.p.G.drops.anniversary_legacy=[[1,'cake']];
+ bot.p.G.drops.anniversary_equipment=[[1,'candleward']];
+ bot.endValue=result=>{
+  assert.equal(result,'confirmed');bot.inventoryBlocked=false;bot.journal=null;
+ };
+ const action=()=>assert.fail('Reconciliation must not send another exchange request');
+ bot.p.call=action;
+ Date.now=()=>now;
+ try{
+  const audit=inspectExchangeRecovery(bot);
+  assert.equal(audit.eligible,true,JSON.stringify(audit));
+  assert.deepEqual(audit.rewards,[{item:'gold',quantity:20000}]);
+  const recover=createRecovery(bot);
+  assert.equal(recover.reconcile(),false);
+  now+=1000;
+  assert.equal(recover.reconcile(),true);
+  assert.equal(bot.inventoryBlocked,false);
+  assert.equal(bot.journal,null);
+  assert.equal(events.filter(x=>x.type==='recovery.exchangeVerified').length,1);
+ }finally{Date.now=old;}
+});
+test('a gold increase only clears exchange journal when ONE exact official payout and no other mutation',()=>{
+ const f=fixture(),bot=f.bot;
+ const before=Array(42).fill(null);before[9]={name:'anniversarygift',q:1047};
+ const after=Array(42).fill(null);after[9]={name:'anniversarygift',q:1046};
+ bot.journal={kind:'exchange',item:'anniversarygift',quantity:1,
+  at:1792268717316,slots:[[9,fingerprint(before[9])]],cost:0,loss:60,
+  evidence:{realm:'USIV',gold:210000,inventory:before.map(x=>x?fingerprint(x):null)}};
+ bot.p.G.drops.anniversarygift=[[1,'gold',20000],[1,'gold',5000],[1,'cake']];
+ bot.p.c.items=after;bot.p.c.gold=230001;
+ assert.equal(inspectExchangeRecovery(bot).eligible,false,'unlisted gold increment');
+ bot.p.c.gold=230000;bot.p.c.items[15]={name:'cake'};
+ assert.equal(inspectExchangeRecovery(bot).eligible,false,'unrelated item cannot be counted as same payout');
+ bot.p.c.items[15]=null;bot.p.c.items[9].q=1045;
+ assert.equal(inspectExchangeRecovery(bot).eligible,false,'double consumption');
+ bot.p.c.items[9].q=1046;bot.p.c.gold=209999;
+ assert.equal(inspectExchangeRecovery(bot).eligible,false,'gold loss is not an exchange reward');
+});

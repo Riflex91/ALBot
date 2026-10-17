@@ -99,7 +99,7 @@ export function createTransport(bot){
       else if(mode==='ipc'||(p.headless&&!cfg.general.allowRemoteCM&&mode!=='cm'))return Promise.resolve(failure(to,type,'channel'));
       else result=p.call('send_cm',to,m);
     }catch(e){bot.report('Teamtransport: '+(e.message??e));return Promise.resolve(failure(to,type,'exception'));}
-    return Promise.resolve(result).then(value=>deliveryConfirmed(value,to)?success(to,type):failure(to,type,'not-delivered'),e=>{bot.report('Teamtransport: '+(e.message??e));return failure(to,type,'exception');});
+    return Promise.resolve(result).then(value=>deliveryConfirmed(value,to)?success(to,type):failure(to,type,Array.isArray(value?.receivers)&&!value.receivers.includes(to)?'not-delivered':'rejected'),e=>{bot.report('Teamtransport: '+(e.message??e));return failure(to,type,'exception');});
   }
   function parentSiblings(){try{return p.parent.caracAL?.siblings??[];}catch{return [];}}
   return {peers,send,roster,status,ownCharacters(){refreshOwn();return own.map(c=>({...c}));},fresh(name){const d=peers.get(name);return d&&Date.now()-d.received<cfg.general.messageTtlMs?d:null;},

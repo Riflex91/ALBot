@@ -50,7 +50,7 @@ function idlePeriods(events,minSeconds){
 }
 export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   maxPursuitDepartures=12,maxSampledIdleSeconds=60,requireElixirs=false,
-  strict=false}={}){
+  strict=false,requiredFarmers=null}={}){
  if(!Array.isArray(input)||!input.length)throw Error('At least one report is required');
  const reports=new Map(),realms=new Set(),versions=new Set();
  for(const r of input){
@@ -66,6 +66,8 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
  if(!reports.has(merchant))issues.push({level:'error',code:'MERCHANT_MISSING',
    detail:'No report for '+merchant});
  const farmerNames=[...reports.keys()].filter(n=>n!==merchant);
+ if(Number.isSafeInteger(requiredFarmers)&&requiredFarmers>=0&&farmerNames.length!==requiredFarmers)
+  issues.push({level:'error',code:'ROSTER_INCOMPLETE',detail:'Expected '+requiredFarmers+' farmer reports, got '+farmerNames.length});
  const events=new Map([...reports].map(([name,r])=>[name,observed(r)]));
  const all=[...events].flatMap(([character,rows])=>rows.map(e=>({...e,character})));
  const transfers=all.filter(e=>e.type==='inventory.intent'&&
@@ -128,7 +130,7 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
    issues.push({level:'error',code:'MISSING_ELIXIR',character:name,detail:'No equipped elixir in export'});
  }
  if([...reports.values()].some(r=>(r.dropped??0)>0))
-  issues.push({level:'info',code:'INCOMPLETE_EVENT_HISTORY',
+  issues.push({level:strict?'error':'info',code:'INCOMPLETE_EVENT_HISTORY',
    detail:'Ring-buffer drops: event-based evidence may omit earlier behavior'});
  return {
   schema:'albot-live-audit/1',realm:realms.size===1?[...realms][0]:null,

@@ -50,8 +50,8 @@ export function createStrategy(bot){
  // or a permanently dangerous respawn. Calculate spot viability with base
  // HP while retaining LIVE attack, frequency, mechanics and defenses.
  const hp=farmRiskHp(base,live);
- const liveEngaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target)&&
-  m.hp>0&&samePlace(p.c,m)).length;
+ const liveEngaged=(bot.monsters?.()??[]).filter(m=>m.target&&
+  (bot.teamNames??[]).includes(m.target)&&m.hp>0&&samePlace(p.c,m)).length;
  const aggro=effectiveFarmAggro(cfg.farming.maxAggro,
   cfg.party?.aoeMaxTargets,liveEngaged);
  return assessCombat({...base,...live,hp},members(planned),w.risk,aggro,

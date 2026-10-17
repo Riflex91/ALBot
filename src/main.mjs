@@ -66,6 +66,24 @@ import {createTestReport} from './core/test-report.mjs';
 import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint,isPotionConsumption,isItemHandoffJournal,releaseItemHandoffJournal} from './core/checkpoint.mjs';
+// Live game entity dictionaries may temporarily contain null tombstones
+// during spawn/despawn and realm transitions. Never dereference a tombstone
+// when resolving the leader or selected combat target.
+export function resolveLiveEntity(entities,id,self=null){
+ if(typeof id!=='string'||!id)return null;
+ if(self?.name===id)return self;
+ if(!entities||typeof entities!=='object')return null;
+ const direct=entities[id];
+ if(direct&&typeof direct==='object')return direct;
+ return Object.values(entities).find(e=>
+  e&&typeof e==='object'&&e.name===id)??null;
+}
+export function liveMonsterEntries(entities){
+ if(!entities||typeof entities!=='object')return [];
+ return Object.entries(entities).filter(([,e])=>
+  e&&typeof e==='object'&&e.type==='monster'&&!e.dead&&!e.rip&&
+  Number.isFinite(e.hp)&&e.hp>0);
+}
 export function selectedPartyMember(bot,name){
   return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
     (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
@@ -164,8 +182,10 @@ export function install(root){
     event(type,data){bot.potionReceipts?.observe(type,data);report.event(type,data);bot.adaptive?.fault(type,data);},
     report(message){if(message!==reportText||now()-reportTime>10000){reportText=message;reportTime=now();p.log(message);report.event('message',{message});}},
     free(){return p.c.items?.filter(i=>!i).length??0;},count(name){return (p.c.items??[]).reduce((n,i)=>n+(i?.name===name?(i.q??1):0),0);},
-    entity(id){if(id===me.name)return p.c;const e=p.entities[id]??Object.values(p.entities).find(e=>e.name===id);return e?{...e,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}:null;},
-    monsters(){return Object.entries(p.entities).filter(([,e])=>e.type==='monster'&&!e.dead&&!e.rip&&e.hp>0).map(([id,e])=>({...e,id:e.id??id,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}));},
+    entity(id){const e=resolveLiveEntity(p.entities,id,id===me.name?p.c:null);
+     return e?{...e,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}:null;},
+    monsters(){return liveMonsterEntries(p.entities).map(([id,e])=>
+     ({...e,id:e.id??id,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}));},
     allies(){return bot.teamNames.map(n=>bot.entity(n)).filter(e=>e&&samePlace(p.c,e));},
     targets(){if(bot.strategy)return [...new Set([...bot.strategy.targets(),...(bot.bosses?.adds()??[])])];const requested=bot.production?.farmTargets();if(requested)return requested;return me.farmTargets.length?me.farmTargets:cfg.farming.targets;},
     task(){return bot.strategy?.task()??(me.role==='merchant'?'supply':'farm');},

@@ -7,7 +7,7 @@ export function createTestReport(p,version){
   function event(type,data={}){
     counts[type]=(counts[type]??0)+1;
     if(type==='action.start'||type==='action.end'||type==='action.transient'){const key=clean(data.key||'unknown').slice(0,120),a=actionStats[key]??(actionStats[key]={started:0,ended:0,results:{},transient:0,transientReasons:{}});if(type==='action.start')a.started++;else if(type==='action.end'){a.ended++;const result=clean(data.result||'unknown').slice(0,80);a.results[result]=(a.results[result]??0)+1;}else{a.transient++;const reason=clean(data.reason||'unknown').slice(0,120);a.transientReasons[reason]=(a.transientReasons[reason]??0)+1;}}
-    const safe={};for(const [k,v] of Object.entries(data)){if(/password|token|auth|cookie/i.test(k))continue;safe[k]=typeof v==='number'||typeof v==='boolean'||v===null?v:clean(v);}
+    const safe={};for(const [k,v] of Object.entries(data)){if(/password|token|auth|cookie/i.test(k))continue;safe[k]=typeof v==='number'||typeof v==='boolean'||v===null?v:(k==='timelineShadow'||k==='damageShadow')&&v&&typeof v==='object'?clean(JSON.stringify(v)):clean(v);}
     const entry={seq:++sequence,time:new Date().toISOString(),type,...safe};events.push(entry);if(type==='error'){incidents.push(entry);if(incidents.length>24)incidents.shift();}if(events.length>(continuous?2048:256)){events.shift();dropped++;}
   }
   const filename=extension=>'test-'+String(p.c?.name??'unknown').replace(/[^A-Za-z0-9_-]/g,'_')+'-'+started.replace(/[:.]/g,'-')+'-part'+String(part).padStart(3,'0')+'.'+extension;

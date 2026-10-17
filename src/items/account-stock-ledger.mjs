@@ -1,11 +1,12 @@
 import {inventoryStockEvidence,reconcileStockEvidence} from './stock-evidence.mjs';
-import {inspectItemTransferEvidence} from './transfer-reconciliation.mjs';
 // Phase 4 accounting is intentionally read-only. No combined remote snapshot
 // can authorize item transfers, upgrades, bank actions or liquidation.
 export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
  journal=null,owner,session,realm,now=Date.now(),ttlMs=10000,
  reserved=()=>0,expected=[]}={}){
  const inventory=inventoryStockEvidence(local??[],{owner,session,realm,at:now,reserved});
+ const localExpanded=inventory.complete?inventory:inventoryStockEvidence(local??[],{
+  owner,session,realm,at:now,maxRows:32,reserved});
  const team=reconcileStockEvidence({local:inventory,peers,bank:[],owner,
   session,realm,now,ttlMs,expected});
  const bankCurrent=bank?.complete===true&&bank.owner===owner&&
@@ -35,17 +36,23 @@ export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
   if(source.status!=='fresh')continue;
   // Source summaries in reconcileStockEvidence omit rows intentionally;
   // use validated local evidence or independently validated peer evidence.
-  const evidence=source.owner===owner?inventory:
+  const evidence=source.owner===owner?localExpanded:
    peers.find(h=>h.name===source.owner&&h.session===source.session)?.inventoryEvidence;
   for(const row of evidence?.rows??[])add(row.item,row.quantity,
    {owner:source.owner,place:'inventory',at:evidence.at},
    row.protectedUnits,row.reservedUnits);
  }
+ if(!team.sources.some(x=>x.owner===owner&&x.status==='fresh'))
+  for(const row of localExpanded.complete?localExpanded.rows:[])add(row.item,
+   row.quantity,{owner,place:'inventory-local-only',at:localExpanded.at},
+   row.protectedUnits,row.reservedUnits);
  for(const row of bankCurrent?.rows??[])add(row.item,row.quantity,
   {owner,place:'bank-current-map',map:bankCurrent.map,at:bankCurrent.at},
   row.protectedUnits,0);
  for(const slot of slots)add(slot.item,1,{owner,place:'equipped',slot:slot.slot,at:now},1,0);
  const reasons=[...team.reasons];
+ if(!inventory.complete)reasons.push('local-exceeds-wire-variant-budget');
+ if(!localExpanded.complete)reasons.push('local-inventory-variant-unverified');
  if(!bankCurrent)reasons.push('bank-current-map-not-verified');
  if(unresolved)reasons.push('unresolved-transfer-or-value-journal');
  const quantities=[...rows.values()].slice(0,120).map(x=>({

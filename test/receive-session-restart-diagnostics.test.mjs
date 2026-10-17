@@ -91,7 +91,8 @@ function liveFixture(){
   rule:()=>null,
   transport:{
    fresh:()=>({name:'My_Ranger1',session:current,
-    realm:'USV',running:true,rip:false,received:Date.now()}),
+    realm:'USV',map:'main',in:'main',x:10,y:0,
+   running:true,rip:false,received:Date.now()}),
    send:(to,type,data,id)=>{messages.push({to,type,data,id});return true;}
   },
   economy:{safe:()=>true},
@@ -109,12 +110,14 @@ test('actual receive poll emits once on sender session change; timeout keeps dur
  const f=liveFixture();
  // initial acceptance had the original session, then fresh peer reloaded.
  f.bot.transport.fresh=()=>({name:'My_Ranger1',session:old,
-  realm:'USV',running:true,rip:false,received:Date.now()});
+  realm:'USV',map:'main',in:'main',x:10,y:0,
+   running:true,rip:false,received:Date.now()});
  f.bot.logistics.receive('My_Ranger1',{type:'offer',
   id:old+':2',session:old,data:{item:f.item,quantity:1}});
  assert.equal(f.bot.journal?.kind,'receive');
  f.bot.transport.fresh=()=>({name:'My_Ranger1',session:current,
-  realm:'USV',running:true,rip:false,received:Date.now()});
+  realm:'USV',map:'main',in:'main',x:10,y:0,
+   running:true,rip:false,received:Date.now()});
  f.bot.logistics.poll(false);
  f.bot.logistics.poll(false);
  const notices=f.events.filter(x=>x.type==='logistics.senderSessionChangedDuringReceive');

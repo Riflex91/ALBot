@@ -267,7 +267,7 @@ export function createSkills(bot){
   function rescue(target){
     if(p.c.ctype!=='priest'||!cfg.party.enabled||!cfg.party.healing||
        !target||!Number.isFinite(target.hp)||!Number.isFinite(target.max_hp)||
-       target.max_hp<=0||target.hp/target.max_hp>=.65)return false;
+       target.max_hp<=0||target.hp/target.max_hp>=.85)return false;
     return use('heal',target,0,160);
   }
   function support(){
@@ -319,6 +319,7 @@ export function createSkills(bot){
          .map(h=>bot.entity(h.name)).filter(h=>h&&h.hp>0)
          .sort((a,b)=>a.hp/a.max_hp-b.hp/b.max_hp)[0];
         if(critical)rescue(critical);
+        else if(crisis.critical.some(h=>h.name===p.c.name))rescue(p.c);
         // Do not use the shared attack cooldown on offense while a teammate
         // is critical. If heal isn't ready this turn, reserve the opportunity.
         return;

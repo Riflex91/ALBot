@@ -56,7 +56,8 @@ export function createLogistics(bot){
   const explicitInventory=item=>chooseRule(cfg.items.filter(r=>['inventory','all'].includes(phaseOf(r.action))),item,context());
   const autoLootRule=item=>{
     if(bot.supplyOnly||me.role!=='farmer'||!cfg.merchant.pickup||!cfg.party.merchant||
-       !item||protectedItem(item)||explicitInventory(item))return null;
+       !item||protectedItem(item)||explicitInventory(item)||
+       bot.allocation?.pendingReceived?.(item))return null;
     const meta=p.G?.items?.[item.name];
     if(!meta||isAchievementCarrier(item)||['pot','elixir','tool','stand'].includes(meta.type))return null;
     return {enabled:true,name:'Beuteabgabe '+item.name,action:'send',

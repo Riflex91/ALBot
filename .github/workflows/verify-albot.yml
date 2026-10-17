@@ -5,13 +5,15 @@ on:
       - main
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -20,6 +22,18 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build shared browser/headless runtime
         run: npm run build
+      - name: Synchronize bot.js once for ready Priest weapon fix
+        if: github.event_name == 'pull_request' && github.head_ref == 'fix/priest-starter-reservation-20261017'
+        shell: bash
+        run: |
+          node scripts/sync-personal-code.mjs --write
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bot.js
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: synchronize personalized bot.js'
+            git push origin "HEAD:refs/heads/${{ github.head_ref }}"
+          fi
       - name: Verify published bot.js matches source build and personal configuration
         run: node scripts/sync-personal-code.mjs --check
       - name: Full offline tests

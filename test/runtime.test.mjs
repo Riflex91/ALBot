@@ -53,6 +53,48 @@ test('Live B defaults autostart in both environments and reports economy without
   assert.equal(cfg.merchant.fishing,undefined);a.root.ALBot.dispose();assert.equal(a.timers.size,0);
  }
 });
+
+test('Merchant restarts with an old unconfirmed item handoff and automatically resumes',()=>{
+ for(const kind of ['send','receive']){
+  const a=harness('M'),cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema);
+  cfg.characters=[{...defaultsFor(ECONOMY_DESCRIPTOR.schema.properties.characters.items),
+   name:'M',class:'merchant',role:'merchant'}];
+  cfg.party.merchant='M';cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;
+  a.root.ALBotConfig=cfg;a.c.ctype='merchant';a.c.gold=1000000;
+  a.storage.set('albot:live-a:M:checkpoint',{journal:{
+   kind,id:'My_Ranger2-old:2',session:'old',ownerSession:'M-old',
+   item:{name:'beewings',level:0},quantity:3,before:3,
+   at:Date.now()-10000},padding:''});
+  a.load();
+  const current=a.root.ALBot.status();
+  assert.equal(current.running,true,JSON.stringify(current));
+  assert.equal(current.inventoryBlocked,false,kind);
+  assert.equal(current.journal,null,kind);
+  assert.equal(a.storage.get('albot:live-a:M:checkpoint').journal,null,kind);
+  const report=JSON.parse(a.root.ALBot.testReport());
+  assert.equal(report.counts['checkpoint.itemHandoffReleased'],1,kind);
+  a.root.ALBot.dispose();
+ }
+});
+
+test('Merchant does not discard non-item unresolved bank or gold value checkpoints',()=>{
+ for(const kind of ['bank.store','gold.send']){
+  const a=harness('M'),cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema);
+  cfg.characters=[{...defaultsFor(ECONOMY_DESCRIPTOR.schema.properties.characters.items),
+   name:'M',class:'merchant',role:'merchant'}];
+  cfg.party.merchant='M';cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;
+  a.root.ALBotConfig=cfg;a.c.ctype='merchant';a.c.gold=1000000;
+  a.storage.set('albot:live-a:M:checkpoint',{journal:{
+   kind,id:'pending:1',at:Date.now()-10000},padding:''});
+  a.load();
+  const current=a.root.ALBot.status();
+  assert.equal(current.inventoryBlocked,true,kind);
+  assert.equal(current.journal?.kind,kind);
+  assert.equal(a.storage.get('albot:live-a:M:checkpoint').journal.kind,kind);
+  a.root.ALBot.dispose();
+ }
+});
+
 function harness(name='A',sharedParent=null){
  const cfg=defaultsFor(LIVE_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(LIVE_DESCRIPTOR.schema.properties.characters.items),name}];cfg.general.autostart=false;cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.autoTravel=false;cfg.farming.loot=false;
  const calls=[],timers=new Map(),storage=new Map(),listeners=new Set();let next=0;

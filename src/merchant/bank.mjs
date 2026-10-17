@@ -88,6 +88,16 @@ export function createBank(bot){
   for(let a=0;a<p.c.items.length;a++)for(let b=a+1;b<p.c.items.length;b++){
    const x=p.c.items[a],y=p.c.items[b],qa=x?.q??1,qb=y?.q??1;
    if(!simple(x)||!simple(y)||identity(x)!==identity(y)||!Number.isSafeInteger(qa)||!Number.isSafeInteger(qb)||qa<1||qb<1||qa+qb>stackMax(x))continue;
+   // Do not undo a deliberate partial bank split. The previous generic
+   // merger rejoined 131+100 beewings immediately after bank.split(100),
+   // producing 36 confirmed splits and 38 merges with zero net progress.
+   // Preserve a sibling that can be wholly banked under the CURRENT rule.
+   // Explicit keep/reservations are still honored by e.spare().
+   const bankPart=([a,b]).some(slot=>{
+    const item=p.c.items[slot],rule=e.rules?.(item,'inventory')??e.rules?.(item);
+    return rule?.action==='bank'&&e.spare(slot,rule)===(item?.q??1);
+   });
+   if(bankPart)continue;
    const fa=fingerprint(x),fb=fingerprint(y),total=qa+qb;
    return e.perform('inventory.consolidate',{slots:[a,b],
     guard:()=>fingerprint(p.c.items[a])===fa&&fingerprint(p.c.items[b])===fb,
@@ -176,6 +186,14 @@ export function createBank(bot){
   const item=p.c.items[slot],parkVerified=parking&&parkable(slot);
   if(!e.safe(item)||(!parkVerified&&e.spare(slot,r)<1))return false;
   const allowed=parkVerified?(item.q??1):e.spare(slot,r);if(allowed<(item.q??1)){
+   // A prior split already created a wholly storable sibling. Finish that
+   // bank deposit first; never split the 131 remainder again while 100 is
+   // waiting in slot 26. The delegated store retains live server checks.
+   const sibling=p.c.items.findIndex((candidate,index)=>index!==slot&&
+    simple(candidate)&&identity(candidate)===identity(item)&&
+    Number.isSafeInteger(candidate.q)&&candidate.q>0&&
+    candidate.q<=allowed&&e.spare(index,r)===candidate.q);
+   if(sibling>=0)return store(sibling,r,parking);
    if(bot.free()<1){e.note('Bank-Split '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}const before=item.q,dest=p.c.items.findIndex(x=>!x);
    return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }

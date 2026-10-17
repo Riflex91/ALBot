@@ -836,6 +836,13 @@ export function createMerchant(bot){
   // A live route is never interrupted: continueConfirmedExchange yields when
   // movement owns the character.
   if(bot.movement.order?.owner==='economy'){
+   // An unrelated admitted route owns the character. Invalidate any stale
+   // local NPC affinity immediately; it must never survive a bank trip.
+   if(exchangeBurst){
+    bot.event?.('merchant.worksitePreempted',{kind:'exchange',
+     item:exchangeBurst.item,reason:'economy-route-started'});
+    exchangeBurst=null;
+   }
    bot.reason='Unterwegs: '+(tasks.status().task??'Merchant-Auftrag');return;
   }
   if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
@@ -1031,6 +1038,8 @@ export function createMerchant(bot){
    capacityBlock:capacityBlock?{reason:capacityBlock.reason,free:capacityBlock.free,
     requiredFree:Math.max(8,(cfg.merchant.minFreeSlots??4)+4),retryAt:capacityBlock.until}:null,
    storagePlan:bot.storage?.status?.()??null,productionContinuation:productionContinuation?{...productionContinuation}:null,
-   exchangeBurst:exchangeBurst?{item:exchangeBurst.item,count:exchangeBurst.count,until:exchangeBurst.until}:null,
+   exchangeBurst:exchangeBurst?{item:exchangeBurst.item,count:exchangeBurst.count,
+    total:exchangeBurst.total,observedBatchMs:exchangeBurst.avgBatchMs??null,
+    until:exchangeBurst.until}:null,
    depot:depot?{...depot}:null,service:service.status(),pickup:pickupStatus,departure:departure?{phase:departure.stage,started:departure.started,readyAt:departure.readyAt??null,skipped:[...departure.skipped]}:null}),close(){exchangeBurst=null;tasks.clear();service.clear();}};
 }

@@ -124,7 +124,7 @@ export function createMerchant(bot){
    const next={at:Date.now(),names};
    if(p.write?.(potionCycleKey,next)===true){
     potionCycle=next;
-    bot.event?.('merchant.potionTeamAlarm',{threshold:cfg.merchant.potionAlertBelow??50,farmerNames:names.join(','),cause:forecast?.trigger?'confirmed-use-runway':'physical-stock-threshold',forecast:forecast?.trigger?{owner:forecast.owner,item:forecast.item,remainingSeconds:forecast.remainingSeconds}:null});
+    bot.event?.('merchant.potionTeamAlarm',{threshold:cfg.merchant.potionAlertBelow??50,farmerNames:names.join(','),cause:forecast?.trigger?'confirmed-use-runway':'physical-stock-threshold',forecast:forecast?.trigger?{owner:forecast.owner,item:forecast.item,remainingSeconds:forecast.remainingSeconds,leadSeconds:forecast.thresholdSeconds}:null});
    }else return {...snap,active:false,reason:'cycle-storage-failed'};
   }
   if(potionCycle&&snap.need.hpot0===0&&snap.need.mpot0===0){

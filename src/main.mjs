@@ -214,7 +214,7 @@ export function install(root){
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
     bot.lossGuard?.sample();if(bot.lossGuard?.blocked){bot.transport.heartbeat();bot.pause('Accountgold: mindestens 85 % Verlust innerhalb des Prüfzeitfensters; manuelle Freigabe erforderlich');return;}
-    if(bot.lifecycleChanging){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}return;}
+    if(bot.lifecycleChanging){bot.teamTravel?.lifecycleTick?.();if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}return;}
     if(supplyOnly){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}bot.logistics.poll(true);exec.flush();return;}
     bot.teamTravel?.tick();if(!bot.running)return;
     if(bot.teamTravel?.blocked)return;

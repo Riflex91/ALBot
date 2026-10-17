@@ -113,3 +113,17 @@ test('phase 5: compact potion-use evidence survives optional heartbeat trimming'
  assert.equal(fitted.potionConsumption.hpot0,3);
  assert.equal(fitted.performance,undefined);
 });
+
+test('phase 3: exactly one bounded scheduler wake may be advanced, never busy loop',()=>{
+ let t=50000;const s=createSkillWakeups({now:()=>t});
+ assert.equal(s.nextDelay(250),250,'no evidence preserves base cadence');
+ assert.equal(s.observe('3shot',t+185),true);
+ assert.equal(s.nextDelay(250),185);
+ assert.equal(s.nextDelay(250),185,'planning is deterministic');
+ t+=135;
+ assert.equal(s.nextDelay(250),125,'never faster than bounded half cadence');
+ t+=50;
+ assert.equal(s.blocked('3shot',t+0),false);
+ assert.equal(s.nextDelay(250),250);
+ assert.equal(s.status().timersCreated,0);
+});

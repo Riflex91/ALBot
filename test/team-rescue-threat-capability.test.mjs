@@ -88,3 +88,45 @@ test('live assessment refuses to authorize unengaged roaming aggressive monsters
  assert.equal(row.viable,false);
  assert.equal(row.reason,'monster-data-unverified');
 });
+
+test('observed active curse reduces incoming pressure only conservatively',()=>{
+ const victim=team();
+ const m=monster('aggro',900);const meta={...aggressive,hp:900,attack:40,frequency:2,resistance:0};
+ const baseline=estimate(m,victim,meta);
+ const cursed=estimate({...m,s:{cursed:{ms:2000}}},victim,meta);
+ assert.equal(cursed.skills.activeCurseObserved,true);
+ assert.ok(cursed.incomingDps<baseline.incomingDps);
+ assert.ok(cursed.incomingDps>baseline.incomingDps*.78,
+  'no full reduction applied to uncertain future curse uptime');
+});
+
+test('live threat status responds only to already engaged natural aggression',()=>{
+ const m=monster('easyaggro',250);const meta={...aggressive,hp:250,attack:10,
+  frequency:.3,resistance:0};
+ const own=ranger('My_Ranger1',-500,-520);own.ctype='ranger';
+ const peers=[ranger('My_Ranger2',-470,-530),priest()];
+ const nowOrig=Date.now;
+ const t=Date.now();
+ const current={...m};
+ const bot={me:{name:'My_Ranger1'},farmers:['My_Ranger1','My_Ranger2','My_Priest'],
+  running:true,events:[],p:{c:own,G:{monsters:{easyaggro:meta}},
+   realm:()=> 'USI'},transport:{fresh:n=>peers.find(p=>p.name===n)&&
+    ({...peers.find(p=>p.name===n),received:t})},
+  capabilities:{snapshot:()=>own.capabilities},
+  monsters:()=>[current],
+  event(name,data){this.events.push({name,data});}};
+ const assessment=createCombatAssessment(bot);
+ const emergency=assessment.emergency();
+ assert.equal(emergency.active,true);
+ assert.equal(emergency.monsters.length,1);
+ assert.equal(assessment.canDefend(current),false,'no unverified preapproval');
+ const estimated=assessment.assess(current);
+ assert.equal(estimated.viable,true,JSON.stringify(estimated));
+ assert.equal(assessment.canDefend(current),true);
+ assessment.hit({actor:'My_Ranger1',target:current.id,damage:90});
+ assert.equal(assessment.status().hits,1,'numeric or text monster IDs both supported');
+ current.target=null;
+ assert.equal(assessment.emergency().monsters.length,0);
+ assert.equal(assessment.canDefend(current),false,'no defensive permission for neutral');
+ assessment.close();
+});

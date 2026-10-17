@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Offline-only. Reads existing ALBot test-report JSON files, makes no game calls.
 import {readFile,writeFile,stat} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {analyzeLiveTeam} from './lib/live-team-audit.mjs';
 function parse(argv){
  const opts={strict:false,requireElixirs:false},files=[];
@@ -38,7 +40,7 @@ export async function main(argv){
  process.stdout.write(serialized);
  if(!result.accepted)process.exitCode=1;
 }
-if(process.argv[1]&&import.meta.url===new URL('file://'+process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  main(process.argv.slice(2)).catch(e=>{
   console.error('ALBot live audit failed: '+(e?.message??e));
   process.exitCode=2;

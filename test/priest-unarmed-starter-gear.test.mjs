@@ -65,6 +65,12 @@ test('explicitly kept or protected +3 cannot authorize stock-derived starter',()
  assert.ok(!kept.some(x=>x.item==='staff'&&x.level===3&&x.urgentStarter));
  const locked=fixture('priest',null,[{...hidden,l:true}]).goals();
  assert.ok(locked.some(x=>x.item==='staff'&&x.level===0&&x.urgentStarter));
+ for(const rule of [{action:'bank'}, {action:'sell'},
+  {action:'send',recipient:'My_Ranger1'}]){
+  const reserved=fixture('priest',null,[hidden],()=>rule).goals();
+  assert.ok(reserved.some(x=>x.item==='staff'&&x.level===0&&x.urgentStarter),
+   'explicit item purpose must not be stolen: '+rule.action);
+ }
 });
 test('an available compatible non-optimized weapon can be sent as a priority-1000 gear goal',()=>{
  // No optimizer result for the physically ready item.

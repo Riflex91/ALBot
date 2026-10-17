@@ -1,6 +1,6 @@
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
-import {neutralPullReadiness,followerReassemblyDistance} from './team-readiness.mjs';
+import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 // A validated, already engaged team threat remains eligible for defensive
@@ -383,7 +383,40 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     bot.target=coordinatedTarget(proposed,mobs,coordinatedRange);
     const target=bot.target;
     bot.skills.rotation(target);
-    if(!target){bot.reason=storageHold?'Lagerdruck: keine neuen Farm-Pulls':'Suche Farmziel';if(!storageHold&&cfg.farming.autoTravel&&(!cfg.party.enabled||me.name===bot.leader)&&now-lastTravel>=10000&&!bot.movement.order){lastTravel=now;const d=bot.movement.farmLocation(bot.targets()[0]);if(d)bot.movement.go(d,'farm');else bot.reason='Kein öffentlicher Spawn für Farmziel';}return;}
+    if(!target){
+      if(!storageHold&&cfg.party.enabled&&me.name!==bot.leader&&
+         leader?.running&&samePlace(c,leader)){
+        const current=bot.movement.order,queued=current?.owner==='follow';
+        const rally=followerCombatRendezvous(c,leader,{
+         followDistance:cfg.party.followDistance,
+         hasEligibleTarget:false,storageHeld:!!storageHold,
+         hasActiveMovement:!!current
+        });
+        if(queued){bot.reason='Teamziel in Sichtweite bringen: '+bot.leader;return;}
+        if(rally.move&&now-lastTravel>=4000){
+         // Do not cancel kite, combat, quest, logistics or team regrouping.
+         // This is a short leader rendezvous only, never a new monster pull.
+         lastTravel=now;
+         if(bot.movement.go({...leader,radius:rally.radius},'follow')||
+            bot.movement.order?.owner==='follow'){
+           bot.reason='Teamziel in Sichtweite bringen: '+bot.leader;
+           bot.event?.('farm.followTargetRecovery',{leader:bot.leader,
+            gap:Math.round(rally.distance),radius:rally.radius,
+            reason:'Follower hat kein freigegebenes Ziel trotz Leader-Kampf'});
+           return;
+         }
+        }
+        if(leader.target&&rally.reason==='already-near-leader'){
+         bot.reason='Teamziel abwarten: '+bot.leader;return;
+        }
+      }
+      bot.reason=storageHold?'Lagerdruck: keine neuen Farm-Pulls':'Suche Farmziel';
+      if(!storageHold&&cfg.farming.autoTravel&&(!cfg.party.enabled||me.name===bot.leader)&&now-lastTravel>=10000&&!bot.movement.order){
+       lastTravel=now;const d=bot.movement.farmLocation(bot.targets()[0]);
+       if(d)bot.movement.go(d,'farm');else bot.reason='Kein öffentlicher Spawn für Farmziel';
+      }
+      return;
+    }
     bot.reason='Kampf: '+target.mtype;
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25)),d=distance(c,target);

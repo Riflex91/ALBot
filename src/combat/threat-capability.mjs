@@ -12,7 +12,7 @@ const refusal=(reason,detail={})=>({decision:'retreat',viable:false,
 // naturally aggressive live monster may be evaluated for team defense.
 // A missing healer/teammate or stale heartbeat makes the result RETREAT.
 export function estimateThreatCapability({
- monster,meta,team,now=Date.now(),observed=[]
+ monster,meta,team,now=Date.now(),observed=[],allowHealing=true
 }={}){
  if(!monster?.id||!monster.target||!isNaturallyAggressive({monsters:{[monster.mtype]:meta}},monster)||
    !finite(monster.hp,1,100000000)||!finite(meta?.attack,0,100000)||
@@ -58,10 +58,10 @@ export function estimateThreatCapability({
  if(!victim)return refusal('victim-not-verified');
  const otherAggro=members.reduce((n,m)=>n+(finite(m.threats,0,20)?Math.max(0,m.threats-(m.name===victim.name?1:0)):0),0);
  if(otherAggro>0)return refusal('other-team-aggro-unmodelled',{otherAggro});
- const healer=members.find(m=>m.class==='priest'&&
+ const healer=allowHealing?members.find(m=>m.class==='priest'&&
   Array.isArray(m.skills)&&m.skills.includes('heal')&&
   Array.isArray(m.capabilities?.ready)&&m.capabilities.ready.includes('heal')&&
-  !m.s?.stunned&&!m.s?.silenced);
+  !m.s?.stunned&&!m.s?.silenced):null;
  let healingDps=0;
  if(healer){
   const healingRange=healer.stats.range;
@@ -152,7 +152,8 @@ export function createCombatAssessment(bot){
  });
  function assess(m){
   const outcome=estimateThreatCapability({monster:m,
-   meta:bot.p.G.monsters?.[m?.mtype],team:team(),now:now(),observed:hits});
+   meta:bot.p.G.monsters?.[m?.mtype],team:team(),now:now(),observed:hits,
+   allowHealing:bot.cfg?.party?.healing!==false});
   last={at:now(),...outcome};
   const key=[m?.id,outcome.decision,outcome.reason,outcome.victim].join(':');
   if(key!==lastEmitted||now()-lastAt>12000){

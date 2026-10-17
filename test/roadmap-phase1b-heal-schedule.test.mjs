@@ -77,13 +77,15 @@ test('shared interval and critical effects are scenario-only, never safety autho
 });
 test('legacy conservative risk gate remains authoritative despite shadow schedule change',()=>{
  const options={G:{skills:{heal:{mp:25,cooldown:1000}}},
-  healing:true,leader:'Ranger',maxCombatSeconds:36};
+  healing:true,planned:true,leader:'Ranger',maxCombatSeconds:36};
+ const certifiedPriest={...priest,capabilities:{
+  at:Date.now(),ready:['heal'],sustainable:['heal']}};
  const m={...monster,hp:70,attack:1};
- const before=assessCombat(m,[ranger,priest],'balanced',1,options);
+ const before=assessCombat(m,[ranger,certifiedPriest],'balanced',1,options);
  assert.equal(before.timelineShadow.authority,'none');
  assert.ok(typeof before.timelineShadow.healerManaLimited==='boolean');
  const risky=assessCombat({...monster,hp:500000,attack:10000},
-  [ranger,priest],'balanced',1,options);
+  [ranger,certifiedPriest],'balanced',1,options);
  assert.equal(risky.safe,false);
  assert.equal(risky.timelineShadow.authority,'none');
 });

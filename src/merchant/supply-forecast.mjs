@@ -1,3 +1,4 @@
+import {confirmedPotionRunway,proactivePotionAlarm} from './potion-receipts.mjs';
 // Phase 5 shadow-only observed stock delta telemetry. A reduction in held
 // potions MAY be consumption, delivery, sale or another inventory change.
 // Never treat it as a confirmed consumption receipt or a delivery permit.
@@ -32,7 +33,7 @@ export function supplyRunwayDelta(previous,current,{
   records,reason:'net-stock-delta-is-not-proven-consumption'};
 }
 export function createSupplyForecast(bot){
- const history=new Map(),latest=new Map();
+ const history=new Map(),latest=new Map(),confirmedStart=new Map(),confirmed=new Map();
  const {p}=bot;
  function tick(){
   if(bot.me?.role!=='merchant')return;
@@ -43,17 +44,34 @@ export function createSupplyForecast(bot){
       peer.journal||peer.inventoryBlocked||peer.reserved||peer.lifecycleChanging||
       !Number.isFinite(peer.received)||peer.received>now||
       now-peer.received>Math.min(30000,bot.cfg.general?.messageTtlMs??10000)){
-    history.delete(name);latest.delete(name);continue;
+    history.delete(name);latest.delete(name);confirmedStart.delete(name);confirmed.delete(name);continue;
    }
    const before=history.get(name);
    if(before&&before.session!==peer.session){
-    history.delete(name);latest.delete(name);
+    history.delete(name);latest.delete(name);confirmedStart.delete(name);confirmed.delete(name);
    }else if(before&&peer.received>before.received){
     const result=supplyRunwayDelta(before,peer,{
      now,realm,ttlMs:Math.min(30000,bot.cfg.general?.messageTtlMs??10000)
     });
     if(result.valid)latest.set(name,result);
     else latest.delete(name);
+   }
+   // Usage counters increase ONLY on observed potion inventory decrements.
+   // Compare the original baseline over a nontrivial time window; normal
+   // 2-second heartbeat intervals are too short to forecast consumption.
+   const started=confirmedStart.get(name);
+   if(!started||started.session!==peer.session||
+       peer.received-started.received>300000){
+    confirmedStart.set(name,{...peer});confirmed.delete(name);
+   }else if(peer.received-started.received>=30000){
+    const result=confirmedPotionRunway(started,peer,{
+     now,realm,ttlMs:Math.min(30000,bot.cfg.general?.messageTtlMs??10000),minMs:30000
+    });
+    if(result.valid)confirmed.set(name,result);
+    else confirmed.delete(name);
+    // Extend the observation window in bounded blocks to smooth bursty uses.
+    if(peer.received-started.received>120000)
+     confirmedStart.set(name,{...peer});
    }
    if(!before||peer.received>before.received||before.session!==peer.session)
     history.set(name,{name:peer.name,session:peer.session,realm:peer.realm,
@@ -63,13 +81,20 @@ export function createSupplyForecast(bot){
      potions:{hpot0:peer.potions?.hpot0,mpot0:peer.potions?.mpot0}});
   }
   for(const name of [...history.keys()])if(!names.includes(name)){
-   history.delete(name);latest.delete(name);
+   history.delete(name);latest.delete(name);confirmedStart.delete(name);confirmed.delete(name);
   }
+  for(const [name,row] of confirmed)if(now-row.at>60000)confirmed.delete(name);
   for(const [name,row] of latest)if(now-row.at>60000)latest.delete(name);
  }
- return {tick,status:()=>({mode:'shadow-only',authority:'none',
+ function alarm(farmers,target){
+  const values=Array.isArray(farmers)?farmers:[];
+  return proactivePotionAlarm(values.map(x=>confirmed.get(x.name)).filter(Boolean),values,
+   {target});
+ }
+ return {tick,alarm,status:()=>({mode:'shadow-only',authority:'none',
+  verifiedPotionUses:[...confirmed.values()].slice(0,8),
   recipients:[...latest.values()].slice(0,8).map(r=>({
    owner:r.owner,session:r.session,realm:r.realm,at:r.at,
    windowMs:r.windowMs,records:r.records})),executable:false}),
-  close(){history.clear();latest.clear();}};
+  close(){history.clear();latest.clear();confirmedStart.clear();confirmed.clear();}};
 }

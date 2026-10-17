@@ -72,5 +72,5 @@ export function createProgression(bot){
   const state=refresh(),goal=state?.goal;
   return state?.itemPlanned&&goal?.kind==='item'&&g.item===goal.name&&g.level===goal.level?0.1:0;
  }
- return {refresh,bonus,goalPriority,status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0,trackerScores:trackerScores.status(),achievementCarrier:carriedAchievementCarrier(p.c.items),farmerCarriers:(bot.farmers??[]).map(name=>({name,carrier:name===me.name?carriedAchievementCarrier(p.c.items):bot.transport?.fresh?.(name)?.achievementCarrier??'unknown'}))}),close(){trackerScores.close();p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
+ return {refresh,bonus,goalPriority,milestones:()=>trackerScores.milestones(),status:()=>({reason:statusReason,lastRead:last,rows:cached?.rows??[],plansCount:cached?.plansCount??0,trackerScores:trackerScores.status(),achievementCarrier:carriedAchievementCarrier(p.c.items),farmerCarriers:(bot.farmers??[]).map(name=>({name,carrier:name===me.name?carriedAchievementCarrier(p.c.items):bot.transport?.fresh?.(name)?.achievementCarrier??'unknown'}))}),close(){trackerScores.close();p.closeProgression?.();cached=null;last=0;definitions=null;statusReason='not-read';}};
 }

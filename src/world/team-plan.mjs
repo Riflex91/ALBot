@@ -59,6 +59,36 @@ export function selectHuntArea(ranking,hunt){
 // Balanced mode should not choose extremely weak spawns merely because
 // cheap, frequent kills dominate a 50/50 geometric XP/Gold score. Retain
 // positive Gold weight, verified throughput and full travel/pressure costs.
+// Prefer an actual, attainable official stat milestone only among fully
+// approved safe spawn candidates; an active feasible Monsterhunt wins first.
+export function selectVerifiedStatMilestoneArea(ranking,milestones,G,{
+ maxGap=300,maxSeconds=3600
+}={}){
+ if(!Array.isArray(ranking)||!Array.isArray(milestones)||!G?.monsters)return null;
+ const opts=[];
+ for(const row of milestones){
+  if(!row||typeof row.monster!=='string'||!Number.isFinite(row.score)||
+   !Number.isFinite(row.gap)||row.gap<=0||row.gap>maxGap||
+   !Number.isSafeInteger(row.threshold)||row.threshold<=row.score||
+   typeof row.stat!=='string'||!Number.isFinite(row.bonus)||row.bonus<=0)continue;
+  const monster=G.monsters[row.monster];
+  if(!monster||!Array.isArray(monster.achievements)||
+   !monster.achievements.some(a=>Array.isArray(a)&&a[0]===row.threshold&&
+    a[1]==='stat'&&a[2]===row.stat&&a[3]===row.bonus))continue;
+  for(const area of ranking.filter(a=>a.target===row.monster)){
+   const hp=monster.hp,dps=area.composition?.effectiveDps,travel=area.travelSeconds;
+   if(!Number.isFinite(hp)||hp<=0||!Number.isFinite(dps)||dps<=0||
+      !Number.isFinite(travel)||travel<0)continue;
+   // Conservative 0.5 score per kill permits co-op halving; an estimate,
+   // never a guarantee of monsterhunt credit or monster safety.
+   const seconds=travel+row.gap*2*Math.max(1,hp/dps);
+   if(seconds>maxSeconds)continue;
+   opts.push({area,milestone:row,estimatedSeconds:Math.ceil(seconds)});
+  }
+ }
+ return opts.sort((a,b)=>a.estimatedSeconds-b.estimatedSeconds||
+  b.milestone.bonus-a.milestone.bonus||a.area.key.localeCompare(b.area.key))[0]??null;
+}
 export function balancedFarmUtility(xp,gold){
  if(!Number.isFinite(xp)||xp<0||!Number.isFinite(gold)||gold<0)return 0;
  return Math.pow(Math.max(1,xp),.65)*Math.pow(Math.max(1,gold),.35);
@@ -217,12 +247,26 @@ export function createTeamPlan(bot){
    }
   }
   let selected=selectHuntArea(ranking,hunt);
+  // Active hunts and Daisy visits take precedence over milestone farming.
+  // Without a feasible hunt, only a fresh server-verified Tracker score
+  // and a separately approved safe spawn can take ordinary farm priority.
+  const milestone=(!hunt||hunt.phase==='blocked')?
+   selectVerifiedStatMilestoneArea(ranking,bot.progression?.milestones?.()??[],p.G):null;
+  if(selected.kind==='farm'&&milestone&&(request?.priority??0)<300){
+   selected={...selected,area:milestone.area,kind:'achievement'};
+   bot.event?.('achievement.statMilestonePriority',{
+    monster:milestone.milestone.monster,score:milestone.milestone.score,
+    threshold:milestone.milestone.threshold,remaining:milestone.milestone.gap,
+    stat:milestone.milestone.stat,
+    estimatedSeconds:milestone.estimatedSeconds,
+    source:'official-tracker-and-verified-safe-spawn'});
+  }
   // A high-priority Seashell refill must select an approved spawn rather
   // than merely rewarding it in the ordinary XP/Gold ranking.
   const shellRefill=request?.item==='seashell'&&request.priority>=300;
   if(shellRefill){const source=ranking.find(r=>r.target===request.monster);
    if(source)selected={kind:'farm',area:source,deferred:null};}
-  let next=selected.area,selectedRequest=(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
+  let next=selected.area,selectedRequest=selected.kind!=='achievement'&&(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
   const old=ranking.find(r=>r.key===current?.key);
   // Keep existing hold-time for safe ordinary farming while waiting for
   // the active farmer's quest NPC or an independently verified hunt spawn.
@@ -252,7 +296,7 @@ export function createTeamPlan(bot){
     from:old.key,to:next?.key??null};
    next=choice.choice;
   }
-  selectedRequest=(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
+  selectedRequest=selected.kind!=='achievement'&&(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
   const fallbackKey=selected.deferred?selected.deferred+':'+hunt?.owner+':'+(hunt?.monster??''):null;
   if(fallbackKey!==huntFallback){
    huntFallback=fallbackKey;
@@ -275,6 +319,7 @@ export function createTeamPlan(bot){
    leader:bot.leader,realm:p.realm(),id:same?current.id:bot.session+':plan:'+(++generation),
    started:same?current.started:Date.now(),expires:Date.now()+cfg.general.messageTtlMs*2,
    reason:selected.kind==='hunt'?'Monsterhunt '+hunt.owner+' / '+hunt.monster+' ('+hunt.remaining+' offen)':
+    selected.kind==='achievement'?'Tracktrix-Statbonus: '+milestone.milestone.monster+' ('+milestone.milestone.gap+' Score bis '+milestone.milestone.stat+')':
     selected.deferred?'Sicheres Zwischenfarming: '+selected.deferred+' ('+hunt.owner+')':
     selectedRequest?'Gemeinsamer Material-/Elixierbedarf':
     'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};

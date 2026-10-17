@@ -204,3 +204,43 @@ test('local Seashell affinity expires and does not silently authorize an unlimit
   assert.equal(f.merchant.status().exchangeBurst,null);
  }finally{Date.now=before;}
 });
+
+test('100+ confirmed local Anniversary-style exchanges never force a bank or depot detour',()=>{
+ const f=fixture(),calls=[],old=Date.now;let now=old();
+ f.c.x=f.target.x;f.c.y=f.target.y;
+ f.c.items[25]={name:'seashell',level:0,q:1088};
+ f.bot.economy.rules=()=>({action:'exchange',item:'seashell',
+  keep:0,teamReserve:0});
+ f.bot.production.exchange=(slot,rule)=>{
+  calls.push({slot,item:f.c.items[slot].name,at:now});
+  return true;
+ };
+ f.bot.bank.gold=()=>assert.fail('bank deposit must not interrupt a productive exchange worksite');
+ f.bot.logistics.travel=()=>assert.fail('routine supply pickup must not interrupt local exchange');
+ f.bot.bank.ready=()=>assert.fail('depot must not begin while local exchange remains');
+ Date.now=()=>now;
+ try{
+  for(let n=0;n<105;n++){
+   f.merchant.confirmedExchange('seashell',25);
+   assert.equal(f.merchant.status().exchangeBurst?.total,n+1);
+   f.merchant.tick();
+   f.c.items[25].q-=10; // a confirmed game result, not controller-side mutation
+   now+=2500; // 105 successful exchanges take >120 seconds
+  }
+  assert.equal(calls.length,105);
+  assert.equal(f.c.items[25].q,38);
+  assert.ok(f.events.filter(x=>x.name==='merchant.worksiteCheckpoint').length>=4);
+  assert.equal(f.merchant.status().exchangeBurst?.total,105);
+ }finally{Date.now=old;}
+});
+test('capacity cleanup takes priority over local exchange worksite even with many items remaining',()=>{
+ const f=fixture();f.c.x=f.target.x;f.c.y=f.target.y;
+ f.bot.economy.rules=()=>({action:'exchange',item:'seashell'});
+ let cleanup=0,exchanges=0;
+ f.bot.storage.tick=()=>{cleanup++;return true;};
+ f.bot.production.exchange=()=>{exchanges++;return true;};
+ f.merchant.confirmedExchange('seashell',25);
+ f.merchant.tick();
+ assert.equal(cleanup,1);
+ assert.equal(exchanges,0,'slot pressure preempts convenience without losing the safe existing worksite');
+});

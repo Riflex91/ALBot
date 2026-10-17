@@ -1,4 +1,5 @@
 import {outgoingDamageEstimate} from './damage-model.mjs';
+import {estimateHealAttackSchedule} from './heal-schedule.mjs';
 
 // Experimental, read-only combat model. It may NEVER authorize a pull, change
 // a target or replace assessCombat's verified conservative healer exclusion.
@@ -30,38 +31,27 @@ export function estimateCombatTimeline(monster,members,{
   rows.push({name:c.name??'',class:c.ctype??c.class??'',rate,
    attacksPerSecond:c.frequency,meanIntervalMs:1000/c.frequency,
    critChance:crit/100,expectedBonusRate:rate*crit/100*(1+extra/100),
-   lowerBoundDps:rate});
+   lowerBoundDps:rate,
+   minimumHitDamage:damage.raw>0?damage.raw*(1-uncertainty):0,
+   nominalDamage:damage.raw,hitAccuracy:damage.accuracy,
+   attackIntervalMs:1000/c.frequency});
  }
  if(!rows.length)return invalid('no-active-attacker');
  const h=healing&&healer?members.find(c=>c.name===healer):null;
  let healerBudget=null,healerDuty=0;
  if(h&&rows.some(r=>r.name===h.name)){
-  const healSkill=game?.skills?.heal;
-  const cost=healSkill?.mp??h.mp_cost??null;
-  const baseHeal=h.heal??null;
-  if(Number.isFinite(cost)&&cost>=0&&Number.isFinite(baseHeal)&&baseHeal>0&&
-     Number.isFinite(h.mp)&&Number.isFinite(h.max_mp)&&h.max_mp>0&&
-     Number.isFinite(h.frequency)&&h.frequency>0){
-   const period=Math.max(1/h.frequency,Math.max(0,healSkill?.cooldown??0)/1000);
-   const reserve=h.max_mp*.2;
-   const casts=cost===0?Infinity:Math.floor(Math.max(0,h.mp-reserve)/cost);
-   const duration=Math.max(5,Math.min(120,Number.isFinite(incomingSeconds)&&incomingSeconds>0?incomingSeconds:30));
-   const availableCasts=Math.min(Math.floor(duration/period),casts);
-   const sustainableRate=availableCasts*baseHeal/duration;
-   const incomingRate=Number.isFinite(monster.attack)&&Number.isFinite(monster.frequency)?
-    Math.max(0,monster.attack)*Math.max(0,monster.frequency)*aggro:0;
-   // Reserve one full time slot per healing action. Never credit its attack
-   // in the same slot or assume unbounded MP/heal throughput.
-   healerDuty=Math.min(.95,Math.max(0,Math.min(1,incomingRate/
-    Math.max(1,sustainableRate)))*Math.min(1,availableCasts*period/duration));
-   healerBudget={name:h.name,periodMs:period*1000,mpCost:cost,
-    casts:availableCasts,availableMp:Math.max(0,h.mp-reserve),
-    projectedHeals:availableCasts*baseHeal,healerDuty,
-    estimatedIncomingPerSecond:incomingRate};
+  const duration=Number.isFinite(incomingSeconds)&&incomingSeconds>0?
+    Math.max(5,Math.min(120,incomingSeconds)):30;
+  const schedule=estimateHealAttackSchedule(h,monster,{
+   skill:game?.skills?.heal??null,durationSeconds:duration,aggro
+  });
+  if(!schedule.valid){
+   // Unknown heal data is not permission to count any healer attacks.
+   healerDuty=1;healerBudget={name:h.name,reason:schedule.reason,healerDuty,
+    healingDeficit:true,authority:'none'};
   }else{
-   // Unknown heal metadata: do not count any healer DPS in shadow.
-   healerDuty=1;
-   healerBudget={name:h.name,reason:'heal-parameters-unverified',healerDuty};
+   healerDuty=schedule.healerDuty;
+   healerBudget={...schedule,name:h.name,periodMs:schedule.healIntervalMs};
   }
  }
  const rawDps=rows.reduce((sum,r)=>sum+r.lowerBoundDps,0);
@@ -71,8 +61,13 @@ export function estimateCombatTimeline(monster,members,{
  const expectedDps=rows.reduce((sum,r)=>
   sum+(r.lowerBoundDps+r.expectedBonusRate)*
   (r.name===h?.name?1-healerDuty:1),0);
- return {valid:true,mode:'shadow-only',seconds:lowerBoundDps>0?
+ const skillScenario=skill?{id:skill.name??null,damageMultiplier:skill.damage_multiplier??1,
+  authority:'none',reason:'skill-cast-frequency-not-observed'}:null;
+ return {valid:true,mode:'shadow-only',authority:'none',
+  skillScenario,healingDeficit:healerBudget?.healingDeficit??null,
+  attacksNotGuaranteed:true,
+  seconds:lowerBoundDps>0?
   monster.hp/lowerBoundDps:null,lowerBoundDps,expectedDps,
   rawDps,healerBudget,uncertainty,rows,
-  explanation:'Critical hits excluded from conservative DPS; healing and attacks share time'};
+  explanation:'Estimated hit accuracy is not a hit guarantee; critical hits are scenario-only; verified cooldown/MP healing consumes attack slots'};
 }

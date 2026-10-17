@@ -170,10 +170,10 @@ export function createCombatAssessment(bot){
   if(!bot.running||!finite(d?.damage,1,1000000))return;
   const target=String(d.target??''),actor=String(d.actor??'');
   let monsterId=null,kind=null,victim=null;
-  const mob=bot.monsters().find(m=>m.id===target);
+  const mob=bot.monsters().find(m=>String(m.id)===target);
   if(mob&&bot.farmers.includes(actor)){monsterId=mob.id;kind='outgoing';}
   else if(bot.farmers.includes(target)){
-   const monster=bot.monsters().find(m=>m.id===actor);
+   const monster=bot.monsters().find(m=>String(m.id)===actor);
    if(monster){monsterId=monster.id;kind='incoming';victim=target;}
   }
   if(!kind)return;

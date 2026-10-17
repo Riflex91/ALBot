@@ -1,7 +1,7 @@
 import {validMessage,xy} from '../core/policy.mjs';
 import {ownSupplyCharacters} from '../items/potion-supply.mjs';
 import {carriedAchievementCarrier} from '../items/achievement-utility.mjs';
-import {inventoryStockEvidence} from '../items/stock-evidence.mjs';
+import {inventoryStockEvidence,packInventoryEvidence,unpackInventoryEvidence} from '../items/stock-evidence.mjs';
 import {inspectItemTransferEvidence} from '../items/transfer-reconciliation.mjs';
 // A status heartbeat combines independent modules. Preserve the identity,
 // location, balance, journal and item-demand fields needed for safe handoffs;
@@ -14,7 +14,7 @@ export function fitHeartbeat(data,maxLength=4200){
  // uses these counts to avoid allocating duplicate farming quotas. They
  // matter more than optional diagnostic/skill/market telemetry, but lose
  // priority to the core identity, item demand and material requests below.
- for(const key of ['itemTransferEvidence','impactIntents','performance','inventoryEvidence','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','bankOwner','skills','mluck','supplies','materialProgress']){
+ for(const key of ['itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','bankOwner','skills','mluck','supplies','materialProgress']){
   delete d[key];if(length()<=maxLength)return d;
  }
  // Keep active team identity if possible, but delivery demand takes precedence.
@@ -22,6 +22,8 @@ export function fitHeartbeat(data,maxLength=4200){
  while(d.items.length>0&&length()>maxLength)d.items.pop();
  if(length()>maxLength)d.materials=[];
  if(length()>maxLength)delete d.team;
+ // Absence of this read-only proof means UNKNOWN, never empty inventory.
+ if(length()>maxLength)delete d.inventoryEvidence;
  // Delivery intent and compact physically carried elixir evidence are core
  // fields, not optional telemetry. Refuse oversized messages rather than
  // silently hiding an outstanding elixir request.
@@ -69,7 +71,7 @@ export function createTransport(bot){
       seen.set(from,{session:m.session,seq:m.seq,time:m.time});
       if(m.type==='status'){
         const d=m.data;if(!d||typeof d.map!=='string'||!Number.isFinite(d.x)||!Number.isFinite(d.y)||typeof d.realm!=='string'||!Array.isArray(d.items)||d.items.length>25){counters.rejected++;return;}
-        peers.set(from,{...d,name:from,received:Date.now(),session:m.session});counters.heartbeatReceived++;const peer=peerCounters.get(from);if(peer)peer.received++;
+        peers.set(from,{...d,inventoryEvidence:unpackInventoryEvidence(d.inventoryEvidence),name:from,received:Date.now(),session:m.session});counters.heartbeatReceived++;const peer=peerCounters.get(from);if(peer)peer.received++;
       }else if(bot.running&&!bot.lifecycleChanging){if(m.type.startsWith('account'))bot.account?.receiveMessage(from,m);else if(m.type.startsWith('hop')||m.type.startsWith('port'))bot.teamTravel?.receive(from,m);else if(m.type.startsWith('gold'))bot.gold?.receive(from,m);else bot.logistics?.receive(from,m);}
     }catch(e){counters.rejected++;bot.report('Nachricht verworfen: '+e.message);}
   }
@@ -99,7 +101,7 @@ export function createTransport(bot){
      }),accountLossGuard:(()=>{const g=bot.lossGuard?.status();return g?.enabled?{blocked:g.blocked,trip:g.trip,resetAt:g.resetAt}:null;})(),bankGoldBalance:(me.name===cfg.party.merchant||c.map?.startsWith('bank'))&&Number.isSafeInteger(c.bank?.gold)&&c.bank.gold>=0?c.bank.gold:null,goldSurplus:bot.gold?.surplus()??0,monsterhunt:(()=>{const q=c.s?.monsterhunt;return q&&typeof q.id==='string'&&Number.isSafeInteger(q.c)&&q.c>=0?{id:q.id,c:q.c,...(Number.isFinite(q.ms)?{ms:Math.max(0,Math.floor(q.ms))}:{}),...(typeof q.sn==='string'?{sn:q.sn}:{})}:null;})(),huntObjective:me.name===bot.leader?bot.teamPlan?.orderedHunt?.()??null:null,goldTransferPending:!!bot.gold?.reserved,goldTransferAt:bot.gold?.transferAt??0,target:bot.target?.id??null,free:bot.free(),achievementCarrier:carriedAchievementCarrier(c.items),storagePressure:me.role==='merchant'&&me.name===cfg.party.merchant&&(bot.merchant?.status?.()?.capacityRecovery===true||bot.inventoryBlocked===true),running:bot.running,reserved:!!bot.logistics?.reserved,journal:!!bot.journal||!!bot.bank?.pending,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,lootSlots:bot.logistics?.pickupSlots?.()??0,
       potions:Object.fromEntries(['hpot0','mpot0'].map(id=>[id,
         (c.items??[]).reduce((n,i)=>n+(i?.name===id?(i.q??1):0),0)])),
-      potionConsumption:bot.potionReceipts?.heartbeat(),items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:bot.teamPlan?.heartbeat(),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),reserved:i=>bot.production?.reservedQuantity?.(i)??0}),// Minimal elixir stock evidence survives a trimmed status message; the
+      potionConsumption:bot.potionReceipts?.heartbeat(),items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:bot.teamPlan?.heartbeat(),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:packInventoryEvidence(inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),maxRows:32,reserved:i=>bot.production?.reservedQuantity?.(i)??0})),// Minimal elixir stock evidence survives a trimmed status message; the
       // optional full gear-stock advertisement can still be discarded.
       elixirStock:me.role==='merchant'?[...new Set((c.items??[])
        .filter(i=>i&&!i.l&&!i.b&&p.G.items?.[i.name]?.type==='elixir')

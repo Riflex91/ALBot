@@ -267,7 +267,8 @@ export function install(root){
       inventoryBlocked:!!bot.inventoryBlocked,
       valueActionPending:!!bot.journal||!!bot.bank?.pending||
        !!bot.logistics?.reserved||!!bot.gold?.reserved});
-  }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);bot.metrics.frame(elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),cfg.general.combatTickMs);}}
+  }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);bot.metrics.frame(elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),me.role==='farmer'&&bot.skillWakeups?
+     bot.skillWakeups.nextDelay(cfg.general.combatTickMs):cfg.general.combatTickMs);}}
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
       if(disposed)return false;if(bot.running)return true;

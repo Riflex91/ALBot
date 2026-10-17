@@ -24,6 +24,10 @@ export function inventoryStockEvidence(items,{
   let opaque=false;
   for(const k of accountStockFields)if(entry[k]!==undefined){
    const v=entry[k];
+   // The game serializes absent property modifiers as null on ordinary gear.
+   // Null means no variant, not an opaque unspendable property. Structured
+   // non-null properties still require explicit opaque shadow treatment.
+   if(v===null)continue;
    if(['acc','rid'].includes(k)&&['string','number'].includes(typeof v)){
     signature[k]=v;continue;
    }

@@ -16,9 +16,14 @@ export function forecastExchange(G,items,slot,quantity){
   (r[1]==='open'||r[2]===undefined||Number.isSafeInteger(r[2])&&r[2]>0)&&
   (r[1]!=='open'||typeof r[2]==='string'&&!seen.has(r[2])&&seen.size<8&&complete(G.drops?.[r[2]],new Set([...seen,r[2]]))));
  if(!complete(table))return {known:false,reason:'incomplete-rewards'};
+ // Adventure Land rewards include non-inventory outcomes. The official
+ // drop schema uses 'gold' (wallet), 'shells' (account currency), and
+ // 'empty' (no reward). None occupies an inventory slot. Keep every other
+ // unknown result fail-closed instead of treating it as a zero-slot reward.
+ const nonInventoryRewards=new Set(['gold','shells','empty']);
  // Variants/levels in reward definitions may differ from carried stacks:
  // reserve new slots instead of assuming a speculative merge.
- let worst=0;for(const r of rows){if(r.item==='gold')continue;const m=G.items?.[r.item];if(!m||!Number.isSafeInteger(r.quantity)||r.quantity<1)return {known:false,reason:'unknown-output'};
+ let worst=0;for(const r of rows){if(nonInventoryRewards.has(r.item))continue;const m=G.items?.[r.item];if(!m||!Number.isSafeInteger(r.quantity)||r.quantity<1)return {known:false,reason:'unknown-output'};
   const max=m.s===true?9999:Number.isSafeInteger(m.s)&&m.s>1?m.s:1;worst=Math.max(worst,Math.ceil(r.quantity/max));}
  return {known:true,freeBefore:items.filter(i=>!i).length,freeAfterConsumption:next.free,worstOutputSlots:worst,worstFree:next.free-worst};
 }

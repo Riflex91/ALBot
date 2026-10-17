@@ -150,9 +150,9 @@ test('same artifact keeps contexts independent, one timer and cleans listeners o
  const b=harness('B',a.root.parent);b.load();b.root.ALBot.start();assert.equal(a.root.ALBot.status().running,true);
  a.load();assert.equal(a.timers.size,0);assert.equal(a.root.ALBot.status().running,false);assert.equal(a.listeners.size,2);a.root.ALBot.dispose();b.root.ALBot.dispose();assert.equal(a.listeners.size,0);
 });
-test('unsupported config prevents gameplay; unresolved value checkpoint permits guarded runtime',()=>{
+test('unsupported config prevents gameplay; old item handoff checkpoint does not lock runtime',()=>{
  const a=harness();a.cfg.production={enabled:'not-a-boolean'};a.load();assert.equal(a.root.ALBot.status().state,'invalid');assert.equal(a.timers.size,0);
- const b=harness();b.storage.set('albot:live-a:A:checkpoint',{journal:{kind:'send',item:'hpot1'}});b.load();assert.equal(b.root.ALBot.start(),true);assert.equal(b.root.ALBot.status().inventoryBlocked,true);assert.equal(b.timers.size,1);assert.ok(b.root.ALBot.status().journal);b.root.ALBot.dispose();
+ const b=harness();b.storage.set('albot:live-a:A:checkpoint',{journal:{kind:'send',item:'hpot1'}});b.load();assert.equal(b.root.ALBot.start(),true);assert.equal(b.root.ALBot.status().inventoryBlocked,false);assert.equal(b.timers.size,1);assert.equal(b.root.ALBot.status().journal,null);b.root.ALBot.dispose();
 });
 test('CODE without TextEncoder or structuredClone boots without changing host globals',()=>{
  const a=harness();delete a.root.TextEncoder;delete a.root.structuredClone;a.cfg.general.name='Grüße 🧙';a.load();assert.equal(a.root.ALBot.start(),true);assert.equal(a.root.ALBot.status().profile,'Grüße 🧙');assert.equal(a.root.TextEncoder,undefined);a.root.ALBot.dispose();
@@ -216,9 +216,9 @@ test('old C profiles remain valid and Merrit character listeners are removed on 
  a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(listeners.size,1);a.load();assert.equal(listeners.size,1);a.root.ALBot.dispose();assert.equal(listeners.size,0);
 });
 
-test('legacy invalid monsterhunt checkpoint is repaired while real item checkpoints remain blocked',()=>{
+test('legacy monsterhunt and best-effort item handoff checkpoints are released',()=>{
  const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A'}];cfg.party.enabled=false;cfg.general.ui=false;cfg.farming.loot=false;cfg.farming.autoTravel=false;a.root.ALBotConfig=cfg;a.storage.set('albot:live-a:A:checkpoint',{journal:{kind:'quest.monsterhunt',quest:'monsterhunt',cost:0,loss:0,slots:[],at:1}});a.load();assert.equal(a.root.ALBot.status().running,true);assert.equal(a.root.ALBot.status().journal,null);assert.equal(JSON.parse(a.root.ALBot.testReport()).counts['checkpoint.repaired'],1);a.root.ALBot.dispose();
- const b=harness();b.root.ALBotConfig=cfg;b.storage.set('albot:live-a:A:checkpoint',{journal:{kind:'send',item:'hpot0',quantity:10}});b.load();assert.equal(b.root.ALBot.status().running,true);assert.equal(b.root.ALBot.status().inventoryBlocked,true);assert.ok(b.root.ALBot.status().journal);b.root.ALBot.dispose();
+ const b=harness();b.root.ALBotConfig=cfg;b.storage.set('albot:live-a:A:checkpoint',{journal:{kind:'send',item:'hpot0',quantity:10}});b.load();assert.equal(b.root.ALBot.status().running,true);assert.equal(b.root.ALBot.status().inventoryBlocked,false);assert.equal(b.root.ALBot.status().journal,null);b.root.ALBot.dispose();
 });
 test('quest travel cannot fall through to farm movement or attack between economy ticks',()=>{
  const a=harness(),cfg=defaultsFor(FULL_DESCRIPTOR.schema);cfg.characters=[{...defaultsFor(FULL_DESCRIPTOR.schema.properties.characters.items),name:'A'}];cfg.party.enabled=false;cfg.world.quests=true;cfg.general.ui=false;cfg.farming.loot=false;a.root.ALBotConfig=cfg;a.root.interact=()=>assert.fail('Not arrived');a.root.find_npc=()=>({map:'main',in:'main',x:126,y:-413});a.root.parent.entities={g:{id:'g',type:'monster',mtype:'goo',hp:100,x:1,y:1}};a.load();const fn=[...a.timers.values()][0];a.timers.clear();fn();const d=JSON.parse(a.root.ALBot.testReport());assert.ok(d.movement,JSON.stringify({status:d.status,events:d.events?.slice(-15),incidents:d.incidents}));assert.equal(d.movement.owner,'quest');assert.equal(d.strategy.questVisit.phase,'travel');assert.equal(a.calls.filter(c=>c[0]==='attack').length,0);a.root.ALBot.dispose();

@@ -2,6 +2,13 @@ import {gearCompatible,gearScore,gearSuitability} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {fingerprint,identity,protectedItem} from '../core/policy.mjs';
+// Protect a confirmed inbound gear allocation until equip or expiry. An
+// automatic loot handoff must not return the very item the merchant supplied.
+export function pendingGearReceipt(receiving,item,now=Date.now()){
+ return !!item&&Array.isArray(receiving)&&receiving.some(r=>
+  r?.state!=='equipped'&&Number.isFinite(r?.expires)&&r.expires>now&&
+  r.item&&identity(r.item)===identity(item));
+}
 export function createGearAllocation(bot){const key='albot:gear:'+bot.me.name+':allocations';let rows=bot.p.read(key)??[];if(!Array.isArray(rows))rows=[];rows=rows.filter(x=>x&&typeof x.id==='string'&&typeof x.recipient==='string'&&typeof x.fingerprint==='string').slice(-64);
  function save(next){if(!bot.p.write(key,next))return false;rows=next;return true;}
  function goalFor(item,to){return bot.gear?.goals().find(g=>g.recipient===to&&g.item===item.name&&g.level===(item.level??0));}
@@ -25,5 +32,5 @@ export function createGearAllocation(bot){const key='albot:gear:'+bot.me.name+':
  function rules(){receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
  function equipGuard(item,slot){const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
  function tick(){let changed=false;for(const r of receiving){if(identity(bot.p.c.slots?.[r.slot])===identity(r.item)&&r.state!=='equipped'){r.state='equipped';changed=true;bot.event('gear.equipped',{id:r.id,slot:r.slot,item:r.item.name,reason:'Empfaengerzustand bestaetigt'});}}if(changed)bot.p.write(receivingKey,receiving);let delivered=false;for(const r of rows)if(r.state==='delivered'&&identity({...bot.transport.fresh(r.recipient)?.gear?.slots?.[r.gearSlot],l:undefined,b:undefined})===r.variant){r.state='equipped';delivered=true;}if(delivered)save(rows);}
- return {offer,accept,rules,equipGuard,tick,reserve,guard,settle,status:()=>rows.map(r=>({...r})),close(){}};
+ return {offer,accept,rules,equipGuard,tick,reserve,guard,settle,pendingReceived:item=>pendingGearReceipt(receiving,item),status:()=>rows.map(r=>({...r})),close(){}};
 }

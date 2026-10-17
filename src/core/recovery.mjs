@@ -25,7 +25,8 @@ export function inspectExchangeRecovery(bot){
  if(!bot.inventoryBlocked||j?.kind!=='exchange'||bot.me?.role!=='merchant')
   return deny('not-a-blocked-merchant-exchange');
  if(!snap||snap.realm!==bot.p.realm()||!Number.isSafeInteger(snap.gold)||
-   c?.gold!==snap.gold||!Array.isArray(snap.inventory)||!Array.isArray(c?.items)||
+   !Number.isSafeInteger(c?.gold)||c.gold<snap.gold||
+   !Array.isArray(snap.inventory)||!Array.isArray(c?.items)||
    snap.inventory.length!==c.items.length)return deny('before-after-evidence-incomplete');
  if(bot.exec?.pending?.size||c.q?.exchange||c.items.some(x=>x?.name==='placeholder')||
    bot.checkpoint?.durable===false)return deny('exchange-or-checkpoint-pending');
@@ -68,16 +69,30 @@ export function inspectExchangeRecovery(bot){
    rewards.push({item,quantity:delta});
   }
  }
- if(!rewards.length)return deny('reward-not-observed');
  const table=exchangeDrops(G,G?.drops?.[j.item]);
  if(!table.length)return deny('exchange-reward-table-unavailable');
- const permitted=new Set(table.map(x=>x.item));
- if(rewards.length!==1||!table.some(x=>x.item===rewards[0].item&&x.quantity===rewards[0].quantity))
-  return deny('reward-not-an-exact-official-outcome');
- return {eligible:true,reason:'exact-input-consumption-and-verified-reward',
-  consumed:j.quantity,source:j.item,rewards,
+ const goldGain=c.gold-snap.gold;
+ // The game can pay gold instead of an inventory item (notably the 10-year
+ // anniversary gift: +5000 or +20000). Previously a genuine, completed
+ // exchange with an exact gold prize was permanently quarantined because the
+ // recovery insisted on unchanged gold AND a physical reward. Prove exactly
+ // one official outcome using the pinned source, all other inventory
+ // variants, and the exact observed wallet delta. Never replay an exchange.
+ const officialGold=table.some(x=>x.item==='gold'&&
+  Number.isSafeInteger(x.quantity)&&x.quantity>0&&x.quantity===goldGain);
+ let outcome=null;
+ if(goldGain>0&&!rewards.length&&officialGold)
+  outcome={reason:'exact-input-consumption-and-official-gold-reward',
+   rewards:[{item:'gold',quantity:goldGain}]};
+ else if(goldGain===0&&rewards.length===1&&
+  table.some(x=>x.item===rewards[0].item&&x.quantity===rewards[0].quantity))
+  outcome={reason:'exact-input-consumption-and-verified-reward',rewards};
+ if(!outcome)return deny(goldGain>0?'gold-reward-not-an-exact-official-outcome':
+  !rewards.length?'reward-not-observed':'reward-not-an-exact-official-outcome');
+ return {eligible:true,reason:outcome.reason,
+  consumed:j.quantity,source:j.item,rewards:outcome.rewards,
   signature:JSON.stringify([j.at,j.item,j.quantity,snap.realm,snap.gold,
-   c.items.map(x=>x?fingerprint(x):null)])};
+   c.gold,c.items.map(x=>x?fingerprint(x):null)])};
 }
 
 // Recover only a *corroborated* persisted gold handoff. Never send gold again.
@@ -247,7 +262,7 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   bot.endValue('confirmed');
   if(bot.journal){bot.inventoryBlocked=true;return false;}
   bot.event?.('recovery.exchangeVerified',{item:j.item,consumed:audit.consumed,
-   rewards:audit.rewards,reason:'Exakter Bestandsvergleich, bekannte Drops, unverändertes Gold und zwei stabile Beobachtungen'});
+   rewards:audit.rewards,reason:'Exakter Bestands- und Goldvergleich, offizielle Exchange-Belohnung und zwei stabile Beobachtungen'});
   exchangeSample=null;exchangeStatus={eligible:false,reason:'confirmed',rewards:audit.rewards};
   return true;
  }

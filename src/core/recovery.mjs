@@ -245,10 +245,67 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return !bot.journal;
  }
 
+ // When a previously dispatched exchange has definitely consumed its
+ // pinned source stack, but the reward cannot be reconstructed after a
+ // restart, archive the uncertainty and resume using the live inventory.
+ // Never assume a reward, confirm a delivery or replay the old command.
+ // Unlike a speculative timeout this requires 60s of elapsed time, two
+ // unchanged samples and durable archive+checkpoint writes.
+ let unknownExchangeSample=null;
+ function releaseConsumedExchange(j){
+  const c=p.c,snap=j?.evidence;
+  if(me.role!=='merchant'||!bot.inventoryBlocked||j?.kind!=='exchange'||
+    !Array.isArray(snap?.inventory)||!Array.isArray(c?.items)||
+    snap.realm!==p.realm()||snap.inventory.length!==c.items.length||
+    !Number.isSafeInteger(j.quantity)||j.quantity<1||
+    !Number.isFinite(j.at)||Date.now()-j.at<60000||
+    bot.exec?.pending?.size||c.q?.exchange||
+    c.items.some(x=>x?.name==='placeholder')||
+    bot.checkpoint?.durable===false||
+    !Number.isSafeInteger(c.gold)||c.gold<0||
+    !Array.isArray(j.slots)||j.slots.length!==1){
+    unknownExchangeSample=null;return false;
+  }
+  const [slot,source]=j.slots[0];
+  if(!Number.isSafeInteger(slot)||slot<0||slot>=c.items.length||
+    typeof source!=='string'||snap.inventory[slot]!==source){
+    unknownExchangeSample=null;return false;
+  }
+  const colon=source.lastIndexOf(':'),qty=Number(source.slice(colon+1));
+  if(colon<=0||!Number.isSafeInteger(qty)||qty<j.quantity){
+   unknownExchangeSample=null;return false;
+  }
+  const live=c.items[slot]?fingerprint(c.items[slot]):null;
+  const expected=qty===j.quantity?null:source.slice(0,colon)+':'+(qty-j.quantity);
+  if(live!==expected){unknownExchangeSample=null;return false;}
+  const sign=JSON.stringify([j.at,source,live,c.gold,
+   c.items.map(i=>i?fingerprint(i):null)]);
+  const now=Date.now();
+  if(!unknownExchangeSample||unknownExchangeSample.sign!==sign){
+   unknownExchangeSample={sign,at:now};return false;
+  }
+  if(now-unknownExchangeSample.at<5000)return false;
+  const record={version:1,kind:'exchange',item:j.item,
+   quantity:j.quantity,sourceSlot:slot,at:now,originalAt:j.at,
+   realm:p.realm(),status:'consumed-unverified-no-replay',
+   before:source,after:live,observedGold:c.gold};
+  // An archive write is required BEFORE clearing the original value journal.
+  if(p.write?.('albot:exchange-unconfirmed:'+me.name,record)!==true||
+     bot.checkpoint?.clear?.(j)!==true)return false;
+  bot.allocation?.settle?.(j,'unknown');
+  bot.journal=null;bot.inventoryBlocked=false;
+  bot.production?.invalidate?.();bot.intelligence?.invalidate?.();
+  unknownExchangeSample=null;
+  exchangeStatus={eligible:false,reason:'archived-consumed-unverified',rewards:[]};
+  bot.event?.('recovery.exchangeUnconfirmedReleased',{
+   item:j.item,quantity:j.quantity,slot,ageMs:now-j.at,
+   reason:'Original-Eingang nachgewiesen; unbekannter Output archiviert, kein Replay'});
+  return true;
+ }
  function reconcileExchange(){
   const audit=inspectExchangeRecovery(bot);
   exchangeStatus={eligible:audit.eligible,reason:audit.reason,rewards:audit.rewards??[]};
-  if(!audit.eligible){exchangeSample=null;return false;}
+  if(!audit.eligible){exchangeSample=null;return releaseConsumedExchange(bot.journal);}
   const now=Date.now();
   // Require two *identical* completed inventory observations at least one
   // second apart, after the original exchange was dispatched.

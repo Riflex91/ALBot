@@ -1,4 +1,5 @@
 import {outgoingDamageEstimate} from './damage-model.mjs';
+import {farmFearFactor} from '../world/composition.mjs';
 import {estimateHealAttackSchedule} from './heal-schedule.mjs';
 
 // Experimental, read-only combat model. It may NEVER authorize a pull, change
@@ -20,7 +21,8 @@ export function estimateCombatTimeline(monster,members,{
   if(!Number.isFinite(c.attack)||c.attack<=0||
      !Number.isFinite(c.frequency)||c.frequency<=0)
    return invalid('unverified-attacker');
-  const damage=outgoingDamageEstimate(c,monster,{skill,uncertainty});
+  const damage=outgoingDamageEstimate(c,monster,{skill,uncertainty,
+   fearFactor:farmFearFactor(c,monster,aggro)});
   if(!damage.valid)return invalid(damage.reason);
   // Avoid assuming a critical hit for the conservative lower bound.
   const crit=c.crit??0,extra=c.critdamage??0;

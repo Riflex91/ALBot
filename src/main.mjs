@@ -254,7 +254,7 @@ export function install(root){
     if(bot.lifecycleChanging){bot.teamTravel?.lifecycleTick?.();if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.metrics.measure('transport.heartbeat',()=>bot.transport.heartbeat());}return;}
     if(supplyOnly){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}bot.logistics.poll(true);exec.flush();return;}
     bot.teamTravel?.tick();if(!bot.running)return;
-    if(bot.teamTravel?.blocked)return;
+    if(bot.teamTravel?.blocked){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.metrics.measure('transport.heartbeat',()=>bot.transport.heartbeat());}return;}
     bot.behavior?.tick();if(!bot.running)return;
     if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}
     const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();const transferDue=now()-lastTransfer>=(cfg.general.transferIntervalMs??cfg.general.economyTickMs);if(transferDue)lastTransfer=now();bot.gold?.poll(transferDue);bot.logistics.poll(transferDue);

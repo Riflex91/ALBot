@@ -231,8 +231,11 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       (x,y)=>p.call('can_move_to',x,y)&&
        bot.monsters().every(m=>m.target!==endangered.name||
         distance({x,y},m)>=Math.max(70,(m.range??20)+25)));
-    if(!bot.movement.order||!['combat','kite'].includes(bot.movement.order.owner))
-      bot.movement.go(point,'combat');
+    const current=bot.movement.order;
+    if(current&&current.owner!=='kite'&&
+      (current.owner!=='combat'||!current.dest||distance(current.dest,point)>40))
+      bot.movement.stop();
+    if(!bot.movement.order)bot.movement.go(point,'combat');
     bot.reason='Heiler nähert sich '+endangered.name;
     bot.target=null;
     return true;

@@ -94,9 +94,13 @@ export function estimateThreatCapability({
      Math.max(1,(Math.max(...rows.map(r=>r.at))-
        Math.min(...rows.map(r=>r.at)))/1000):null;
  const observedOutgoing=rate(dealt),observedIncoming=rate(taken);
- const teamDps=Math.min(rawDps,observedOutgoing===null?rawDps:
+ const teamDps=Math.min(rawDps*(monster.s?.cursed?1.08:1),observedOutgoing===null?rawDps:
    Math.max(1,observedOutgoing*1.15));
- const incomingDps=Math.max(victim.incomingDps,observedIncoming??0)*1.3;
+ // Only a confirmed active curse can influence the model. The official
+ // effect is 20%; credit at most half due to status-expiry uncertainty.
+ const curseObserved=!!monster.s?.cursed;
+ const incomingDps=Math.max(victim.incomingDps*(curseObserved?.90:1),
+   observedIncoming??0)*1.3;
  const effectiveHeal=Math.min(healingDps,incomingDps*.8);
  const netDps=Math.max(0,incomingDps-effectiveHeal);
  const ttk=monster.hp/Math.max(.01,teamDps);
@@ -119,6 +123,7 @@ export function estimateThreatCapability({
    tauntReady:members.some(m=>m.class==='warrior'&&m.capabilities?.ready?.includes('taunt')),
    diversionCredited:false
   },skills:{
+   activeCurseObserved:curseObserved,
    heal:!!healer,
    partyheal:!!healer?.capabilities?.ready?.includes('partyheal'),
    emergencyDefenses:members.filter(m=>m.capabilities?.ready?.some(s=>

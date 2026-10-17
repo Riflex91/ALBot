@@ -74,7 +74,7 @@ test('phase 5: potion receipts increment only on exact confirmed-use observation
  assert.equal(receipts.observe('potion.consumeConfirmed',{item:'hpot0'}),true);
  assert.equal(receipts.observe('potion.consumeConfirmed',{item:'elixirint0'}),false);
  at+=200;
- assert.deepEqual(receipts.heartbeat(),{session:'x',realm:'EUII',hpot0:1,mpot0:0,at});
+ assert.deepEqual(receipts.heartbeat(),{session:'x',realm:'EUII',hpot0:1,mpot0:0,at:10000});
 });
 test('phase 5: same-session confirmed use triggers early tour only with short runway',()=>{
  const peer=(received,used,hp=20)=>({name:'My_Ranger1',

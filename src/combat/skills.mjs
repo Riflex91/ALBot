@@ -1,7 +1,7 @@
 import {distance,samePlace,matches} from '../core/policy.mjs';
 import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
-import {provisionalImpactDamage} from './impact-coordination.mjs';
+import {provisionalImpactDamage,healCollisionDecision} from './impact-coordination.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 // AoE is a normal farmer capability. Limits on hostile targets, pulls,
@@ -58,6 +58,12 @@ export function createSkills(bot){
   const {p,cfg,exec}=bot,last=new Map(),failedUntil=new Map(),stats=new Map(),invalidAoENotices=new Set(),lastShotShortfall=new Map();
   const count=(id,kind)=>{const row=stats.get(id)??{ready:0,ruleBlocked:0,weaponBlocked:0,mpBlocked:0,targetBlocked:0,cooldownBlocked:0,started:0,confirmed:0,failed:0};row[kind]++;stats.set(id,row);};
   const diagnostics=()=>Object.fromEntries([...stats].map(([id,row])=>[id,{...row}]));
+  const healCollision=target=>healCollisionDecision({
+    target,now:Date.now(),realm:p.realm(),
+    sources:(bot.farmers??[]).filter(n=>n!==p.c.name).slice(0,8)
+      .map(n=>bot.transport?.fresh?.(n)).filter(Boolean),
+    roster:new Set(bot.farmers??[])
+  });
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2,ignoreCooldown=false){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
@@ -80,6 +86,10 @@ export function createSkills(bot){
   function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false){
     const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro',agitate:'aggro',huntersmark:'mark'}[id];if(!explicit&&role){let owner=roles?.[role];if(bot.capabilities){if(!owner||!bot.capabilities.available(owner,id,target))owner=(bot.farmers??[]).filter(n=>bot.capabilities.available(n,id,target)).sort()[0];}if(owner&&owner!==p.c.name)return false;}
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
+    if(id==='heal'&&!explicit&&target&&healCollision(target).defer){
+      count(id,'targetBlocked');
+      return false;
+    }
     if(id==='energize'&&!cfg.party.energize&&!(bot.me?.role==='farmer'&&p.c.ctype==='mage')||id==='revive'&&!cfg.party.revive)return false;
     if(['warcry','darkblessing','reflection','rspeed'].includes(id)&&!cfg.party.buffs)return false;
     if(!explicit&&!(id==='energize'&&bot.me?.role==='farmer'&&p.c.ctype==='mage')&&
@@ -203,7 +213,8 @@ export function createSkills(bot){
     if(s.hostile&&target&&target.type!=='monster')return false;
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
-    const guard=()=>ready(id,target,reserve)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
+    const guard=()=>ready(id,target,reserve)&&
+      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
     if(!guard()){
       const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
       const cost=id==='burst'?p.c.mp:s.mp??0;
@@ -250,7 +261,9 @@ export function createSkills(bot){
     const allies=bot.allies(),alive=allies.filter(e=>!e.rip),hurt=alive.slice().sort((a,b)=>a.hp/a.max_hp-b.hp/b.max_hp);
     if(p.c.ctype==='priest'){
       if(cfg.party.revive){const dead=allies.find(e=>e.rip);if(dead){if(dead.hp>=dead.max_hp&&use('revive',dead,.25))return true;if(dead.hp<dead.max_hp&&use('heal',dead,.1,300))return true;}}
-      if(cfg.party.healing){if(hurt.filter(e=>e.hp/e.max_hp<.65).length>=2&&use('partyheal',null,.2,1000))return true;if(hurt[0]?.hp/hurt[0]?.max_hp<.85&&use('heal',hurt[0],.05,250))return true;}
+      if(cfg.party.healing){if(hurt.filter(e=>e.hp/e.max_hp<.65).length>=2&&use('partyheal',null,.2,1000))return true;const priority= hurt.find(a=>a.hp/a.max_hp<.85&&
+        !healCollision(a).defer);
+      if(priority&&use('heal',priority,.05,250))return true;}
     }
     if(p.c.ctype==='mage'){
       {

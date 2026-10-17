@@ -216,6 +216,11 @@ export function createTeamTravel(bot){
    if(decision.complete&&decision.split){
     const local=p.realm(),target=decision.target;
     if(local!==target){
+     // Never suspend survival logic or initiate change_server while ANY
+     // nearby farmer is being attacked. Let the combat/emergency loop handle
+     // the threat, then continue the convergence when combat is over.
+     const localCombat=bot.monsters().some(m=>bot.farmers.includes(m.target));
+     if(localCombat){reunionHold=false;return;}
      // Stop initiating unrelated value/movement actions while the pending
      // executor work settles. Existing safe() and lifecycle checks still apply.
      reunionHold=true;

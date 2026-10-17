@@ -50,7 +50,10 @@ export function createHopLifecycle(bot,{destinationNormal,safe}){
   if(!destinationNormal(active.to)){
    finish('aborted',new Error('Destination no longer confirmed NORMAL'));return false;
   }
-  if(!safe()||p.parent?.socket?.connected===false)return false;
+  if(!safe()||p.parent?.socket?.connected===false){
+   if(!persist('retry-wait',{nextTryAt:Date.now()+2000}))active=null;
+   return false;
+  }
   const number=active.attempts+1,to=active.to,id=active.id;
   if(!persist('dispatching',{attempts:number,attemptedAt:Date.now(),nextTryAt:0})){
    active=null;return false;

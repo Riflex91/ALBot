@@ -19,8 +19,7 @@ export function exchangeWorksiteValue({
  const remainingBatches=Number.isSafeInteger(quantity)&&quantity>0&&
   Number.isSafeInteger(unit)&&unit>0?Math.floor(quantity/unit):0;
  const commuteLowerBoundMs=travelLowerBoundMs(character,destination);
- const local=commuteLowerBoundMs!==null&&commuteLowerBoundMs<=110000/
-  Math.max(1,Number(character?.speed)||1)*1000;
+ const local=commuteLowerBoundMs!==null&&distance(character,destination)<=110;
  const sampled=Number.isFinite(observedBatchMs)&&observedBatchMs>=250&&observedBatchMs<=60000;
  return {remainingBatches,local,
   travelLowerBoundMs:commuteLowerBoundMs,

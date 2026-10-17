@@ -888,6 +888,8 @@ export function createMerchant(bot){
   }
   if(standDepot())return;
   if(depotTick())return;
+  // Run only a verified, guarded Seashell exchange or bank retrieval.
+  if(bot.seashells?.tick?.())return;
   const jobs=[],spaceNeeded=bot.free()<=cfg.merchant.minFreeSlots,add=(id,r,run)=>jobs.push({id,priority:r?.priority??-100,critical:spaceNeeded&&['bank','sell'].includes(r?.action),local:r?.action==='bank'?p.c.map==='bank':r?.action==='sell'&&!!e.at?.(e.destination?.('fancypots')??e.destination?.('potions')??e.npcFor?.('hpot0')),run,r});
   if(bot.conversions)add('conversions',{priority:-350},()=>bot.conversions.tick());
   if(bot.marketDemand)add('market.expire',{priority:100},()=>bot.marketDemand.expire());

@@ -18,14 +18,31 @@ export function inventoryStockEvidence(items,{
  for(const entry of items){
   if(!entry)continue;
   if(!accountStockValidId(entry.name)||!accountStockInt(entry.level??0,99)||
-     !accountStockInt(entry.q??1)||!(entry.q??1)||
-     accountStockFields.some(k=>entry[k]!==undefined&&(
-       ['acc','rid'].includes(k)?!['string','number'].includes(typeof entry[k]):
-       k==='data'?typeof entry[k]!=='string'||entry[k].length>120:
-       typeof entry[k]!=='string'||entry[k].length>80)))
+     !accountStockInt(entry.q??1)||!(entry.q??1))
    return bad('unknown-inventory-variant');
   const signature={name:entry.name,level:entry.level??0};
-  for(const k of accountStockFields)if(entry[k]!==undefined)signature[k]=entry[k];
+  let opaque=false;
+  for(const k of accountStockFields)if(entry[k]!==undefined){
+   const v=entry[k];
+   if(['acc','rid'].includes(k)&&['string','number'].includes(typeof v)){
+    signature[k]=v;continue;
+   }
+   if(typeof v==='string'&&v.length<=(k==='data'?120:80)){
+    signature[k]=v;continue;
+   }
+   // Data payloads and property variants can be structured by the game.
+   // Represent them as distinct opaque SHADOW variants, never spendable units.
+   // Unknown/unbounded payloads fail the whole inventory proof closed.
+   let encoded;try{encoded=JSON.stringify(v);}catch{}
+   const max=k==='data'?120:80;
+   if(typeof encoded!=='string'||encoded.length+5>max)
+    return bad('unknown-inventory-variant:'+entry.name+':'+k);
+   signature[k]='json:'+encoded;opaque=true;
+  }
+  // A stock proof never represents an unmodelled modifier as freely movable.
+  if(Object.keys(entry).some(k=>!['name','level','q','stat_type','p','title',
+      'acc','rid','data','l','b','bound','locked','equipped','reserved','giveaway'].includes(k)))
+   opaque=true;
   const key=accountStockKey(signature),quantity=entry.q??1;
   let row=rows.get(key);
   if(!row){
@@ -35,7 +52,7 @@ export function inventoryStockEvidence(items,{
   }
   if(!accountStockInt(row.quantity+quantity))return bad('inventory-count-overflow');
   row.quantity+=quantity;
-  if(protectedItem(entry))row.protectedUnits+=quantity;
+  if(protectedItem(entry)||opaque)row.protectedUnits+=quantity;
   else{
    let held;try{held=reserved(entry);}catch{return bad('reservation-unverified');}
    if(!accountStockInt(held))return bad('reservation-unverified');
@@ -55,7 +72,7 @@ export function reconcileStockEvidence({
   if(!r||r.version!==1||r.complete!==true||
     r.owner!==s.owner||r.session!==s.session||r.realm!==realm||
     !accountStockInt(r.at,Number.MAX_SAFE_INTEGER)||r.at>now||
-    now-r.at>ttlMs||!Array.isArray(r.rows)||r.rows.length>12||
+    now-r.at>ttlMs||!Array.isArray(r.rows)||r.rows.length>32||
     !accountStockInt(r.slotCount,50))return false;
   const unique=new Set();
   for(const x of r.rows){
@@ -128,4 +145,47 @@ export function reconcileStockEvidence({
   sources:sources.map(x=>({owner:x.owner,session:x.session,
    status:x.status,variants:x.rows.length})),bank:bankRows,
   quantity,executable:false};
+}
+
+ // A status heartbeat has a strict byte budget. Encode physical evidence as
+ // bounded tuples; never truncate an inventory and call it complete.
+export function packInventoryEvidence(e){
+ if(!e||e.version!==1||!Array.isArray(e.rows)||e.rows.length>32)
+  return null;
+ return {v:1,o:e.owner,s:e.session,r:e.realm,t:e.at,
+  c:e.complete===true?1:0,n:e.slotCount,
+  ...(e.complete===true?{}:{e:String(e.reason??'unverified').slice(0,90)}),
+  x:e.rows.map(row=>[row.item.name,row.item.level??0,
+   ...accountStockFields.map(k=>row.item[k]??null),
+   row.quantity,row.protectedUnits,row.reservedUnits])};
+}
+export function unpackInventoryEvidence(w){
+ if(!w||w.v!==1||!accountStockValidId(w.o)||
+   !accountStockValidId(w.s)||!accountStockValidId(w.r)||
+   !accountStockInt(w.t,Number.MAX_SAFE_INTEGER)||
+   !accountStockInt(w.n,50)||![0,1].includes(w.c)||
+   !Array.isArray(w.x)||w.x.length>32)return null;
+ const rows=[];
+ for(const values of w.x){
+  if(!Array.isArray(values)||values.length!==11)return null;
+  const [name,level,...rest]=values;
+  const fields=rest.slice(0,6),[quantity,protectedUnits,reservedUnits]=rest.slice(6);
+  if(!accountStockValidId(name)||!accountStockInt(level,99)||
+    !accountStockInt(quantity)||quantity<1||
+    !accountStockInt(protectedUnits)||!accountStockInt(reservedUnits)||
+    protectedUnits>quantity||reservedUnits>quantity)return null;
+  const item={name,level};
+  for(let i=0;i<fields.length;i++)if(fields[i]!==null){
+   const key=accountStockFields[i],val=fields[i];
+   if(['acc','rid'].includes(key)){
+    if(!['number','string'].includes(typeof val))return null;
+   }else if(typeof val!=='string'||val.length>(key==='data'?120:80))
+    return null;
+   item[key]=val;
+  }
+  rows.push({item,quantity,protectedUnits,reservedUnits});
+ }
+ return {version:1,owner:w.o,session:w.s,realm:w.r,at:w.t,
+  complete:w.c===1,reason:w.c===1?null:String(w.e??'unverified').slice(0,90),
+  slotCount:w.n,rows};
 }

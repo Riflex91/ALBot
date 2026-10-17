@@ -27,6 +27,29 @@ export function verifiedTrackerScores(data,G,{limit=512}={}){
  }
  return rows;
 }
+// Select ONLY stat rewards declared by the current official monster data.
+// Some monsters have cosmetic milestones before their first stat reward.
+// Scores must come from a verified server tracker response, never inferred
+// from client-local kills or from an absent tracker row.
+export function verifiedStatMilestones(rows,G){
+ if(!Array.isArray(rows)||!G?.monsters)return [];
+ const results=[];
+ for(const row of rows){
+  if(typeof row?.monster!=='string'||!Number.isFinite(row.score)||row.score<0)continue;
+  const achievements=G.monsters[row.monster]?.achievements;
+  if(!Array.isArray(achievements))continue;
+  const nearest=achievements.filter(a=>Array.isArray(a)&&
+   Number.isSafeInteger(a[0])&&a[0]>row.score&&
+   a[1]==='stat'&&typeof a[2]==='string'&&a[2].length<=40&&
+   Number.isFinite(a[3])&&a[3]>0)
+   .sort((a,b)=>a[0]-b[0])[0];
+  if(nearest)results.push({monster:row.monster,score:row.score,
+   threshold:nearest[0],gap:nearest[0]-row.score,
+   stat:nearest[2],bonus:nearest[3]});
+ }
+ return results.sort((a,b)=>a.gap-b.gap||
+  a.monster.localeCompare(b.monster));
+}
 // Verified proximity to the NEXT stat milestone is worth at most 4% of a
 // normal safe FarmPlan's utility. This never creates a new monster candidate,
 // guesses kill-credit rates or overrides a material-production objective.
@@ -103,11 +126,16 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
     .sort((a,b)=>a.gap-b.gap||a.monster.localeCompare(b.monster))
     .slice(0,12)};
  }
+ function milestones(){
+  if(!bot.running||!carrier()||!receivedAt||
+    clock()<receivedAt||clock()-receivedAt>ttl)return [];
+  return verifiedStatMilestones(entries,p.G);
+ }
  function bonus(monster){
   if(!bot.running||!carrier()||
      !receivedAt||clock()<receivedAt||clock()-receivedAt>ttl||
      typeof monster!=='string')return 0;
   return achievementMilestoneBias(entries?.find(row=>row.monster===monster));
  }
- return {poll,status,bonus,close(){closed=true;pendingAt=0;detach();}};
+ return {poll,status,bonus,milestones,close(){closed=true;pendingAt=0;detach();}};
 }

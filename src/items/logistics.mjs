@@ -361,6 +361,18 @@ export function createLogistics(bot){
       });
     });
   }
+  function actionableElixirDelivery(){
+   if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
+      bot.journal||bot.inventoryBlocked||bot.logistics?.handoffActive)return false;
+   return (bot.farmers??[]).some(name=>{
+    const h=transport.fresh(name);
+    if(!h?.running||h.rip||h.realm!==p.realm()||
+       h.elixir?.quantity!==1||!h.elixir.item||
+       bot.strategy?.canVisit?.(h)===false)return false;
+    return p.c.items.some((item,slot)=>item?.name===h.elixir.item&&
+     !!sendRule(item,name)&&availableTransfer(slot,sendRule(item,name))>0);
+   });
+  }
   function travel(){
     // Keep the ongoing pickup at this location for one bounded batch.
     // Replanning against a rotating 12-item heartbeat must not redirect
@@ -370,7 +382,16 @@ export function createLogistics(bot){
     const route=bot.movement?.order;
     // Delivery must not cancel an in-progress gold pickup or economy order.
     // The current owner releases the route after arrival/settlement.
-    if(route&&['gold','economy'].includes(route.owner))return;
+    if(route?.owner==='gold')return;
+    if(route?.owner==='economy'){
+     // An idle route to bank/market must not indefinitely postpone a proven
+     // urgent held gear/elixir delivery. Never interrupt a pending bank,
+     // inventory, checkpoint or gold transaction (all guarded above).
+     if(!actionableGearDelivery()&&!actionableElixirDelivery())return;
+     bot.movement.stop();
+     bot.event?.('logistics.deliveryPriority',{
+      reason:'Verifizierter freier Gear-/Elixierbestand vor Bankreise'});
+    }
     if(route?.owner==='logistics'){
       const h=transport.fresh(route.dest.name);
       const decision=deliveryRouteDecision(route,h,p.c,{error:cfg.merchant.servicePositionError??70});
@@ -455,7 +476,7 @@ export function createLogistics(bot){
     cancelUnsent(old,reason);
     return true;
   }
-  return {receive,poll,travel,actionableGearDelivery,yieldUnsent,pickupSlots,
+  return {receive,poll,travel,actionableGearDelivery,actionableElixirDelivery,yieldUnsent,pickupSlots,
     pickupOnSite:()=>!!pickupOnSiteAt&&Date.now()-pickupOnSiteAt<30000&&
       onSitePeer(),
     get pickupCycle(){return pickupCycle;},get handoffActive(){return !!incoming||!!job&&job.state!=='offered';},get itemReserved(){return !!(job||incoming);},get reserved(){return !!(job||incoming||bot.gold?.reserved);},stats(){return {...counters};},

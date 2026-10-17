@@ -146,3 +146,59 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   accepted:!issues.some(x=>x.level==='error'||strict&&x.level==='warning')
  };
 }
+
+// JSONL created by TestReport.queueWrite stores complete event rows plus
+// periodic snapshots. The snapshot's dropped count reflects its RAM ring
+// buffer, NOT lost on-disk lines: recompute gaps from sequence coverage.
+export function parseLiveReport(text){
+ if(typeof text!=='string'||!text.trim())throw Error('Empty live report');
+ let parsed;
+ try{parsed=JSON.parse(text);}catch{}
+ if(parsed?.format==='albot-test-report')return parsed;
+ if(parsed!==undefined)throw Error('Unrecognized JSON report');
+ const records=text.trim().split(/\r?\n/).filter(Boolean).map((line,i)=>{
+  try{return JSON.parse(line);}catch{throw Error('Invalid JSONL line '+(i+1));}
+ });
+ const snapshots=records.filter(x=>x.type==='snapshot'&&x.format==='albot-test-report');
+ const latest=snapshots.at(-1);
+ if(!latest)throw Error('JSONL contains no test-report snapshot');
+ const session=records.find(x=>x.type==='session');
+ const uniq=new Map();
+ for(const e of records)if(e&&Number.isSafeInteger(e.seq)&&e.seq>0&&
+   typeof e.type==='string'&&e.type!=='snapshot'&&e.type!=='session')
+  uniq.set(e.seq,e);
+ const events=[...uniq.values()].sort((a,b)=>a.seq-b.seq);
+ const expected=Object.values(latest.counts??{}).reduce((n,v)=>
+   n+(Number.isSafeInteger(v)&&v>=0?v:0),0);
+ return {...latest,started:latest.started??session?.time,
+   events,dropped:Math.max(0,expected-events.length),sourceFormat:'jsonl',
+   exportTrimmed:false};
+}
+
+// Parts from one character must belong to the same session. Never merge
+// distinct restarts, realms or versions into apparently continuous evidence.
+export function joinLiveReportParts(reports){
+ const groups=new Map();
+ for(const report of reports){
+  if(!report?.character)throw Error('Missing character in report part');
+  const key=report.character;
+  if(!groups.has(key))groups.set(key,[]);
+  groups.get(key).push(report);
+ }
+ return [...groups.values()].map(parts=>{
+  if(parts.length===1)return parts[0];
+  const first=parts[0];
+  if(parts.some(p=>p.started!==first.started||p.realm!==first.realm||
+      p.version!==first.version))
+   throw Error('Cannot join separate sessions for '+first.character);
+  const ordered=[...parts].sort((a,b)=>String(a.exported).localeCompare(String(b.exported)));
+  const newest=ordered.at(-1),seq=new Map();
+  for(const p of ordered)for(const e of p.events??[])
+   if(Number.isSafeInteger(e?.seq)&&e.seq>0)seq.set(e.seq,e);
+  const events=[...seq.values()].sort((a,b)=>a.seq-b.seq);
+  const expected=Object.values(newest.counts??{}).reduce((n,v)=>
+    n+(Number.isSafeInteger(v)&&v>=0?v:0),0);
+  return {...newest,events,dropped:Math.max(0,expected-events.length),
+    sourceFormat:'assembled'};
+ });
+}

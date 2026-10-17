@@ -157,6 +157,7 @@ test('regression: after split 231 beewings to 131+100 the bank deposit wins over
 });
 test('unrestricted ordinary same-variant stacks still consolidate outside a bank disposition',()=>{
  const {bot,c,actions}=fixture({bankStandCount:0});
+ bot.p.G.items.mat.s=9999;
  c.items[5]={name:'mat',level:0,q:131};
  c.items[26]={name:'mat',level:0,q:100};
  bot.economy.rules=()=>null;

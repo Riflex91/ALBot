@@ -34,6 +34,22 @@ test('exact full inventory evidence aggregates stacks and guards protected/reser
  assert.equal(ledger(held).quantity('ore'),1);
 });
 
+
+test('ordinary live item p:null no longer invalidates all Merchant inventory evidence',()=>{
+ const a=local([{name:'hpamulet',level:1,p:null},{name:'anniversarygift',q:1088}]);
+ assert.equal(a.complete,true,'game-null modifier means absent property');
+ const result=ledger(a);
+ assert.equal(result.complete,true);
+ assert.equal(result.quantity('anniversarygift',0),1088);
+ assert.equal(result.quantity('hpamulet',1),1);
+ const opaque=local([{name:'hpamulet',level:1,p:{unknown:true}}]);
+ assert.equal(opaque.complete,false,'non-null unknown property must not be approved');
+ const shadow=proof(owner,session,[{name:'hpamulet',level:1,p:{unknown:true}}],
+  {allowOpaque:true});
+ assert.equal(shadow.complete,true);
+ assert.equal(shadow.rows[0].protectedUnits,1);
+});
+
 test('fresh peer stock only counts with matching realm/session and complete message',()=>{
  const e=proof('R1','session-1',[{name:'ore',q:8,level:1}]);
  const good=ledger(local([{name:'ore',q:2,level:1}]),[peer(e)],['R1']);

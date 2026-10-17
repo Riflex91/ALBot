@@ -59,7 +59,7 @@ test('invalid or unknown heal metadata excludes healer DPS rather than making up
   assert.equal(x.valid,false);
   assert.equal(x.healerDuty,1);
  }
- const w=estimateCombatTimeline(monster,[ranger,priest],{
+ const w=estimateCombatTimeline(monster,[ranger,{...priest,mp_cost:undefined}],{
   healer:'Priest',healing:true,game:{skills:{}}
  });
  assert.equal(w.healerDuty,undefined);

@@ -360,7 +360,7 @@ globalThis.ALBotConfig={
       "USX"
     ],
     "hopCooldownMs": 300000,
-    "homeRealm": "",
+    "homeRealm": "EUII",
     "homeRetryMs": 600000,
     "homeCheckMs": 90000,
     "homePressureThreshold": 0.65,

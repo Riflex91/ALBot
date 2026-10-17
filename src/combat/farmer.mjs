@@ -116,7 +116,31 @@ export function createFarmer(bot){
     if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>isOwnAggressiveThreat(p.G,e,c.name)).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
-  function retreat(t){if(!isNaturallyAggressive(p.G,t))return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c),threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
+  function retreat(t){if(!isNaturallyAggressive(p.G,t))return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c);
+    // If the aggressive enemy has driven the patient out of the Priest's
+    // reach, try a physically safe convergence step before fleeing farther.
+    const healer=(bot.farmers??[]).filter(n=>n!==c.name)
+      .map(n=>bot.transport?.fresh?.(n))
+      .find(h=>h?.class==='priest'&&h.running&&!h.rip&&
+        samePlace(c,h)&&Number.isFinite(h.x)&&Number.isFinite(h.y)&&
+        Number.isFinite(h.stats?.range)&&h.stats.range>50);
+    const healRange=healer?Math.max(55,healer.stats.range-20):0;
+    if(healer&&c.hp/c.max_hp<.85&&distance(c,healer)>healRange&&
+       distance(c,healer)<550){
+      const dx=healer.x-from.x,dy=healer.y-from.y,len=Math.hypot(dx,dy);
+      const step=Math.max(25,Math.min(85,(c.speed??40)*1.4));
+      const x=from.x+dx/len*step,y=from.y+dy/len*step;
+      if(p.call('can_move_to',x,y)&&
+         bot.monsters().every(m=>m.target!==c.name||
+           distance({x,y},m)>=distance(c,m)-8)){
+        if(bot.movement.order?.owner!=='kite')bot.movement.stop();
+        bot.movement.local(x,y,'kite');
+        bot.event?.('combat.healerTether',{healer:healer.name,
+          gap:Math.round(len),range:healRange,step:Math.round(step)});
+        return true;
+      }
+    }
+    const threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function helpEngagedTeamFight(leader){
   // Soft follow distance must not suppress safe, reachable assistance to an
   // EXISTING team fight. This path never pulls an unattached monster.

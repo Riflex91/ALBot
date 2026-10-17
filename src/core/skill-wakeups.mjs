@@ -27,8 +27,21 @@ export function createSkillWakeups({now=()=>Date.now(),leaseMs=750}={}){
   }
   skips++;return true;
  }
+ // One already-existing scheduler timer may be brought forward to the
+ // observed deadline. Never create a second frame, and never poll faster
+ // than twice the configured combat interval (minimum 100 ms).
+ function nextDelay(base){
+  if(!Number.isFinite(base)||base<100)return base;
+  const at=now(),floor=Math.max(100,Math.ceil(base/2));
+  let delay=base;
+  for(const row of hints.values()){
+   if(row.until<=at||row.until>at+base)continue;
+   delay=Math.min(delay,Math.max(floor,row.until-at));
+  }
+  return delay;
+ }
  const quantile=p=>samples.length?[...samples].sort((a,b)=>a-b)[Math.ceil((samples.length-1)*p)]:null;
- return {observe,blocked,clear:id=>hints.delete(id),
+ return {observe,blocked,nextDelay,clear:id=>hints.delete(id),
   status:()=>({mode:'engine-observed-bounded',authority:'none',
    active:hints.size,cooldownChecksAvoided:skips,wakes:woken,invalid,
    wakeLatenessP95Ms:quantile(.95),wakeLatenessP99Ms:quantile(.99),

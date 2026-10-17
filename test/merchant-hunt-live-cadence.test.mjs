@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chooseHuntSpawn} from '../src/world/spawn-choice.mjs';
 import {merchantActionDue} from '../src/merchant/action-cadence.mjs';
+import {serverRegistrySignature} from '../src/party/travel.mjs';
 
 const now=1000000;
 const hunt={key:'halloween:osnake:west',target:'osnake',kind:'hunt',started:now-300000};
@@ -69,4 +70,16 @@ test('faster polling never bypasses a pending action, journal, movement or passi
  assert.equal(merchantActionDue({...p,fastIntervalMs:10}),false);
  assert.equal(merchantActionDue({...p,normalDue:true,blocked:true}),true,
   'ordinary economy due remains with original guards in caller');
+});
+
+test('official server registry in-place population updates change observation signature',()=>{
+ const servers=[{region:'US',name:'V',players:200,mode:'NORMAL',online:true},
+  {region:'EU',name:'II',players:160,mode:'NORMAL',online:true}];
+ const initial=serverRegistrySignature(servers);
+ assert.equal(serverRegistrySignature(servers),initial);
+ servers[1].players=120;
+ assert.notEqual(serverRegistrySignature(servers),initial,
+  'same array reference still contains new observable population evidence');
+ assert.equal(serverRegistrySignature([]),'[]');
+ assert.equal(serverRegistrySignature(Array(101).fill({})),null);
 });

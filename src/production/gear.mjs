@@ -135,6 +135,46 @@ export function createGear(bot){
     slot:'mainhand',item:'staff',level:0,budget:Math.max(10000,cfg.production.autoGearBudget??100000),
     priority:1000,urgentStarter:true});
   }
+  // Fill ONE vacant slot per online farmer per planning cycle from physically
+  // carried, verified stock before speculatively upgrading other members'
+  // existing equipment. A successful equip exposes the next vacancy.
+  if(cfg.production.gear&&me.role==='merchant')for(const [memberIndex,name] of (bot.farmers??[]).entries()){
+   const member=cfg.characters.find(c=>c.enabled&&c.name===name&&c.role==='farmer'),
+    peer=bot.transport?.fresh?.(name),profile=profiles[name];
+   if(!member||!peer?.running||peer.rip||peer.realm!==p.realm()||
+      !profile?.complete||!profile.slots)continue;
+   const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':'dps'):member.gearRole;
+   const candidates=[];
+   for(const [slot,old] of Object.entries(profile.slots)){
+    if(old||slot==='mainhand'||!gearSlots.includes(slot))continue;
+    for(const i of p.c.items??[]){
+     if(!i||!e.safe(i)||i.l||i.b||!gearCompatible(p.G,profile,i,slot))continue;
+     const rule=e.explicit?.(i,'inventory');
+     if(rule&&!(rule.action==='send'&&rule.recipient===name))continue;
+     try{const stats=p.call('item_properties',i),score=gearScore(stats,role,profile.class);
+      if(Number.isFinite(score)&&score>0&&
+         gearSuitability(null,stats,role,profile.class,member.merchantMobility).ok)
+       candidates.push({slot,item:i,score});
+     }catch{}
+    }
+   }
+   candidates.sort((a,b)=>gearSlotPriority(b.slot,profile.class)-
+    gearSlotPriority(a.slot,profile.class)||b.score-a.score||
+    (b.item.level??0)-(a.item.level??0)||a.slot.localeCompare(b.slot));
+   const best=candidates[0];
+   if(!best)continue;
+   const matching=result.find(g=>g.character===name&&g.slot===best.slot&&
+    g.item===best.item.name&&g.level===(best.item.level??0));
+   for(let k=result.length-1;k>=0;k--)if(result[k].character===name&&
+     result[k].slot===best.slot&&result[k]!==matching)result.splice(k,1);
+   const priority=975-Math.min(20,memberIndex);
+   if(matching){matching.priority=Math.max(matching.priority??0,priority);
+    matching.urgentVacancy=true;}
+   else result.unshift({name:'Vorratsausrüstung '+name+' '+best.slot,
+    enabled:true,character:name,slot:best.slot,item:best.item.name,
+    level:best.item.level??0,budget:cfg.production.autoGearBudget??100000,
+    priority,urgentVacancy:true});
+  }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
    result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)});
   }}return result;

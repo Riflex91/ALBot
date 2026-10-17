@@ -4,9 +4,8 @@ import {inventoryStockEvidence,reconcileStockEvidence} from './stock-evidence.mj
 export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
  journal=null,owner,session,realm,now=Date.now(),ttlMs=10000,
  reserved=()=>0,expected=[]}={}){
- const inventory=inventoryStockEvidence(local??[],{owner,session,realm,at:now,reserved});
- const localExpanded=inventory.complete?inventory:inventoryStockEvidence(local??[],{
-  owner,session,realm,at:now,maxRows:32,reserved});
+ const inventory=inventoryStockEvidence(local??[],{owner,session,realm,at:now,maxRows:32,reserved});
+ const localExpanded=inventory;
  const team=reconcileStockEvidence({local:inventory,peers,bank:[],owner,
   session,realm,now,ttlMs,expected});
  const bankCurrent=bank?.complete===true&&bank.owner===owner&&
@@ -51,7 +50,7 @@ export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
   row.protectedUnits,0);
  for(const slot of slots)add(slot.item,1,{owner,place:'equipped',slot:slot.slot,at:now},1,0);
  const reasons=[...team.reasons];
- if(!inventory.complete)reasons.push('local-exceeds-wire-variant-budget');
+ if(!inventory.complete)reasons.push('local-inventory-proof-incomplete');
  if(!localExpanded.complete)reasons.push('local-inventory-variant-unverified');
  if(!bankCurrent)reasons.push('bank-current-map-not-verified');
  if(unresolved)reasons.push('unresolved-transfer-or-value-journal');

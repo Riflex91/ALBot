@@ -100,7 +100,7 @@ function serverFixture({name='My_Priest',realm='USIV',engaged=false,allPresent=t
  const official=registry?[{region:'US',name:'I',players:22,online:true,pvp:false},
   {region:'US',name:'IV',players:17,online:true,pvp:false}]:[];
  const p={c:{name,rip:false,q:{},map:'main',hp:1500,max_hp:2000},
-  parent:{X:{servers:official},socket:{connected:true}},
+  root:{},parent:{X:{servers:official},socket:{connected:true}},
   realm:()=>realm,
   read:key=>store.get(key)??null,
   write:(key,value)=>{store.set(key,structuredClone(value));return true;},

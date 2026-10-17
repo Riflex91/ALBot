@@ -110,7 +110,9 @@ export function createGear(bot){
    const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':'dps'):member.gearRole;
    const ready=me.role==='merchant'?(p.c.items??[]).filter(i=>i&&e.safe(i)&&
     !i.l&&!i.b&&gearCompatible(p.G,profile,i,'mainhand')&&
-    e.explicit?.(i,'inventory')?.action!=='keep').flatMap(i=>{
+    (!e.explicit?.(i,'inventory')||
+     e.explicit(i,'inventory').action==='send'&&
+     e.explicit(i,'inventory').recipient===member.name)).flatMap(i=>{
      try{const stats=p.call('item_properties',i);
       if(!gearSuitability(null,stats,role,profile.class,member.merchantMobility).ok)return [];
       return [{item:i,score:gearScore(stats,role,profile.class)}];

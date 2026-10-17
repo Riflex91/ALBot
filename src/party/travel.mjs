@@ -1,5 +1,6 @@
 import {assessServerHop,assessHomeSpawn,chooseHomeFallback} from '../world/servers.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
+import {createHopLifecycle} from './hop-lifecycle.mjs';
 // Only official numbered European/American realms are eligible. PvP in any
 // spelling or metadata is a hard reject, even if a caller mislabels the mode.
 export function nonPvpRealm(realm){
@@ -64,19 +65,39 @@ export function createTeamTravel(bot){
   (cfg.general.testLogging===undefined||assessServerHop(registry().find(s=>s.realm===realm),history,Date.now(),{pvp:false,cooldown:w.hopCooldownMs}).allowed);}
  const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
  const realmAllowed=realm=>nonPvpRealm(realm)&&!cfg.farming.pvp&&admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm);
+ const hopLifecycle=createHopLifecycle(bot,{destinationNormal,safe});
  function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
-  hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm},hop.id);return true;
+  hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
+  bot.event?.('server.hop.plan',{id:hop.id,from:p.realm(),to:realm,members:names.join(','),until:hop.until});
+  for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm},hop.id);return true;
  }
- function applyHop(){if(!hop||!safe()||!destinationNormal(hop.realm))return false;const realm=hop.realm;if(!p.write('albot:hop:'+me.name,Date.now()))return false;
-  history=[...history.filter(t=>Date.now()-t<3600000),Date.now()].slice(-16);if(!p.write('albot:hop-history:'+me.name,history))return false;hopAt=Date.now();const started=exec.run('server.hop',['lifecycle'],()=>bot.running&&!bot.journal&&destinationNormal(realm),()=>{if(!destinationNormal(realm))return false;bot.pause('Serverwechsel: '+realm);try{return Promise.resolve(p.call('change_server',realm.slice(0,2),realm.slice(2))).catch(error=>bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error)));}catch(error){bot.report('Serverwechsel fehlgeschlagen: '+(error?.message??error));}},{delay:w.hopCooldownMs});hop=null;return started;
+ function applyHop(){
+  if(!hop||hopLifecycle.blocked||!safe()||!destinationNormal(hop.realm))return false;
+  const {id,realm}=hop,at=Date.now(),from=p.realm();
+  // Existing hourly cap and durable history must be stored before navigation.
+  if(!p.write('albot:hop:'+me.name,at))return false;
+  const next=[...history.filter(t=>at-t<3600000),at].slice(-16);
+  if(!p.write('albot:hop-history:'+me.name,next))return false;
+  history=next;hopAt=at;
+  if(!hopLifecycle.begin({id,from,to:realm}))return false;
+  hop=null;return true;
  }
+
  function receive(from,m){
   if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()){
-   hop={id:m.id,realm:m.data.realm,names:[],ready:new Set(),until:Date.now()+15000};bot.movement.stop();bot.transport.send(from,'hopAck',{},m.id);
-  }else if(m.type==='hopAck'&&me.name===bot.leader&&hop?.id===m.id&&hop.names.includes(from))hop.ready.add(from);
-  else if(m.type==='hopCommit'&&from===bot.leader&&hop?.id===m.id&&hop.realm===m.data?.realm){applyHop();}
-  else if(m.type==='hopCancel'&&from===bot.leader&&hop?.id===m.id)hop=null;
+   hop={id:m.id,realm:m.data.realm,names:[],ready:new Set(),until:Date.now()+15000};bot.movement.stop();
+   bot.event?.('server.hop.planReceived',{id:m.id,from:p.realm(),to:hop.realm,leader:from});
+   bot.transport.send(from,'hopAck',{},m.id);
+  }else if(m.type==='hopAck'&&me.name===bot.leader&&hop?.id===m.id&&hop.names.includes(from)){
+   hop.ready.add(from);bot.event?.('server.hop.ack',{id:m.id,member:from,ready:hop.ready.size,total:hop.names.length});
+  }
+  else if(m.type==='hopCommit'&&from===bot.leader&&hop?.id===m.id&&hop.realm===m.data?.realm){
+   if(!applyHop())bot.event?.('server.hop.commitBlocked',{id:m.id,to:m.data?.realm,reason:'safety-or-checkpoint'});
+  }
+  else if(m.type==='hopCancel'&&from===bot.leader&&hop?.id===m.id){
+   bot.event?.('server.hop.cancel',{id:m.id,to:hop.realm});hop=null;
+  }
   else if(m.type==='portRequest'&&w.magiport&&bot.teamNames.includes(from)&&m.data?.target===me.name&&safe()){
    const mage=bot.transport.fresh(from),leader=me.name===bot.leader?p.c:bot.transport.fresh(bot.leader);
    if(mage?.class==='mage'&&mage.running&&mage.realm===p.realm()&&leader&&samePlace(mage,leader)&&distance(mage,leader)<cfg.party.followDistance){consents.set(from,{until:Date.now()+10000,id:m.id,purpose:'accept'});bot.transport.send(from,'portAck',{},m.id);}
@@ -141,8 +162,13 @@ export function createTeamTravel(bot){
   return true;
  }
  function tick(){
+  hopLifecycle.tick();if(hopLifecycle.blocked)return;
   for(const [name,t] of consents)if(t.until<Date.now())consents.delete(name);
-  if(hop){if(hop.until<Date.now()){if(me.name===bot.leader)for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);hop=null;return;}
+  if(hop){if(hop.until<Date.now()){
+   bot.event?.('server.hop.timeout',{id:hop.id,to:hop.realm,
+    missing:hop.names.filter(n=>!hop.ready.has(n)).join(',')});
+   if(me.name===bot.leader)for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);
+   hop=null;return;}
    if(me.name===bot.leader&&!hop.broadcast&&hop.names.every(n=>hop.ready.has(n))&&safe()){const token=hop;hop.broadcast=true;Promise.all(hop.names.filter(n=>n!==me.name).map(n=>bot.transport.send(n,'hopCommit',{realm:hop.realm},hop.id))).then(results=>{if(hop===token&&results.every(Boolean))applyHop();else if(hop===token)hop=null;},()=>{if(hop===token)hop=null;});}return;
   }
   if(homeTick())return;
@@ -176,5 +202,8 @@ export function createTeamTravel(bot){
   }
  }
  function accept(name){if(w.magiport&&consents.get(name)?.purpose==='accept'&&consents.get(name)?.until>Date.now()&&safe()){consents.delete(name);return exec.run('magiport.accept',['lifecycle','movement'],()=>bot.running&&!bot.journal,()=>p.call('accept_magiport',name),{delay:10000});}return false;}
- return {requestHop,receive,tick,accept,get blocked(){return !!hop;},status:()=>({registry:registry(),history:[...history],hop:hop?{realm:hop.realm,until:hop.until}:null,home:homeRealm?{...home}:null}),close(){hop=null;consents.clear();}};
+ return {requestHop,receive,tick,lifecycleTick:hopLifecycle.tick,accept,get blocked(){return !!hop||hopLifecycle.blocked;},
+  status:()=>({registry:registry(),history:[...history],hop:hop?{id:hop.id,realm:hop.realm,until:hop.until,ready:[...hop.ready],members:[...hop.names]}:null,
+   lifecycle:hopLifecycle.status(),home:homeRealm?{...home}:null}),
+  close(){hop=null;hopLifecycle.close();consents.clear();}};
 }

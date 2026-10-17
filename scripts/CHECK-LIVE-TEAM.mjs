@@ -32,7 +32,7 @@ export async function main(argv){
  const {opts,files}=parse(argv),reports=[];
  for(const name of files){
   const info=await stat(name);
-  if(!info.isFile()||info.size>8*1024*1024)throw Error('Invalid or oversized test report: '+name);
+  if(!info.isFile()||info.size>(name.toLowerCase().endsWith('.jsonl')?20:8)*1024*1024)throw Error('Invalid or oversized test report: '+name);
   reports.push(parseLiveReport(await readFile(name,'utf8')));
  }
  const {out,...auditOptions}=opts;

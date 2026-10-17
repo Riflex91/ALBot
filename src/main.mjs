@@ -214,7 +214,7 @@ export function install(root){
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
     bot.lossGuard?.sample();if(bot.lossGuard?.blocked){bot.transport.heartbeat();bot.pause('Accountgold: mindestens 85 % Verlust innerhalb des Prüfzeitfensters; manuelle Freigabe erforderlich');return;}
-    if(bot.lifecycleChanging){bot.teamTravel?.lifecycleTick?.();if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}return;}
+    if(bot.lifecycleChanging){bot.teamTravel?.lifecycleTick?.();if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.metrics.measure('transport.heartbeat',()=>bot.transport.heartbeat());}return;}
     if(supplyOnly){if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}bot.logistics.poll(true);exec.flush();return;}
     bot.teamTravel?.tick();if(!bot.running)return;
     if(bot.teamTravel?.blocked)return;
@@ -222,7 +222,7 @@ export function install(root){
     if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.transport.heartbeat();}
     const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();const transferDue=now()-lastTransfer>=(cfg.general.transferIntervalMs??cfg.general.economyTickMs);if(transferDue)lastTransfer=now();bot.gold?.poll(transferDue);bot.logistics.poll(transferDue);
     if(!bot.running)return;
-    bot.allocation?.tick();bot.adaptive?.tick();if(economyDue)bot.supplyForecast?.tick();if(economyDue)bot.metrics.measure('objectives',()=>bot.objectives?.tick());bot.metrics.measure('team-plan',()=>bot.teamPlan?.tick());bot.metrics.measure('encounter',()=>bot.encounter?.tick());bot.metrics.measure('bosses',()=>bot.bosses?.tick());bot.adaptive?.flush();bot.content?.flush();bot.learning.flush();if(economyDue)bot.cloud.tick();if(economyDue){bot.strategy?.plan();bot.strategy?.sample();}
+    bot.allocation?.tick();bot.adaptive?.tick();if(economyDue)bot.metrics.measure('economy.supplyForecast',()=>bot.supplyForecast?.tick());if(economyDue)bot.metrics.measure('objectives',()=>bot.objectives?.tick());bot.metrics.measure('team-plan',()=>bot.teamPlan?.tick());bot.metrics.measure('encounter',()=>bot.encounter?.tick());bot.metrics.measure('bosses',()=>bot.bosses?.tick());bot.adaptive?.flush();bot.content?.flush();bot.learning.flush();if(economyDue)bot.cloud.tick();if(economyDue){bot.metrics.measure('economy.strategy',()=>{bot.strategy?.plan();bot.strategy?.sample();});}
     const merchantDue=merchantActionDue({
       now:now(),last:lastMerchant,normalDue:economyDue,
       merchant:me.role==='merchant',
@@ -243,7 +243,13 @@ export function install(root){
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
     if(!worldAction)bot.metrics.measure('farmer',()=>bot.farmer.tick());if(merchantDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy){lastMerchant=now();bot.metrics.measure('merchant',()=>bot.merchant?.tick());}bot.aura?.tick();
     }
-    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();bot.gear?.refresh();bot.progression?.refresh();bot.production?.planGoals();bot.account?.tick();if(!bot.recovering)bot.logistics.travel();requestSelectedLeader();if(cfg.party.enabled&&(p.c.party===me.name||me.name===bot.leader&&!p.c.party&&!currentPartyOwner(bot))){
+    if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();
+     bot.metrics.measure('planning.gear',()=>bot.gear?.refresh());
+     bot.metrics.measure('planning.progression',()=>bot.progression?.refresh());
+     bot.metrics.measure('planning.production',()=>bot.production?.planGoals());
+     bot.metrics.measure('planning.account',()=>bot.account?.tick());
+     if(!bot.recovering)bot.metrics.measure('planning.logistics',()=>bot.logistics.travel());
+     bot.metrics.measure('planning.party',()=>requestSelectedLeader());if(cfg.party.enabled&&(p.c.party===me.name||me.name===bot.leader&&!p.c.party&&!currentPartyOwner(bot))){
       const memberNames=[...new Set([...bot.farmers,...(bot.teamNames.includes(cfg.party.merchant)?[cfg.party.merchant]:[])])];
       const roster=p.parent.party;const joined=name=>Array.isArray(roster)?roster.some(x=>(typeof x==='string'?x:x?.name)===name):!!(roster&&typeof roster==='object'&&Object.hasOwn(roster,name));
       for(const name of memberNames){if(name===me.name||joined(name))continue;
@@ -261,12 +267,12 @@ export function install(root){
       }
     }}
     publish();
-    report.sample({reason:bot.reason,running:bot.running,task:bot.task(),
+    bot.metrics.measure('test.sample',()=>report.sample({reason:bot.reason,running:bot.running,task:bot.task(),
       farmArea:bot.teamPlan?.heartbeat?.()?.key??null,
       farmContext:bot.adaptive?.context?.()??null,
       inventoryBlocked:!!bot.inventoryBlocked,
       valueActionPending:!!bot.journal||!!bot.bank?.pending||
-       !!bot.logistics?.reserved||!!bot.gold?.reserved});
+       !!bot.logistics?.reserved||!!bot.gold?.reserved}));
   }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);bot.metrics.frame(elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),me.role==='farmer'&&bot.skillWakeups?
      bot.skillWakeups.nextDelay(cfg.general.combatTickMs):cfg.general.combatTickMs);}}
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,

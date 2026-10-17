@@ -103,7 +103,7 @@ test('observed active curse reduces incoming pressure only conservatively',()=>{
 test('live threat status responds only to already engaged natural aggression',()=>{
  const m=monster('easyaggro',250);const meta={...aggressive,hp:250,attack:10,
   frequency:.3,resistance:0};
- const own=ranger('My_Ranger1',-500,-520);own.ctype='ranger';
+ const own=ranger('My_Ranger1',-500,-520);own.ctype='ranger';Object.assign(own,own.stats);
  const peers=[ranger('My_Ranger2',-470,-530),priest()];
  const nowOrig=Date.now;
  const t=Date.now();

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createCombatAssessment} from '../src/combat/threat-capability.mjs';
 import {teamRealmRendezvous,nonPvpRealm,createTeamTravel} from '../src/party/travel.mjs';
 import {Executor} from '../src/core/executor.mjs';
+import {deliveryConfirmed} from '../src/party/transport.mjs';
 
 const farmer=['My_Ranger1','My_Ranger2','My_Priest'];
 const peer=(name,realm)=>({name,running:true,realm,rip:false,hp:3000,max_hp:4000,threats:0,
@@ -92,21 +93,22 @@ test('New Priest threat emergency does not read rip of null unobserved team peer
 
 
 function serverFixture({name='My_Priest',realm='USIV',engaged=false,allPresent=true,
-  registry=true}={}){
+  registry=true,homeRealm='',homeOnline=true,autoHop=false}={}){
  const store=new Map(),events=[],calls=[],peers={
   My_Ranger1:peer('My_Ranger1','USI'),
   My_Ranger2:peer('My_Ranger2','USI'),
   My_Priest:peer('My_Priest','USIV')};
  const official=registry?[{region:'US',name:'I',players:22,online:true,pvp:false},
-  {region:'US',name:'IV',players:17,online:true,pvp:false}]:[];
+  {region:'US',name:'IV',players:17,online:true,pvp:false},
+  {region:'EU',name:'II',players:15,online:homeOnline,pvp:false}]:[];
  const p={c:{name,rip:false,q:{},map:'main',hp:1500,max_hp:2000},
   root:{},parent:{X:{servers:official},socket:{connected:true}},
   realm:()=>realm,
   read:key=>store.get(key)??null,
   write:(key,value)=>{store.set(key,structuredClone(value));return true;},
   call:(method,...args)=>{calls.push([method,...args]);return Promise.resolve(true);}};
- const cfg={world:{serverHop:true,allowedRealms:['USI','USIV'],
-  homeRealm:'',hopCooldownMs:300000,autoHop:false,magiport:false},
+ const cfg={world:{serverHop:true,allowedRealms:['USI','USIV','EUII'],
+  homeRealm,hopCooldownMs:300000,autoHop,magiport:false},
   party:{enabled:true,leader:'',merchant:'My_Merchant'},
   general:{testLogging:true,messageTtlMs:12000},farming:{}};
  const bot={p,cfg,me:{name},session:name+'-session',farmers:farmer,
@@ -154,4 +156,86 @@ test('server reunion defers to immediate defense during actual attack, never aba
  assert.equal(travel.blocked,false,'combat scheduler must remain usable');
  assert.equal(fixture.calls.filter(x=>x[0]==='change_server').length,0);
  travel.close();
+});
+
+test('official CM reports no success when receiver is on another game server',()=>{
+ assert.equal(deliveryConfirmed({locals:[],receivers:[]},'My_Priest'),false);
+ assert.equal(deliveryConfirmed({locals:[],receivers:['My_Priest']},'My_Priest'),true);
+ assert.equal(deliveryConfirmed({failed:true,receivers:['My_Priest']},'My_Priest'),false);
+ assert.equal(deliveryConfirmed(true,'My_Priest'),true,'local IPC may only return boolean');
+});
+
+test('explicit EUII home is a deterministic rendezvous even with no remote CM or discovered roster',()=>{
+ for(const name of ['My_Ranger1','My_Ranger2','My_Priest','My_Merchant']){
+  const x=teamRealmRendezvous({farmers:[],localName:name,
+   localRealm:name==='My_Ranger1'?'USI':'USIV',peers:{},homeRealm:'EUII'});
+  assert.equal(x.complete,true);
+  assert.equal(x.target,'EUII');
+  assert.equal(x.split,true);
+  assert.equal(x.source,'configured-home');
+ }
+ const atHome=teamRealmRendezvous({farmers:[],localName:'My_Priest',
+  localRealm:'EUII',peers:{},homeRealm:'EUII'});
+ assert.equal(atHome.split,false);
+});
+
+test('Priest and Merchant independently converge on EUII with absent cross-realm heartbeats',()=>{
+ for(const name of ['My_Priest','My_Merchant']){
+  const x=serverFixture({name,realm:'USIV',allPresent:false,homeRealm:'EUII'});
+  const t=createTeamTravel(x.bot);
+  t.tick();
+  assert.equal(t.status().reunion.target,'EUII');
+  assert.deepEqual(x.calls.filter(call=>call[0]==='change_server'),
+   [['change_server','EU','II']]);
+  t.tick();
+  assert.equal(x.calls.filter(call=>call[0]==='change_server').length,1);
+  t.close();
+ }
+});
+
+test('explicit home never sends an unsafe hop without server NORMAL registry, limit or combat clearance',()=>{
+ for(const opts of [
+  {registry:false},{homeOnline:false},{engaged:true}
+ ]){
+  const f=serverFixture({...opts,homeRealm:'EUII',allPresent:false});
+  const t=createTeamTravel(f.bot);t.tick();
+  assert.equal(f.calls.some(c=>c[0]==='change_server'),false);
+  t.close();
+ }
+ const cooling=serverFixture({homeRealm:'EUII',allPresent:false});
+ cooling.store.set('albot:hop:My_Priest',Date.now()-1000);
+ const tc=createTeamTravel(cooling.bot);tc.tick();
+ assert.equal(cooling.calls.some(c=>c[0]==='change_server'),false);
+ tc.close();
+ const capped=serverFixture({homeRealm:'EUII',allPresent:false});
+ const now=Date.now();
+ capped.store.set('albot:hop-history:My_Priest',[now-2400000,now-1500000,now-600000]);
+ const tl=createTeamTravel(capped.bot);tl.tick();
+ assert.equal(capped.calls.some(c=>c[0]==='change_server'),false);
+ tl.close();
+});
+
+test('restart preserves hop cooldown and failed-to-arrive sessions do not oscillate',()=>{
+ const a=serverFixture({homeRealm:'EUII',allPresent:false});
+ const original=createTeamTravel(a.bot);original.tick();
+ assert.equal(a.calls.filter(x=>x[0]==='change_server').length,1);
+ original.close();
+ a.bot.lifecycleChanging=false;
+ const afterRestart=createTeamTravel(a.bot);afterRestart.tick();
+ assert.equal(a.calls.filter(x=>x[0]==='change_server').length,1);
+ afterRestart.close();
+});
+
+test('high spawn pressure and autoHop cannot split a character already on explicit EUII home',()=>{
+ const f=serverFixture({realm:'EUII',homeRealm:'EUII',autoHop:true,allPresent:false});
+ f.bot.leader='My_Priest';
+ f.bot.teamPlan={status:()=>({pressure:.95})};
+ f.store.set('albot:home-return:My_Priest',
+  {realm:'EUII',phase:'checking',enteredAt:Date.now()-180000,retryAt:0,prior:null});
+ const t=createTeamTravel(f.bot);
+ t.tick();t.tick();
+ assert.equal(f.calls.filter(c=>c[0]==='change_server').length,0);
+ assert.equal(t.status().reunion.target,'EUII');
+ assert.equal(f.events.some(e=>e.type==='server.homeCrowdedHeld'),true);
+ t.close();
 });

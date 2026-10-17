@@ -42,6 +42,13 @@ export function serverRegistrySignature(raw){
 export function teamRealmRendezvous({farmers,localName,localRealm,peers,
  homeRealm='',fixedLeader=''}={}){
  const deny=(reason,extra={})=>({complete:false,split:false,target:null,reason,...extra});
+ // Official send_cm is routed by the current game server only; an explicit,
+ // common home realm is a safe cross-server rendezvous without remote CM.
+ // Never infer a destination from stale/missing peer observations.
+ if(!nonPvpRealm(localRealm))return deny('invalid-local-realm');
+ if(nonPvpRealm(homeRealm))return {complete:true,split:localRealm!==homeRealm,
+  target:homeRealm,reason:localRealm===homeRealm?'configured-home-arrived':'configured-home-return',
+  source:'configured-home',farmers:[],counts:{}};
  if(!Array.isArray(farmers)||farmers.length<2||farmers.length>8||
     farmers.some(n=>typeof n!=='string'||!n)||
     new Set(farmers).size!==farmers.length||!nonPvpRealm(localRealm))
@@ -174,16 +181,14 @@ export function createTeamTravel(bot){
    if(decision.state==='settled'){
     if(saveHome({...home,phase:'settled',settledAt:now,enteredAt:home.enteredAt}))
      bot.event?.('server.homeSettled',{realm:homeRealm,pressure});
-   }else if(decision.state==='crowded'&&safe()){
-    const prior=home.prior;
-    const fallback=chooseHomeFallback(registry(),stateRealm,homeRealm,prior,realmAllowed);
-    if(fallback&&requestHop(fallback)){
-     if(saveHome({...home,phase:'away',prior:fallback,retryAt:now+retryMs,
-       enteredAt:0,crowdedAt:now})){
-      bot.event?.('server.homeCrowded',{realm:homeRealm,pressure,
-       fallback,retryAt:now+retryMs});
-     }else{for(const n of hop?.names??[])if(n!==me.name)
-       bot.transport.send(n,'hopCancel',{},hop.id);hop=null;}
+   }else if(decision.state==='crowded'){
+    // An independent pressure fallback would split the team immediately:
+    // every character must hold the same user-chosen home, including after
+    // offline/restart. No pressure-based escape while home is explicit.
+    if(now-lastHopDiagnostic>=60000){
+     lastHopDiagnostic=now;
+     bot.event?.('server.homeCrowdedHeld',{realm:homeRealm,pressure,
+      reason:'explicit-home-reunion-priority'});
     }
    }
    // Home travel owns pressure-based server selection; do not race autoHop.
@@ -206,11 +211,11 @@ export function createTeamTravel(bot){
  }
  function tick(){
   hopLifecycle.tick();if(hopLifecycle.blocked)return;
-  // A normal hop plan cannot start while already separated: requestHop()
-  // requires all participants to be on one realm. The reunification path
-  // follows one common, verified farmer-majority realm instead.
+  // Coordinated hops need same-realm peers. A configured home realm is
+  // a stronger rendezvous contract: no cross-server CM is required.
+  // Without home, keep the conservative complete-heartbeat majority policy.
   reunionHold=false;
-  if(w.serverHop&&cfg.party.enabled&&bot.farmers?.length>=2){
+  if(w.serverHop&&cfg.party.enabled&&(homeRealm||bot.farmers?.length>=2)){
    const decision=reunionEvidence();
    lastReunion=decision;
    if(decision.complete&&decision.split){
@@ -241,7 +246,7 @@ export function createTeamTravel(bot){
        if(hopLifecycle.begin({id,from:local,to:target})){
         history=historyNext;hopAt=at;
         bot.event?.('server.reunion.commit',{id,from:local,to:target,
-         votes:decision.counts,reason:'farmer-majority'});
+         votes:decision.counts,reason:decision.source??'farmer-majority'});
        }
       }
      }

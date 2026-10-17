@@ -81,7 +81,7 @@ function skillsFixture({hp=780,pending=true,stale=false}={}){
   call:(id)=>id==='is_on_cooldown'?false:true},
   me:{name:'Priest',role:'farmer'},cfg,farmers:['Priest','Ranger','OtherPriest'],
   transport:{fresh:n=>n==='OtherPriest'&&pending?a:null},
-  teamNames:['Priest','Ranger','OtherPriest'],allies:()=>[friend],
+  teamNames:['Priest','Ranger','OtherPriest'],allies:()=>[friend],monsters:()=>[],
   exec:{run:(key,resources,guard,invoke)=>{if(!guard())return false;
    cast.push(key);return true;}},count:()=>0,event:()=>{},
   logistics:{reserved:false},canConsumeImplicit:()=>true};
@@ -89,13 +89,13 @@ function skillsFixture({hp=780,pending=true,stale=false}={}){
 }
 test('real automatic heal support defers duplication but never emergency healing',()=>{
  const covered=skillsFixture({hp:780});
- assert.equal(covered.skills.support(),false);
+ covered.skills.rotation(null);
  assert.deepEqual(covered.cast,[]);
  const emergency=skillsFixture({hp:500});
- assert.equal(emergency.skills.support(),true);
+ emergency.skills.rotation(null);
  assert.deepEqual(emergency.cast,['skill:heal']);
  const old=skillsFixture({hp:780,stale:true});
- assert.equal(old.skills.support(),true);
+ old.skills.rotation(null);
  assert.deepEqual(old.cast,['skill:heal']);
 });
 test('explicit user-authored heal bypasses noncritical deconfliction',()=>{

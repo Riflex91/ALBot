@@ -11,7 +11,7 @@ function fixture(ctype='priest',mainhand=null){
     ranger:{mainhand:{bow:true}}}},
   read:()=>({'My_Caster':profile}),
   call:(name,item)=>{assert.equal(name,'item_properties');return {attack:10,int:8,mp:15,speed:1};}};
- const cfg={production:{gear:true,gearTargets:[],autoGear:false,autoGearBudget:100000,autoGearMaxLevel:5,minImprovement:.1},
+ const cfg={production:{gear:true,offlineProfiles:true,gearTargets:[],autoGear:false,autoGearBudget:100000,autoGearMaxLevel:5,minImprovement:.1},
    characters:[{name:'My_Caster',class:ctype,role:'farmer',enabled:true,gearRole:'auto'}],
    party:{selection:'adaptive'}};
  const bot={p,cfg,me:{name:'My_Merchant',role:'merchant'},

@@ -29,6 +29,14 @@ export function fitHeartbeat(data,maxLength=4200){
  // silently hiding an outstanding elixir request.
  return length()<=maxLength?d:null;
 }
+// The official game server responds with the names actually reached by CM.
+ // An empty receivers array is not delivery: cross-realm CM never reaches
+ // players registered on another process. IPC responses need not carry it.
+export function deliveryConfirmed(result,to){
+ if(result===false||result?.success===false||result?.failed===true)return false;
+ if(Array.isArray(result?.receivers))return result.receivers.includes(to);
+ return true;
+}
 export function createTransport(bot){
   const {p,cfg,me}=bot,peers=new Map(),seen=new Map(),retired=new Map();let seq=0;const offs=[];
   const configured=cfg.characters.filter(x=>x.enabled&&x.group===me.group).map(x=>x.name),roster=[...configured];let own=[],ownAt=-Infinity;
@@ -91,7 +99,7 @@ export function createTransport(bot){
       else if(mode==='ipc'||(p.headless&&!cfg.general.allowRemoteCM&&mode!=='cm'))return Promise.resolve(failure(to,type,'channel'));
       else result=p.call('send_cm',to,m);
     }catch(e){bot.report('Teamtransport: '+(e.message??e));return Promise.resolve(failure(to,type,'exception'));}
-    return Promise.resolve(result).then(value=>value!==false&&value?.success!==false?success(to,type):failure(to,type,'rejected'),e=>{bot.report('Teamtransport: '+(e.message??e));return failure(to,type,'exception');});
+    return Promise.resolve(result).then(value=>deliveryConfirmed(value,to)?success(to,type):failure(to,type,'not-delivered'),e=>{bot.report('Teamtransport: '+(e.message??e));return failure(to,type,'exception');});
   }
   function parentSiblings(){try{return p.parent.caracAL?.siblings??[];}catch{return [];}}
   return {peers,send,roster,status,ownCharacters(){refreshOwn();return own.map(c=>({...c}));},fresh(name){const d=peers.get(name);return d&&Date.now()-d.received<cfg.general.messageTtlMs?d:null;},

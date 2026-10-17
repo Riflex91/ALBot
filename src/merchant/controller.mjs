@@ -1009,7 +1009,7 @@ export function createMerchant(bot){
       }
       return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);
      });
-   if(trackerAcquisition.eligible())add('tracker.exchange',{priority:-90},()=>trackerAcquisition.tick());
+   if(trackerAcquisition.eligible())add('tracker.exchange',{priority:250},()=>trackerAcquisition.tick());
    add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production.helpers',{priority:-125},()=>bot.production.helperSupply?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>{buff();return bot.services.tick();});

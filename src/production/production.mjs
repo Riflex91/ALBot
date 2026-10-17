@@ -30,6 +30,18 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
  }
  return [...grouped.values()];
 }
+// Explicit priority-1000 starter weapons must be delivered before lower-priority
+// upgrade chains may consume their level-0 inputs. This only adjusts reservation
+// accounting for that exact recipient/item/level, NEVER eligibility for send_item.
+export function reservationGoalsForUrgentDelivery(goals,item,recipient){
+ if(!Array.isArray(goals)||goals.length>64||!recipient||
+    typeof item?.name!=='string'||!Number.isInteger(item.level))return goals;
+ const urgent=goals.find(g=>g.enabled&&g.urgentStarter===true&&
+   g.gearSlot==='mainhand'&&g.recipient===recipient&&
+   g.item===item.name&&g.level===item.level&&g.quantity===1&&
+   Number.isFinite(g.priority)&&g.priority>=1000);
+ return urgent?goals.filter(g=>(Number.isFinite(g.priority)?g.priority:0)>=urgent.priority):goals;
+}
 export function needsProductionStock(available,required){return available<required;}
 // Prefer already actionable Gear upgrades to a long, remote exchange queue.
 // This only changes ordering: server-proven chances, budgets and user rules
@@ -640,7 +652,8 @@ export function createProduction(bot){
   }
   // This is the GROSS physical demand. purposeReservations consumes observed
    // stock in recursion; subtracting it once more would release team gear.
-   if(cfg.production.purposeAllocation)return demand(null,recipient,i).quantity(i);
+   if(cfg.production.purposeAllocation)return demand(null,recipient,i,
+    reservationGoalsForUrgentDelivery(goals(),i,recipient)).quantity(i);
   let n=0;for(const g of goals())if(!g.recipient&&(bot.me.role==='merchant'||g.gearSlot&&g.character===bot.me.name)&&g.item===i.name&&g.level===(i.level??0))n=Math.max(n,g.quantity);
   const allocated=plan.reservations?.find(r=>r.item===i.name&&r.level===(i.level??0));n=goal&&(goal.item!==i.name||goal.level!==(i.level??0))?n+(allocated?.quantity??0):Math.max(n,allocated?.quantity??0);
   n+=Math.max(0,...[...waiting.values()].filter(w=>w.until>Date.now()).flatMap(w=>w.reservations.filter(r=>r.item===i.name&&r.level===(i.level??0)).map(r=>r.quantity)));

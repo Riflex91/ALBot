@@ -7,7 +7,7 @@ const accountStockKey=i=>JSON.stringify([i.name,i.level??0,...accountStockFields
 const accountStockValidId=x=>typeof x==='string'&&x.length>0&&x.length<=100;
 const accountStockInt=(x,max=1e7)=>Number.isSafeInteger(x)&&x>=0&&x<=max;
 export function inventoryStockEvidence(items,{
- owner,session,realm,at=Date.now(),maxRows=12,reserved=()=>0
+ owner,session,realm,at=Date.now(),maxRows=12,allowOpaque=false,reserved=()=>0
 }={}){
  const bad=reason=>({version:1,owner,session,realm,at,
   complete:false,reason,rows:[],slotCount:0});
@@ -35,6 +35,7 @@ export function inventoryStockEvidence(items,{
    // Unknown/unbounded payloads fail the whole inventory proof closed.
    let encoded;try{encoded=JSON.stringify(v);}catch{}
    const max=k==='data'?120:80;
+   if(!allowOpaque)return bad('unknown-inventory-variant:'+entry.name+':'+k);
    if(typeof encoded!=='string'||encoded.length+5>max)
     return bad('unknown-inventory-variant:'+entry.name+':'+k);
    signature[k]='json:'+encoded;opaque=true;
@@ -43,6 +44,7 @@ export function inventoryStockEvidence(items,{
   if(Object.keys(entry).some(k=>!['name','level','q','stat_type','p','title',
       'acc','rid','data','l','b','bound','locked','equipped','reserved','giveaway'].includes(k)))
    opaque=true;
+  if(opaque&&!allowOpaque)return bad('unknown-inventory-variant:'+entry.name);
   const key=accountStockKey(signature),quantity=entry.q??1;
   let row=rows.get(key);
   if(!row){

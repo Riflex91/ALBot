@@ -66,7 +66,7 @@ export function createTeamTravel(bot){
  const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
  const realmAllowed=realm=>nonPvpRealm(realm)&&!cfg.farming.pvp&&admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm);
  const hopLifecycle=createHopLifecycle(bot,{destinationNormal,safe});
- function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop)return false;
+ function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
   hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
   bot.event?.('server.hop.plan',{id:hop.id,from:p.realm(),to:realm,members:names.join(','),until:hop.until});
@@ -85,7 +85,7 @@ export function createTeamTravel(bot){
  }
 
  function receive(from,m){
-  if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()){
+  if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()&&!hopLifecycle.blocked){
    hop={id:m.id,realm:m.data.realm,names:[],ready:new Set(),until:Date.now()+15000};bot.movement.stop();
    bot.event?.('server.hop.planReceived',{id:m.id,from:p.realm(),to:hop.realm,leader:from});
    bot.transport.send(from,'hopAck',{},m.id);

@@ -69,7 +69,14 @@ export function createSkills(bot){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
     if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp)return false;
     if(asArray(s.class).length&&!asArray(s.class).includes(c.ctype)||c.level<(s.level??0))return false;
-    if(!ignoreCooldown&&p.call('is_on_cooldown',id))return false;
+    if(!ignoreCooldown){
+      const deadline=p.parent?.next_skill?.[id]??p.c?.next_skill?.[id];
+      if(bot.skillWakeups?.blocked(id,deadline))return false;
+      if(p.call('is_on_cooldown',id)){
+        bot.skillWakeups?.observe(id,deadline);return false;
+      }
+      bot.skillWakeups?.clear(id);
+    }
     const cost=id==='burst'?c.mp:s.mp??(['attack','heal'].includes(id)?c.mp_cost??0:0);
     if(c.mp-cost<c.max_mp*reserve)return false;
     if(Object.entries(s.requirements??{}).some(([k,v])=>!Number.isFinite(c[k])||c[k]<v))return false;

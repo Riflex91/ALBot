@@ -43,7 +43,7 @@ test('remote monsterhunt NPC: farmer compares routes and chooses faster verified
 test('short monsterhunt NPC trip stays on foot when Town would save less than threshold',()=>{
  const previous=Date.now;Date.now=()=>40000;
  try{
-  const f=fixture({x:180});f.movement.go({...npc,x:220,y:0},'quest');
+  const f=fixture({x:180});f.movement.go({...npc,x:320,y:0},'quest');
   assert.equal(f.movement.order?.owner,'quest');
   assert.equal(f.calls.some(x=>x.name==='town'),false);
   const estimate=f.events.find(e=>e.type==='travel.compare');

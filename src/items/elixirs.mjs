@@ -32,7 +32,7 @@ export function createElixirs(bot){const {p,cfg,me}=bot;let last=0,cycle=p.read(
   bot.consumable(i));
  const merchant=bot.transport?.fresh?.(cfg.party.merchant);
  const stocked=merchant?.running&&!merchant.rip&&merchant.realm===p.realm()?
-  merchant.stock??[]:[];
+  merchant.elixirStock??merchant.stock??[]:[];
  const best=chooseStockedElixir(p.G,p.c.ctype,[...inventory,...stocked]);
  const selected=best??preferred;
  const r=bot.economy?.explicit({name:selected.name,level:0});

@@ -3,7 +3,7 @@
 import {readFile,writeFile,stat} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {analyzeLiveTeam} from './lib/live-team-audit.mjs';
+import {analyzeLiveTeam,parseLiveReport,joinLiveReportParts} from './lib/live-team-audit.mjs';
 function parse(argv){
  const opts={strict:false,requireElixirs:false},files=[];
  for(let i=0;i<argv.length;i++){
@@ -32,10 +32,10 @@ export async function main(argv){
  for(const name of files){
   const info=await stat(name);
   if(!info.isFile()||info.size>8*1024*1024)throw Error('Invalid or oversized test report: '+name);
-  reports.push(JSON.parse(await readFile(name,'utf8')));
+  reports.push(parseLiveReport(await readFile(name,'utf8')));
  }
  const {out,...auditOptions}=opts;
- const result=analyzeLiveTeam(reports,auditOptions),serialized=JSON.stringify(result,null,2)+'\n';
+ const result=analyzeLiveTeam(joinLiveReportParts(reports),auditOptions),serialized=JSON.stringify(result,null,2)+'\n';
  if(out)await writeFile(out,serialized,'utf8');
  process.stdout.write(serialized);
  if(!result.accepted)process.exitCode=1;

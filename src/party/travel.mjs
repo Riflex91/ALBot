@@ -35,9 +35,52 @@ export function serverRegistrySignature(raw){
   Number.isFinite(s.at)?s.at:null
  ]:null));
 }
+// Recover an account team which was already started on different servers.
+// Votes come only from all selected FARMERS, not the merchant (which might
+// be deliberately stationed away). A missing or stale farmer abstains from
+// permission: do not turn a partial set into a majority or bounce servers.
+export function teamRealmRendezvous({farmers,localName,localRealm,peers,
+ homeRealm='',fixedLeader=''}={}){
+ const deny=(reason,extra={})=>({complete:false,split:false,target:null,reason,...extra});
+ if(!Array.isArray(farmers)||farmers.length<2||farmers.length>8||
+    farmers.some(n=>typeof n!=='string'||!n)||
+    new Set(farmers).size!==farmers.length||!nonPvpRealm(localRealm))
+   return deny('invalid-roster');
+ const votes=[];
+ for(const name of farmers){
+  const member=name===localName?{running:true,realm:localRealm}:peers?.[name];
+  if(member?.running!==true||member.rip===true||
+     !nonPvpRealm(member.realm))
+   return deny('farmer-heartbeat-missing',{missing:name});
+  votes.push({name,realm:member.realm});
+ }
+ const counts=new Map();
+ for(const v of votes)counts.set(v.realm,(counts.get(v.realm)??0)+1);
+ const ordered=[...counts].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+ // Respect an explicit home/leader preference; autoRoster sets leader='' and
+ // therefore selects the current farmer majority (2x USI beats 1x USIV).
+ const fixed=nonPvpRealm(homeRealm)?homeRealm:
+    fixedLeader&&votes.find(v=>v.name===fixedLeader)?.realm;
+ const target=fixed&&nonPvpRealm(fixed)?fixed:ordered[0]?.[0]??null;
+ const split=counts.size>1||localRealm!==target;
+ return {complete:true,split,target,reason:split?'farmer-realm-split':'unified',
+  farmers:votes,counts:Object.fromEntries(ordered)};
+}
 export function createTeamTravel(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();let registryRef=null,registrySignature=null,registryAt=0,lastHopDiagnostic=0,history=p.read('albot:hop-history:'+me.name)??[];if(!Array.isArray(history))history=[];
  const homeRealm=nonPvpRealm(w.homeRealm)?w.homeRealm:'';
+ let reunionHold=false,lastReunion=null,lastReunionDiagnostic=0;
+ // The selection is regenerated from this character's configured roster, not
+ // from local server discovery. Only fresh cross-realm peer status qualifies.
+ function reunionEvidence(){
+  const names=[...(bot.farmers??[])];
+  const peers=Object.fromEntries(names.filter(n=>n!==me.name)
+    .map(n=>[n,bot.transport?.fresh?.(n)??null]));
+  return teamRealmRendezvous({farmers:names,localName:me.name,
+    localRealm:p.realm(),peers,homeRealm,
+    fixedLeader:cfg.party.leader??''});
+ }
+
  const homeKey='albot:home-return:'+me.name;
  const savedHome=p.read(homeKey);
  let home=savedHome&&savedHome.realm===homeRealm&&
@@ -163,6 +206,47 @@ export function createTeamTravel(bot){
  }
  function tick(){
   hopLifecycle.tick();if(hopLifecycle.blocked)return;
+  // A normal hop plan cannot start while already separated: requestHop()
+  // requires all participants to be on one realm. The reunification path
+  // follows one common, verified farmer-majority realm instead.
+  reunionHold=false;
+  if(w.serverHop&&cfg.party.enabled&&bot.farmers?.length>=2){
+   const decision=reunionEvidence();
+   lastReunion=decision;
+   if(decision.complete&&decision.split){
+    const local=p.realm(),target=decision.target;
+    if(local!==target){
+     // Stop initiating unrelated value/movement actions while the pending
+     // executor work settles. Existing safe() and lifecycle checks still apply.
+     reunionHold=true;
+     if(Date.now()-lastReunionDiagnostic>=12000){
+      lastReunionDiagnostic=Date.now();
+      bot.event?.('server.reunion.wait',{from:local,to:target,
+       counts:decision.counts,reason:!destinationNormal(target)?
+        'destination-unverified':!admission(target)?'hop-budget-or-registry':
+        !safe()?'actor-not-safe':'reunion-ready'});
+     }
+     if(!hop&&!hopLifecycle.blocked&&
+        destinationNormal(target)&&admission(target)&&
+        Date.now()-hopAt>=w.hopCooldownMs&&safe()){
+      const at=Date.now(),historyNext=[...history.filter(t=>at-t<3600000),at].slice(-16);
+      if(p.write('albot:hop:'+me.name,at)===true&&
+         p.write('albot:hop-history:'+me.name,historyNext)===true){
+       const id=bot.session+':reunion:'+at;
+       if(hopLifecycle.begin({id,from:local,to:target})){
+        history=historyNext;hopAt=at;
+        bot.event?.('server.reunion.commit',{id,from:local,to:target,
+         votes:decision.counts,reason:'farmer-majority'});
+       }
+      }
+     }
+    }
+    // A member already on the voted target waits for other teammates.
+    // In particular do not independently autoHop/homeHop while split.
+    return;
+   }
+  }
+
   for(const [name,t] of consents)if(t.until<Date.now())consents.delete(name);
   if(hop){if(hop.until<Date.now()){
    bot.event?.('server.hop.timeout',{id:hop.id,to:hop.realm,
@@ -202,8 +286,9 @@ export function createTeamTravel(bot){
   }
  }
  function accept(name){if(w.magiport&&consents.get(name)?.purpose==='accept'&&consents.get(name)?.until>Date.now()&&safe()){consents.delete(name);return exec.run('magiport.accept',['lifecycle','movement'],()=>bot.running&&!bot.journal,()=>p.call('accept_magiport',name),{delay:10000});}return false;}
- return {requestHop,receive,tick,lifecycleTick:hopLifecycle.tick,accept,get blocked(){return !!hop||hopLifecycle.blocked;},
+ return {requestHop,receive,tick,lifecycleTick:hopLifecycle.tick,accept,get blocked(){return reunionHold||!!hop||hopLifecycle.blocked;},
   status:()=>({registry:registry(),history:[...history],hop:hop?{id:hop.id,realm:hop.realm,until:hop.until,ready:[...hop.ready],members:[...hop.names]}:null,
-   lifecycle:hopLifecycle.status(),home:homeRealm?{...home}:null}),
+   lifecycle:hopLifecycle.status(),reunion:lastReunion?{...lastReunion,hold:reunionHold}:null,
+   home:homeRealm?{...home}:null}),
   close(){hop=null;hopLifecycle.close();consents.clear();}};
 }

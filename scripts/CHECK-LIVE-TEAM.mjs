@@ -9,6 +9,7 @@ function parse(argv){
  for(let i=0;i<argv.length;i++){
   const a=argv[i];
   if(a==='--strict')opts.strict=true;
+  else if(a==='--require-three-farmers')opts.requiredFarmers=3;
   else if(a==='--require-elixirs')opts.requireElixirs=true;
   else if(['--out','--merchant','--max-departures','--max-idle-seconds','--min-idle-seconds'].includes(a)){
    if(!argv[i+1])throw Error('Missing value for '+a);

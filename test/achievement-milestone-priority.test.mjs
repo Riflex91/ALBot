@@ -1,6 +1,7 @@
+import {selectVerifiedStatMilestoneArea,selectHuntArea} from '../src/world/team-plan.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {verifiedTrackerScores,achievementMilestoneBias,createAchievementScores}
+import {verifiedTrackerScores,verifiedStatMilestones,achievementMilestoneBias,createAchievementScores}
  from '../src/world/achievement-scores.mjs';
 import {createProgression} from '../src/world/progression.mjs';
 
@@ -116,4 +117,43 @@ test('invalid refresh revokes previously confirmed milestone priority',()=>{
  assert.equal(f.scores.status().state,'invalid-server-reply');
  assert.equal(f.scores.status().observedMonsters,0);
  assert.equal(f.scores.bonus('goo'),0);
+});
+
+test('actual official stat reward can follow earlier cosmetic achievement, not invented from absent scores',()=>{
+ const defs={monsters:{bee:{achievements:[[10,'cosmetic','hat',1],[25,'stat','dex',1]]},
+  goo:{achievements:[[10,'stat','hp',5]]}}};
+ const verified=verifiedTrackerScores({max:{monsters:{bee:[8]}}},defs);
+ const rows=verifiedStatMilestones(verified,defs);
+ assert.deepEqual(rows,[{monster:'bee',score:8,threshold:25,gap:17,stat:'dex',bonus:1}]);
+ assert.equal(rows.some(r=>r.monster==='goo'),false,'no unobserved server score becomes invented zero');
+});
+test('verified near stat milestone outranks ordinary gold/XP only among preapproved safe areas',()=>{
+ const defs={monsters:{bee:{hp:100,achievements:[[25,'stat','dex',1]]},
+  goo:{hp:80,achievements:[]}}};
+ const rows=[{monster:'bee',score:19,threshold:25,gap:6,stat:'dex',bonus:1}];
+ const ranking=[{target:'goo',key:'main:goo',score:100,
+  travelSeconds:4,composition:{effectiveDps:100}},
+  {target:'bee',key:'main:bee',score:50,
+   travelSeconds:10,composition:{effectiveDps:100}}];
+ const selected=selectVerifiedStatMilestoneArea(ranking,rows,defs);
+ assert.equal(selected?.area.target,'bee');
+ assert.equal(selected?.milestone.gap,6);
+ assert.equal(selectHuntArea(ranking,{phase:'combat',owner:'Ranger',
+  monster:'goo',remaining:5}).area.target,'goo','safe monsterhunt stays top');
+ assert.equal(selectVerifiedStatMilestoneArea(ranking.slice(0,1),rows,defs),null,
+  'cannot prioritize a monster missing from safe approved spawn ranking');
+ assert.equal(selectVerifiedStatMilestoneArea(ranking,
+  [{...rows[0],gap:3000,threshold:3019}],defs),null);
+ assert.equal(selectVerifiedStatMilestoneArea(ranking,
+  [{...rows[0],stat:'strength'}],defs),null);
+});
+test('stat milestone exposure strictly requires live carried Tracktrix or Super Computer',()=>{
+ const f=fixture();
+ assert.deepEqual(f.scores.milestones(),[]);
+ f.scores.poll();f.socket.deliver(data());
+ assert.ok(f.scores.milestones().some(m=>m.monster==='goo'));
+ f.bot.p.c.items=[];
+ assert.deepEqual(f.scores.milestones(),[]);
+ f.bot.p.c.items=[{name:'supercomputer'}];
+ assert.deepEqual(f.scores.milestones(),[],'old score cannot reactivate on carrier replacement');
 });

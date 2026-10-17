@@ -101,10 +101,12 @@ export function createGear(bot){
   }
  }return result.slice(0,20);}
  function targets(){const result=[...(bot.intelligence?.targets()??[]),...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
-  // An empty mage mainhand requires a usable starter staff before upgrades.
+  // A completely unarmed Mage or Priest requires a usable level-0 staff
+  // before any speculative +level upgrade. The server's compatibility,
+  // item-property and budget checks still govern its actual acquisition.
   if(cfg.production.gear&&p.G.items?.staff)for(const member of cfg.characters.filter(c=>c.enabled&&c.role==='farmer')){
    const profile=member.name===me.name?snapshot():profiles[member.name];
-   if(profile?.class!=='mage'||!profile.slots||profile.slots.mainhand)continue;
+   if(!['mage','priest'].includes(profile?.class)||!profile.slots||profile.slots.mainhand)continue;
    result.unshift({name:'Startwaffe '+member.name,enabled:true,character:member.name,
     slot:'mainhand',item:'staff',level:0,budget:Math.max(10000,cfg.production.autoGearBudget??100000),
     priority:1000});

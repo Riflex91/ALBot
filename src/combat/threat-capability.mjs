@@ -166,7 +166,7 @@ export function createCombatAssessment(bot){
    isNaturallyAggressive(bot.p.G,m));
   const remote=bot.farmers.map(n=>n===bot.me.name?bot.p.c:bot.transport.fresh(n))
    .filter(x=>x?.running!==false&&!x.rip&&Number.isFinite(x.hp)&&
-    Number.isFinite(x.max_hp)&&x.max_hp>0&&x.hp/x.max_hp<.65&&
+    Number.isFinite(x.max_hp)&&x.max_hp>0&&x.hp/x.max_hp<.85&&
     (x.threats>0||mobs.some(m=>m.target===x.name)));
   return {active:mobs.length>0||remote.length>0,
    monsters:mobs,critical:remote,anchor:remote[0]??null};

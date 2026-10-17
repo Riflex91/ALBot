@@ -22,8 +22,20 @@ export function normalizeServerRegistry(raw,now=Date.now(),fromOfficialGame=fals
   return {realm,mode,online,players:s.players,at:s.at??now};
  });
 }
+// The official X.servers collection may be updated *in place* by the game.
+// Reference identity alone hides fresh population updates and can age out the
+// server-hop registry forever after 60 seconds of gameplay.
+export function serverRegistrySignature(raw){
+ if(!Array.isArray(raw)||raw.length>100)return null;
+ return JSON.stringify(raw.map(s=>s&&typeof s==='object'?[
+  s.region??null,s.name??null,s.identifier??null,s.realm??null,
+  Number.isFinite(s.players)?s.players:null,
+  s.online??null,s.status??null,s.mode??null,s.pvp??null,
+  Number.isFinite(s.at)?s.at:null
+ ]:null));
+}
 export function createTeamTravel(bot){
- const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();let registryRef=null,registryAt=0,history=p.read('albot:hop-history:'+me.name)??[];if(!Array.isArray(history))history=[];
+ const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();let registryRef=null,registrySignature=null,registryAt=0,lastHopDiagnostic=0,history=p.read('albot:hop-history:'+me.name)??[];if(!Array.isArray(history))history=[];
  const homeRealm=nonPvpRealm(w.homeRealm)?w.homeRealm:'';
  const homeKey='albot:home-return:'+me.name;
  const savedHome=p.read(homeKey);
@@ -34,7 +46,13 @@ export function createTeamTravel(bot){
   if(p.write(homeKey,next)!==true){bot.report?.('Heimserver-Rückkehr: Frist konnte nicht gespeichert werden');return false;}
   home=next;return true;
  }
- function registry(){const external=p.root.ALBotServerRegistry??p.parent.ALBotServerRegistry;const official=external==null;const raw=external??p.parent.X?.servers??[];if(raw!==registryRef){registryRef=raw;registryAt=Date.now();}return normalizeServerRegistry(raw,registryAt,official);}
+ function registry(){const external=p.root.ALBotServerRegistry??p.parent.ALBotServerRegistry;const official=external==null;const raw=external??p.parent.X?.servers??[];
+  const signature=serverRegistrySignature(raw);
+  if(raw!==registryRef||signature!==registrySignature){
+   registryRef=raw;registrySignature=signature;registryAt=Date.now();
+  }
+  return normalizeServerRegistry(raw,registryAt,official);
+ }
  // Verify an online NORMAL server from the current registry rather than
  // trusting a past selection or any PvP flag on the character.
  function destinationNormal(realm){
@@ -128,7 +146,29 @@ export function createTeamTravel(bot){
    if(me.name===bot.leader&&!hop.broadcast&&hop.names.every(n=>hop.ready.has(n))&&safe()){const token=hop;hop.broadcast=true;Promise.all(hop.names.filter(n=>n!==me.name).map(n=>bot.transport.send(n,'hopCommit',{realm:hop.realm},hop.id))).then(results=>{if(hop===token&&results.every(Boolean))applyHop();else if(hop===token)hop=null;},()=>{if(hop===token)hop=null;});}return;
   }
   if(homeTick())return;
-  if(cfg.general.testLogging!==undefined&&w.autoHop!==false&&me.name===bot.leader&&bot.teamPlan?.status().pressure>.6&&safe()){const current=registry().find(s=>s.realm===p.realm()),next=registry().filter(s=>s.realm!==p.realm()&&realmAllowed(s.realm)&&Number.isFinite(current?.players)&&Number.isFinite(s.players)&&s.players<current.players*.85).sort((a,b)=>a.players-b.players)[0];if(next&&requestHop(next.realm)){bot.event('server.autoHop',{realm:next.realm,reason:'Anhaltender Standortdruck und geringer belegter Serverbesatz'});return;}}
+  if(cfg.general.testLogging!==undefined&&w.autoHop!==false&&
+     me.name===bot.leader&&bot.teamPlan?.status().pressure>.6){
+   const now=Date.now(),canMove=safe(),servers=registry();
+   const current=servers.find(s=>s.realm===p.realm());
+   const next=canMove?servers.filter(s=>s.realm!==p.realm()&&realmAllowed(s.realm)&&
+     Number.isFinite(current?.players)&&Number.isFinite(s.players)&&
+     s.players<current.players*.85).sort((a,b)=>a.players-b.players)[0]:null;
+   if(next&&requestHop(next.realm)){
+    bot.event('server.autoHop',{realm:next.realm,
+     reason:'Anhaltender Standortdruck und frischer niedrigerer Serverbesatz'});
+    return;
+   }
+   if(now-lastHopDiagnostic>=60000){
+    lastHopDiagnostic=now;
+    bot.event('server.autoHopDeferred',{realm:p.realm(),
+     pressure:bot.teamPlan.status().pressure,
+     reason:!w.serverHop?'server-hop-disabled':
+      !canMove?'actor-not-safe-for-hop':
+      !Number.isFinite(current?.players)?'current-population-unverified':
+      'no-fresh-approved-lower-population-realm-or-team-not-ready',
+     hopInProgress:!!hop});
+   }
+  }
   if(!w.magiport||p.c.ctype!=='mage'||!safe()||p.c.mp<(p.G.skills.magiport?.mp??900)+p.c.max_mp*.2)return;
   const leader=me.name===bot.leader?p.c:bot.transport.fresh(bot.leader);if(!leader||!samePlace(p.c,leader)||distance(p.c,leader)>cfg.party.followDistance)return;
   for(const name of bot.farmers){const peer=bot.transport.fresh(name);if(name===me.name||!peer?.running||peer.rip||peer.realm!==p.realm()||consents.has(name)||samePlace(p.c,peer)&&distance(p.c,peer)<cfg.party.followDistance*2)continue;

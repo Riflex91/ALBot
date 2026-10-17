@@ -126,7 +126,17 @@ export function createSeashellCycle(bot){
     bot.inventoryBlocked||bot.bank?.pending||bot.logistics?.reserved||
     bot.exec?.busy?.('inventory')||bot.movement?.order)return false;
   const status=decision(),batch=p.G.items.seashell.e;
-  if(status.mode==='unknown'||status.mode==='collect')return false;
+  if(status.mode==='unknown'){
+   // Inspect the shared bank before treating absent evidence as zero stock.
+   // This uses the existing bank travel and read-only stock verification.
+   if(cfg.merchant?.bank!==false&&
+      (inventoryQty()>=batch||missing().length>0)){
+    const started=bot.bank?.inspect?.()??false;
+    return !!started||bot.movement?.order?.owner==='economy';
+   }
+   return false;
+  }
+  if(status.mode==='collect')return false;
   if(status.mode==='idle')return false;
   const verified=exchangeSource(p.G,'seashell',p.root?.S??p.parent?.S??{});
   if(!verified.ready){note('seashell.exchangeUnavailable',{reason:verified.reason});return false;}

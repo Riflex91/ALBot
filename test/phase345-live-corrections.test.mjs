@@ -49,7 +49,7 @@ test('phase 4 live: 27 merchant variants survive bounded wire encoding without c
  const items=Array.from({length:27},(_,i)=>({name:'item_'+i,level:0,q:i+1}));
  items[25].data={gift:true,uid:'abc'};
  items[26].p=4;
- const local=inventoryStockEvidence(items,{owner:merchant,session,realm,at:time,maxRows:32});
+ const local=inventoryStockEvidence(items,{owner:merchant,session,realm,at:time,maxRows:32,allowOpaque:true});
  assert.equal(local.complete,true);
  assert.equal(local.rows.length,27);
  assert.equal(local.rows[25].protectedUnits,26);

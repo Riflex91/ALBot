@@ -2,6 +2,7 @@ import {potionTarget,onlineSupplyFarmers} from './potion-supply.mjs';
 import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
+import {inspectReceiveSenderSession} from './transfer-reconciliation.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
 import {isAchievementCarrier,carriedAchievementCarrier,trackerDeliveryNeed,trackerMerchantKeep} from './achievement-utility.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
@@ -213,8 +214,38 @@ export function createLogistics(bot){
     const now=clock();for(const [id,t] of completed)if(now-t>120000)completed.delete(id);
     for(const [id,t] of nextOffer)if(t<now)nextOffer.delete(id);
     if(incoming){
+      const peer=transport.fresh?.(incoming.from);
+      const sessionCheck=inspectReceiveSenderSession({
+       journal:{...incoming,kind:'receive'},peer,
+       ownerSession:bot.session,realm:p.realm(),now:Date.now(),
+       ttlMs:cfg.general.messageTtlMs
+      });
+      if(sessionCheck.changed&&!incoming.senderSessionChangeNoted){
+       incoming.senderSessionChangeNoted=true;
+       bot.event?.('logistics.senderSessionChangedDuringReceive',{
+        id:incoming.id,peer:incoming.from,item:incoming.item.name,
+        level:incoming.item.level??0,quantity:incoming.quantity,
+        originalSession:incoming.session,newSession:sessionCheck.newSession,
+        senderAnnouncedDispatch:!!incoming.sent,
+        receiverObservedIncrease:!!incoming.observed,
+        reason:sessionCheck.reason,
+        outcome:'unknown-until-both-sides-verified',
+        journalPreserved:true,autoRetry:false
+       });
+      }
       if(count(incoming.item)>=incoming.before+incoming.quantity){incoming.observed=true;if(incoming.lastReceipt===undefined||now-incoming.lastReceipt>1500){incoming.lastReceipt=now;counters.receiptsSent++;transport.send(incoming.from,'receipt',{quantity:incoming.quantity},incoming.id);}}
-      if(now>incoming.until){const expired=incoming;incoming=null;counters.timeouts++;bot.event?.('logistics.timeout',{id:expired.id,state:'receiving',item:expired.item,observed:!!expired.observed,reason:'Empfang nicht vollständig bestätigt; keine Wiederholung'});bot.endValue('unknown');}
+      if(now>incoming.until){const expired=incoming;incoming=null;counters.timeouts++;bot.event?.('logistics.timeout',{
+       id:expired.id,state:'receiving',item:expired.item,
+       observed:!!expired.observed,
+       senderSessionChanged:!!sessionCheck.changed||
+        !!expired.senderSessionChangeNoted,
+       senderSessionReason:sessionCheck.reason,
+       originalSenderSession:expired.session,
+       currentSenderSession:sessionCheck.newSession,
+       senderAnnouncedDispatch:!!expired.sent,
+       journalPreserved:true,autoRetry:false,
+       reason:'Empfang nicht vollständig bestätigt; kein Serverbeleg, keine Wiederholung'
+      });bot.endValue('unknown');}
     }
     if(job){
       if(job.state==='sent'&&count(job.item)<=job.before-job.quantity&&job.receipt){counters.doneSent++;transport.send(job.to,'done',{},job.id);completed.set(job.id,now);job=null;bot.endValue('confirmed');return;}

@@ -15,6 +15,26 @@ export function followerReassemblyDistance(cfg){
   Math.max(1,neutralPullDistance(cfg)-20):
   Math.max(1,Number.isFinite(value)?value:140);
 }
+// Followers can have no eligible target while the leader is fighting at the
+// edge of their own visibility. Rejoin the CURRENT leader before repeatedly
+// reporting 'Suche Farmziel'. This grants NO permission to attack a neutral
+// monster; movement stays within the verified party on the same instance.
+export function followerCombatRendezvous(follower,leader,{
+ followDistance=140,hasEligibleTarget=false,storageHeld=false,
+ hasActiveMovement=false
+}={}){
+ if(!leader?.running||leader.rip||!leader.target||
+    hasEligibleTarget||storageHeld||hasActiveMovement||
+    !samePlace(follower,leader)||![follower?.x,follower?.y,leader.x,leader.y].every(Number.isFinite))
+  return {move:false,reason:'not-rendezvous-eligible'};
+ const d=distance(follower,leader);
+ const radius=Math.min(40,Math.max(20,Math.floor(followDistance/3)));
+ // Keep the actual assembly target tighter than the old 120..140 range,
+ // otherwise the two followers can remain idle throughout a leader pull.
+ const trigger=Math.min(85,Math.max(55,followDistance*.5));
+ return {move:d>trigger,reason:d>trigger?'leader-in-combat-out-of-reach':'already-near-leader',
+  radius,distance:d};
+}
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;
  if(cfg.party?.enabled===false||cfg.party?.waitForTeam!==true)

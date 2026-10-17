@@ -1,4 +1,4 @@
-import {confirmedPotionRunway,proactivePotionAlarm} from './potion-receipts.mjs';
+import {confirmedPotionRunway,proactivePotionAlarm,supplyTourLeadSeconds} from './potion-receipts.mjs';
 // Phase 5 shadow-only observed stock delta telemetry. A reduction in held
 // potions MAY be consumption, delivery, sale or another inventory change.
 // Never treat it as a confirmed consumption receipt or a delivery permit.
@@ -88,8 +88,10 @@ export function createSupplyForecast(bot){
  }
  function alarm(farmers,target){
   const values=Array.isArray(farmers)?farmers:[];
-  return proactivePotionAlarm(values.map(x=>confirmed.get(x.name)).filter(Boolean),values,
-   {target});
+  const thresholdSeconds=supplyTourLeadSeconds({farmers:values,merchant:p.c});
+  const result=proactivePotionAlarm(values.map(x=>confirmed.get(x?.name)).filter(Boolean),values,
+   {target,thresholdSeconds});
+  return {...result,thresholdSeconds};
  }
  return {tick,alarm,status:()=>({mode:'shadow-only',authority:'none',
   verifiedPotionUses:[...confirmed.values()].slice(0,8),

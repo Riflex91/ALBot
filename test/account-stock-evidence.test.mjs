@@ -62,7 +62,10 @@ test('truncated heartbeat stock and unknown variants cannot be silently partial 
  const result=ledger(local([]),[peer(evidence)],['R1']);
  assert.equal(result.complete,false);
  assert.equal(result.quantity('item0'),null);
- assert.equal(proof('R1','v1',[{name:'gem',q:1,data:{unknown:true}}]).complete,false);
+ const opaque=proof('R1','v1',[{name:'gem',q:1,data:{unknown:true}}],{allowOpaque:true});
+ assert.equal(opaque.complete,true,'bounded opaque variant is visible for diagnostics');
+ assert.equal(opaque.rows[0].protectedUnits,1,'unmodeled data is never counted as available');
+ assert.equal(proof('R1','v1',[{name:'gem',q:1,data:{x:'x'.repeat(200)}}]).complete,false);
  assert.equal(proof('R1','v1',[{name:'gem',q:-2}]).complete,false);
 });
 

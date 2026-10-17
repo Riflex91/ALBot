@@ -21,13 +21,23 @@ export function createCombatNavigation(bot){
   if(now-lastRangeMove<650||bot.movement.order&&!['kite','combat'].includes(bot.movement.order.owner))return false;
   if(bot.movement.order?.owner==='kite')return false;
   const plan=bot.teamPlan?.heartbeat?.();
-  const anchor=plan&&samePlace(c,plan)&&Number.isFinite(plan.x)&&Number.isFinite(plan.y)?xy(plan):null;
+  const healer=(c.hp/c.max_hp<.85&&t.target===c.name?
+    (bot.farmers??[]).filter(n=>n!==c.name)
+     .map(n=>bot.transport?.fresh?.(n)).find(h=>h?.class==='priest'&&
+      h.running&&!h.rip&&samePlace(c,h)&&
+      Number.isFinite(h.x)&&Number.isFinite(h.y)&&
+      Number.isFinite(h.stats?.range)&&h.stats.range>50):null);
+  const anchor=healer?xy(healer):
+    plan&&samePlace(c,plan)&&Number.isFinite(plan.x)&&Number.isFinite(plan.y)?xy(plan):null;
+  const anchorRadius=healer?
+    Math.max(60,Math.min(bot.cfg.farming.orbitRadius??220,healer.stats.range-20)):
+    bot.cfg.farming.orbitRadius??220;
   if(orbitDirection===null){
    let hash=0;for(const ch of String(c.name??'ranger'))hash=((hash*31)+ch.charCodeAt(0))|0;
    orbitDirection=Math.abs(hash)%2?1:-1;
   }
   const step=planOrbitalKite(c,t,bot.p.G.monsters?.[t.mtype],{
-   direction:orbitDirection,anchor,anchorRadius:bot.cfg.farming.orbitRadius??220,
+   direction:orbitDirection,anchor,anchorRadius,
    canMove:(x,y)=>safe(x,y)
   });
   if(!step){

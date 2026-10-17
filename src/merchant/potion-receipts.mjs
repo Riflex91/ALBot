@@ -18,16 +18,16 @@ export function confirmedPotionRunway(before,after,{
  now=Date.now(),realm,ttlMs=10000,minMs=10000
 }={}){
  const deny=reason=>({valid:false,reason,authority:'none'});
- const valid=p=>p?.running===true&&!p.rip&&!p.journal&&
+ const valid=(p,fresh)=>p?.running===true&&!p.rip&&!p.journal&&
    !p.inventoryBlocked&&!p.reserved&&!p.lifecycleChanging&&
    p.realm===realm&&p.potionConsumption?.session===p.session&&
    p.potionConsumption.realm===realm&&
-   Number.isFinite(p.received)&&p.received<=now&&now-p.received<=ttlMs&&
+   Number.isFinite(p.received)&&p.received<=now&&(!fresh||now-p.received<=ttlMs)&&
    ['hpot0','mpot0'].every(name=>
     Number.isSafeInteger(p.potionConsumption[name])&&
     p.potionConsumption[name]>=0&&
     Number.isSafeInteger(p.potions?.[name])&&p.potions[name]>=0);
- if(!valid(before)||!valid(after)||before.name!==after.name||
+ if(!valid(before,false)||!valid(after,true)||before.name!==after.name||
    before.session!==after.session)return deny('invalid-or-changed-session');
  const interval=after.received-before.received;
  if(interval<minMs||interval>300000)return deny('insufficient-or-stale-window');

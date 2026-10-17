@@ -19,7 +19,7 @@ test('multi-aggro Shadow applies the same verified Fear factor as Legacy admissi
   'shadow must not ignore multi-aggro Fear while comparing to Legacy');
  assert.ok(Math.abs(shadow.seconds-legacy.seconds/.9)<1e-7);
  const solo=estimateCombatTimeline(monster,[ranger],{aggro:1,uncertainty:.1});
- assert.ok(shadow.seconds>solo.seconds*4.9);
+ assert.ok(shadow.seconds>solo.seconds*2.9); // baseline one-target Fear is 0.6, twelve-target Fear 0.2
 });
 test('already frightened/strongly courageous attackers do not receive invented Fear multipliers',()=>{
  const current={...ranger,fear:3,courage:0};
@@ -29,5 +29,7 @@ test('already frightened/strongly courageous attackers do not receive invented F
  assert.ok(Math.abs(old.lowerBoundDps-multi.lowerBoundDps)<1e-7,
   'do not apply a second fear penalty that is already reflected in current stats');
  const courageous=estimateCombatTimeline(monster,[{...ranger,courage:30}],{aggro:12,uncertainty:.1});
- assert.ok(courageous.lowerBoundDps>multi.lowerBoundDps);
+ assert.ok(Math.abs(courageous.lowerBoundDps-multi.lowerBoundDps)<1e-7);
+ const naive=estimateCombatTimeline(monster,[ranger],{aggro:12,uncertainty:.1});
+ assert.ok(courageous.lowerBoundDps>naive.lowerBoundDps);
 });

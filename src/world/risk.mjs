@@ -46,6 +46,11 @@ export function assessCombat(monster,members,mode='balanced',aggro=1,options={})
   expectedDps:model.expectedDps??null,
   healerDuty:model.healerBudget?.healerDuty??null,
   healerProjectedHeals:model.healerBudget?.projectedHeals??null,
+  healerManaLimited:model.healerBudget?.healingDeficit??null,
+  healerCastSlots:model.healerBudget?.casts??null,
+  healerAttackSlots:model.healerBudget?.attackSlots??null,
+  attackIntervalsMs:model.rows?.map(r=>({name:r.name,intervalMs:r.attackIntervalMs}))??[],
+  expectedCritScenarioDps:model.expectedDps??null,
   deltaSeconds:model.valid&&Number.isFinite(model.seconds)?model.seconds-seconds:null,
   authority:'none'};
  return {timelineShadow,reason:safe?'Bekannte Gruppe innerhalb des Risikobudgets':'Treffer, Kampfdauer oder Schadensbudget überschritten',seconds,incoming,outgoing,rawExposure:exposure,...protection,safe,healCredit,healer:healer?.name??null,availableHp:weakest};

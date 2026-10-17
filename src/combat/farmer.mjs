@@ -113,10 +113,10 @@ export function createFarmer(bot){
     }
     if(c.hp/c.max_hp<cfg.farming.restBelow)rest=true;
     if(rest&&c.hp/c.max_hp>=cfg.farming.resumeAbove)rest=false;
-    if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>isOwnAggressiveThreat(p.G,e,c.name)).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
+    if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>e?.target===c.name&&e.hp>0&&!e.dead).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
-  function retreat(t){if(!isNaturallyAggressive(p.G,t))return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c);
+  function retreat(t){if(!isNaturallyAggressive(p.G,t)&&t?.target!==p.c.name)return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c);
     // If the aggressive enemy has driven the patient out of the Priest's
     // reach, try a physically safe convergence step before fleeing farther.
     const healer=(bot.farmers??[]).filter(n=>n!==c.name)
@@ -246,6 +246,16 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
+    // Navigation is not coupled to farm-plan selection or the monster's
+    // natural-aggro flag. A passive monster becomes a REAL self-threat once
+    // it attacks this farmer; kite before follow/travel/team-defense returns.
+    // The navigation layer checks range, actual speed advantage, terrain,
+    // movement ownership and preserves attacks/skills in this same tick.
+    if(me.role==='farmer'&&cfg.farming.kiting){
+      const selfAggro=bot.monsters().filter(m=>m?.target===c.name&&
+        m.hp>0&&!m.dead&&samePlace(c,m)).sort((a,b)=>distance(c,a)-distance(c,b));
+      if(selfAggro.length)bot.navigation?.rangePosition?.(selfAggro[0]);
+    }
     const emergency=bot.combatAssessment?.emergency?.();
     if(emergency?.active&&rescueTeam(emergency))return;
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
@@ -255,6 +265,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(assessment?.viable&&bot.allowed(danger)){
         bot.target=danger;bot.reason='Teamverteidigung: '+danger.mtype;
         bot.skills.rotation(danger);
+        // The aggro owner must continue avoiding hits even while the
+        // threat-capability model permits a defensive kill.
+        if(danger.target===c.name)bot.navigation?.rangePosition?.(danger);
         const range=Math.max(5,c.range-Math.min(cfg.farming.rangeBuffer,c.range*.25));
         if(distance(c,danger)>range){
           if(!bot.movement.order)bot.movement.go(

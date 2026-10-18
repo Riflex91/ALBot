@@ -2,27 +2,27 @@ import {fingerprint,protectedItem,variantCount} from '../core/policy.mjs';
 
 // Single full-stack bank withdrawal. This read-only evidence check never
 // treats a stale/off-map pack as empty, and is not an account-wide lock.
-const safe=n=>Number.isSafeInteger(n)&&n>=0;
+const singleSafe=n=>Number.isSafeInteger(n)&&n>=0;
 export function validateBankSingleRecord(r,{owner,realm,now=Date.now()}={}){
  const no=reason=>({valid:false,reason});
  if(!r||typeof r!=='object'||Array.isArray(r)||r.version!==1||
     typeof owner!=='string'||!owner||r.owner!==owner||
     typeof realm!=='string'||!realm||r.realm!==realm||
-    !safe(now)||!safe(r.at)||r.at<1||r.at>now+2000)
+    !singleSafe(now)||!singleSafe(r.at)||r.at<1||r.at>now+2000)
   return no('invalid-single-owner-realm-or-time');
- if(!/^items\d+$/.test(r.pack??'')||!safe(r.slot)||r.slot>=42||
-    !safe(r.dest)||r.dest>=1000)
+ if(!/^items\d+$/.test(r.pack??'')||!singleSafe(r.slot)||r.slot>=42||
+    !singleSafe(r.dest)||r.dest>=1000)
   return no('invalid-single-address');
  if(!r.item||typeof r.item.name!=='string'||!r.item.name||
-    protectedItem(r.item)||!safe(r.quantity)||r.quantity<1||
-    r.quantity!==(r.item.q??1)||!safe(r.before)||!safe(r.bankBefore)||
-    r.bankBefore<r.quantity||!safe(r.before+r.quantity)||
+    protectedItem(r.item)||!singleSafe(r.quantity)||r.quantity<1||
+    r.quantity!==(r.item.q??1)||!singleSafe(r.before)||!singleSafe(r.bankBefore)||
+    r.bankBefore<r.quantity||!singleSafe(r.before+r.quantity)||
     r.sourcePrint!==fingerprint(r.item))
   return no('invalid-single-source');
  const step=(v,kind)=>{
   return !!v&&typeof v==='object'&&!Array.isArray(v)&&
    v.kind===kind&&typeof v.session==='string'&&!!v.session&&
-   safe(v.at)&&v.at>=r.at&&v.at<=now+2000&&
+   singleSafe(v.at)&&v.at>=r.at&&v.at<=now+2000&&
    v.realm===r.realm&&v.pack===r.pack&&v.slot===r.slot&&
    v.dest===r.dest&&v.sourcePrint===r.sourcePrint;
  };
@@ -48,7 +48,7 @@ export function classifyBankSingleRecord(r,{
   return {phase:'unobserved',reason:'addressed-bank-pack-not-current'};
  const pack=bank[r.pack],source=pack[r.slot],dest=inventory[r.dest];
  const carried=variantCount(inventory,r.item),bankCount=variantCount(pack,r.item);
- if(!safe(carried)||!safe(bankCount))
+ if(!singleSafe(carried)||!singleSafe(bankCount))
   return {phase:'ambiguous',reason:'invalid-observed-quantities'};
  if(!dest&&source&&fingerprint(source)===r.sourcePrint&&
     carried===r.before&&bankCount===r.bankBefore)

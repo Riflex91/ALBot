@@ -409,7 +409,11 @@ export function createBank(bot){
  }
  function retrieve(item,r,wanted){
   if(single||pending)return recover();
-  if(reclaiming)return false;
+  if(reclaiming){
+   bot.inventoryBlocked=true;
+   e.note('Bankkonflikt: neuer Bankabruf bei offenem Reclaim verweigert');
+   return false;
+  }
   if(bot.free()<1){e.note('Bankentnahme '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}
   if(!ready(r.pack||packFor(item)||'items0'))return false;
   for(const [pack,items] of packs()){

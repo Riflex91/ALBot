@@ -69,3 +69,5 @@ jobs:
 # Integration validation after removing auto-merge duplicate exports
 
 # Verify fixed farmer tick and bank diagnostics
+
+# Retest with canonical item fingerprint

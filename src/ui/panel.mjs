@@ -29,22 +29,22 @@ export function createPanel(bot,api){
   doc.addEventListener('pointermove',onMove);doc.addEventListener('pointerup',onUp);
   doc.addEventListener('pointercancel',onUp);
 
-  for(const [label,action] of [['Start',()=>api.start()],['Pause',()=>api.pause()],['STOP',()=>api.stop()],...(bot.cfg.general.testLogging&&api.logCapabilities().directory?[['Testordner wählen',()=>api.chooseLogDirectory()]]:[]),['Testlog speichern',()=>api.exportTestReport()]]){const b=doc.createElement('button');b.textContent=label;b.onclick=action;node.append(b);}
+  for(const [label,action] of [['Start',()=>api.start()],['Pause',()=>api.pause()],['STOP',()=>api.stop()],...(bot.cfg.general.testLogging&&api.logCapabilities().directory?[['Testordner wählen',()=>api.chooseLogDirectory()]]:[]),['Testlog speichern',async()=>{const result=await api.saveTestReport();bot.p.log?.(result.overwritten?'Testlog überschrieben: '+result.filename:result.notice??'Testlog nicht gespeichert');}]]){const b=doc.createElement('button');b.textContent=label;b.onclick=action;node.append(b);}
   if(bot.cfg.general.testLogging){
    const button=doc.createElement('button');button.textContent='Party/Kampf prüfen + speichern';
-   button.title='Liest Party, Heartbeats und Kampfstatistik; lädt einen kleinen JSON-Bericht herunter. Keine Spielaktion.';
+   button.title='Speichert Party- und Kampfstatistik in dieselbe JSON-Datei. Bei unterstütztem Browser wird die bestehende Datei überschrieben. Keine Spielaktion.';
    const result=doc.createElement('pre');
    result.style.cssText='white-space:pre-wrap;word-break:break-word;max-width:280px;max-height:150px;overflow:auto;font:12px monospace';
-   button.onclick=()=>{
+   button.onclick=async()=>{
     try{
-     const d=api.teamCheck(),file=api.exportTeamCheck();
+     const d=api.teamCheck(),save=await api.saveTeamCheck();
      const peers=d.peers.filter(p=>p.fresh).map(p=>p.name).join(', ')||'keine';
-     result.textContent='Party: '+(d.gameParty??'keine')+'\nAuswahl: '+d.selectedFarmers.join(', ')+'\nLeader: '+d.teamLeader+'\nFrische Peers: '+peers+'\nAngriffe: '+d.combat.attacksStarted+'\n'+(file?'Bericht: '+file:'Download fehlgeschlagen – Testlog speichern verwenden');
+     result.textContent='Party: '+(d.gameParty??'keine')+'\nAuswahl: '+d.selectedFarmers.join(', ')+'\nLeader: '+d.teamLeader+'\nFrische Peers: '+peers+'\nAngriffe: '+d.combat.attacksStarted+'\n'+(save.filename?'Bericht: '+save.filename+(save.overwritten?' (überschrieben)':' (Download; Browser kann Kopien anlegen)'):'Speichern fehlgeschlagen oder abgebrochen');
     }catch(e){result.textContent='Teamtest fehlgeschlagen: '+(e.message??e);}
    };
    node.append(button,result);
   }
-  if(bot.cfg.general.testLogging&&!api.logCapabilities().directory){const hint=doc.createElement('p');hint.textContent='Logs per „Testlog speichern“ herunterladen. Speicherort in den Browser-Downloads wählen.';node.append(hint);}
+  if(bot.cfg.general.testLogging&&!api.logCapabilities().directory){const hint=doc.createElement('p');hint.textContent='Beim ersten Speichern Datei wählen; danach überschreiben beide Buttons ihren jeweiligen festen Dateinamen. Ohne Datei-Zugriff unterstützt der Browser nur Downloads und kann Kopien anlegen.';node.append(hint);}
   doc.body.append(node);const saved=bot.p.read?.(positionKey);
   if(saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y))position(saved.x,saved.y);
   return {render(){const text=bot.me.role+' · '+(bot.running?'Aktiv':'Angehalten')+' · '+bot.reason;if(status.textContent!==text)status.textContent=text;},remove(){drag=null;title.removeEventListener('pointerdown',startDrag);doc.removeEventListener('pointermove',onMove);doc.removeEventListener('pointerup',onUp);doc.removeEventListener('pointercancel',onUp);node.remove();}};

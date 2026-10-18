@@ -34,6 +34,22 @@ const edits=[
 ];
 for(const [a,b] of edits){const from=a.replaceAll('@T@',String.fromCharCode(96)),to=b.replaceAll('@T@',String.fromCharCode(96));if(!doc.includes(from))throw Error('Bootstrap documentation anchor missing: '+from.slice(0,70));doc=doc.replace(from,to);}
 save(path,doc);
+// Keep new main's authoritative reference after README/AGENTS conflict merge.
+for(const name of ['README.md','AGENTS.md']){
+ let text=read(name);
+ const raw='https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js';
+ if(!text.includes('bootstrap.contract.json')||
+    !text.includes(raw)||
+    !text.includes(contract.inGameLoader.configuredManifestUrl)||
+    !text.includes(contract.inGameLoader.inspectedResolvedRuntimeUrl))
+  text+='\n\n## Dokumentierter Ingame-Bootstrap-Kanal\n\n'+
+   'Der überprüfte Bootstrap-Vertrag steht in `bootstrap.contract.json` und `docs/BOOTSTRAP-VERTRAG.md`. '+
+   'Die persönliche Hauptdatei liegt unter '+raw+'. '+
+   'Der beobachtete CODE-Quelltext verweist auf '+contract.inGameLoader.configuredManifestUrl+'. '+
+   'Das signierte Manifest benennt '+contract.inGameLoader.inspectedResolvedRuntimeUrl+'. '+
+   'Der Ingame-Ladeerfolg ist noch **nicht** live beobachtet.\n';
+ save(name,text);
+}
 const script='scripts/verify-bootstrap-contract.mjs';let source=read(script);
 const oldAssert="assert.equal(loader.inspectedManifest.version, '0.10.9-candidate');";
 if(!source.includes(oldAssert))throw Error('Unexpected bootstrap verifier');

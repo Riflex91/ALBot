@@ -1,3 +1,4 @@
+import {observeActivity} from './event-evidence.mjs';
 import {distance,samePlace,xy} from '../core/policy.mjs';
 import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {knowledgeFingerprint} from './knowledge.mjs';
@@ -97,7 +98,7 @@ export function createStrategy(bot){
   cfg.party?.aoeMaxTargets,liveEngaged);
  return assessCombat({...base,...live,hp},members(planned),w.risk,aggro,
   {...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
- function safeTarget(id,live,quiet=false,planned=false){if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(result.timelineShadow&&Date.now()-(lastRisk.get('shadow:sample')??0)>30000){lastRisk.set('shadow:sample',Date.now());const s=result.timelineShadow;bot.event('combat.timelineShadow',{monster:id,safe:result.safe,legacySeconds:result.seconds??null,projectedSeconds:s.projectedSeconds,deltaSeconds:s.deltaSeconds,lowerBoundDps:s.lowerBoundDps,expectedDps:s.expectedDps,expectedCritScenarioDps:s.expectedCritScenarioDps,healerDuty:s.healerDuty,healerManaLimited:s.healerManaLimited,healerProjectedHeals:s.healerProjectedHeals,healerCastSlots:s.healerCastSlots,healerAttackSlots:s.healerAttackSlots,attackIntervalsMs:JSON.stringify(s.attackIntervalsMs),authority:s.authority});}if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
+ function safeTarget(id,live,quiet=false,planned=false){if(activity?.observationUnknown&&id===activity.target&&!live?.target)return false;if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(result.timelineShadow&&Date.now()-(lastRisk.get('shadow:sample')??0)>30000){lastRisk.set('shadow:sample',Date.now());const s=result.timelineShadow;bot.event('combat.timelineShadow',{monster:id,safe:result.safe,legacySeconds:result.seconds??null,projectedSeconds:s.projectedSeconds,deltaSeconds:s.deltaSeconds,lowerBoundDps:s.lowerBoundDps,expectedDps:s.expectedDps,expectedCritScenarioDps:s.expectedCritScenarioDps,healerDuty:s.healerDuty,healerManaLimited:s.healerManaLimited,healerProjectedHeals:s.healerProjectedHeals,healerCastSlots:s.healerCastSlots,healerAttackSlots:s.healerAttackSlots,attackIntervalsMs:JSON.stringify(s.attackIntervalsMs),authority:s.authority});}if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm
   // spawn on followers: only the failed farm target itself invalidates it.
@@ -141,7 +142,12 @@ export function createStrategy(bot){
   if(questVisit)return;
   const now=Date.now();if(manual?.until<=now){manual=null;activity=null;bot.target=null;bot.movement.stop();}
   if(lastG!==p.G){lastG=p.G;plannedAt=0;rates={};}
-  if(activity){const live=state()[activity.id],visible=bot.monsters().some(m=>m.mtype===activity.target),questGone=activity.kind==='quest'&&me.name===bot.leader&&(!(p.c.s?.monsterhunt?.c>0)||p.c.s.monsterhunt.id!==activity.id);if(full&&activity.definition&&activity.definition!==knowledgeFingerprint(p.G.monsters[activity.target])||activity.expires<=now||questGone||activity.kind!=='quest'&&(live&&(live.live===false||live.active===false||live.hp===0)||!live&&!visible)||!safeMonster(activity.target)){activity=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.return',{reason:'Aktivität beendet, nicht mehr beobachtet oder Risiko geändert'});}}
+  if(activity){const live=state()[activity.id],visible=bot.monsters().some(m=>m.mtype===activity.target),questGone=activity.kind==='quest'&&me.name===bot.leader&&(!(p.c.s?.monsterhunt?.c>0)||p.c.s.monsterhunt.id!==activity.id);if(full&&activity.definition&&activity.definition!==knowledgeFingerprint(p.G.monsters[activity.target])||activity.expires<=now||questGone||activity.kind!=='quest'&&observeActivity(activity,live,visible,now,w.eventGraceMs??2500).state==='ended'||!safeMonster(activity.target)){activity=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.return',{reason:'Aktivität beendet, nicht mehr beobachtet oder Risiko geändert'});}}
+  if(activity&&activity.kind!=='quest'){
+   const evidence=observeActivity(activity,state()[activity.id],bot.monsters().some(m=>m.mtype===activity.target),now,w.eventGraceMs??2500);
+   if(evidence.state==='unknown'){activity.missingSince=evidence.missingSince;activity.observationUnknown=true;bot.target=null;bot.movement.stop();return;}
+   delete activity.missingSince;delete activity.observationUnknown;
+  }
   if(me.role==='merchant')return;
   if(cfg.party.enabled&&me.name!==bot.leader){const leader=bot.transport.fresh(bot.leader);activity=leader?.running&&leader.realm===p.realm()&&!leader.rip&&validActivity(leader.activity)?{...leader.activity}:null;return;}
   if(now-plannedAt<w.cacheTtlMs)return;plannedAt=now;

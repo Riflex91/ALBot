@@ -1,3 +1,4 @@
+import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {nativeSkillCooldown} from '../core/skill-wakeups.mjs';
 import {distance,samePlace,matches} from '../core/policy.mjs';
 import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
@@ -67,7 +68,7 @@ export function createSkills(bot){
   });
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2,ignoreCooldown=false){
-    const c=p.c,s=p.G.skills[id];if(!s||c.rip||c.s?.stunned||c.s?.silenced)return false;
+    const c=p.c,s=p.G.skills[id];if(!s||c.rip||!runtimeConditionGate(c,p.G,'skill:'+id,['mana','skill']).allowed)return false;
     if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp)return false;
     if(asArray(s.class).length&&!asArray(s.class).includes(c.ctype)||c.level<(s.level??0))return false;
     if(!ignoreCooldown){

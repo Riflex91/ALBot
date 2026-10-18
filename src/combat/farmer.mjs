@@ -1,3 +1,4 @@
+import {potionChannelPolicy,rankRecoveryPotion} from './recovery-policy.mjs';
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
 import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
@@ -163,20 +164,22 @@ export function createFarmer(bot){
     const resource=c.hp/c.max_hp<hpTrigger?'hp':
       c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
     const potionWanted=cfg.farming.potions?potionResource(c):null;
-    if((resource||potionWanted)&&!p.call('is_on_cooldown','use_hp')){
+    const potionChannel=()=>potionChannelPolicy(p.c,{threatened:bot.monsters().some(m=>m.target===c.name&&m.hp>0&&!m.dead)});
+    if((resource||potionWanted)&&potionChannel().allowed&&!p.call('is_on_cooldown','use_hp')){
       let slot=-1;
       if(potionWanted&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)
         slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===potionWanted)?.[1]??0}))
           .filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&
             r.restore>0&&bot.consumable(r.i))
-          .sort((a,b)=>Math.abs(a.restore-(c['max_'+potionWanted]-c[potionWanted]))-
-            Math.abs(b.restore-(c['max_'+potionWanted]-c[potionWanted])))[0]?.slot??-1;
+          .sort((a,b)=>rankRecoveryPotion(c,p.G.items[b.i.name].gives,potionWanted)-
+            rankRecoveryPotion(c,p.G.items[a.i.name].gives,potionWanted))[0]?.slot??-1;
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
-        exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&
+        exec.run('potion',['potion','inventory'],()=>potionChannel().allowed&&!bot.inventoryBlocked&&!bot.logistics.reserved&&
           potionResource(c)===potionWanted&&
           fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&
           !p.call('is_on_cooldown','use_hp'),()=>{
+          for(const channel of potionChannel().interrupt){p.call('stop',channel);bot.event('potion.channelInterrupted',{channel,reason:'survival-before-channel'});}
           bot.event('inventory.intent',{kind:'consume',item:item.name,before,journaled:false});
           return p.call('equip',slot);
         },{delay:2000,value:true,observe:()=>bot.count(item.name)<before,
@@ -184,7 +187,7 @@ export function createFarmer(bot){
             bot.event('potion.consumeConfirmed',{item:item.name,before,after:bot.count(item.name)});
            bot.event('inventory.result',{kind:'consume',result:state,journaled:false,valueActionsBlocked:false});}});
       }else if(resource){
-        exec.run('regen',['potion'],()=>!p.call('is_on_cooldown','use_hp'),
+        exec.run('regen',['potion'],()=>potionChannel().allowed&&!p.call('is_on_cooldown','use_hp'),
           ()=>p.call('use_skill','regen_'+resource),{delay:4000});
       }
     }

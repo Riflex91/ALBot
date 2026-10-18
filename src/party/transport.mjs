@@ -148,7 +148,7 @@ export function createTransport(bot){
     try{
       if(mode!=='cm'&&p.ipc&&(parentSiblings().includes(to)||mode==='ipc'))result=p.h.send(to,'albot/1',m);
       else if(mode==='ipc'||(p.headless&&!cfg.general.allowRemoteCM&&mode!=='cm'))return Promise.resolve(failure(to,type,'channel'));
-      else result=p.call('send_cm',to,m);
+      else {if(bot.admission?.allowCM(to,m)===false)return Promise.resolve(failure(to,type,'call-cost'));result=p.call('send_cm',to,m);}
     }catch(e){bot.report('Teamtransport: '+(e.message??e));return Promise.resolve(failure(to,type,'exception'));}
     return Promise.resolve(result).then(value=>deliveryConfirmed(value,to)?success(to,type):failure(to,type,Array.isArray(value?.receivers)&&!value.receivers.includes(to)?'not-delivered':'rejected'),e=>{bot.report('Teamtransport: '+(e.message??e));return failure(to,type,'exception');});
   }

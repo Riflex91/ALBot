@@ -1,3 +1,5 @@
+import {createActionAdmission} from './core/action-admission.mjs';
+import {beginCombatLife} from './combat/recovery-policy.mjs';
 import {automaticSupplyReceiver,onlineSupplyFarmers,discoverAccountRoster} from './items/potion-supply.mjs';
 import {createAdaptive} from './world/adaptive.mjs';
 import {createBosses,bossProfile} from './combat/bosses.mjs';
@@ -229,7 +231,9 @@ export function install(root){
    bot.potionReceipts=createPotionReceipts({session:bot.session,realm:p.realm(),now});
   bot.impactIntents=createImpactIntents({name:me.name,session:bot.session,realm:p.realm(),now});
   bot.learning=createLearning(bot);bot.cloud=createCloudSync(bot);
-  const exec=new Executor({retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
+  bot.admission=createActionAdmission(bot);
+  const publicCall=p.call.bind(p);p.call=(name,...args)=>{bot.admission.record(name,args);return publicCall(name,...args);};
+  const exec=new Executor({admit:(key,resources)=>bot.admission.allow(key,resources),retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
   bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.supplyForecast=createSupplyForecast(bot);bot.accountStock=createAccountStockLedger(bot);bot.services=createServices(bot);bot.objectives=createObjectives(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
@@ -271,6 +275,7 @@ export function install(root){
     // exact, pinned source/destination evidence can release the value lock.
     if(bot.inventoryBlocked&&(['bank.store','gather.fishing','gather.mining','exchange','gold.send','gold.receive'].includes(bot.journal?.kind)))bot.recovery?.reconcile();
     if(now()<retryAfter)return;
+    beginCombatLife(bot);
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
     bot.lossGuard?.sample();if(bot.lossGuard?.blocked){bot.transport.heartbeat();bot.pause('Accountgold: mindestens 85 % Verlust innerhalb des Prüfzeitfensters; manuelle Freigabe erforderlich');return;}
@@ -355,7 +360,7 @@ export function install(root){
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,actionAdmission:bot.admission.status(),combatLife:bot.combatLife??null,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

@@ -31,6 +31,8 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.merchant.properties,{
 
 });
 
+Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{callCostCeiling:number('Normale Aktionskosten im 4-Sekunden-Fenster (Überlebensreserve separat)',160,60,170)});
+FULL_DESCRIPTOR.schema.properties.world.properties.eventGraceMs=number('Beobachtungslücke bei Events maximal halten (ms)',2500,0,10000);
 Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{gearSynergy:bool('Ausrüstung und Klassenkombination bei Teamwahl berücksichtigen',true),advancedSkills:bool('Situationsabhängige Paladin-/Mage-Fähigkeiten',true)});
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.production.properties,{

@@ -156,3 +156,18 @@ test('fully observed weak secondary aggro may be defended but missing attacker s
  assert.equal(unknown.viable,false);
  assert.equal(unknown.reason,'other-team-aggro-unverified');
 });
+
+test('rangers select the same weakest endangered teammate and lowest HP attacker',async()=>{
+ const {chooseEmergencyFocus}=await import('../src/combat/farmer.mjs');
+ const team=[{name:'R1',hp:900,max_hp:1000},{name:'R2',hp:800,max_hp:1000},
+  {name:'P',hp:200,max_hp:1000}];
+ const mobs=[
+  {id:'r1',target:'R1',hp:10},
+  {id:'p2',target:'P',hp:200},
+  {id:'p1',target:'P',hp:100},
+  {id:'outside',target:'Stranger',hp:5}
+ ];
+ assert.equal(chooseEmergencyFocus(mobs,team).id,'p1');
+ assert.equal(chooseEmergencyFocus([...mobs].reverse(),team).id,'p1');
+ assert.equal(chooseEmergencyFocus(mobs,[]),null);
+});

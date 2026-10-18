@@ -1,4 +1,4 @@
-import {identity,variantCount,surplusQuantity} from '../core/policy.mjs';
+import {identity,variantCount,surplusQuantity,protectedItem} from '../core/policy.mjs';
 import {isAchievementCarrier} from '../items/achievement-utility.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
@@ -347,4 +347,78 @@ function mutationEconomics(i,{heldOverride=null}={}){
    chances.set(key,{value,at:Date.now(),source:'server-preview',scroll,offering});
    at=0;
   }
- },status:()=>({targets:evaluated,allocations:allocation,decisions:[...decisionLedger.values()],bankEvidence:bot.bank?.catalogStatus?.()??null}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}
+ },explainInventorySlot(slot){
+   const item=p.c.items?.[slot];
+   // Read only: never evaluate the auto-disposition planner for this query.
+   // Its cached decision is informative, not current execution permission.
+   const explicit=item?bot.economy?.explicit?.(item,'inventory')??null:null;
+   const observed=item?decisionLedger.get(identity(item))??null:null;
+   return describeInventoryDisposition({item,slot,inventory:p.c.items??[],
+    G:p.G,explicit,autoDecision:observed,
+    reserved:item?bot.production?.reservedQuantity?.(item)??0:0,
+    actionRemaining:explicit?bot.economy?.remaining?.(explicit)??true:true,
+    valueBlocked:!!(bot.journal||bot.inventoryBlocked),now:Date.now()});
+  },status:()=>({targets:evaluated,allocations:allocation,decisions:[...decisionLedger.values()],bankEvidence:bot.bank?.catalogStatus?.()??null}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}
+
+
+// W01: an observation, not an alternate planning/dispatch authority.
+// This deliberately does not call disposition(), rules(), a bank transaction,
+// or the Executor: a diagnostic request must never initiate a value action.
+export function describeInventoryDisposition({
+ item,slot,inventory=[],G={},explicit=null,autoDecision=null,
+ reserved=0,actionRemaining=true,valueBlocked=false,now=Date.now()
+}={}){
+ const invalid={version:1,mode:'read-only',executable:false,state:'observation-unverified'};
+ if(!Array.isArray(inventory)||!Number.isSafeInteger(slot)||slot<0||
+    slot>=inventory.length||inventory[slot]!==item||!item?.name)
+  return {...invalid,reason:'invalid-or-changed-inventory-slot'};
+ const variant=identity(item);
+ const copies=inventory.filter(i=>i&&identity(i)===variant);
+ const quantitiesValid=copies.every(i=>Number.isSafeInteger(i.q??1)&&(i.q??1)>0);
+ const local=quantitiesValid?copies.reduce((n,i)=>n+(i.q??1),0):null;
+ const countsValid=Number.isSafeInteger(local)&&local>=0&&
+  Number.isSafeInteger(reserved)&&reserved>=0&&
+  Number.isSafeInteger(explicit?.keep??0)&&(explicit?.keep??0)>=0&&
+  Number.isSafeInteger(explicit?.teamReserve??0)&&(explicit?.teamReserve??0)>=0;
+ const keep=explicit?.keep??0,teamReserve=explicit?.teamReserve??0;
+ const free=countsValid?surplusQuantity(local,reserved,keep,teamReserve):null;
+ const purposes=itemPurposes(G,item);
+ const hardProtected=protectedItem(item)||isAchievementCarrier(item);
+ const source=explicit?'explicit':autoDecision?'last-observed-auto':'none';
+ const proposedAction=explicit?.action??autoDecision?.nextStep??null;
+ const amount=Number.isSafeInteger(item.q??1)&&(item.q??1)>0?item.q??1:null;
+ const batch=Number.isSafeInteger(explicit?.batch)&&explicit.batch>0?
+  explicit.batch:null;
+ const slotUpperBound=free===null||amount===null?null:Math.min(free,amount,batch??amount);
+ let state='rule-observed',reason='';
+ if(valueBlocked){state='value-effect-unclear';reason='unresolved-value-journal';}
+ else if(hardProtected){state='protected';reason='physical-item-protection';}
+ else if(!countsValid){state='observation-unverified';reason='unknown-or-invalid-quantity';}
+ else if(free===0){state='no-surplus';reason='reservation-or-keep-bound';}
+ else if(explicit&&!actionRemaining){state='action-limit';reason='explicit-rule-action-limit';}
+ else if(!explicit&&purposes.protected){state='purpose-protected';reason='automatic-purpose-guard';}
+ else if(!explicit&&!autoDecision){state='no-rule-observed';reason='no-observed-disposition-candidate';}
+ else if(!explicit){state='auto-candidate-observed';reason='cached-not-currently-authorized';}
+ else {state='explicit-rule-observed';reason='rule-exists-not-dispatch-authority';}
+ const destination=proposedAction==='send'?explicit?.recipient??null:
+  proposedAction==='bank'?'bank':proposedAction==='sell'?'npc':
+  proposedAction==='list'?'market':null;
+ const potentialFreed=(['sell','send','bank','exchange','dismantle'].includes(proposedAction)&&
+  amount!==null&&slotUpperBound!==null&&slotUpperBound>=amount)?1:0;
+ return {version:1,mode:'read-only',executable:false,state,reason,
+  observation:{at:now,source:'current-client-inventory',freshForDispatch:false},
+  item:{name:item.name,level:item.level??0,stat_type:item.stat_type??'',
+   property:item.p??'',title:item.title??'',variant,slot,slotQuantity:amount},
+  stock:{local,otherAccountLocations:'not-proven-by-this-view'},
+  reservation:{grossQuantity:countsValid?reserved:null,
+   reasons:reserved>0?['active-production-allocation; IDs not exposed']:[],
+   keep:countsValid?keep:null,teamReserve:countsValid?teamReserve:null},
+  purpose:{known:purposes.known,tags:purposes.tags,automaticProtection:purposes.protected},
+  observedRule:{source,name:explicit?.name??null,action:proposedAction,
+   lastAutomaticObservationAt:autoDecision?.at??null,
+   automaticReason:autoDecision?.reason??null},
+  possibleUnreservedQuantity:free,slotRemovalUpperBound:slotUpperBound,
+  destination,physicalSlotEffect:{confirmed:false,potentialFreedSlots:potentialFreed,
+   reason:'intermediate capacity, recipient and post-dispatch result not proven'},
+  nextRecheck:'next planner tick and mandatory fresh executor guard'};
+}

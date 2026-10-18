@@ -32,7 +32,7 @@ export function sharedFarmMarchDestination(follower,leader,realm){
   in:compact.in??compact.map,x:compact.x,y:compact.y,
   target:compact.target
  }:null);
- if(!leader?.running||leader.rip||leader.realm!==realm||
+ if(!leader?.running||leader.rip||leader.questVisit===true||leader.squadQuestVisit===true||leader.realm!==realm||
     !plan||plan.realm!==realm||!Number.isFinite(plan.x)||
     !Number.isFinite(plan.y)||typeof plan.map!=='string')return null;
  const followerEnRoute=!samePlace(follower,plan)||distance(follower,plan)>75;
@@ -461,8 +461,14 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        }
       }
     }
+    // Help an existing teammate fight BEFORE the ordinary shared farm march.
+    // Otherwise the follower can walk away along the new endpoint while an
+    // ally is still engaged. This never authorizes a new neutral pull.
+    const escortLeader=bot.transport.fresh(bot.leader);
+    if(cfg.party.enabled&&me.name!==bot.leader&&escortLeader?.running&&
+       helpEngagedTeamFight(escortLeader))return;
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
-    const leader=bot.transport.fresh(bot.leader);
+    const leader=escortLeader;
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}
       // All selected Farmers use the Leader's ACTUAL farm endpoint,
@@ -495,7 +501,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         Math.max(20,followerReassemblyDistance(cfg)/2))},'follow');
        bot.skills.rotation(null);return;
       }
-      if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
+      if(leader.questVisit===true||leader.squadQuestVisit===true){waitSafely('Monsterhunt-NPC-Besuch: bei der Gruppe bleiben');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
     // The leader's first neutral pull is admitted only after all selected

@@ -127,9 +127,10 @@ export function createBank(bot){
     items.flatMap((item,slot)=>item&&e.safe(item)?[{pack,slot,item:{...item}}]:[]):[]).slice(0,512);
    const fingerprintNow=JSON.stringify(rows.filter(([pack])=>packMap(pack)===p.c.map)
     .map(([pack,items])=>[pack,items.map(item=>item?fingerprint(item):null)]));
-   if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint||catalog.gold!==p.c.bank?.gold||Date.now()-catalog.observedAt>120000){
+   const liveGold=Number.isSafeInteger(p.c.bank?.gold)&&p.c.bank.gold>=0?p.c.bank.gold:null;
+   if(!lastAtBank||fingerprintNow!==lastVerifiedFingerprint||catalog.gold!==liveGold||Date.now()-catalog.observedAt>120000){
     // New verified visit or a server-observable bank state revision.
-    const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),gold:Number.isSafeInteger(p.c.bank?.gold)&&p.c.bank.gold>=0?p.c.bank.gold:null,
+    const next={version:1,owner:me.name,realm:p.realm?.()??'',observedAt:Date.now(),gold:liveGold,
      revision:(catalog.revision??0)+1,rows:current,capacity:rows.map(([pack,items])=>({pack,map:packMap(pack),size:items.length,free:items.filter(i=>!i).length}))};
     // Verified in-session evidence is useful even in a minimal or readonly
     // client; persistence is best effort and never grants mutation authority.

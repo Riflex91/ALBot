@@ -1,6 +1,9 @@
 import { DESCRIPTOR } from './schema.mjs';
 export const SLOT_LIMIT = 1048576;
 export const SOFT_LIMIT = 921600;
+// Separate signed bootstrap download ceiling; SLOT_LIMIT remains for legacy
+// standalone CODE exports and does not restrict a remote runtime package.
+export const BOOTSTRAP_RUNTIME_LIMIT = 8388608;
 const badKeys = new Set(['__proto__','constructor','prototype']);
 const own = (o,k) => Object.prototype.hasOwnProperty.call(o,k);
 export function parseData(source) {
@@ -177,7 +180,7 @@ export async function checkPackage(data){
   if(data?.format!=='albot-package'||data.formatVersion!==1)throw Error('Bot-Paketformat unbekannt.');
   checkDescriptor(data.descriptor);const r=data.runtime;
   if(!r||r.contractVersion!==1||r.schemaId!==data.descriptor.schemaId||typeof r.code!=='string'||!r.code.trim()||typeof r.version!=='string'||!/^[a-zA-Z0-9.+_-]{1,80}$/.test(r.version)||!/^[a-f0-9]{64}$/.test(r.sha256??''))throw Error('Runtime-Vertrag oder Versions-/Hashangabe ungültig.');
-  if(new TextEncoder().encode(r.code).length>SLOT_LIMIT)throw Error('Runtime überschreitet bereits das CODE-Limit.');
+  if(new TextEncoder().encode(r.code).length>BOOTSTRAP_RUNTIME_LIMIT)throw Error('Runtime überschreitet die 8-MiB-Bootstrap-Downloadgrenze.');
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(r.code));
   if(Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')!==r.sha256)throw Error('Bot-Paket ist beschädigt: SHA-256 stimmt nicht.');
   return data;

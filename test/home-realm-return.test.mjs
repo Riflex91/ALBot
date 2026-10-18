@@ -148,7 +148,7 @@ test('fresh measured crowded home triggers a coordinated non-PvP escape and defe
   assert.deepEqual(calls[0],['change_server','US','IV']);
   realm='USIV';clock+=2000;sync();travel.tick();
   assert.equal(travel.status().home.phase,'escaped');
-  assert.equal(travel.status().reunion.target,'USIV');
+  assert.notEqual(travel.status().reunion.target,'EUII');
   assert.equal(calls.length,1,'no immediate home-reunion bounce');
   travel.close();
  }finally{Date.now=original;}

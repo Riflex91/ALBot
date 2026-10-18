@@ -180,7 +180,7 @@ export function balancedFarmUtility(xp,gold){
  return Math.pow(Math.max(1,xp),.65)*Math.pow(Math.max(1,gold),.35);
 }
 export function createTeamPlan(bot){
- const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0};let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
+ const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0},routeBlockedAt=0;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
   return farmAreaHistoryKey(p.realm(),new Date(now).getUTCHours(),spawnKey,
@@ -445,6 +445,17 @@ export function createTeamPlan(bot){
     failed:point=>bot.movement.failedRecently?.(point,'farm')===true,
     maxGap:165,step:85});
    if(!route.point){
+    const now=Date.now();if(!routeBlockedAt)routeBlockedAt=now;
+    if(now-routeBlockedAt>=45000){
+     const old=current,until=now+300000;
+     dangerousAreas.set(old.key,until);
+     bot.event?.('plan.quarantined',{key:old.key,target:old.target,map:old.map,
+      until,reason:'repeated-unreachable-squad-march-route'});
+     bot.event?.('party.marchRouteAbandoned',{plan:old.id,blockedMs:now-routeBlockedAt,
+      reason:'no-navigable-safe-route'});
+     bot.movement.stop();current=null;last=0;routeBlockedAt=0;
+     return true;
+    }
     bot.reason='Gruppenmarsch: Weg blockiert, sichere Umleitung fehlt';
     if(Date.now()-marchState.at>12000||marchState.reason!==route.reason){
      marchState={reason:route.reason,peer:'',at:Date.now()};
@@ -453,7 +464,7 @@ export function createTeamPlan(bot){
     }
     return true;
    }
-   destination=route.point;
+   routeBlockedAt=0;destination=route.point;
    if(route.reason==='native-path-around-obstacle'){
     if(Date.now()-marchState.at>12000||marchState.reason!==route.reason){
      marchState={reason:route.reason,peer:'',at:Date.now()};

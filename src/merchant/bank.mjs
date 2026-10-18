@@ -428,7 +428,7 @@ export function createBank(bot){
  // may be the source of a withdrawal or a subsequent sale.
  function stageBankSale(selected,reason,explicitOnly=false){
   if(pending||reclaiming||bot.journal||bot.inventoryBlocked||
-     bot.logistics?.reserved||bot.exec.busy('inventory')||bot.free()<1||
+     bot.logistics?.reserved||bot.exec?.busy?.('inventory')||bot.free()<1||
      !p.c.bank||me.name!==cfg.party.merchant)return false;
   const {item,pack,slot}=selected,q=item.q??1,
    dest=p.c.items.findIndex(i=>!i),before=e.count(item),

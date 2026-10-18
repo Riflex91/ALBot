@@ -1,0 +1,31 @@
+name: Temporary safety-preflight personalized bundle sync
+on:
+  push:
+    branches:
+      - fix/team-road-aggro-merchant-bank-recovery-20261018
+    paths:
+      - .github/workflows/temporary-safety-preflight-bundle-20261018.yml
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/team-road-aggro-merchant-bank-recovery-20261018
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js
+          git diff --cached --exit-code && exit 0
+          git commit -m "chore: sync roadside emergency preflight and protected NPC squad bundle"
+          git push origin HEAD:fix/team-road-aggro-merchant-bank-recovery-20261018

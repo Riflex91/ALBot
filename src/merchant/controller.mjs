@@ -978,13 +978,14 @@ export function createMerchant(bot){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
    for(const [phase,r] of [['inventory',inventory],['production',production]]){
     if(!r||!e.remaining(r)||['keep','send','consume'].includes(r.action))continue;
-    if(['sell','bank','list','exchange'].includes(r.action)&&e.spare(slot,r)<1)continue;
+    if(['sell','bank','list','exchange','swap'].includes(r.action)&&e.spare(slot,r)<1)continue;
     if(['upgrade','compound'].includes(r.action)&&(i.level??0)>=r.targetLevel)continue;
     let run;if(r.action==='sell')run=()=>{if(r._autoDisposition===true&&bot.market?.sellToBid?.(slot,r))return true;const ask=me.role==='merchant'?bot.marketDemand?.proposal(i,r):null;return ask?bot.market.listing(slot,ask):e.npcSell(slot,r);};
     if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
     if(me.role==='merchant'){
      if(r.action==='bank')run=()=>bot.bank.store(slot,r);
      if(r.action==='list')run=()=>bot.market.sellToBid?.(slot,r)||bot.market.listing(slot,r);
+     if(r.action==='swap')run=()=>bot.swaps?.tick(slot,r)??false;
      if(r.action==='exchange')run=()=>bot.production.exchange(slot,r);
      if(['upgrade','compound'].includes(r.action))run=()=>bot.production.mutate(slot,r);
     }

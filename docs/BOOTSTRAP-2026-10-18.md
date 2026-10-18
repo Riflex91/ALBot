@@ -37,3 +37,13 @@ Die Codefenster-Grenze betrifft weiterhin den **Launcher**, nicht die nachgelade
 ## Freigabegrenze
 
 **Keine Liveinstallation oder Änderung des Spiel-CODE-Slots in dieser Runde.** Bevor der Launcher zur Standardstartdatei wird, sind ein isolierter Browser-Smoke-Test ohne Autostart-Wertaktionen, CORS-/Eval-Funktionstest, ein Neustart mit korrektem Digest und ein absichtlicher Hash-Fehlertest im CODE-Runner nötig. Bank-/NPC-/Goldaktionen sind nicht Bestandteil dieser Bootstrap-Abnahme.
+
+## Autostart-Smoke-Test (18.10.2026)
+
+Die personalisierte Bootstrap-Konfiguration enthält bereits `general.autostart=true`. Nach der erfolgreichen SHA-256-Prüfung verlangt der Bootstrap nun bei aktiviertem Autostart ausdrücklich `ALBot.status().running===true`. Bei abgelehntem Start wird `ALBotBootstrapStatus.phase='blocked'` gesetzt, einschließlich des Grundes; ein gelungener Start erzeugt die Meldung **ALBot Bootstrap: SHA-256 OK; Autostart AKTIV** und `phase='running'`.
+
+**[GitHub Actions 39141853243](https://github.com/Riflex91/ALBot/actions/runs/39141853243): Linux 1.348/1.348 und Windows 1.348/1.348**, alle drei Jobs erfolgreich. Vollständiger persönlicher JSON-Vorher-/Nachhervergleich bestanden. Bootstrap 11.240 UTF-8-Bytes, unveränderter Runtime-SHA256 `e18f1c66ddc216caf62d162207ad98817568e0af968276082a1bcd3db5797319`. Aktualisierter Loader wurde im Repo veröffentlicht (Sync-Commit `342b2fb`); der temporäre CI-Workflow ist danach entfernt worden.
+
+**Manueller Live-Test:** Zuerst nur einen Farmer auswählen (z. B. `My_Ranger1`), nicht den Merchant. Bestehenden CODE-Inhalt und Slot sichern, den laufenden CODE-Runner stoppen, den vollständigen GitHub-Inhalt `dist/albot.bootstrap.js` in einen Testslot kopieren und starten. Bei eingeschaltetem Autostart sind echte Spielaktionen (Bewegung/Kampf) möglich. Das Game-Log muss **SHA-256 OK; Autostart AKTIV** zeigen; `ALBot.status().running` muss `true` sein. Bei `blocked`, CORS/CSP-Fehlern oder unerwartetem Verhalten den CODE-Runner stoppen und den alten Slot wiederherstellen. Ein bloßes Speichern des Slots ersetzt keinen bereits laufenden CODE-Runner.
+
+Die erfolgreiche Node-/Windows-CI ist **kein** tatsächlicher Game-Iframe-Test. Browser-Fetch, WebCrypto, CORS und indirektes globales Eval müssen bei dieser manuellen Live-Abnahme geprüft werden.

@@ -540,7 +540,9 @@ export function createBank(bot){
   const record={version:2,owner:me.name,realm:p.realm(),at:Date.now(),
    item:{...item},pack,slot,dest,before,bankBefore,
    quantity:q,gold:p.c.gold,sourcePrint:fp,
-   expectedSaleGold:e.value(item)*q,reason,explicitOnly};
+   expectedSaleGold:e.value(item)*q,reason,explicitOnly,
+   prepared:{at:Date.now(),kind:'bank.reclaim',session:bot.session,
+    realm:p.realm(),pack,slot,dest,sourcePrint:fp}};
   if(!validateBankReclaimRecord(record,{owner:me.name,realm:p.realm()}).valid)
    return false;
   if(!p.write(reclaimKey,record))return false;
@@ -730,6 +732,12 @@ export function createBank(bot){
     e.note('Bankfreigabe: Quellbank nicht beobachtet ('+offsite.reason+'); Rückkehr zur Bank');
     return true;
    }
+  }else if(evidence.phase==='legacy-unchanged-uncertain'){
+   // V2 written before the pre-dispatch protocol never proves a request
+   // was unsent. Preserve it and require an independently checked outcome.
+   bot.inventoryBlocked=true;
+   e.note('Bankfreigabe: altes V2-Journal ohne Versandsnachweis; manuell prüfen');
+   return true;
   }else if(evidence.phase==='dispatched-unchanged'){
    // A dispatched request can complete after the last observation or
    // after a browser restart. Do not clear or repeat it automatically.
@@ -798,7 +806,8 @@ export function createBank(bot){
      owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items}):null;
   const needsReview=collision||
    ['ambiguous','invalid'].includes(partial?.phase)||
-   ['ambiguous','invalid','dispatched-unchanged'].includes(reclaim?.phase);
+   ['ambiguous','invalid','dispatched-unchanged',
+    'legacy-unchanged-uncertain'].includes(reclaim?.phase);
   return {
    mode:'read-only-no-authorization',executable:false,
    blocked:collision||!!bot.inventoryBlocked||!!bot.journal,
@@ -816,6 +825,7 @@ export function createBank(bot){
     quantity:reclaiming.quantity,
     withdrawalRecorded:!!reclaiming.withdrawal,
     dispatchRecorded:!!reclaiming.dispatch,
+    preparationRecorded:!!reclaiming.prepared,
     saleConfirmed:reclaiming.saleConfirmed===true,
     offsiteEligible:offsite?.eligible??false,
     offsiteReason:offsite?.reason??null}:null

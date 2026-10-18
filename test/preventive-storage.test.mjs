@@ -160,7 +160,7 @@ test('a failed mutation is deferred so another cleanup can run and repeat travel
  f.planner.tick();assert.equal(previews,1);
 });
 test('preventive bank reclaim can authorize proven NPC-replaceable base gear before the bank is full',()=>{
- const f=fixture(12),records=[],memory=new Map();f.c.map='bank';f.c.in='bank';f.c.x=0;f.c.y=-100;
+ const f=fixture(12),records=[],memory=new Map();f.c.map='bank';f.c.in='bank';f.c.x=0;f.c.y=-100;f.c.gold=1000;
  f.c.bank={gold:1000,items0:[...Array.from({length:39},()=>({name:'junk',level:0})),null,null,null]};
  f.G.bank_packs={items0:['bank',0,0]};f.bot.cfg.merchant.bankReclaim=true;f.bot.decisionEpoch=1;
  Object.assign(f.bot.p,{read:k=>memory.get(k),write:(k,v)=>{memory.set(k,structuredClone(v));return true;},call:()=>true});

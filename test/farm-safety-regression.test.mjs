@@ -150,3 +150,18 @@ test('team plan ranking uses previously observed semantic-gear spawn samples',()
  assert.equal(first?.pressure,'spawn-starved','known empty spawn should remain visible in ranking');
  assert.ok(first.xpPerHour<30000,'recorded poor throughput must lower theoretical 36000 XP/h');
 });
+
+test('fresh-pressure aggregation does not interpret missing or stale spawn samples as safe',async()=>{
+ const {summarizeSpawnPressure}=await import('../src/world/team-plan.mjs');
+ const now=1000000;
+ assert.equal(summarizeSpawnPressure([],now).pressure,null);
+ assert.equal(summarizeSpawnPressure([{key:'bee',observedAt:now-700000,
+  evidenceSeconds:90,pressureRatio:.75}],now).pressure,null);
+ const valid=[{key:'main:bee:15',observedAt:now-1000,evidenceSeconds:95,
+  pressureRatio:.75,pressure:'contested'},{key:'main:bee:18',
+  observedAt:now-1000,evidenceSeconds:95,pressureRatio:0,pressure:'healthy'}];
+ const result=summarizeSpawnPressure(valid,now);
+ assert.equal(result.pressure,.75);
+ assert.equal(result.spawns.length,2);
+ assert.equal(result.measuredAt,now-1000);
+});

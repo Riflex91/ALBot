@@ -1038,7 +1038,7 @@ export function createMerchant(bot){
    // A gold-only/stack-preserving reward is not a reason to abandon an
    // authorized NPC worksite for speculative gear or token/coin banking.
    const step=job.id==='production'?bot.production?.status?.()?.steps?.[0]:null;
-   const detour=['tracker.exchange','bank.gold','bank.consolidate','bank.capacity'].includes(job.id)||
+   const detour=['tracker.exchange','bank.gold','bank.consolidate','bank.capacity','market.background','mluck.service'].includes(job.id)||
     job.id==='production'&&['retrieve','marketBuy','upgrade','compound'].includes(step?.kind);
    if(worksiteHeld&&detour){
     if(Date.now()-lastWorksiteDeferral>20000){

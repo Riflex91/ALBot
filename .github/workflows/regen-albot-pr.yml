@@ -7,6 +7,9 @@ on:
       - .github/workflows/regen-albot-pr.yml
       - src/production/gear-fairness.mjs
       - test/roadmap-w05-cross-role-fairness.test.mjs
+      - editor/lib/contract.mjs
+      - test/integration.test.mjs
+      - test/bootstrap-runtime-size.test.mjs
 permissions:
   contents: write
 jobs:

@@ -1,4 +1,4 @@
-import {gearCatchUpPriority} from './gear-fairness.mjs';
+import {gearCatchUpPriority,crossRoleGearPriority} from './gear-fairness.mjs';
 import {identity} from '../core/policy.mjs';
 export function gearScore(stats,role,ctype=''){
  const weights=role==='tank'?{hp:.01,armor:1,resistance:1,vit:2,vitality:2}:role==='healer'?{attack:2,int:3,mp:.02,frequency:100,armor:.3,resistance:.3,hp:.004,speed:.2}:role==='economy'?{gold:10,luck:10,speed:2,mp:.01,armor:.1,resistance:.1,hp:.002}:{attack:2,apiercing:.3,rpiercing:.3,str:1,dex:1,int:1,frequency:100,crit:2,armor:.2,resistance:.2,hp:.002,mp:.001,speed:.2};
@@ -103,8 +103,26 @@ export function createGear(bot){
  }return result.slice(0,20);}
  function targets(){
   const fairness=g=>{
-   const member=cfg.characters.find(c=>c.name===g.character),profile=g.character===me.name?snapshot():profiles[g.character];
-   return member?gearCatchUpPriority(profile,cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>c.name===me.name?snapshot():profiles[c.name])):0;
+   const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
+   if(!member)return 0;
+   const current=name=>name===me.name?snapshot():profiles[name];
+   const profile=current(g.character);
+   const sameRole=cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>current(c.name));
+   const classify=(c,p)=>c.gearRole==='auto'?
+    (p?.class==='priest'?'healer':p?.class==='merchant'?'economy':'dps'):
+    (['healer','tank','economy','dps'].includes(c.gearRole)?c.gearRole:'dps');
+   const cohort=cfg.characters.filter(c=>c.enabled).map(c=>({
+    profile:current(c.name),role:classify(c,current(c.name))}));
+   // Only confirmed equip receipts can start the bounded waiting-age clock.
+   // A missing receipt never implies that another character has waited.
+   const receipts=bot.allocation?.status?.()??[];
+   const last=Math.max(0,...receipts.filter(r=>r.recipient===g.character&&
+    r.state==='equipped'&&Number.isSafeInteger(r.settled)&&
+    r.settled>0).map(r=>r.settled));
+   return Math.min(75,gearCatchUpPriority(profile,sameRole)+
+    crossRoleGearPriority(profile,cohort,{
+     role:classify(member,profile),slot:g.slot,
+     lastImprovedAt:last||null}));
   };
   const automatic=(bot.intelligence?.targets()??[]).map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
   const result=[...automatic,...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
@@ -183,7 +201,7 @@ export function createGear(bot){
     priority,urgentVacancy:true});
   }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
-   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)+gearCatchUpPriority(profile,cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>c.name===me.name?snapshot():profiles[c.name]))});
+   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)+fairness({character:member.name,slot})});
   }}return result;
  }
  function goals(){if(!cfg.production.gear)return [];return targets().flatMap(g=>{

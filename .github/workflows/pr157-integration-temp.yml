@@ -66,6 +66,10 @@ jobs:
         run: npm run sign:release
       - name: Verify signed runtime and manifest bytes
         run: npm run verify:release
+      - name: Verify updated source-reviewed main bootstrap contract
+        run: |
+          node scripts/pr157-bootstrap-contract-temp.mjs
+          node scripts/verify-bootstrap-contract.mjs
       - name: Verify no publish or push
         run: echo "READ_ONLY_DRY_RUN_COMPLETE"
 

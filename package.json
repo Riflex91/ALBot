@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:bootstrap": "node scripts/build-bootstrap.mjs --write",
+    "check:bootstrap": "node scripts/build-bootstrap.mjs --check",
     "test": "node --test test/*.test.mjs editor/test/*.test.mjs",
     "build:editor": "node editor/build.mjs",
     "test:editor": "node --test editor/test/*.test.mjs"

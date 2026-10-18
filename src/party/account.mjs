@@ -8,6 +8,13 @@ export function foreignRunningFarmer(member,realm){
  return member?.running===true&&member.realm!==realm;
 }
 export function selectedFarmerAvailable(member,{selected=false,lastSeen=0,now=Date.now(),realm}={}){
+ // An already selected, recently alive teammate should not vanish from
+ // the roster during the ordinary 15s respawn. Otherwise the coordinator
+ // briefly selects only the Priest and both Rangers watch instead of farm.
+ if(member?.rip===true&&member.running===true&&member.realm===realm&&
+    !member.inventoryBlocked&&selected&&Number.isFinite(lastSeen)&&
+    lastSeen>0&&Number.isFinite(now)&&now>=lastSeen&&now-lastSeen<=45000)
+  return true;
  if(member&&(!member.running||member.rip||member.inventoryBlocked||member.realm!==realm))return false;
  if(member?.running&&member.realm===realm)return true;
  return selected&&Number.isFinite(lastSeen)&&lastSeen>0&&

@@ -1,5 +1,5 @@
 import {combatMembers,compositionOptions,farmThroughput} from './composition.mjs';
-import {verifiedTeamRoleOwner,chooseFarmAreaSwitch,chooseHuntSpawn} from './spawn-choice.mjs';
+import {verifiedTeamRoleOwner,chooseFarmAreaSwitch,chooseHuntSpawn,liveSpawnCompetition} from './spawn-choice.mjs';
 import {materialEvent} from '../production/probability.mjs';
 import {materialQuotaCap,materialRequestHasWork} from '../production/material-quotas.mjs';
 import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
@@ -154,6 +154,12 @@ import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHu
 // A pending, unobservable or unsafe monsterhunt may not starve the shared
 // farming plan. Only the verified quest monster earns quest priority.
 // Existing safely ranked farm targets remain available as temporary work.
+// Objective labels may change while farmers are already at the same monster
+// spawn. That is not evidence that a new location is better.
+export function shouldHoldOrdinaryLocation(current,next,selectedKind,shellRefill=false){
+ return !shellRefill&&selectedKind==='farm'&&
+  ['farm','hunt'].includes(current?.kind)&&current.target===next?.target;
+}
 export function selectHuntArea(ranking,hunt){
  const ordinary=ranking?.[0]??null;
  if(!hunt)return {area:ordinary,kind:'farm',deferred:null};
@@ -322,10 +328,11 @@ export function createTeamPlan(bot){
   });
   let hunt=orderedHunt();
   const types=[...new Set([...candidates(),...(hunt?.phase==='combat'&&p.G.monsters?.[hunt.monster]?[hunt.monster]:[])])].filter(allowed),locations=spawnLocations(p.G,types,cfg.world.excludedMaps,cfg.farming.pvp),teamDps=Math.max(1,combat.reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0));
-  ranking=locations.filter(s=>!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);
-   const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:balancedFarmUtility(xp,gold);return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,evidenceSeconds:learned?.seconds??0,observedAt:learned?.at??null,
-   pressureRatio:Math.max(empty,foreign>=2?.75:0),
-   pressure:empty>.6?'spawn-starved':foreign>=2?'contested':'healthy'};}).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
+  ranking=locations.filter(s=>!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);const live=liveSpawnCompetition(s,p.entities,bot.monsters(),bot.teamNames,p.c);
+   const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:balancedFarmUtility(xp,gold);return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+live.players*.8+live.fighters*3+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,evidenceSeconds:learned?.seconds??0,observedAt:learned?.at??null,
+   pressureRatio:Math.max(empty,foreign>=2?.75:0),livePlayers:live.players,liveFighters:live.fighters,
+   occupancyObserved:live.observed,
+   pressure:empty>.6?'spawn-starved':foreign>=2||live.fighters>0?'contested':'healthy'};}).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
   // Rank the complete set of *approved* spawns before deciding a quest has
   // nowhere safe to run. Persist only an ordering decision, never forge quest
   // completion or clear any farmer's actual monsterhunt state.
@@ -386,7 +393,10 @@ export function createTeamPlan(bot){
   const old=ranking.find(r=>r.key===current?.key);
   // Keep existing hold-time for safe ordinary farming while waiting for
   // the active farmer's quest NPC or an independently verified hunt spawn.
-  const holdOrdinary=!shellRefill&&selected.kind==='farm'&&current?.kind==='farm';
+  // A hunt -> ordinary-farm transition does not imply travel to a different
+  // spawn of the SAME monster. Keep the physical location's hold time even
+  // when the plan kind and reason change.
+  const holdOrdinary=shouldHoldOrdinaryLocation(current,next,selected.kind,shellRefill);
   switchAdvice=null;
   // Monsterhunt priority must not erase *location* hysteresis. A switch
   // between two osnake spawns is still an ordinary travel decision, not a

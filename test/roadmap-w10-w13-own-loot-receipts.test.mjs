@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ownChestShare,createOwnLootReceipts} from '../src/items/loot-receipts.mjs';
+import {ownChestShare,createOwnLootReceipts,lootPurposeEvidence} from '../src/items/loot-receipts.mjs';
 import {createPorts} from '../src/runtime/ports.mjs';
 import {fitHeartbeat} from '../src/party/transport.mjs';
 
@@ -142,4 +142,86 @@ test('W13 port listener attaches to official chest_opened and detaches cleanly',
  assert.equal(events.length,1);
  stop();assert.equal(listeners.has('chest_opened'),false);
  assert.equal(createPorts({parent:{}}).watchChestOpened(()=>{}),null);
+});
+
+test('W10/W13 confirmed loot receipt links to a live gear demand without authorizing transfer',()=>{
+ const f=fixture();f.bot.production={reservedQuantity:()=>1,
+  activeGoal:{item:'ring',level:0,recipient:'Ranger'}};
+ f.bot.gear={goals:()=>[{item:'ring',level:0,recipient:'Ranger',
+  quantity:1,gearSlot:'ring1'}]};
+ f.receipts.beforeLoot('X');
+ f.receipts.observeChest(chest([{name:'ring'}],5));
+ f.items[1]={name:'ring',level:0};f.setGold(105);f.receipts.sample();
+ const hints=f.receipts.status().purposeHints;
+ assert.equal(hints.length,1);
+ assert.equal(hints[0].name,'ring');
+ assert.equal(hints[0].observedUnits,1);
+ assert.equal(hints[0].currentUnits,1);
+ assert.equal(hints[0].grossReservedUnits,1);
+ assert.equal(hints[0].uncommittedEstimate,0);
+ assert.deepEqual(hints[0].candidateRecipients,['Ranger']);
+ assert.equal(hints[0].matchesCurrentProductionGoal,true);
+ assert.equal(hints[0].dispatchAuthorized,false);
+});
+test('W13 multiple receipts of one variant cannot double-allocate physical inventory',()=>{
+ const item={name:'ring',level:0};
+ const variant=JSON.stringify(['ring',0,'','','','','','', '']);
+ const f=fixture(),proofs=[
+  {id:'X',physical:true,at:1000,items:[{variant,quantity:1}]},
+  {id:'X',physical:true,at:1001,items:[{variant,quantity:1}]},
+  {id:'Y',physical:true,at:1002,items:[{variant,quantity:1}]}];
+ // Use the SAME canonical runtime identity including lock booleans.
+ const canonical=JSON.stringify([item.name,0,'','','','','','','']);
+ const normalized=proofs.map(p=>({...p,items:[{variant:canonical,quantity:1}]}));
+ const hints=lootPurposeEvidence({proofs:normalized,
+  inventory:[item],reserve:()=>1,gearGoals:[],now:1200});
+ assert.equal(hints.length,1);
+ assert.equal(hints[0].observedUnits,1,'a confirmed amount never exceeds actual units');
+ assert.equal(hints[0].uncommittedEstimate,0);
+});
+test('W13 protected stock and unknown reservation authority cannot become free supplies',()=>{
+ const item={name:'ring',level:0,l:'s'};
+ const variant=JSON.stringify(['ring',0,'','','','','','s','']);
+ const proofs=[{id:'X',physical:true,at:100,items:[{variant,quantity:1}]}];
+ const protectedHints=lootPurposeEvidence({proofs,inventory:[item],
+  reserve:()=>0,now:200});
+ assert.equal(protectedHints[0]?.protectedUnits,1);
+ assert.equal(protectedHints[0]?.uncommittedEstimate,0);
+ const unknown=lootPurposeEvidence({proofs,inventory:[item],
+  reserve:()=>null,now:200});
+ assert.equal(unknown[0]?.uncommittedEstimate,null);
+ assert.equal(unknown[0]?.state,'reservation-unverified');
+});
+test('W13 missing or moved physical loot is not kept as a claim on an item',()=>{
+ const base={name:'ring',level:0};
+ const variant=JSON.stringify(['ring',0,'','','','','','','']);
+ const proofs=[{id:'X',physical:true,at:100,items:[{variant,quantity:1}]}];
+ assert.deepEqual(lootPurposeEvidence({proofs,inventory:[],
+  reserve:()=>0,now:200}),[]);
+ assert.deepEqual(lootPurposeEvidence({proofs,inventory:[{name:'ring',level:1}],
+  reserve:()=>0,now:200}),[]);
+ assert.deepEqual(lootPurposeEvidence({proofs,inventory:[base],
+  reserve:()=>0,now:21600300}),[]);
+});
+test('W13 repeated chest_opened for one id never credits another physical receipt',()=>{
+ const f=fixture();f.receipts.beforeLoot('X');
+ const first=chest([{name:'ring'}],5);
+ assert.equal(f.receipts.observeChest(first),true);
+ assert.equal(f.receipts.observeChest(first),false);
+ f.items[1]={name:'ring'};f.setGold(105);
+ f.receipts.sample();f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,1);
+ assert.equal(f.receipts.status().purposeHints.length,1);
+ assert.equal(f.receipts.heartbeat().length,1);
+});
+test('W13 gear suggestions require current exact variant; variants never create send authority',()=>{
+ const item={name:'ring',level:0,stat_type:'dex'};
+ const variant=JSON.stringify(['ring',0,'dex','','','','','','']);
+ const proofs=[{id:'X',physical:true,at:100,items:[{variant,quantity:1}]}];
+ const hints=lootPurposeEvidence({proofs,inventory:[item],now:200,
+  reserve:()=>0,gearGoals:[{item:'ring',level:0,recipient:'A',
+   variant:{stat_type:'int'}},{item:'ring',level:0,recipient:'B',
+   variant:{stat_type:'dex'}}]});
+ assert.deepEqual(hints[0]?.candidateRecipients,['B']);
+ assert.equal(hints[0]?.dispatchAuthorized,false);
 });

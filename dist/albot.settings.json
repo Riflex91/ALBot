@@ -2192,6 +2192,26 @@
                   "minimum": 0,
                   "maximum": 99
                 },
+                "statType": {
+                  "type": "string",
+                  "title": "Gewünschter Stat-Scroll (leer = kein Tailoring)",
+                  "default": "",
+                  "maxLength": 160,
+                  "enum": [
+                    "",
+                    "str",
+                    "int",
+                    "dex",
+                    "vit"
+                  ],
+                  "x-labels": {
+                    "": "Unverändert",
+                    "str": "Stärke",
+                    "int": "Intelligenz",
+                    "dex": "Geschicklichkeit",
+                    "vit": "Vitalität"
+                  }
+                },
                 "budget": {
                   "type": "integer",
                   "title": "Gesamtes Gold-/Verlustbudget",
@@ -2214,6 +2234,7 @@
                 "slot",
                 "item",
                 "level",
+                "statType",
                 "budget",
                 "priority"
               ],

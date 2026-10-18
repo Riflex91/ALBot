@@ -328,11 +328,7 @@ export function createBank(bot){
   for(let a=0;a<p.c.items.length;a++)for(let b=a+1;b<p.c.items.length;b++){
    const x=p.c.items[a],y=p.c.items[b],qa=x?.q??1,qb=y?.q??1;
    if(!simple(x)||!simple(y)||identity(x)!==identity(y)||!Number.isSafeInteger(qa)||!Number.isSafeInteger(qb)||qa<1||qb<1||qa+qb>stackMax(x))continue;
-   // Do not undo a deliberate partial bank split. The previous generic
-   // merger rejoined 131+100 beewings immediately after bank.split(100),
-   // producing 36 confirmed splits and 38 merges with zero net progress.
-   // Preserve a sibling that can be wholly banked under the CURRENT rule.
-   // Explicit keep/reservations are still honored by e.spare().
+   // Do not re-merge a bank-split sibling queued for storage.
    const bankPart=([a,b]).some(slot=>{
     const item=p.c.items[slot],rule=e.rules?.(item,'inventory')??e.rules?.(item);
     return rule?.action==='bank'&&e.spare(slot,rule)===(item?.q??1);
@@ -353,11 +349,7 @@ export function createBank(bot){
   const rows=Object.entries(p.c.bank??{}).filter(([name,items])=>/^items\d+$/.test(name)&&
    Array.isArray(items)).map(([name,items])=>[name,Array.from({length:Math.max(42,items.length)},
     (_,n)=>items[n]??null)]);
-  // The game can send a newly opened but empty 42-slot bank pack as [].
-  // All decisions must use this SAME normalized logical view; the raw
-  // array length is not the number of available bank slots.
-  // Merely reading a retained p.c.bank object from outside its actual map
-  // never renews the 120-second evidence TTL.
+  // Normalize compact empty packs; off-map reads never refresh evidence.
   const live=rows.length>0&&rows.some(([pack])=>packMap(pack)===p.c.map)&&
    !bot.inventoryBlocked&&!bot.journal;
   if(!live)lastAtBank=false;
@@ -638,10 +630,7 @@ export function createBank(bot){
   }
   return false;
  }
- // Consolidate exact stack variants across bank packs and inventory.
- // Each withdrawal has an independent journal; the normal inventory merger
- // then reduces the stacks. Never place into an occupied bank slot: the
- // server may SWAP instead of merging.
+ // Cross-pack full-stack transfer uses one durable single-retrieve journal.
  function consolidateAcross(){
   if(pending||reclaiming||single||storing||swapping||!cfg.merchant.bank||
      !cfg.merchant.consolidate||!p.c.bank||bot.journal||
@@ -697,10 +686,7 @@ export function createBank(bot){
   }
   return false;
  }
- // Maintain exactly ONE ordinary merchant stand, stored in the bank
- // unless an actual marketplace listing/wishlist needs it. Extra ordinary
- // stand0 copies are sold at NPC only when a live bank copy is verified.
- // Never sell locked, variant-bearing, equipped or other special stands.
+ // Keep one ordinary stand; sell surplus only after bank evidence.
  const ordinaryStand=i=>i?.name==='stand0'&&(i.level??0)===0&&e.safe(i)&&
    !i.data&&!i.p&&!i.title&&!i.stat_type&&!i.acc&&!i.rid&&
    !i.special&&!i.v;

@@ -95,7 +95,7 @@ export function createStrategy(bot){
   return true;
  }
  function safeMonster(id){if(full)return safeTarget(id);const m=p.G.monsters?.[id];if(!m)return false;
-  const limit={conservative:.12,balanced:.25,aggressive:.4}[w.risk],members=bot.allies().filter(x=>!x.rip),hp=Math.max(p.c.max_hp??0,...members.map(x=>x.max_hp??0));
+  const limit={conservative:.12,balanced:.25,assertive:.32,aggressive:.4}[w.risk],members=bot.allies().filter(x=>!x.rip),hp=Math.max(p.c.max_hp??0,...members.map(x=>x.max_hp??0));
   return Number.isFinite(m.attack)&&m.attack<=hp*limit;
  }
  function requestTask(value,ttlMs=120000){

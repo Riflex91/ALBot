@@ -17,7 +17,7 @@ export function ownTradeOfferPlan(bot,slot){
  if(!rule||rule.action!=='tradeOffer'||rule.enabled!==true||
     rule.role!=='merchant'||rule.character!==me.name||
     e.rules?.(item,'inventory')!==rule||!e.remaining?.(rule)||
-    !G09_OFFER_SLOT.test(rule.slot)||p.c.slots?.[rule.slot]||
+    !G09_OFFER_SLOT.test(rule.slot)||!p.c.slots||p.c.slots[rule.slot]||
     rule.minLevel!==(item.level??0)||rule.maxLevel!==(item.level??0)||
     (rule.statType??'')!==(item.stat_type??'')||
     (rule.property??'')!==(item.p??'')||

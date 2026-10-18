@@ -141,11 +141,17 @@ export function applyAutonomousMode(config){
  if(Array.isArray(config.production?.acquireBy))config.production.acquireBy=[...new Set([...config.production.acquireBy,'bank','npc','market','farm','craft','exchange'])];
  return config;
 }
+// A new barter field is meaningless on an old SELL/KEEP/etc rule.
+// Preserve those source rule objects byte-for-byte except pre-existing
+// mandatory migration rules. Only a deliberately enabled SWAP rule may
+// acquire missing defaults for its own explicit two-sided contract.
+const G09_SWAP_OPTIONAL_FIELDS=new Set(['wantItem','wantLevel','wantQuantity',
+ 'wantStatType','wantProperty','wantTitle','wantTargetCount']);
 export function addMissingDefaults(schema,value,path='',changes=[]){
   if(schema.type==='object'&&value&&typeof value==='object'&&!Array.isArray(value)){
     const next=structuredClone(value);
     for(const [key,s] of Object.entries(schema.properties)){
-      if(!own(next,key)){next[key]=defaultsFor(s);changes.push((path?path+'.':'')+key);}
+      if(!own(next,key)){if(/^items\[\d+\]$/.test(path)&&next.action!=='swap'&&G09_SWAP_OPTIONAL_FIELDS.has(key))continue;next[key]=defaultsFor(s);changes.push((path?path+'.':'')+key);}
       else next[key]=addMissingDefaults(s,next[key],(path?path+'.':'')+key,changes);
     }
     return next;

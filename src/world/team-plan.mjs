@@ -421,11 +421,14 @@ export function createTeamPlan(bot){
   let destination={...current,radius:65};
   if(cfg.party.enabled&&me.name===bot.leader){
    const peers=(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)??{name:n});
-   const march=assessFarmMarch(p.c,peers,{realm:p.realm(),destination:current,
-    maxGap:165,hpFloor:.85,step:85});
+   // A single native route is smoother and safer than restarting movement
+   // after every 85 units. The squad follows the SAME final spawn target.
+   // Only *actual* separation/serious injury interrupts the live path.
+   const march=assessFarmMarch(p.c,peers,{realm:p.realm(),
+    maxGap:300,hpFloor:.6});
    if(!march.ready){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
-    bot.reason='Gruppenmarsch pausiert: '+march.reason+' / '+(march.peer??'Team');
+    bot.reason='Gruppenmarsch pausiert (echte Trennung/Gefahr): '+march.reason+' / '+(march.peer??'Team');
     if(march.reason!==marchState.reason||march.peer!==marchState.peer||Date.now()-marchState.at>12000){
      marchState={reason:march.reason,peer:march.peer,at:Date.now()};
      bot.event?.('party.marchPaused',{plan:current.id,reason:march.reason,
@@ -439,11 +442,17 @@ export function createTeamPlan(bot){
     bot.reason='Gemeinsamer Gruppenmarsch: '+current.target;
     return true;
    }
-   const route=chooseMarchWaypoint(p.c,current,peers,{
+   // Route to the real spawn, not a geometrically projected 85-unit
+   // intermediate goal. Only seek verified local detours after a genuine
+   // smart_move failure for the full route.
+   const mainRoute={...current,radius:65};
+   const recentFailure=bot.movement.failedRecently?.(mainRoute,'farm')===true;
+   const route=recentFailure?chooseMarchWaypoint(p.c,current,peers,{
     canMove:(x,y)=>p.has?.('can_move_to')===true&&
       p.call('can_move_to',x,y)===true,
     failed:point=>bot.movement.failedRecently?.(point,'farm')===true,
-    maxGap:165,step:85});
+    maxGap:300,step:85}):
+    {point:mainRoute,reason:'continuous-native-squad-route'};
    if(!route.point){
     const now=Date.now();if(!routeBlockedAt)routeBlockedAt=now;
     if(now-routeBlockedAt>=45000){

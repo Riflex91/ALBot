@@ -181,3 +181,46 @@ test('regression live 10:10:49 blocked geometric hop selects native pathfinder i
  assert.equal(blocked.reason,'no-navigable-safe-route');
  assert.equal(blocked.point,null);
 });
+
+test('live 10:24 stop-and-go regression: 170-unit follower lag must not pause moving Leader',async()=>{
+ const {assessFarmMarch}=await import('../src/world/team-plan.mjs');
+ const now=100000,leader={name:'R1',map:'halloween',in:'halloween',
+  x:900,y:-85,hp:4240,max_hp:4318};
+ const priest={name:'Priest',map:'halloween',in:'halloween',realm:'EUII',
+  running:true,rip:false,received:now-750,x:730,y:-85,hp:2808,max_hp:3000};
+ const other={...priest,name:'R2',x:744};
+ const destination={map:'halloween',in:'halloween',x:8,y:630.5};
+ const old=assessFarmMarch(leader,[priest,other],{
+  realm:'EUII',now,maxGap:165,hpFloor:.85,step:85,destination});
+ assert.equal(old.ready,false,'Previous projected 85-unit leash causes stop-and-go');
+ const continuous=assessFarmMarch(leader,[priest,other],{
+  realm:'EUII',now,maxGap:300,hpFloor:.6});
+ assert.equal(continuous.ready,true,'A 170-unit healthy lag is not a reason to stop');
+ assert.equal(continuous.next,null,'No mandatory 85-unit destination stages');
+ const separated=assessFarmMarch(leader,[{...priest,x:580}],{
+  realm:'EUII',now,maxGap:300,hpFloor:.6});
+ assert.equal(separated.ready,false);
+ assert.equal(separated.reason,'teammate-behind',
+  'Actual 320-unit separation still stops an unsafe breakout');
+ const injured=assessFarmMarch(leader,[{...priest,hp:100,max_hp:3000}],{
+  realm:'EUII',now,maxGap:300,hpFloor:.6});
+ assert.equal(injured.reason,'teammate-needs-heal');
+});
+test('all followers use stable final spawn instead of stop-and-go heartbeat coordinates',async()=>{
+ const {sharedFarmMarchDestination}=await import('../src/combat/farmer.mjs');
+ const plan={map:'halloween',in:'halloween',realm:'EUII',
+  x:8,y:630.5,target:'minimush',id:'plan-1',key:'halloween:minimush:4'};
+ const leader={name:'R1',map:'halloween',in:'halloween',
+  x:900,y:-85,realm:'EUII',running:true,rip:false,farmPlan:plan};
+ const priest={name:'Priest',map:'halloween',in:'halloween',x:730,y:-85};
+ const ranger2={name:'R2',map:'halloween',in:'halloween',x:745,y:-85};
+ const a=sharedFarmMarchDestination(priest,leader,'EUII');
+ const b=sharedFarmMarchDestination(ranger2,leader,'EUII');
+ assert.deepEqual(a,b);
+ assert.equal(a.x,8);
+ assert.equal(a.y,630.5);
+ assert.equal(a.radius,65);
+ assert.notEqual(a.x,leader.x,'Must never chase stale Leader snapshot');
+ assert.equal(sharedFarmMarchDestination(priest,{...leader,realm:'USIV'},'EUII'),null);
+ assert.equal(sharedFarmMarchDestination(priest,{...leader,farmPlan:null},'EUII'),null);
+});

@@ -1,0 +1,44 @@
+name: Monsterhunt Duo Farm Regression
+on:
+  push:
+    branches:
+      - fix/monsterhunt-duo-farm-anchor-20261018
+  pull_request:
+    branches:
+      - main
+permissions:
+  contents: write
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build runtime
+        run: npm run build
+      - name: Synchronize personalized bot without changing configuration
+        run: node scripts/sync-personal-runtime.mjs
+      - name: Full regression suite
+        run: npm test
+      - name: Build editor
+        run: npm run build:editor
+      - name: Verify whitespace
+        run: git diff --check
+      - name: Publish verified personalized runtime
+        if: runner.os == 'Linux' && github.event_name == 'push'
+        shell: bash
+        run: |
+          git add bot.js
+          if ! git diff --cached --quiet; then
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "build: sync tested personalized 0.10.10-candidate runtime"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi

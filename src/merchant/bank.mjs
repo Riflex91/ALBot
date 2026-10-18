@@ -1,6 +1,7 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
+import {validateBankReclaimRecord,classifyBankReclaimRecord} from './bank-reclaim-recovery.mjs';
 // Evaluate against live carried gold, never stale bank balances or a
 // hypothetical future deposit. Keep the independent hourly/reserve budgets.
 export function emergencyMaterialSaleAllowed(meta,price,quantity,maxUnitValue){
@@ -40,6 +41,9 @@ export function createBank(bot){
  if(!Number.isInteger(pressure.observations)||!Number.isFinite(pressure.at))pressure={observations:0,epoch:null,at:0};
  const validPending=r=>r&&/^items\d+$/.test(r.pack)&&[r.bankSlot,r.dest,r.splitSlot].every(n=>Number.isInteger(n)&&n>=0&&n<1000)&&r.dest!==r.splitSlot&&r.item&&typeof r.item.name==='string'&&e.safe(r.item)&&[r.total,r.take,r.before,r.bankBefore].every(n=>Number.isSafeInteger(n)&&n>=0)&&r.take>0&&r.total>r.take&&r.bankBefore>=r.total;
  if(pending&&!validPending(pending)){bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: ungültiger Checkpoint; Bestand prüfen');}
+ if(reclaiming&&!validateBankReclaimRecord(reclaiming,{owner:me.name,realm:p.realm()}).valid){
+  bot.inventoryBlocked=true;e.note('Bankfreigabe: altes oder ungültiges Journal; Wertaktionen gesperrt');
+ }
  function savePending(value){if(!p.write(pendingKey,value)){bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: Checkpoint nicht gespeichert');return false;}pending=value;return true;}
  function recover(){
   if(!pending)return false;if(bot.inventoryBlocked||bot.journal||!bot.running||bot.logistics.reserved)return true;
@@ -445,18 +449,32 @@ export function createBank(bot){
      e.explicit(live)?.action==='sell'&&safe.r===e.explicit(live));
   };
   if(dest<0||!admitted(p.c.bank?.[pack]?.[slot]))return false;
-  const record={item:{...item},pack,slot,dest,before,bankBefore,
+  const record={version:2,owner:me.name,realm:p.realm(),at:Date.now(),
+   item:{...item},pack,slot,dest,before,bankBefore,
    quantity:q,gold:p.c.gold,sourcePrint:fp,
    expectedSaleGold:e.value(item)*q,reason,explicitOnly};
+  if(!validateBankReclaimRecord(record,{owner:me.name,realm:p.realm()}).valid)
+   return false;
   if(!p.write(reclaimKey,record))return false;
   reclaiming=record;
-  return e.perform('bank.reclaim',{guard:()=>admitted(p.c.bank?.[pack]?.[slot]),
+  const accepted=e.perform('bank.reclaim',{guard:()=>admitted(p.c.bank?.[pack]?.[slot]),
    call:()=>p.call('bank_retrieve',pack,slot,dest),
    observe:()=>!p.c.bank?.[pack]?.[slot]&&
      identity(p.c.items[dest])===identity(item)&&
      (p.c.items[dest]?.q??1)===q,
    details:{item:item.name,quantity:q,pack,lossScore:selected.lossScore,
     reason}});
+  // A rejected enqueue has NOT invoked the server API. Persistently
+  // release this intent only if both addressed before-images still match.
+  // If anything is unknown or the clearing write fails, retain the journal.
+  if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')){
+   const evidence=classifyBankReclaimRecord(record,{
+    owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
+    map:p.c.map,packMap});
+   if(evidence.phase==='unchanged'&&p.write(reclaimKey,null)===true)
+    reclaiming=null;
+  }
+  return accepted;
  }
  let preventiveScan={revision:null,map:null,defs:null,cursor:0,
   checked:0,total:0,best:null,completedAt:0,reason:'not-observed'};
@@ -567,38 +585,56 @@ export function createBank(bot){
   const selected=candidates[0];if(!selected){e.note('Bankdruck: kein ausdrücklich freigegebenes unreserviertes Item für sicheren Notverkauf');return false;}
   return stageBankSale(selected,'Bankdruck: geringster risikobereinigter Verlust');
  }
- function recoverCapacity(){if(!reclaiming)return false;if(bot.journal||bot.inventoryBlocked)return true;const r=reclaiming;
-  if(!r.item||!e.safe(r.item)||!/^items\d+$/.test(r.pack)||![r.quantity,r.before,r.bankBefore,r.dest,r.slot].every(Number.isSafeInteger)||r.quantity<1||r.dest<0||r.dest>=p.c.items.length){bot.inventoryBlocked=true;e.note('Bankfreigabe: ungültiger Checkpoint');return true;}
-  const count=e.count(r.item),bank=variantCount(p.c.bank?.[r.pack]??[],r.item);
-  // A global item count or unrelated gold income cannot prove a sale.
-  // Require both addressed slots and the exact NPC receipt.
-  if(count===r.before&&
-     !p.c.bank?.[r.pack]?.[r.slot]&&
-     !p.c.items[r.dest]&&
-     Number.isSafeInteger(r.expectedSaleGold)&&
-     r.saleConfirmed===true){
-    if(p.write(reclaimKey,null))reclaiming=null;return true;
+ function recoverCapacity(){
+  if(!reclaiming)return false;
+  if(bot.journal||bot.inventoryBlocked||bot.exec?.busy?.('inventory')||
+     bot.exec?.frame?.some?.(x=>x.resources?.includes?.('inventory')))
+   return true;
+  const r=reclaiming;
+  const evidence=classifyBankReclaimRecord(r,{
+   owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
+   map:p.c.map,packMap});
+  if(evidence.phase==='invalid'){
+   bot.inventoryBlocked=true;
+   e.note('Bankfreigabe: ungültiges Journal ('+evidence.reason+'); Wertaktionen gesperrt');
+   return true;
   }
-  if(count===r.before&&p.c.bank&&bank===r.bankBefore&&
-     fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&!p.c.items[r.dest]){
-     if(p.write(reclaimKey,null))reclaiming=null;return true;
+  if(evidence.phase==='unobserved'){
+   // Missing bank packs or a different realm are not empty bank slots.
+   // Never repeat a value operation to "discover" the missing state.
+   e.note('Bankfreigabe: bestätigte Bankkarte fehlt; Auftrag bleibt gesperrt');
+   return true;
   }
-  const item=p.c.items[r.dest],sale=item?eligibleBankSale(item):null,
-   source=r.explicitOnly?item?e.explicit(item):null:null,
-   authorized=!!sale&&(!r.explicitOnly||
-    source?.action==='sell'&&source.enabled&&sale.r===source),
+  if(evidence.phase==='unchanged'||evidence.phase==='sold'){
+   // Both source AND inventory were independently reconciled. Only
+   // saleConfirmed from an earlier onConfirmed receipt qualifies as sold.
+   if(p.write(reclaimKey,null)===true)reclaiming=null;
+   else e.note('Bankfreigabe: bestätigter Endzustand; Journal nicht löschbar');
+   return true;
+  }
+  if(evidence.phase!=='withdrawn'){
+   e.note('Bankfreigabe: Quell- oder Zielslot weicht ab; manuell prüfen');
+   return true;
+  }
+  // The exact withdrawn full bank stack is still at its addressed slot.
+  // A second value action is allowed only under all current safety rules.
+  const item=p.c.items[r.dest],sale=eligibleBankSale(item),
+   source=r.explicitOnly?e.explicit(item):null,
+   authorized=!!sale&&cfg.merchant.bankReclaim===true&&
+    (!r.explicitOnly||(cfg.merchant.preventiveStorage===true&&
+     source?.action==='sell'&&source.enabled===true&&sale.r===source)),
    rule=authorized?sale.r:null;
-  // The W04 preventive rule is durable provenance, NOT permission to fall
-  // back to generated emergency-sales after the explicit rule is revoked.
-  // The economy dispatcher also rechecks this source at its final guard.
-  if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&
-     rule?.action==='sell'&&e.spare(r.dest,rule)>=r.quantity){
+  if(rule?.action==='sell'&&e.spare(r.dest,rule)>=r.quantity){
    e.npcSell(r.dest,{...rule,batch:r.quantity,
     ...(r.explicitOnly?{_bankExplicitSource:source}:{})},{onConfirmed:()=>{
-   const next={...r,saleConfirmed:true};if(!p.write(reclaimKey,next))return false;
-   reclaiming=next;return true;
-  }});return true;}
-  e.note('Bankfreigabe: Bestand oder Verkaufsregel geändert; Auftrag benötigt Prüfung');return true;
+    const next={...r,saleConfirmed:true};
+    if(!p.write(reclaimKey,next))return false;
+    reclaiming=next;return true;
+   }});
+   return true;
+  }
+  e.note('Bankfreigabe: Verkaufsberechtigung widerrufen; sichere Aufklärung erforderlich');
+  return true;
  }
  function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),size:items.length,observedLength:p.c.bank?.[pack]?.length??null,used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}
  function gold(){

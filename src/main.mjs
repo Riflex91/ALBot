@@ -63,6 +63,7 @@ import {createSkills} from './combat/skills.mjs';
 import {createFarmer,farmPlanOrTeamDefense} from './combat/farmer.mjs';
 import {createPanel} from './ui/panel.mjs';
 import {createTestReport} from './core/test-report.mjs';
+import {createOverwriteLogSaver,stableLogName} from './core/overwrite-log.mjs';
 import {inspectMiningJournal} from './core/journal-audit.mjs';
 import {createTeamCheck,saveTeamCheck} from './core/team-check.mjs';
 import {createCheckpoint,isPotionConsumption,isItemHandoffJournal,releaseItemHandoffJournal} from './core/checkpoint.mjs';
@@ -122,6 +123,7 @@ export function install(root){
   root.ALBot?.dispose?.();
   const p=createPorts(root),now=()=>Date.now();
   const report=createTestReport(p,VERSION);report.event('boot');
+  const replaceableLogs=createOverwriteLogSaver(p,()=>report.getDirectory());
   const performanceTrick={state:p.headless?'headless-skipped':'pending'};
   if(!p.headless){
     try{
@@ -355,7 +357,11 @@ export function install(root){
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},
+    saveTeamCheck(){return replaceableLogs.save(stableLogName('team',p.c?.name),
+      JSON.stringify(this.teamCheck(),null,2));},
     testReport:()=>report.text(),exportTestReport:()=>report.flush(),
+    saveTestReport(){return replaceableLogs.save(stableLogName('test',p.c?.name),
+      report.text());},
     chooseLogDirectory:()=>report.chooseDirectory(),logCapabilities:()=>report.capabilities(),
     acknowledgeInventory(){if(bot.running)throw Error('Zuerst pausieren und tatsächlichen Bestand prüfen');if(!checkpoint.write(null))throw Error('Speichern fehlgeschlagen');bot.journal=null;bot.inventoryBlocked=false;bot.reason='Inventar manuell abgeglichen';publish();},
     acknowledgeMiningAfterReview(token){

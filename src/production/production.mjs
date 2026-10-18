@@ -422,8 +422,13 @@ export function createProduction(bot){
    const verified=source(),proof=x=>JSON.stringify({quest:x.quest,npc:x.npc,destination:x.destination,event:x.event});
    if(!verified.ready||step?.sourceProof&&proof(verified)!==JSON.stringify(step.sourceProof)){e.note('Exchange-Quelle nicht verifiziert: '+i.name+' / '+(verified.reason??'Quellenwechsel'));return false;}
    const d=verified.quest?verified.destination:e.destination('exchange');
-   if(!e.npcTravel(d,'Exchange '+i.name))return false;const before=e.count(i),initialProof=proof(verified);
-   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return bot.storage?.exchangeAllowed?.(slot,q)!==false&&live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.npcAt(d)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G);},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},
+   // The generic 110-unit NPC work radius was loose enough to dispatch a
+   // gift exchange that the game rejected with "distance". Exchange uses a
+   // tighter, stationary 35-unit worksite; recheck at final dispatch.
+   const exchangeRadius=35;
+   if(!e.travel(d,'Exchange '+i.name,exchangeRadius))return false;
+   const before=e.count(i),initialProof=proof(verified);
+   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return bot.storage?.exchangeAllowed?.(slot,q)!==false&&live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.at(d,exchangeRadius)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G);},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},
     onConfirmed:()=>{bot.merchant?.confirmedExchange?.(i.name,slot);return true;},timeout:45000});
   }
  // A production goal may be reprioritized while its already admitted NPC

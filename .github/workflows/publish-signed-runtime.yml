@@ -1,6 +1,8 @@
 name: Publish approved signed ALBot runtime
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/w00-w01-readonly-disposition-20261018]
 permissions:
   contents: write
 concurrency:
@@ -8,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.ref == 'refs/heads/codex/w00-w01-readonly-disposition-20261018'
+    if: github.ref == 'refs/heads/codex/w00-w01-readonly-disposition-20261018' && (github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'release(request): '))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

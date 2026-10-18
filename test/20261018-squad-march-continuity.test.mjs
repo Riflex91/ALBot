@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sharedMarchStatus,fitHeartbeat} from '../src/party/transport.mjs';
+import {sharedMarchStatus,fitHeartbeat,compactFarmPlan} from '../src/party/transport.mjs';
 import {assessLiveSquadMarch,sameFarmDestination} from '../src/world/team-plan.mjs';
 import {sharedFarmMarchDestination} from '../src/combat/farmer.mjs';
 
@@ -25,6 +25,21 @@ test('compact heartbeat describes the ACTUAL farm/follow destination when full p
  assert.deepEqual(trimmed.march,march);
  assert.equal(trimmed.farmPlan,undefined,
   'optional full plan can be dropped without losing the compact route');
+});
+
+test('leader transmits compact but fully validatable spawn plan',()=>{
+ const full={...destination,definition:'safe-v1',bounds:['halloween',0,0,20,40],
+  started:100,expires:60000,objective:null,score:999,
+  ranking:'x'.repeat(3000)};
+ const plan=compactFarmPlan(full);
+ for(const key of ['id','key','target','map','in','x','y','realm',
+  'leader','kind','objective','started','expires','definition','bounds']){
+  if(key==='leader')continue;
+  assert.deepEqual(plan[key],full[key],key);
+ }
+ assert.equal(plan.score,undefined);
+ assert.equal(plan.ranking,undefined);
+ assert.ok(JSON.stringify(plan).length<600);
 });
 
 test('unrelated chase and cancelled native movement are NOT advertised as shared route',()=>{

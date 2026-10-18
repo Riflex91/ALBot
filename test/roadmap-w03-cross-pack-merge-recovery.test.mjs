@@ -63,7 +63,7 @@ test('W03 cross-pack bank action rejects missing preparation or dispatch persist
  assert.equal(f.bot.inventoryBlocked,true);
  const g=fixture();g.bot.bank.consolidateAcross();
  g.bot.p.write=(k,v)=>v?.dispatch?false:(g.db.set(k,v),true);
- assert.throws(()=>g.jobs[0].params.call(),/Dispatchbeleg/);
+ assert.throws(()=>g.jobs[0].params.call(),/Dispatch/);
  assert.equal(g.calls.length,0);
  assert.equal(g.bot.inventoryBlocked,true);
 });

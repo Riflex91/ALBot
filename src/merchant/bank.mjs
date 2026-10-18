@@ -2,7 +2,7 @@ import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
 import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
-import {validateBankPartialRecord,classifyBankPartialRecord} from './bank-partial-recovery.mjs';
+import {validateBankPartialRecord,classifyBankPartialRecord,partialDispatchDecision} from './bank-partial-recovery.mjs';
 // Evaluate against live carried gold, never stale bank balances or a
 // hypothetical future deposit. Keep the independent hourly/reserve budgets.
 export function emergencyMaterialSaleAllowed(meta,price,quantity,maxUnitValue){
@@ -72,6 +72,28 @@ export function createBank(bot){
    owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items,
    bank:p.c?.bank,map:p.c?.map,packMap});
  }
+ function partialReady(r,phase){
+  return pending===r&&partialEvidence(r).phase===phase&&
+   partialDispatchDecision(r,phase).allowed&&
+   typeof bot.session==='string'&&!!bot.session;
+ }
+ function callPartialStep(r,phase,invoke){
+  // Guard again at the actual API dispatch. A persisted receipt is
+  // mandatory before any bank_retrieve / split / bank_store request.
+  if(!partialReady(r,phase)){
+   bot.inventoryBlocked=true;
+   throw Error('Bank-Teilentnahme: Ausgangszustand vor API-Aufruf unklar');
+  }
+  const next={...r,dispatches:[...r.dispatches,{
+   phase,session:bot.session,at:Date.now(),realm:r.realm,pack:r.pack,
+   bankSlot:r.bankSlot,dest:r.dest,splitSlot:r.splitSlot,
+   sourcePrint:r.sourcePrint}]};
+  if(!validPending(next)||!savePending(next)){
+   bot.inventoryBlocked=true;
+   throw Error('Bank-Teilentnahme: Dispatch-Beleg konnte nicht dauerhaft gespeichert werden');
+  }
+  return invoke();
+ }
  function recover(){
   if(!pending)return false;
   if(reclaiming){
@@ -90,12 +112,6 @@ export function createBank(bot){
   const r=pending;
   if(!ready(r.pack,true))return true;
   const evidence=partialEvidence(r);
-  if(evidence.phase==='returned'){
-   if(savePending(null))
-    bot.event?.('bank.partial.complete',{
-     item:r.item.name,quantity:r.take,returned:r.total-r.take});
-   return true;
-  }
   if(evidence.phase==='invalid'||evidence.phase==='ambiguous'){
    bot.inventoryBlocked=true;
    e.note('Bank-Teilentnahme: adressierte Slots nicht belegbar; manuell prüfen');
@@ -105,14 +121,28 @@ export function createBank(bot){
    e.note('Bank-Teilentnahme: aktuelle Quellbank fehlt; keine Wiederholung');
    return true;
   }
+  const permission=partialDispatchDecision(r,evidence.phase);
+  if(!permission.allowed){
+   bot.inventoryBlocked=true;
+   e.note('Bank-Teilentnahme: unquittierter oder alter Dispatch ('+
+    permission.reason+'); manuell prüfen');
+   return true;
+  }
+  if(evidence.phase==='returned'){
+   if(savePending(null))
+    bot.event?.('bank.partial.complete',{
+     item:r.item.name,quantity:r.take,returned:r.total-r.take});
+   return true;
+  }
   // No already queued or unresolved value operation: the NEXT real step is
   // proven by its exact currently addressed predecessor snapshot. Guards
   // repeat that proof immediately at executor dispatch.
   const actions={
    original:()=>{
     return e.perform('bank.partial.retrieve',{
-     guard:()=>partialEvidence(r).phase==='original',
-     call:()=>p.call('bank_retrieve',r.pack,r.bankSlot,r.dest),
+     guard:()=>partialReady(r,'original'),
+     call:()=>callPartialStep(r,'original',()=>
+      p.call('bank_retrieve',r.pack,r.bankSlot,r.dest)),
      observe:()=>partialEvidence(r).phase==='withdrawn',
      details:{item:r.item.name,quantity:r.total,pack:r.pack,before:r.before}});
    },
@@ -122,15 +152,17 @@ export function createBank(bot){
     if(bot.free()<1||p.c.items.findIndex(i=>!i)!==r.splitSlot)return false;
     return e.perform('bank.partial.split',{slots:[r.dest],
      guard:()=>bot.free()>0&&p.c.items.findIndex(i=>!i)===r.splitSlot&&
-      partialEvidence(r).phase==='withdrawn',
-     call:()=>p.call('split',r.dest,r.take),
+      partialReady(r,'withdrawn'),
+     call:()=>callPartialStep(r,'withdrawn',()=>
+      p.call('split',r.dest,r.take)),
      observe:()=>partialEvidence(r).phase==='split',
      details:{item:r.item.name,quantity:r.take,pack:r.pack}});
    },
    split:()=>{
     return e.perform('bank.partial.return',{slots:[r.dest],
-     guard:()=>partialEvidence(r).phase==='split',
-     call:()=>p.call('bank_store',r.dest,r.pack,r.bankSlot),
+     guard:()=>partialReady(r,'split'),
+     call:()=>callPartialStep(r,'split',()=>
+      p.call('bank_store',r.dest,r.pack,r.bankSlot)),
      observe:()=>partialEvidence(r).phase==='returned',
      details:{item:r.item.name,quantity:r.total-r.take,pack:r.pack}});
    }
@@ -347,15 +379,19 @@ export function createBank(bot){
      pack,bankSlot,dest:empty[0],splitSlot:empty[1],
      item:actual,sourcePrint:fingerprint(actual),
      total:actual.q,take,before:e.count(actual),
-     bankBefore:variantCount(items,actual)};
+     bankBefore:variantCount(items,actual),
+     prepared:{at:Date.now(),session:bot.session,realm:p.realm(),
+      pack,bankSlot,dest:empty[0],splitSlot:empty[1],
+      sourcePrint:fingerprint(actual)},dispatches:[]};
    if(!validPending(record)||!savePending(record))return false;
    const accepted=e.perform('bank.partial.retrieve',{rule:r,
-    guard:()=>partialEvidence(record).phase==='original',
-    call:()=>p.call('bank_retrieve',pack,bankSlot,record.dest),
+    guard:()=>partialReady(record,'original'),
+    call:()=>callPartialStep(record,'original',()=>
+     p.call('bank_retrieve',pack,bankSlot,record.dest)),
     observe:()=>partialEvidence(record).phase==='withdrawn',
     details:{item:actual.name,quantity:record.total,pack,before:record.before}});
    if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')&&
-      partialEvidence(record).phase==='original')savePending(null);
+      partialReady(record,'original'))savePending(null);
    return accepted;
   }return false;
  }
@@ -806,6 +842,8 @@ export function createBank(bot){
      owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items}):null;
   const needsReview=collision||
    ['ambiguous','invalid'].includes(partial?.phase)||
+   (pending&&partial&&partial.phase!=='unobserved'&&
+    !partialDispatchDecision(pending,partial.phase).allowed)||
    ['ambiguous','invalid','dispatched-unchanged',
     'legacy-unchanged-uncertain'].includes(reclaim?.phase);
   return {
@@ -817,7 +855,11 @@ export function createBank(bot){
     phase:collision?'conflict':partial.phase,reason:partial.reason,
     pack:pending.pack,sourceSlot:pending.bankSlot,
     inventorySlot:pending.dest,splitSlot:pending.splitSlot,
-    item:pending.item?.name??null,quantity:pending.take}:null,
+    item:pending.item?.name??null,quantity:pending.take,
+    preparationRecorded:!!pending.prepared,
+    dispatchCount:pending.dispatches?.length??null,
+    dispatchReason:partial&&partial.phase!=='unobserved'?
+     partialDispatchDecision(pending,partial.phase).reason:null}:null,
    reclaim:reclaiming?{
     phase:collision?'conflict':reclaim.phase,reason:reclaim.reason,
     pack:reclaiming.pack,sourceSlot:reclaiming.slot,

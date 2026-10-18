@@ -11,6 +11,33 @@ import {roadAggroTravelDecision,committedFarmTransit} from './transit-defense.mj
 // Deterministic emergency focus prevents each Ranger from independently
 // picking a different engaged attacker while a teammate is in danger.
 // Incomplete patient data ranks LAST; it never becomes invented survivability.
+// Non-lethal rally for a Ranger while a verified teammate is under
+// attack. Keeps the destination outside the monster's observed attack
+// radius; never authorizes a pull, attack or escape across the monster.
+export function safeEmergencyRallyPoint(character,victim,monster,attackRange=0){
+ if(!character||!victim||!monster||!samePlace(character,victim)||
+    !samePlace(character,monster)||!samePlace(victim,monster)||
+    ![character.x,character.y,victim.x,victim.y,monster.x,monster.y]
+      .every(Number.isFinite))return null;
+ const gap=distance(character,victim),safe=Math.max(155,
+  Number.isFinite(attackRange)&&attackRange>=0?attackRange+90:155);
+ if(gap<120||gap>850||distance(character,monster)<safe+25)return null;
+ const dx=victim.x-monster.x,dy=victim.y-monster.y,
+  length=Math.hypot(dx,dy);
+ if(length<1)return null;
+ const unitX=dx/length,unitY=dy/length,
+  x=monster.x+unitX*Math.max(safe,length),
+  y=monster.y+unitY*Math.max(safe,length);
+ if(Math.hypot(character.x-x,character.y-y)<70)return null;
+ // The straight-line corridor must stay outside the hostile radius.
+ const vx=x-character.x,vy=y-character.y;
+ const projection=Math.max(0,Math.min(1,
+  ((monster.x-character.x)*vx+(monster.y-character.y)*vy)/
+   Math.max(1,vx*vx+vy*vy)));
+ if(Math.hypot(character.x+vx*projection-monster.x,
+    character.y+vy*projection-monster.y)<safe+15)return null;
+ return {map:character.map,in:character.in??character.map,x,y,radius:55};
+}
 export function chooseEmergencyFocus(monsters,members=[]){
  const health=new Map((members??[]).filter(m=>m&&typeof m.name==='string'&&
   Number.isFinite(m.hp)&&Number.isFinite(m.max_hp)&&m.max_hp>0)
@@ -317,7 +344,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // Keep potion consumption and Priest healing active. This policy does
     // not apply after arrival, to the Merchant, or to unrelated travel.
     const road=me.role==='farmer'?roadTravel():null;
-    if(road?.continueRoute&&(c.ctype!=='priest'||
+    const emergency=bot.combatAssessment?.emergency?.();
+    const endangeredPeer=emergency?.critical?.some(h=>
+     h?.name!==c.name&&h?.threats>0);
+    if(road?.continueRoute&&!endangeredPeer&&(c.ctype!=='priest'||
        bot.monsters().some(m=>m?.target===c.name))){
       bot.target=null;
       bot.reason='Gruppenreise trotz Weg-Aggro: Route halten, Tränke und Heiler';
@@ -337,7 +367,6 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         m.hp>0&&!m.dead&&samePlace(c,m)).sort((a,b)=>distance(c,a)-distance(c,b));
       if(selfAggro.length)bot.navigation?.rangePosition?.(selfAggro[0]);
     }
-    const emergency=bot.combatAssessment?.emergency?.();
     if(emergency?.active&&rescueTeam(emergency))return;
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
     const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
@@ -377,6 +406,31 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
           },attack.invoke,{delay:100,onSettle:attack.settle});
         }
         return;
+      }
+      // Regroup toward the endangered Priest without rushing into an
+      // unverified kill. This also escapes the normal "group march paused"
+      // standstill. Combat remains forbidden until fresh evidence passes.
+      if(c.ctype==='ranger'&&rescueFocus?.target&&
+         (assessment?.reason==='insufficient-time-to-kill'||
+          assessment?.reason==='party-not-in-combat-support-range')){
+       const patient=bot.transport?.fresh?.(rescueFocus.target);
+       const rally=safeEmergencyRallyPoint(c,patient,danger,
+        p.G.monsters?.[danger.mtype]?.range);
+       if(rally&&p.call('can_move_to',rally.x,rally.y)){
+        bot.target=null;
+        bot.recovering=true;
+        bot.reason='Gruppenrettung: sicher zum angegriffenen '+patient.name;
+        const order=bot.movement.order;
+        if(order?.owner==='combat'&&order.dest&&
+           distance(order.dest,rally)<80)return;
+        if(order&&['farm','follow','combat','world'].includes(order.owner))
+         bot.movement.stop();
+        if(!bot.movement.order)bot.movement.go(rally,'combat');
+        bot.event?.('combat.emergencyRally',{
+         victim:patient.name,monster:danger.mtype,
+         range:Math.round(distance(c,danger))});
+        return;
+       }
       }
       bot.target=null;bot.reason='Gefährliche Aggro: '+(assessment?.reason??'unverified');
       bot.recovering=true;bot.strategy?.interruptQuest?.();

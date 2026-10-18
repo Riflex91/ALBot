@@ -117,3 +117,20 @@ test('high-frequency Green Jr remains unsafe without real sustained heal evidenc
  assert.ok(result.healingDps>0,'Priest can be recognized, without granting impossible victory');
  assert.ok(result.potionHp>0);
 });
+
+test('safe Ranger regrouping approaches a threatened Priest without entering monster radius',async()=>{
+ const {safeEmergencyRallyPoint}=await import('../src/combat/farmer.mjs');
+ const enemy={map:'halloween',in:'halloween',x:0,y:0};
+ const ranger={map:'halloween',in:'halloween',x:580,y:0};
+ const threatened={map:'halloween',in:'halloween',x:180,y:0};
+ const rally=safeEmergencyRallyPoint(ranger,threatened,enemy,80);
+ assert.ok(rally);
+ assert.ok(rally.x>=170,'destination remains outside 80-range monster');
+ assert.equal(rally.y,0);
+ assert.equal(safeEmergencyRallyPoint({...ranger,x:-580},threatened,enemy,80),null,
+  'cannot path across a monster to rescue');
+ assert.equal(safeEmergencyRallyPoint(ranger,{...threatened,map:'main'},enemy,80),null,
+  'never rally across maps');
+ assert.equal(safeEmergencyRallyPoint({...ranger,x:220},threatened,enemy,80),null,
+  'nearby Ranger should not spam moves');
+});

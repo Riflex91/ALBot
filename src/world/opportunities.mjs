@@ -10,7 +10,7 @@ export function preferredBooster(mode,role){
 }
 export function holidayOpportunity(character,G,state){
  const ref=G.maps?.[character?.map]?.ref?.newyear_tree;
- return !!(state?.holidayseason&&(state.holidayseason===true||state.holidayseason.live!==false)&&
+ return !!(state?.holidayseason&&(state.holidayseason===true||state.holidayseason.live!==false&&state.holidayseason.active!==false)&&
   !character?.rip&&!character?.s?.holidayspirit&&!character?.cave&&
   !G.maps?.[character?.map]?.instance&&ref&&
   Number.isFinite(ref.x)&&Number.isFinite(ref.y)&&distance(character,ref)<275);

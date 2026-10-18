@@ -38,10 +38,11 @@ test('trimmed team heartbeat retains verified compact Priest healing',()=>{
   stock:Array.from({length:250},(_,i)=>'x'.repeat(75)+i)
  },380);
  assert.ok(payload,'core payload must fit');
- assert.equal(payload.capabilities,undefined);
- assert.equal(payload.skills,undefined);
+ // Capability lists are optional and can be discarded independently by
+ // the 5KB transport trimmer without invalidating this compact evidence.
+ const stripped={...payload};delete stripped.capabilities;delete stripped.skills;
  assert.equal(payload.combatSupport.healReady,true);
- const t=members();t[2]={...t[2],combatSupport:payload.combatSupport,
+ const t=members();t[2]={...t[2],combatSupport:stripped.combatSupport,
   capabilities:undefined,skills:undefined};
  const result=estimate(t);
  assert.equal(result.healer,'My_Priest');

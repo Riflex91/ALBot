@@ -152,15 +152,26 @@ export function createTransport(bot){
     }catch(e){bot.report('Teamtransport: '+(e.message??e));return Promise.resolve(failure(to,type,'exception'));}
     return Promise.resolve(result).then(value=>deliveryConfirmed(value,to)?success(to,type):failure(to,type,Array.isArray(value?.receivers)&&!value.receivers.includes(to)?'not-delivered':'rejected'),e=>{bot.report('Teamtransport: '+(e.message??e));return failure(to,type,'exception');});
   }
+  // Test adapters may return Promises. Do not let an async rejection escape
+  // a synchronous game cooldown lookup or invent potion readiness.
+  function potionReady(){
+   try{
+    const value=p.call('is_on_cooldown','use_hp');
+    if(value&&typeof value.then==='function'){
+     value.catch?.(()=>{});return false;
+    }
+    return value===false;
+   }catch{return false;}
+  }
   function parentSiblings(){try{return p.parent.caracAL?.siblings??[];}catch{return [];}}
   return {peers,send,roster,status,
-    combatSupport(){const c=p.c;return c?compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),(()=>{try{return !p.call('is_on_cooldown','use_hp');}catch{return false;}})()):null;},
+    combatSupport(){const c=p.c;return c?compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),potionReady()):null;},
     ownCharacters(){refreshOwn();return own.map(c=>({...c}));},fresh(name){const d=peers.get(name);return d&&Date.now()-d.received<cfg.general.messageTtlMs?d:null;},
     heartbeat(){const c=p.c;if(!c)return;const items=bot.logistics?.summary()??[];const d={browserSwitch:p.characterSwitchCapability?.()??{supported:false,reason:'capability-unavailable'},incomingRotation:bot.account?.incomingRotation?.()??null,townActive:!!bot.movement?.townActive,lifecycleChanging:!!bot.lifecycleChanging,name:me.name,...xy(c),map:c.map,in:c.in??c.map,realm:p.realm(),party:c.party??null,rip:!!c.rip,hp:c.hp,max_hp:c.max_hp,mp:c.mp,max_mp:c.max_mp,class:c.ctype,level:c.level,stats:{attack:c.attack,frequency:c.frequency,armor:c.armor,resistance:c.resistance,range:c.range,heal:c.heal,mp_cost:c.mp_cost,damage_type:c.damage_type,courage:c.courage,mcourage:c.mcourage,pcourage:c.pcourage,fear:c.fear},s:Object.fromEntries(Object.entries(c.s??{}).filter(([id])=>['hardshell','sheltered','mshield','aether_shield','guardians_oath','beacon_of_resolve','poisoned','stunned','silenced'].includes(id)||id.startsWith('paladin_aura_'))),goldBalance:Number.isSafeInteger(c.gold)&&c.gold>=0?c.gold:null,goldReconcile:bot.recovery?.goldEvidence?.()??null,itemTransferEvidence:inspectItemTransferEvidence({
       journal:bot.journal,inventory:c.items,gold:c.gold,
       owner:me.name,session:bot.session,realm:p.realm()
      }),accountLossGuard:(()=>{const g=bot.lossGuard?.status();return g?.enabled?{blocked:g.blocked,trip:g.trip,resetAt:g.resetAt}:null;})(),bankGoldBalance:(me.name===cfg.party.merchant||c.map?.startsWith('bank'))&&Number.isSafeInteger(c.bank?.gold)&&c.bank.gold>=0?c.bank.gold:null,goldSurplus:bot.gold?.surplus()??0,monsterhunt:(()=>{const q=c.s?.monsterhunt;return q&&typeof q.id==='string'&&Number.isSafeInteger(q.c)&&q.c>=0?{id:q.id,c:q.c,...(Number.isFinite(q.ms)?{ms:Math.max(0,Math.floor(q.ms))}:{}),...(typeof q.sn==='string'?{sn:q.sn}:{})}:null;})(),huntObjective:me.name===bot.leader?bot.teamPlan?.orderedHunt?.()??null:null,squadQuestVisit:false,goldTransferPending:!!bot.gold?.reserved,goldTransferAt:bot.gold?.transferAt??0,target:bot.target?.id??null,free:bot.free(),achievementCarrier:carriedAchievementCarrier(c.items),storagePressure:me.role==='merchant'&&me.name===cfg.party.merchant&&(bot.merchant?.status?.()?.capacityRecovery===true||bot.free()<=(cfg.merchant?.minFreeSlots??4)),running:bot.running,reserved:!!bot.logistics?.reserved,journal:!!bot.journal||!!bot.bank?.pending,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,lootSlots:bot.logistics?.pickupSlots?.()??0,
-      combatSupport:compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),(()=>{try{return !p.call('is_on_cooldown','use_hp');}catch{return false;}})()),
+      combatSupport:compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),potionReady()),
       potions:Object.fromEntries(['hpot0','mpot0'].map(id=>[id,
         (c.items??[]).reduce((n,i)=>n+(i?.name===id?(i.q??1):0),0)])),
       march:(()=>{

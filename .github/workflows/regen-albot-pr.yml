@@ -5,6 +5,9 @@ on:
       - codex/w04-bank-reserve-staging-20261018
     paths:
       - .github/workflows/regen-albot-pr.yml
+      - src/items/operating-stock.mjs
+      - src/merchant/bank.mjs
+      - test/roadmap-w04-bank-disposition.test.mjs
 permissions:
   contents: write
 jobs:

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fingerprint} from '../src/core/policy.mjs';
-import {classifyBankReclaimRecord,validateBankReclaimRecord}
+import {classifyBankReclaimRecord,validateBankReclaimRecord,inspectOffsiteBankReclaim}
  from '../src/merchant/bank-reclaim-recovery.mjs';
 import {createBank} from '../src/merchant/bank.mjs';
 
@@ -50,7 +50,7 @@ test('W04 missing or foreign bank observations are never treated as empty slots'
 function fixture({saved,bankItem={...item},carried=null,realmValue=realm,
  write=true,perform=true,rules=true}={}){
  const store=new Map(saved?[['albot:bank-reclaim:M',saved]]:[]);
- const calls=[],sales=[],notes=[],items=empty(),bankPack=empty();
+ const calls=[],sales=[],notes=[],travels=[],items=empty(),bankPack=empty();
  items[0]=carried;bankPack[27]=bankItem;
  const sourceRule={enabled:true,action:'sell',item:'ore',batch:10,
   maxCount:9999,keep:0,teamReserve:0,minPrice:0,maxActions:0};
@@ -71,11 +71,12 @@ function fixture({saved,bankItem={...item},carried=null,realmValue=realm,
    rules:()=>rules?sourceRule:null,remaining:()=>true,
    count:i=>items.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
    spare:()=>10,note:s=>notes.push(s),
+   travel:(destination,label)=>{travels.push({destination,label});return false;},
    npcSell:(slot,rule,options)=>{sales.push({slot,rule,options});return true;},
    perform:(kind,args)=>{calls.push({kind,args});return perform;}
   }};
  bot.bank=createBank(bot);
- return {bot,store,calls,sales,notes,bankPack,items,sourceRule};
+ return {bot,store,calls,sales,notes,travels,bankPack,items,sourceRule};
 }
 test('W04 restart reconciles untouched bank checkpoint without selling',()=>{
  const f=fixture({saved:record({at:Date.now()})});
@@ -138,4 +139,93 @@ test('W04 failed checkpoint clear retains conservative block after rejected queu
  assert.equal(f.bot.bank.preventiveDisposition(),false);
  assert.equal(f.bot.bank.pending,true);
  assert.equal(f.store.get('albot:bank-reclaim:M').version,2);
+});
+
+test('W04 persist withdrawal before leaving bank, then drive NPC sale using exact offsite inventory',()=>{
+ const f=fixture({saved:record({at:Date.now()}),bankItem:null,carried:{...item}});
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.sales.length,1);
+ const receipt=f.store.get('albot:bank-reclaim:M').withdrawal;
+ assert.ok(receipt,'physical bank withdrawal must be journaled before NPC travel');
+ assert.equal(receipt.bankCount,0);
+ assert.equal(receipt.inventoryCount,10);
+ assert.equal(receipt.sourcePrint,fingerprint(item));
+ f.bot.p.c.map='main';
+ f.bot.p.c.bank={}; // server no longer exposes bank packs outside bank
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.sales.length,2,'live carried item may continue an already evidenced sale');
+ assert.equal(f.travels.length,0,'no unnecessary bank return before NPC sale');
+ assert.equal(f.sales[1].options.onConfirmed(),true);
+ f.items[0]=null;
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.sales.length,2,'NPC sale is never repeated after its durable confirmation');
+ assert.deepEqual(f.travels.at(-1).destination.map,'bank');
+ assert.equal(f.bot.bank.pending,true,'offsite NPC receipt is not an observed bank source');
+ f.bot.p.c.map='bank';
+ f.bot.p.c.bank={items0:f.bankPack};
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.bot.bank.pending,false,'only a fresh bank/source observation clears checkpoint');
+ assert.equal(f.store.get('albot:bank-reclaim:M'),null);
+});
+test('W04 an offsite v2 checkpoint without a durable withdrawal receipt returns to bank instead of selling',()=>{
+ const f=fixture({saved:record({at:Date.now()}),bankItem:null,carried:{...item}});
+ f.bot.p.c.map='main';f.bot.p.c.bank={};
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.sales.length,0);
+ assert.equal(f.travels.at(-1).destination.map,'bank');
+ assert.equal(f.bot.bank.pending,true);
+ f.bot.p.c.map='bank';f.bot.p.c.bank={items0:f.bankPack};
+ f.bot.bank.recoverCapacity();
+ assert.equal(f.sales.length,1,'first reobserve the true addressed withdrawal');
+ assert.ok(f.store.get('albot:bank-reclaim:M').withdrawal);
+});
+test('W04 revoked explicit rule or altered carried stack blocks offsite continuation',()=>{
+ for(const options of [{rules:false,carried:{...item}},
+  {rules:true,carried:{...item,q:9}}]){
+  const saved=record({at:Date.now()}),wd={
+   at:Date.now(),realm,pack:'items0',slot:27,dest:0,
+   sourcePrint:fingerprint(item),inventoryCount:10,bankCount:0};
+  const f=fixture({saved:{...saved,withdrawal:wd},bankItem:null,...options});
+  f.bot.p.c.map='main';f.bot.p.c.bank={};
+  f.bot.bank.recoverCapacity();
+  assert.equal(f.sales.length,0,JSON.stringify(options));
+  assert.equal(f.bot.bank.pending,true);
+ }
+});
+test('W04 old v2 already-confirmed NPC sale only returns to bank and never sells again',()=>{
+ const f=fixture({saved:record({at:Date.now(),saleConfirmed:true}),
+  bankItem:null,carried:null});
+ f.bot.p.c.map='main';f.bot.p.c.bank={};
+ f.bot.bank.recoverCapacity();
+ assert.equal(f.sales.length,0);
+ assert.equal(f.travels.at(-1).destination.map,'bank');
+ f.bot.p.c.map='bank';f.bot.p.c.bank={items0:f.bankPack};
+ f.bot.bank.recoverCapacity();
+ assert.equal(f.bot.bank.pending,false);
+});
+test('W04 a failure to persist withdrawal receipt blocks travel to NPC or sale',()=>{
+ const f=fixture({saved:record({at:Date.now()}),bankItem:null,carried:{...item},write:false});
+ f.bot.bank.recoverCapacity();
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.sales.length,0);
+ assert.equal(f.bot.bank.pending,true);
+});
+test('W04 offsite receipt fails closed when altered, missing or forged',()=>{
+ const base=record(),wd={at:now,realm,pack:'items0',slot:27,dest:0,
+  sourcePrint:fingerprint(item),inventoryCount:10,bankCount:0};
+ for(const corrupt of [{slot:22},{bankCount:1},{inventoryCount:9},
+  {sourcePrint:'forged'},{at:now-1},{realm:'US:I'}]){
+  const bad=record({withdrawal:{...wd,...corrupt}});
+  assert.equal(validateBankReclaimRecord(bad,{owner,realm,now}).valid,false,
+   JSON.stringify(corrupt));
+ }
+ const inventory=empty();inventory[0]={...item};
+ assert.equal(inspectOffsiteBankReclaim(record(),{owner,realm,now,inventory}).eligible,false);
+ assert.equal(inspectOffsiteBankReclaim(record({withdrawal:wd}),{
+  owner,realm,now,inventory}).eligible,true);
+ inventory[0]={...item,q:9};
+ assert.equal(inspectOffsiteBankReclaim(record({withdrawal:wd}),{
+  owner,realm,now,inventory}).eligible,false);
+ assert.equal(inspectOffsiteBankReclaim(record({withdrawal:wd,saleConfirmed:true}),{
+  owner,realm,now,inventory}).eligible,false);
 });

@@ -36,7 +36,7 @@ export function potionResource(c,threshold=300){
  return hp>threshold?'hp':mp>threshold?'mp':null;
 }
 export function createFarmer(bot){
-  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0};
+  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   // Observe real outgoing basic attacks in addition to skill casts. Failed
@@ -275,9 +275,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       bot.transport?.fresh?.(name)).filter(Boolean);
     const focus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
     const danger=focus??threat;
-    if(focus&&focus.id!==threat?.id)bot.event?.('combat.emergencyFocus',{
-      selected:focus.id,victim:focus.target,ownThreat:threat?.id??null,
-      source:'fresh-lowest-hp-teammate'});
+    if(focus&&focus.id!==threat?.id){
+      const key=focus.id+':'+focus.target;
+      if(lastEmergencyFocus.key!==key||now-lastEmergencyFocus.at>=12000){
+       lastEmergencyFocus={key,at:now};
+       bot.event?.('combat.emergencyFocus',{selected:focus.id,
+        victim:focus.target,ownThreat:threat?.id??null,
+        source:'fresh-lowest-hp-teammate'});
+      }
+    }
     if(danger){
       const assessment=bot.combatAssessment?.assess(danger);
       if(assessment?.viable&&bot.allowed(danger)){

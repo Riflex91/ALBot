@@ -47,3 +47,9 @@ Die personalisierte Bootstrap-Konfiguration enthält bereits `general.autostart=
 **Manueller Live-Test:** Zuerst nur einen Farmer auswählen (z. B. `My_Ranger1`), nicht den Merchant. Bestehenden CODE-Inhalt und Slot sichern, den laufenden CODE-Runner stoppen, den vollständigen GitHub-Inhalt `dist/albot.bootstrap.js` in einen Testslot kopieren und starten. Bei eingeschaltetem Autostart sind echte Spielaktionen (Bewegung/Kampf) möglich. Das Game-Log muss **SHA-256 OK; Autostart AKTIV** zeigen; `ALBot.status().running` muss `true` sein. Bei `blocked`, CORS/CSP-Fehlern oder unerwartetem Verhalten den CODE-Runner stoppen und den alten Slot wiederherstellen. Ein bloßes Speichern des Slots ersetzt keinen bereits laufenden CODE-Runner.
 
 Die erfolgreiche Node-/Windows-CI ist **kein** tatsächlicher Game-Iframe-Test. Browser-Fetch, WebCrypto, CORS und indirektes globales Eval müssen bei dieser manuellen Live-Abnahme geprüft werden.
+
+## Live-Rückmeldung vom 18.10.2026
+
+Der Nutzer hat im Anschluss an die Anleitung zum Test mit eingeschaltetem `general.autostart=true` ausdrücklich zurückgemeldet: **„der bootstrap funktioniert“**. Damit ist das grundlegende Laden und Starten im tatsächlich verwendeten Adventure-Land-CODE-Runner **nutzerbestätigt**. Dies ist kein durch GitHub Actions oder den Assistenten selbst ausgeführter Live-Test. Es liegen im Gespräch noch **keine** übermittelten Game-Logs, Laufzeiten oder separat überprüften Ergebnisse für alle vier Charaktere vor. Insbesondere belegt die Rückmeldung noch keine längere fehlerfreie Spielsitzung und keine abgeschlossene Bank-, Gold- oder Merchant-Transaktion.
+
+Die bestehende persönliche Konfiguration einschließlich `autostart=true` bleibt unverändert, die vollständige `bot.js` bleibt als Rückweg erhalten. Bei künftiger Runtime-Aktualisierung müssen Bootstrap und Runtime gemeinsam mit neuem SHA-256 veröffentlicht und erneut geprüft werden. `main` bleibt unberührt; PR #157 bleibt Draft.

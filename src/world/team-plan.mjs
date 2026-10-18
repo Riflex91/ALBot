@@ -586,6 +586,7 @@ export function createTeamPlan(bot){
     bot.reason='Monsterhunt-Besuch: Farmroute bis Rückkehr pausiert';
     return true;
    }
+   if(bot.movement.order?.owner==='farm')bot.movement.stop();
    return false;
   }
   if(samePlace(p.c,current)&&distance(p.c,current)<=65)return false;

@@ -9,10 +9,16 @@ const partial=()=>({version:2,owner:'M',realm:'EU:I',at:Date.now(),
  pack:'items0',bankSlot:7,dest:0,splitSlot:1,
  item:{...wing},sourcePrint:fingerprint(wing),
  total:131,take:100,before:0,bankBefore:131});
-const reclaim=()=>({version:2,owner:'M',realm:'EU:I',at:Date.now(),
- pack:'items0',slot:27,dest:2,item:{...ore},
- sourcePrint:fingerprint(ore),quantity:10,before:0,
- bankBefore:10,gold:1000,expectedSaleGold:20,explicitOnly:true});
+const reclaim=()=>{
+ const at=Date.now();
+ return {version:2,owner:'M',realm:'EU:I',at,
+  pack:'items0',slot:27,dest:2,item:{...ore},
+  sourcePrint:fingerprint(ore),quantity:10,before:0,
+  bankBefore:10,gold:1000,expectedSaleGold:20,explicitOnly:true,
+  prepared:{at,session:'original-test-session',kind:'bank.reclaim',
+   realm:'EU:I',pack:'items0',slot:27,dest:2,
+   sourcePrint:fingerprint(ore)}};
+};
 
 function fixture({part=null,sale=null,map='bank'}={}){
  const keyPartial='albot:bank-partial:M',keyReclaim='albot:bank-reclaim:M',

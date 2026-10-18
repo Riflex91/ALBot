@@ -193,6 +193,7 @@ function operatingBankFixture(){
  bot.cfg.production.autoDisposition=true;
  bot.p.G.items.scroll0={type:'uscroll',g:1000,s:9999};
  bot.economy.npcFor=()=>({map:'main',x:0,y:0});
+ bot.economy.travel=()=>true;
  inv[1]={name:'scroll0',q:100};
  bot.p.call=(name,pack,slot,dest)=>{
   assert.equal(name,'bank_retrieve');inv[dest]=bankPack[slot];bankPack[slot]=null;

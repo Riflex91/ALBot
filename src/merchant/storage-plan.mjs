@@ -90,6 +90,29 @@ export function createStoragePlanner(bot){
  function tick(){
   refresh();if(!enabled()||!active||bot.journal||bot.inventoryBlocked||bot.bank?.pending||bot.logistics?.reserved||bot.gold?.reserved||bot.exec.busy('inventory'))return false;
   if(bot.bank?.consolidateInventory?.())return true;
+  // Reversible clutter parking precedes any proposed NPC sale. Never use
+  // speculative cached/offsite bank room, consume protected quest sources,
+  // or override an explicit item disposition.
+  const physicalBank=bot.bank?.observed===true&&p.c.map?.startsWith('bank');
+  const freeBank=physicalBank&&bot.bank?.capacityEvidence?.()?.rows?.some(r=>
+   r.map===p.c.map&&r.free>(cfg.merchant.bankWorkspace??2));
+  if(freeBank){
+   const clutter=new Set(['partyhat','cake','pumpkinspice','elixirstr0',
+    'elixirint0','elixirvit0','seashell']);
+   for(let slot=0;slot<p.c.items.length;slot++){
+    const i=p.c.items[slot],meta=p.G.items?.[i?.name];
+    if(!i||!clutter.has(i.name)||!usable(i)||manual(i)||
+       !meta||meta.e||bot.production?.reservedQuantity?.(i)>0)continue;
+    const q=i.q??1;
+    const rule={name:'Umkehrbares Clutter-Banking '+i.name,item:i.name,
+     action:'bank',enabled:true,batch:q,maxCount:999999,
+     keep:0,teamReserve:0,maxActions:0,goldBudget:0,lossBudget:0};
+    last={kind:'clutter-bank',item:i.name,quantity:q,slot};
+    if(bot.bank?.store?.(slot,rule)){
+     bot.event?.('storage.clutterBankPlanned',last);return true;
+    }
+   }
+  }
   const candidates=[],groups=new Map(),stock=bankStock();
   const key=i=>identity(i),all=[...(p.c.items??[]).flatMap((item,slot)=>item?[{item,slot}]:[]),...stock];
   for(const row of all){const i=row.item,m=p.G.items?.[i.name];if(!usable(i)||(i.q??1)!==1||!m.compound||!cfg.production.compound||(i.level??0)>=(cfg.production.autoGearMaxLevel??5))continue;

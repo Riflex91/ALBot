@@ -110,3 +110,15 @@ test('W01/W02: opt-in never promotes protected potions or insufficient stock to 
  assert.equal(rare.state,'no-bounded-excess');
  assert.equal(rare.slotRemovalUpperBound,0);
 });
+
+test('G01/W01: removing one fully sold overflow stack does not claim a normal slot',()=>{
+ const inv=Array.from({length:44},(_,slot)=>({name:slot===0?'ore':'dummy'+slot,q:1}));
+ const report=describeInventoryDisposition({item:inv[0],slot:0,inventory:inv,
+  G,explicit:sell,inventorySize:42});
+ assert.equal(report.state,'explicit-rule-observed');
+ assert.equal(report.slotRemovalUpperBound,1);
+ assert.equal(report.physicalSlotEffect.signedFreeBefore,-2);
+ assert.equal(report.physicalSlotEffect.signedFreeAfterWholeRemoval,-1);
+ assert.equal(report.physicalSlotEffect.potentialFreedSlots,0);
+ assert.equal(report.executable,false);
+});

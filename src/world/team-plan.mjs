@@ -85,6 +85,39 @@ export function assessFarmMarch(character,peers,{realm,now=Date.now(),
  }
  return {ready:true,reason:'cohesive-march',next:destination,gap:farthest};
 }
+// A projected geometric hop is NOT a navigable game route. A blocked
+// straight line must be routed through native smart_move to the real spawn.
+// If that route was already rejected, try a small locally verified detour
+// without widening the healer leash.
+export function chooseMarchWaypoint(character,destination,peers,{
+ canMove=()=>false,failed=()=>false,maxGap=165,step=85
+}={}){
+ if(!samePlace(character,destination))
+  return {point:{...destination,radius:65},reason:'cross-map-native-route'};
+ const position=xy(character),goal=xy(destination);
+ const distanceToGoal=distance(character,destination);
+ if(distanceToGoal<=65)return {point:null,reason:'arrived'};
+ const direct={...destination,x:position.x+(goal.x-position.x)*
+  Math.min(step,distanceToGoal)/distanceToGoal,
+  y:position.y+(goal.y-position.y)*Math.min(step,distanceToGoal)/
+  distanceToGoal,radius:20};
+ if(canMove(direct.x,direct.y)&&!failed(direct))
+  return {point:direct,reason:'verified-local-hop'};
+ // Native pathfinding knows map collision that a linear projection cannot.
+ const final={...destination,radius:65};
+ if(!failed(final))return {point:final,reason:'native-path-around-obstacle'};
+ const angle=Math.atan2(goal.y-position.y,goal.x-position.x);
+ for(const delta of [Math.PI/4,-Math.PI/4,Math.PI/2,-Math.PI/2,
+   3*Math.PI/4,-3*Math.PI/4]){
+  const x=position.x+Math.cos(angle+delta)*65;
+  const y=position.y+Math.sin(angle+delta)*65;
+  const point={...destination,x,y,radius:12};
+  if(!failed(point)&&canMove(x,y)&&
+   (peers??[]).every(p=>samePlace(character,p)&&distance(p,point)<=maxGap))
+   return {point,reason:'verified-local-detour'};
+ }
+ return {point:null,reason:'no-navigable-safe-route'};
+}
 // The same semantic team-gear identity must index both measured and
 // ranked spawn history; heartbeat timestamps are not gear changes.
 export function farmAreaHistoryKey(realm,hour,spawnKey,gears){
@@ -400,7 +433,35 @@ export function createTeamPlan(bot){
     }
     return true;
    }
-   destination=march.next??destination;
+   if(bot.movement.order?.owner==='farm'){
+    // Check health/roster/leash during a live smart route on EVERY tick.
+    // A full native route may not outrun the healer.
+    bot.reason='Gemeinsamer Gruppenmarsch: '+current.target;
+    return true;
+   }
+   const route=chooseMarchWaypoint(p.c,current,peers,{
+    canMove:(x,y)=>p.has?.('can_move_to')===true&&
+      p.call('can_move_to',x,y)===true,
+    failed:point=>bot.movement.failedRecently?.(point,'farm')===true,
+    maxGap:165,step:85});
+   if(!route.point){
+    bot.reason='Gruppenmarsch: Weg blockiert, sichere Umleitung fehlt';
+    if(Date.now()-marchState.at>12000||marchState.reason!==route.reason){
+     marchState={reason:route.reason,peer:'',at:Date.now()};
+     bot.event?.('party.marchRouteBlocked',{plan:current.id,
+      reason:route.reason,map:p.c.map,x:p.c.x,y:p.c.y});
+    }
+    return true;
+   }
+   destination=route.point;
+   if(route.reason==='native-path-around-obstacle'){
+    if(Date.now()-marchState.at>12000||marchState.reason!==route.reason){
+     marchState={reason:route.reason,peer:'',at:Date.now()};
+     bot.event?.('party.marchDetour',{plan:current.id,
+      reason:route.reason,map:p.c.map,x:p.c.x,y:p.c.y,
+      destination:current.key});
+    }
+   }
   }
   bot.reason='Gemeinsamer Gruppenmarsch: '+current.target;
   bot.movement.go(destination,'farm');return true;

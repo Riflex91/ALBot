@@ -103,7 +103,7 @@ Object.assign(DESCRIPTOR.schema.properties.production.properties,{
  helperMaxPrice:int('Maximaler Stückpreis für automatisch beschaffte Zutaten/Scrolls',100000),
  gearTargets:list('Accountweite Ausrüstungsziele',obj('Ausrüstungsziel',{
   name:text('Zielname','Ausrüstungsziel',{minLength:1}),enabled:flag('Aktiv',true),character:text('Zielcharakter','',{'x-catalog':'characters',minLength:1}),slot:text('Equipment-Slot','mainhand',{minLength:1}),
-  item:text('Zielitem','',{'x-catalog':'items',minLength:1}),level:int('Ziellevel',0,0,99),budget:int('Gesamtes Gold-/Verlustbudget',100000),priority:int('Priorität',0,-10000,10000)
+  item:text('Zielitem','',{'x-catalog':'items',minLength:1}),level:int('Ziellevel',0,0,99),statType:choice('Gewünschter Stat-Scroll (leer = kein Tailoring)',{'':'Unverändert',str:'Stärke',int:'Intelligenz',dex:'Geschicklichkeit',vit:'Vitalität'}),budget:int('Gesamtes Gold-/Verlustbudget',100000),priority:int('Priorität',0,-10000,10000)
  }))
 });
 Object.assign(DESCRIPTOR.schema.properties.merchant.properties,{

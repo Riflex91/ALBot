@@ -29,7 +29,43 @@ export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}
     !safe(record.gold)||!safe(record.expectedSaleGold)||
     !(record.saleConfirmed===undefined||record.saleConfirmed===true))
   return reject('invalid-checkpoint-evidence');
+ // An offsite NPC trip must be based on a DURABLY recorded, exact bank
+ // withdrawal from the original physical source slot, not cached bank arrays.
+ // Old v2 records without this optional receipt remain readable, but cannot
+ // authorize a new offsite NPC sale until the bank source is observed again.
+ if(record.withdrawal!==undefined){
+  const w=record.withdrawal;
+  if(!w||typeof w!=='object'||Array.isArray(w)||
+     !safe(w.at)||w.at<record.at||w.at>now+2000||
+     w.realm!==record.realm||w.pack!==record.pack||
+     w.slot!==record.slot||w.dest!==record.dest||
+     w.sourcePrint!==record.sourcePrint||
+     w.inventoryCount!==record.before+record.quantity||
+     w.bankCount!==record.bankBefore-record.quantity)
+   return reject('invalid-durable-withdrawal-receipt');
+ }
  return {valid:true,reason:null};
+}
+// Only a previously VERIFIED and persisted withdrawal may continue to an
+// NPC when the character has left the bank map. This does NOT prove an
+// offsite bank pack is empty or that an NPC sale already happened.
+export function inspectOffsiteBankReclaim(record,{
+ owner,realm,now=Date.now(),inventory
+}={}){
+ const v=validateBankReclaimRecord(record,{owner,realm,now});
+ if(!v.valid)return {eligible:false,reason:v.reason};
+ if(record.saleConfirmed===true)return {
+  eligible:false,reason:'npc-sale-already-confirmed-return-to-bank'
+ };
+ if(!record.withdrawal||!Array.isArray(inventory)||
+    record.dest>=inventory.length)
+  return {eligible:false,reason:'durable-withdrawal-or-inventory-missing'};
+ const item=inventory[record.dest];
+ const count=variantCount(inventory,record.item);
+ if(!item||fingerprint(item)!==record.sourcePrint||
+    !safe(count)||count!==record.withdrawal.inventoryCount)
+  return {eligible:false,reason:'offsite-source-slot-or-variant-count-changed'};
+ return {eligible:true,reason:'durable-exact-withdrawal-and-live-carried-stack'};
 }
 
 export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),

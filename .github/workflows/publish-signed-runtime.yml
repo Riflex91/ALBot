@@ -1,0 +1,65 @@
+name: Publish approved signed ALBot runtime
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: albot-signed-release-candidate
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/codex/w00-w01-readonly-disposition-20261018'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/w00-w01-readonly-disposition-20261018
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build the exact runtime to be signed
+        run: npm run build
+      - name: Run all offline regressions before release
+        run: npm test
+      - name: Preserve all personalized settings
+        shell: bash
+        run: |
+          node scripts/sync-personal-code.mjs --write
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const current=fs.readFileSync('bot.js','utf8');
+          const old=execFileSync('git',['show','HEAD:bot.js'],{encoding:'utf8'});
+          const cfg=s=>{
+           const x=s.indexOf('globalThis.ALBotConfig='),y=s.indexOf('/* ALBot ',x);
+           if(x<0||y<x)throw Error('Personal configuration boundary missing');
+           return s.slice(x,y);
+          };
+          if(cfg(current)!==cfg(old))throw Error('Personal settings drift during runtime release');
+          console.log('Personal configuration retained exactly');
+          EOF
+      - name: Verify installed auto-bootstrap requires no update
+        run: npm run check:bootstrap:auto
+      - name: Verify candidate browser/editor package
+        run: npm run build:editor
+      - name: Sign manifest (private key is never committed or logged)
+        env:
+          ALBOT_RELEASE_SIGNING_KEY_PEM: ${{ secrets.ALBOT_RELEASE_SIGNING_KEY_PEM }}
+        run: npm run sign:release
+      - name: Verify the signed manifest against released bytes
+        run: npm run verify:release
+      - name: Publish runtime and signed manifest together
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- bot.js dist/albot.runtime.js dist/albot.release.json
+          if git diff --cached --quiet; then
+            echo "Nothing changed"
+            exit 0
+          fi
+          git commit -m "release(bootstrap): publish approved signed runtime [skip release]"
+          git push origin HEAD:codex/w00-w01-readonly-disposition-20261018

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sharedMarchStatus,fitHeartbeat,compactFarmPlan} from '../src/party/transport.mjs';
-import {assessLiveSquadMarch,sameFarmDestination} from '../src/world/team-plan.mjs';
+import {assessLiveSquadMarch,sameFarmDestination,activeFarmRouteMatches} from '../src/world/team-plan.mjs';
 import {sharedFarmMarchDestination} from '../src/combat/farmer.mjs';
 
 const realm='EUII';
@@ -96,6 +96,15 @@ test('Priest follows a compact leader route even without farmPlan',()=>{
   {map:'halloween',x:8,y:630.5,radius:65,target:'minimush'});
  assert.equal(sharedFarmMarchDestination(priest,{...compact,realm:'USIV'},realm),null);
  assert.equal(sharedFarmMarchDestination(priest,{...compact,march:null},realm),null);
+});
+
+test('late full-plan adoption retains an already aligned compact escort route',()=>{
+ const aligned={owner:'follow',dest:{map:'halloween',in:'halloween',x:8,y:630.5}};
+ assert.equal(activeFarmRouteMatches(aligned,destination),true);
+ assert.equal(activeFarmRouteMatches({owner:'farm',dest:aligned.dest},destination),true);
+ assert.equal(activeFarmRouteMatches({owner:'quest',dest:aligned.dest},destination),false);
+ assert.equal(activeFarmRouteMatches({owner:'follow',dest:{...aligned.dest,x:800}},destination),false);
+ assert.equal(activeFarmRouteMatches(null,destination),false);
 });
 
 test('same physical spawn does not restart native route on hunt/farm label change',()=>{

@@ -19,7 +19,7 @@ export function estimateThreatCapability({
    !finite(meta?.frequency,.01,100)||!finite(meta?.hp,1,100000000))
   return refusal('monster-data-unverified');
  if(!Array.isArray(team)||!team.length||team.length>5||
-   !team.some(h=>h.name===monster.target))return refusal('target-or-team-unverified');
+   !team.some(h=>h?.name===monster.target))return refusal('target-or-team-unverified');
  const members=[],attackers=[];
  for(const m of team){
   if(!m||!m.running||m.rip||!samePlace(m,monster)||

@@ -58,6 +58,14 @@ test('stale healer, missing owner, anonymous aggro and unknown damage fail close
  assert.equal(estimate(monster(),team(),{...aggressive,frequency:undefined}).viable,false);
 });
 
+test('missing teammate before the victim fails closed instead of crashing on null.name',()=>{
+ const row=estimate(monster('easyaggro',300),
+  [null,...team()],{...aggressive,hp:300,attack:15,frequency:.4,resistance:0});
+ assert.equal(row.viable,false);
+ assert.equal(row.decision,'retreat');
+ assert.equal(row.reason,'party-member-stale-or-unverified');
+});
+
 test('projected buffs, taunt and priest partyheal never become fictitious extra DPS or HP',()=>{
  const t=team();
  t[1].class='warrior';

@@ -10,6 +10,7 @@ on:
       - src/merchant/controller.mjs
       - src/merchant/economy.mjs
       - editor/lib/schema.mjs
+      - editor/lib/contract.mjs
       - scripts/build.mjs
       - test/roadmap-g09-single-swap.test.mjs
 permissions:

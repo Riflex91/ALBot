@@ -1,0 +1,62 @@
+import {fingerprint,protectedItem,variantCount} from '../core/policy.mjs';
+
+// W03: physical evidence for a persisted partial withdrawal. This module is
+// read-only and never schedules, clears or automatically approves an action.
+const integer=n=>Number.isSafeInteger(n)&&n>=0;
+export function validateBankPartialRecord(r,{owner,realm,now=Date.now()}={}){
+ const bad=reason=>({valid:false,reason});
+ if(!r||typeof r!=='object'||Array.isArray(r)||r.version!==2||
+    !owner||typeof owner!=='string'||r.owner!==owner||
+    !realm||typeof realm!=='string'||r.realm!==realm)
+  return bad('unverified-owner-realm-or-version');
+ if(!integer(now)||!integer(r.at)||r.at<1||r.at>now+2000)
+  return bad('invalid-record-time');
+ if(!/^items\d+$/.test(r.pack??'')||![r.bankSlot,r.dest,r.splitSlot].every(integer)||
+    r.bankSlot>=42||r.dest>=1000||r.splitSlot>=1000||r.dest===r.splitSlot)
+  return bad('invalid-addresses');
+ if(!r.item||typeof r.item.name!=='string'||!r.item.name||
+    protectedItem(r.item)||!integer(r.total)||!integer(r.take)||
+    !(r.total>r.take&&r.take>0)||r.item.q!==r.total||
+    !integer(r.before)||!integer(r.bankBefore)||r.bankBefore<r.total||
+    !Number.isSafeInteger(r.before+r.total)||!integer(r.bankBefore-r.total)||
+    r.sourcePrint!==fingerprint(r.item))
+  return bad('invalid-quantities-or-source');
+ return {valid:true,reason:null};
+}
+export function classifyBankPartialRecord(r,{
+ owner,realm,now=Date.now(),inventory,bank,map,packMap
+}={}){
+ const v=validateBankPartialRecord(r,{owner,realm,now});
+ if(!v.valid)return {phase:'invalid',reason:v.reason,confirmed:false};
+ if(!Array.isArray(inventory)||r.dest>=inventory.length||
+    r.splitSlot>=inventory.length||typeof packMap!=='function'||
+    typeof map!=='string'||!map)
+  return {phase:'unobserved',reason:'inventory-or-map-not-observed',confirmed:false};
+ let packLocation=null;
+ try{packLocation=packMap(r.pack);}catch{}
+ if(!packLocation||packLocation!==map||!bank||
+    !Array.isArray(bank[r.pack])||bank[r.pack].length>42)
+  return {phase:'unobserved',reason:'live-bank-pack-not-observed',confirmed:false};
+ const row=bank[r.pack],original=row[r.bankSlot],
+  dest=inventory[r.dest],split=inventory[r.splitSlot],
+  localCount=variantCount(inventory,r.item),
+  bankCount=variantCount(row,r.item),
+  same=(i,q)=>!!i&&fingerprint(i)===fingerprint({...r.item,q});
+ // Signed sums must match and unrelated stack positions must not be allowed
+ // to stand in for the addressed bank/inventory source and destinations.
+ if(!integer(localCount)||!integer(bankCount))
+  return {phase:'ambiguous',reason:'invalid-count',confirmed:false};
+ if(same(original,r.total)&&!dest&&!split&&
+    localCount===r.before&&bankCount===r.bankBefore)
+  return {phase:'original',reason:'exact-full-bank-before-image',confirmed:true};
+ if(!original&&same(dest,r.total)&&!split&&
+    localCount===r.before+r.total&&bankCount===r.bankBefore-r.total)
+  return {phase:'withdrawn',reason:'exact-bank-withdrawal-observed',confirmed:true};
+ if(!original&&same(dest,r.total-r.take)&&same(split,r.take)&&
+    localCount===r.before+r.total&&bankCount===r.bankBefore-r.total)
+  return {phase:'split',reason:'both-exact-split-stacks-observed',confirmed:true};
+ if(same(original,r.total-r.take)&&!dest&&same(split,r.take)&&
+    localCount===r.before+r.take&&bankCount===r.bankBefore-r.take)
+  return {phase:'returned',reason:'exact-partial-return-observed',confirmed:true};
+ return {phase:'ambiguous',reason:'addressed-slots-or-totals-differ',confirmed:false};
+}

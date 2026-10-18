@@ -1,3 +1,13 @@
+# Verbindlicher Bootstrap-/Ladevertrag für alle KIs (18.10.2026)
+
+- **Kanonisches persönliches Bot-Artefakt:** `bot.js` aus `main`. Raw-Adresse: `https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js`. Die maßgebliche maschinenlesbare Zuordnung steht in [`bootstrap.contract.json`](bootstrap.contract.json), ausführliche Regeln in [`docs/BOOTSTRAP-VERTRAG.md`](docs/BOOTSTRAP-VERTRAG.md).
+- **Unverifiziert:** Der echte im Spiel benutzte externe Bootstrap-Quelltext liegt noch nicht im Repository vor. Keine KI darf daraus schließen oder behaupten, dass der Ingame-Loader tatsächlich `bot.js` oder eine bestimmte URL lädt. `inGameLoader.status=unverified` ist bewusst gesetzt. Erst den Benutzer-Bootstrap lesen, seinen effektiven Ladepfad nachweisen und danach den Vertrag aktualisieren.
+- **Unterschiede:** `bot.js` = persönliche Konfiguration plus Runtime; `dist/albot.js` = generisches Bundle; `dist/albot.runtime.js` = gebaute Runtime; `src/` = Wartungsquelle. Eine Änderung nur an `src/` oder `dist/` erreicht nicht automatisch das vom Nutzer ausgeführte CODE.
+- **Pflicht nach Codeänderungen:** `npm ci`, `npm run build`, `node scripts/sync-personal-code.mjs --check`, `node scripts/verify-bootstrap-contract.mjs` und `npm test`; für bewusst aktualisierte persönliche Runtime `node scripts/sync-personal-code.mjs --write` **nur unter Erhalt aller persönlichen Einstellungen** und anschließend beide Prüfungen erneut. Commit-Versionen von generierten `dist/`-Dateien können hinter der persönlichen Datei zurückliegen; vor Verwendung neu bauen und nie als automatische Bootstrap-Wahrheit ausgeben.
+- **Änderungsregeln:** Bei einem neuen Loader, Wechsel von Branch, Dateiname oder URL immer `bootstrap.contract.json`, `README.md`, `AGENTS.md`, den Bootstrap-Vertrag und die GitHub-Prüfung gemeinsam aktualisieren. Keine unbestätigte Laufzeitbeobachtung als Testbeweis deklarieren.
+
+---
+
 # Aktueller Benutzerauftrag 0.10.8-candidate (15.10.2026)
 
 Benutzer verlangt scroll1-Prüfung und nötigenfalls Kauf vor dem Upgrade, wenn die Standardschriftrolle die Mindestchance verfehlt; globale Mindestchance ausdrücklich auf 65 % gesenkt. Persönliche bot.js und neue Full-Profile angepasst, strengere explizite Regeln bleiben geschützt. Nach einer belegten scroll0-Vorschau dient die rekonstruierbare höhere Scrollchance ausschließlich als Kaufnachweis. Frische scroll1-Servervorschau bleibt zwingend vor Wertaktion. Kein automatischer scroll2-Kauf. 806/806 Offlinetests, Runtime/Werkstatt und Bundleparität geprüft; neue Spiel-Liveabnahme offen. Details docs/CHANGELOG-0.10.8.md. Basis gemergter PR #90 / main 6a2aeef.

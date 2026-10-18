@@ -1,0 +1,17 @@
+{
+  "format": "albot-bootstrap-contract",
+  "formatVersion": 1,
+  "repository": "Riflex91/ALBot",
+  "branch": "main",
+  "canonicalPersonalCode": "bot.js",
+  "canonicalPersonalRawUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js",
+  "builtRuntime": "dist/albot.runtime.js",
+  "genericBundle": "dist/albot.js",
+  "sourceVersion": "src/version.mjs",
+  "inGameLoader": {
+    "status": "unverified",
+    "trackedSourcePath": null,
+    "observedLoadedUrl": null,
+    "note": "Der tatsaechliche im Spiel eingesetzte externe Bootstrap-Code wurde nicht bereitgestellt. Sein Ladeziel ist nicht belegt."
+  }
+}

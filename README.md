@@ -1,3 +1,14 @@
+## Verbindlicher Bot-Dateivertrag für Bootstrap und andere KIs (18.10.2026)
+
+**Kanonisches persönliches Laufzeitartefakt:** [`bot.js`](bot.js) auf `main`, Raw-Adresse: `https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js`.
+`bot.js` enthält die persönliche `globalThis.ALBotConfig` und die ausführbare Runtime. `dist/albot.js` ist ein separates generisches Paket, `dist/albot.runtime.js` die beim Build erzeugte Runtime; diese Dateien dürfen nicht mit der persönlichen `bot.js` verwechselt werden.
+
+**Wichtige Beweisgrenze:** Der tatsächlich im Adventure-Land-CODE-Feld eingesetzte externe Bootstrap wurde noch nicht als Quelldatei bereitgestellt. Daher ist **nicht nachgewiesen, welche URL dieser Bootstrap wirklich lädt**. Die obige URL ist die maßgebliche Adresse des persönlichen Artefakts, **keine Behauptung über den derzeitigen Ingame-Loader**.
+
+Die maschinenlesbare Quelle dieser Zuordnung ist [`bootstrap.contract.json`](bootstrap.contract.json); Details, Änderungen und Grenzen stehen im [Bootstrap-/Ladevertrag](docs/BOOTSTRAP-VERTRAG.md). GitHub Actions führt `node scripts/verify-bootstrap-contract.mjs` **nach** `npm run build` aus und prüft Version, Dokumentation, Personal-Bundle, Runtime und Bundle-Manifest. Sobald der echte Ingame-Bootstrap verfügbar ist, muss sein Ladeziel separat mit dem Vertrag verglichen und dokumentiert werden.
+
+---
+
 # ALBot 0.10.8-candidate – aktuell (15.10.2026)
 
 Upgrade-Scrollwahl: Die persönliche [bot.js](bot.js) verwendet 65 % globale Mindestchance. Bei unzureichender scroll0-Chance prüft die Gear-Produktion scroll1, verwendet vorhandene Exemplare oder fordert ein Exemplar beim NPC an. Der echte Upgrade-Aufruf benötigt weiterhin eine frische ausreichende Servervorschau mit scroll1. 806/806 Offlinetests bestanden; Runtime, persönliche Bundleparität und Werkstatt geprüft. Neue Liveabnahme offen. [Befund, Ablauf und Grenzen](docs/CHANGELOG-0.10.8.md).

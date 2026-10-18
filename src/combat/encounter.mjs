@@ -30,10 +30,10 @@ export function verifiedAdaptiveCapacity(profiles,context,max,healthy,enabled=tr
 // targets permit a bounded 3shot test even when the persisted learning key
 // changed because of gear, roster or context. A known failed 3-target episode
 // still vetoes the attempt. No boss/event/foreign or unknown-risk pull.
-export function safeThreeShotOpportunity({healthy,max,failed,planned,visible,safe,teamNames=[],avoidOthers=true}){
+export function safeThreeShotOpportunity({healthy,max,failed,planned,visible,safe,teamNames=[]}){
  return !!(healthy&&max>=3&&!failed&&planned&&
   (visible??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
-   m.type==='monster'&&m.mtype===planned&&(!m.target||teamNames.includes(m.target)||avoidOthers===false)&&safe(m))
+   m.type==='monster'&&m.mtype===planned&&(!m.target||teamNames.includes(m.target))&&safe(m))
    .filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).length>=3);
 }
 export function createEncounter(bot){
@@ -51,8 +51,7 @@ export function createEncounter(bot){
   // This avoids repeating the perpetual size-two cold start from live logs.
   if(bot.me.name===bot.leader&&bot.me.role==='farmer'&&
     safeThreeShotOpportunity({healthy,max,failed:!noThreeFailure,
-      planned:target,visible:bot.monsters(),teamNames:bot.teamNames,
-       avoidOthers:bot.cfg.farming.avoidOthers,safe:m=>
+      planned:target,visible:bot.monsters(),teamNames:bot.teamNames,safe:m=>
        !bot.recovering&&bot.teamPlan?.wantsCombat?.()!==false&&
        !bot.p.parent?.is_pvp&&!bot.p.G.maps?.[m.map]?.pvp&&
        m.map===bot.p.c.map&&m.in===(bot.p.c.in??bot.p.c.map)&&

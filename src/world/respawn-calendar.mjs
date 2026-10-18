@@ -59,8 +59,9 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    rows.delete(entity.id);
    rows.set(entity.id,{id:entity.id,monster:entity.mtype,...scope,
     x:entity.x,y:entity.y,lastSeenAt:time,
-    killedAt:existing&&same(existing,scope)&&
-     existing.killedAt!==null?existing.killedAt:null,
+    // A fresh live sighting is not a still-dead entity. Never continue
+    // displaying an earlier kill as the current state of a live monster.
+    killedAt:null,
     lastMissingAt:null,missingObservations:0});
    if(rows.size>MAX_ROWS)rows.delete(rows.keys().next().value);
   }

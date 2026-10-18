@@ -196,7 +196,7 @@ test('live 10:24 stop-and-go regression: 170-unit follower lag must not pause mo
  const continuous=assessFarmMarch(leader,[priest,other],{
   realm:'EUII',now,maxGap:300,hpFloor:.6});
  assert.equal(continuous.ready,true,'A 170-unit healthy lag is not a reason to stop');
- assert.equal(continuous.next,undefined,'No mandatory 85-unit destination stages');
+ assert.equal(continuous.next,null,'No mandatory 85-unit destination stages');
  const separated=assessFarmMarch(leader,[{...priest,x:580}],{
   realm:'EUII',now,maxGap:300,hpFloor:.6});
  assert.equal(separated.ready,false);

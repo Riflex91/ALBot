@@ -50,6 +50,41 @@ export function summarizeSpawnPressure(rows,now=Date.now(),freshMs=180000){
   spawns:ranked.slice(0,5).map(r=>({key:r.key,pressure:r.pressure,
    pressureRatio:r.pressureRatio,evidenceSeconds:r.evidenceSeconds,observedAt:r.observedAt}))};
 }
+// A farm destination is a squad march, not permission for the Leader to
+// sprint beyond the healer. Each hop requires fresh, colocated and healthy
+// selected Farmers, including a verified healer if one is in the roster.
+export function assessFarmMarch(character,peers,{realm,now=Date.now(),
+ maxGap=165,hpFloor=.85,step=85,destination=null}={}){
+ if(!character||!Array.isArray(peers)||!Number.isFinite(now)||
+  !Number.isFinite(character.x)||!Number.isFinite(character.y))
+  return {ready:false,reason:'leader-unverified'};
+ let farthest=0;
+ for(const peer of peers){
+  if(!peer?.running||peer.rip||peer.realm!==realm||
+    !samePlace(character,peer)||!Number.isFinite(peer.x)||
+    !Number.isFinite(peer.y)||!Number.isFinite(peer.hp)||
+    !Number.isFinite(peer.max_hp)||peer.max_hp<=0||
+    !Number.isFinite(peer.received)||peer.received>now||
+    now-peer.received>4000)
+   return {ready:false,reason:'teammate-unverified',peer:peer?.name??null};
+  if(peer.hp/peer.max_hp<hpFloor)
+   return {ready:false,reason:'teammate-needs-heal',peer:peer.name,
+    hpRatio:peer.hp/peer.max_hp};
+  const gap=distance(character,peer);farthest=Math.max(farthest,gap);
+  if(gap>maxGap)return {ready:false,reason:'teammate-behind',peer:peer.name,gap};
+ }
+ if(destination&&samePlace(character,destination)&&
+   distance(character,destination)>step){
+  const pos=xy(character),goal=xy(destination),d=distance(character,destination);
+  const next={...destination,x:pos.x+(goal.x-pos.x)*step/d,
+   y:pos.y+(goal.y-pos.y)*step/d,radius:20};
+  const laggard=peers.find(peer=>distance(next,peer)>maxGap);
+  if(laggard)return {ready:false,reason:'projected-healer-leash',
+   peer:laggard.name,gap:distance(next,laggard)};
+  return {ready:true,reason:'cohesive-march',next,gap:farthest};
+ }
+ return {ready:true,reason:'cohesive-march',next:destination,gap:farthest};
+}
 // The same semantic team-gear identity must index both measured and
 // ranked spawn history; heartbeat timestamps are not gear changes.
 export function farmAreaHistoryKey(realm,hour,spawnKey,gears){
@@ -112,7 +147,7 @@ export function balancedFarmUtility(xp,gold){
  return Math.pow(Math.max(1,xp),.65)*Math.pow(Math.max(1,gold),.35);
 }
 export function createTeamPlan(bot){
- const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
+ const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0};let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
   return farmAreaHistoryKey(p.realm(),new Date(now).getUTCHours(),spawnKey,
@@ -346,8 +381,30 @@ export function createTeamPlan(bot){
     'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
   if(!same){bot.target=null;if(['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
- return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){if(!valid(current)||bot.strategy.busy)return false;if(cfg.party.enabled&&me.name!==bot.leader)return false;if(me.name===bot.leader&&cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()))){bot.reason='Warte auf aktive Gruppe vor Farmreise';return true;}// A 250-unit exit stranded ranged farmers outside verified spawn areas.
-  if(samePlace(p.c,current)&&distance(p.c,current)<=Math.min(85,Math.max(40,(cfg.farming.orbitRadius??220)/2)))return false;bot.reason='Gemeinsamer Plan: '+current.target;bot.movement.go({...current,radius:65},'farm');return true;},materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
+ return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
+  if(!valid(current)||bot.strategy.busy)return false;
+  if(cfg.party.enabled&&me.name!==bot.leader)return false;
+  if(samePlace(p.c,current)&&distance(p.c,current)<=65)return false;
+  let destination={...current,radius:65};
+  if(cfg.party.enabled&&me.name===bot.leader){
+   const peers=(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)??{name:n});
+   const march=assessFarmMarch(p.c,peers,{realm:p.realm(),destination:current,
+    maxGap:165,hpFloor:.85,step:85});
+   if(!march.ready){
+    if(bot.movement.order?.owner==='farm')bot.movement.stop();
+    bot.reason='Gruppenmarsch pausiert: '+march.reason+' / '+(march.peer??'Team');
+    if(march.reason!==marchState.reason||march.peer!==marchState.peer||Date.now()-marchState.at>12000){
+     marchState={reason:march.reason,peer:march.peer,at:Date.now()};
+     bot.event?.('party.marchPaused',{plan:current.id,reason:march.reason,
+      peer:march.peer??null,gap:march.gap??null,hpRatio:march.hpRatio??null});
+    }
+    return true;
+   }
+   destination=march.next??destination;
+  }
+  bot.reason='Gemeinsamer Gruppenmarsch: '+current.target;
+  bot.movement.go(destination,'farm');return true;
+ },materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
   return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
    if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:summarizeSpawnPressure(ranking).pressure,
    pressureEvidence:summarizeSpawnPressure(ranking),rawLocalPressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,switchAdvice,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};

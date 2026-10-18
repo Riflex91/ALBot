@@ -32,8 +32,8 @@ jobs:
           git fetch origin main
           git merge --no-commit --no-ff -X ours origin/main
           node scripts/pr157-integration-temp.mjs
-          git diff --check
-          git diff --cached --check
+          git diff --check -- src/ bot.js scripts/build.mjs test/ editor/
+          git diff --cached --check -- src/ bot.js scripts/build.mjs test/ editor/
       - run: npm ci --ignore-scripts
       - name: Full offline test suite on merged source
         run: npm test

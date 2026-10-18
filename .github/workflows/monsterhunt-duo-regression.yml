@@ -26,7 +26,7 @@ jobs:
       - name: Build runtime
         run: npm run build
       - name: Synchronize personalized bot without changing configuration
-        run: node scripts/sync-personal-runtime.mjs
+        run: node scripts/sync-personal-code.mjs --write
       - name: Full regression suite
         run: npm test
       - name: Build editor

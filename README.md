@@ -1,3 +1,8 @@
+# Neuer Auto-Bootstrap: Runtime-Updates ohne erneutes CODE-Einfügen (Draft, 18.10.2026)
+
+Die neue **[dist/albot.bootstrap.auto.js](dist/albot.bootstrap.auto.js)** benutzt einen fest hinterlegten öffentlichen ECDSA-P-256-Schlüssel und das signierte Freigabemanifest **[dist/albot.release.json](dist/albot.release.json)**. Nach einmaliger Installation lädt sie bei jedem CODE-Start automatisch die jeweils **signierte und freigegebene** Runtime und prüft SHA-256 vor der Ausführung. `general.autostart=true` bleibt aktiviert. **Erfordert noch den echten Adventure-Land-Livetest dieser neuen Variante.** Die alte erfolgreiche Bootstrap-Datei `dist/albot.bootstrap.js` und `bot.js` bleiben erhalten. Der private Releaseschlüssel wird nicht in Git abgelegt; zur Freigabe späterer Updates braucht der GitHub-Workflow das Secret `ALBOT_RELEASE_SIGNING_KEY_PEM`. [Installation, Key-Setup und Releaseablauf](docs/BOOTSTRAP-AUTO-RELEASE.md).
+
+---
 # Optionaler SHA-256-Bootstrap (Draft, 18.10.2026)
 
 Der neue `dist/albot.bootstrap.js` ist ein kleiner **optionaler** CODE-Loader. Er übernimmt die unveränderte persönliche Konfiguration und lädt die Runtime aus GitHub erst nach vollständigem SHA-256-Vergleich. `bot.js` bleibt die bisherige vollständige, sofortige Startvariante. **Noch kein CORS-/CSP-Livetest im Adventure-Land-Runner; nicht ungeprüft zur Standarddatei machen.** [Setup, Grenzen und sichere Abnahme](docs/BOOTSTRAP-2026-10-18.md).

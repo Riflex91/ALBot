@@ -160,3 +160,15 @@ test('leader publishes next farmer hunt ownership after a verified no-spawn eval
   'game quest is preserved for possible later completion');
  assert.equal(saved.get('albot:teamhunt:team1')?.index,1);
 });
+
+test('after rat risk quarantine, all deferred hunts explain bee fallback rather than claiming quest status is unknown',()=>{
+ const ranking=[{target:'bee',key:'safe:bee',score:100},{target:'rat',key:'mansion:rat',score:80}];
+ const blocked=selectHuntArea(ranking,{phase:'blocked',owner:null,monster:null});
+ assert.equal(blocked.kind,'farm');
+ assert.equal(blocked.area?.target,'bee');
+ assert.equal(blocked.deferred,'HUNT_ALL_DEFERRED_NO_SAFE_SPAWN');
+ const active=selectHuntArea(ranking,{phase:'combat',owner:'My_Priest',
+  monster:'rat',remaining:500});
+ assert.equal(active.kind,'hunt');
+ assert.equal(active.area?.target,'rat','safe rat row retains hunt priority whenever available');
+});

@@ -167,3 +167,71 @@ test('no value checkpoint is discarded if source was not consumed or archive can
   }finally{Date.now=old;}
  }
 });
+
+test('live 1008 anniversary gifts untouched and distance-rejected: release after 120s and stable gold/inventory without replay',()=>{
+ const {bot,events}=fixture(),old=Date.now;
+ const before=Array(42).fill(null);
+ before[9]={name:'anniversarygift',level:0,q:1008};
+ before[27]={name:'monstertoken',level:0,q:2};
+ let now=1792308793536+121000;
+ bot.journal={kind:'exchange',item:'anniversarygift',quantity:1,
+  before:1008,at:1792308793536,slots:[[9,fingerprint(before[9])]],
+  loss:60,cost:0,evidence:{realm:'USIV',gold:210000,
+   inventory:before.map(i=>i?fingerprint(i):null)}};
+ bot.p.c.items=structuredClone(before);bot.p.c.gold=210000;
+ let archives=[],cleared=0,actions=0;
+ bot.p.write=(key,value)=>{archives.push({key,value});return true;};
+ bot.checkpoint.clear=()=>{cleared++;return true;};
+ bot.p.call=()=>{actions++;throw Error('never redispatch a pending exchange');};
+ Date.now=()=>now;
+ try{
+  const recovery=createRecovery(bot);
+  assert.equal(recovery.reconcile(),false,'first full snapshot only');
+  now+=4999;assert.equal(recovery.reconcile(),false,'stability requires 5s');
+  now+=1;assert.equal(recovery.reconcile(),true);
+  assert.equal(actions,0);
+  assert.equal(cleared,1);
+  assert.equal(bot.journal,null);
+  assert.equal(bot.inventoryBlocked,false);
+  assert.equal(archives.length,1);
+  assert.equal(archives[0].value.status,'unchanged-unverified-no-replay');
+  assert.equal(events.filter(e=>e.type==='recovery.exchangeUnchangedReleased').length,1);
+  assert.equal(events.filter(e=>e.type==='recovery.exchangeVerified').length,0);
+ }finally{Date.now=old;}
+});
+test('unchanged exchange is never released if delayed, modified, pending or durable archive cannot persist',()=>{
+ const old=Date.now;
+ for(const mutation of [
+  b=>{b.p.c.gold++;},
+  b=>{b.p.c.items[0].q++;},
+  b=>{b.p.c.items[1]={name:'reward',q:1};},
+  b=>{b.exec.pending.set('exchange',{});},
+  b=>{b.p.c.q.exchange={};},
+  b=>{b.checkpoint.durable=false;},
+  b=>{b.p.write=()=>false;},
+  b=>{b.checkpoint.clear=()=>false;},
+  b=>{b.journal.slots[0][1]='wrong-source';}
+ ]){
+  let now=230000;
+  const {bot,before}=fixture();
+  bot.p.c.items=structuredClone(before);
+  bot.p.write=()=>true;bot.checkpoint.clear=()=>true;
+  mutation(bot);Date.now=()=>now;
+  try{
+   const r=createRecovery(bot);
+   assert.equal(r.reconcile(),false);
+   now+=6000;assert.equal(r.reconcile(),false);
+   assert.equal(bot.inventoryBlocked,true);
+   assert.ok(bot.journal);
+  }finally{Date.now=old;}
+ }
+ const {bot}=fixture();bot.p.c.items=structuredClone([{
+  name:'candy1',level:0,q:16},{name:'scroll0',level:0,q:2},null,null]);
+ bot.p.write=()=>true;bot.checkpoint.clear=()=>true;
+ let now=100000+119999;Date.now=()=>now;
+ try{
+  const r=createRecovery(bot);assert.equal(r.reconcile(),false);
+  now+=1;assert.equal(r.reconcile(),false,'first observation after 120s');
+  assert.ok(bot.journal);
+ }finally{Date.now=old;}
+});

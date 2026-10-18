@@ -6,6 +6,18 @@ import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-co
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
+// Deterministic emergency focus prevents each Ranger from independently
+// picking a different engaged attacker while a teammate is in danger.
+// Incomplete patient data ranks LAST; it never becomes invented survivability.
+export function chooseEmergencyFocus(monsters,members=[]){
+ const health=new Map((members??[]).filter(m=>m&&typeof m.name==='string'&&
+  Number.isFinite(m.hp)&&Number.isFinite(m.max_hp)&&m.max_hp>0)
+  .map(m=>[m.name,m.hp/m.max_hp]));
+ return (monsters??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
+   health.has(m.target)).slice().sort((a,b)=>
+   health.get(a.target)-health.get(b.target)||
+   a.hp-b.hp||String(a.id).localeCompare(String(b.id)))[0]??null;
+}
 export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
@@ -259,7 +271,13 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const emergency=bot.combatAssessment?.emergency?.();
     if(emergency?.active&&rescueTeam(emergency))return;
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
-    const danger=threat??emergency?.monsters?.slice().sort((a,b)=>distance(c,a)-distance(c,b))[0];
+    const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
+      bot.transport?.fresh?.(name)).filter(Boolean);
+    const focus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
+    const danger=focus??threat;
+    if(focus&&focus.id!==threat?.id)bot.event?.('combat.emergencyFocus',{
+      selected:focus.id,victim:focus.target,ownThreat:threat?.id??null,
+      source:'fresh-lowest-hp-teammate'});
     if(danger){
       const assessment=bot.combatAssessment?.assess(danger);
       if(assessment?.viable&&bot.allowed(danger)){

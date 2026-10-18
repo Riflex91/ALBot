@@ -37,7 +37,7 @@ export function reclaimRollbackEvidence(record,carried,bankSlot,bankCount){
  if(!record?.item||!Number.isSafeInteger(record.before)||
     !Number.isSafeInteger(record.quantity)||record.quantity<=0||
     !Number.isSafeInteger(record.bankBefore)||record.bankBefore<record.quantity||
-    !carried||bankSlot!==null&&!(!bankSlot)||
+    !carried||bankSlot!==null||
     identity(carried)!==identity(record.item)||
     (carried.q??1)!==record.quantity||
     !Number.isSafeInteger(bankCount)||

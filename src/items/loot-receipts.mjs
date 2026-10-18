@@ -32,8 +32,10 @@ export function ownChestShare(row,name,G){
     row.items?.length>64||!G?.items)return null;
  const items=new Map();
  for(const entry of row.items??[]){
-  if(!entry||typeof entry.name!=='string'||!G.items[entry.name]||
-     typeof entry.looter!=='string'||!entry.looter||
+  if(!entry||typeof entry.name!=='string'||!G.items[entry.name])return null;
+  // Lost-and-found drops have no recipient; they are not own loot.
+  if(entry.lostandfound===true&&entry.looter===null)continue;
+  if(typeof entry.looter!=='string'||!entry.looter||
      entry.lostandfound===true)return null;
   if(entry.looter!==name)continue;
   const n=w13Amount(entry),key=identity(entry);
@@ -57,6 +59,13 @@ export function createOwnLootReceipts(bot,{now=()=>Date.now()}={}){
   const at=now();
   for(const [id,proof] of baselines)
    if(at-proof.at>W13_LOOT_WINDOW)baselines.delete(id);
+  const expired=pending.filter(x=>at-x.at>W13_LOOT_WINDOW);
+  if(expired.length){
+   for(const x of expired)recent.push({id:x.id,at:x.at,
+    source:x.source,opener:x.opener,state:'server-attributed-unverified',
+    itemTypes:x.itemTypes,gold:x.gold,physical:false});
+   recent=recent.slice(-W13_LOOT_MAX);
+  }
   pending=pending.filter(x=>at-x.at<=W13_LOOT_WINDOW);
   recent=recent.filter(x=>at-x.at<=21600000);
  }

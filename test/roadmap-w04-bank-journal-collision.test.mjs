@@ -67,7 +67,7 @@ test('W03/W04 two individually valid bank journals are quarantined on startup',(
  const s=f.bot.bank.recoveryStatus();
  assert.equal(s.mode,'read-only-no-authorization');
  assert.equal(s.executable,false);
- assert.equal(s.conflict,'simultaneous-bank-partial-and-reclaim');
+ assert.equal(s.conflict,'simultaneous-bank-value-journals');
  assert.equal(s.requiresManualReview,true);
  assert.equal(s.partial.phase,'conflict');
  assert.equal(s.reclaim.phase,'conflict');
@@ -136,7 +136,7 @@ test('W03/W04 absence of both journals is an inert read-only status',()=>{
  const f=fixture();
  assert.deepEqual(f.bot.bank.recoveryStatus(),{
   mode:'read-only-no-authorization',executable:false,blocked:false,
-  conflict:null,requiresManualReview:false,partial:null,reclaim:null
+  conflict:null,requiresManualReview:false,single:null,partial:null,reclaim:null
  });
  assert.equal(f.writes.length,0);
 });

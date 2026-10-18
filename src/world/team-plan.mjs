@@ -120,6 +120,16 @@ export function sameFarmDestination(a,b){
    Number.isFinite(a.x)&&Number.isFinite(a.y)&&
    Number.isFinite(b.x)&&Number.isFinite(b.y)&&distance(a,b)<=20;
 }
+// A follower may already be moving along the compact leader route before
+// receiving the full validated plan. Adopting that plan must not cancel the
+// same native path merely because its previous local plan was absent.
+export function activeFarmRouteMatches(order,plan){
+ const dest=order?.dest;
+ return !!plan&&!!dest&&['follow','farm'].includes(order.owner)&&
+  samePlace(dest,plan)&&Number.isFinite(dest.x)&&
+  Number.isFinite(dest.y)&&Number.isFinite(plan.x)&&
+  Number.isFinite(plan.y)&&distance(dest,plan)<=100;
+}
 // A projected geometric hop is NOT a navigable game route. A blocked
 // straight line must be routed through native smart_move to the real spawn.
 // If that route was already rejected, try a small locally verified detour
@@ -329,6 +339,7 @@ export function createTeamPlan(bot){
    current={...next};roles=h.roles??{};
    if(changed){
     if(!sameFarmDestination(prior,current)&&
+       !activeFarmRouteMatches(bot.movement.order,current)&&
        ['farm','world','combat','follow'].includes(bot.movement.order?.owner))
      bot.movement.stop();
     bot.target=null;

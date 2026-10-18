@@ -389,7 +389,7 @@ export function describeInventoryDisposition({
  const amount=Number.isSafeInteger(item.q??1)&&(item.q??1)>0?item.q??1:null;
  const batch=Number.isSafeInteger(explicit?.batch)&&explicit.batch>0?
   explicit.batch:null;
- const slotUpperBound=free===null||amount===null?null:Math.min(free,amount,batch??amount);
+ const provisionalSlotUpperBound=free===null||amount===null?null:Math.min(free,amount,batch??amount);
  let state='rule-observed',reason='';
  if(valueBlocked){state='value-effect-unclear';reason='unresolved-value-journal';}
  else if(hardProtected){state='protected';reason='physical-item-protection';}
@@ -400,6 +400,8 @@ export function describeInventoryDisposition({
  else if(!explicit&&!autoDecision){state='no-rule-observed';reason='no-observed-disposition-candidate';}
  else if(!explicit){state='auto-candidate-observed';reason='cached-not-currently-authorized';}
  else {state='explicit-rule-observed';reason='rule-exists-not-dispatch-authority';}
+ // Even an observed automatic candidate is not a currently executable rule.
+ const slotUpperBound=state==='explicit-rule-observed'?provisionalSlotUpperBound:0;
  const destination=proposedAction==='send'?explicit?.recipient??null:
   proposedAction==='bank'?'bank':proposedAction==='sell'?'npc':
   proposedAction==='list'?'market':null;

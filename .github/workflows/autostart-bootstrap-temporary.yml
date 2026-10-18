@@ -48,7 +48,7 @@ jobs:
           npm run check:bootstrap
       - shell: bash
         run: |
-          if git diff --quiet -- bot.js dist/albot.runtime.js && test -f dist/albot.bootstrap.js && git ls-files --error-unmatch dist/albot.bootstrap.js >/dev/null 2>&1; then exit 0; fi
+          if git diff --quiet -- bot.js dist/albot.runtime.js dist/albot.bootstrap.js && test -f dist/albot.bootstrap.js && git ls-files --error-unmatch dist/albot.bootstrap.js >/dev/null 2>&1; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- bot.js dist/albot.runtime.js dist/albot.bootstrap.js

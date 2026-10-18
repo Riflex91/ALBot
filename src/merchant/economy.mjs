@@ -57,6 +57,10 @@ export function createEconomy(bot){
  const safe=i=>!protectedItem(i)&&typeof i.name==='string'&&i.name!=='placeholder';
  const spare=(slot,r)=>{
   const i=p.c.items[slot];if(!safe(i)||!r)return 0;
+  if(r._bankExplicitSource&&(
+   explicit(i,'inventory')!==r._bankExplicitSource||
+   r._bankExplicitSource.action!=='sell'||
+   r._bankExplicitSource.enabled!==true))return 0;
   const reserved=['sell','bank','list','send'].includes(r.action)?
    bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??
    (bot.production?.reserved(i)?count(i):0):0;

@@ -41,6 +41,25 @@ export function verifiedTeamRoleOwner(members,role,{now=Date.now(),ttlMs=10000,r
   b.mpRatio-a.mpRatio||a.name.localeCompare(b.name));
  return candidates[0]??null;
 }
+// Only live, directly visible fighters provide a reliable immediate contest
+// signal. No visible player at an unseen distant destination is NOT proof
+// that the destination is empty. Historical pressure remains independent.
+export function liveSpawnCompetition(spawn,entities,monsters,teamNames=[],observer=null){
+ if(!spawn||!Array.isArray(teamNames)||!entities||typeof entities!=='object'||
+    !observer||observer.map!==spawn.map||
+    !Number.isFinite(observer.x)||!Number.isFinite(observer.y)||
+    Math.hypot(observer.x-spawn.x,observer.y-spawn.y)>650)
+  return {players:0,fighters:0,observed:false};
+ const outsiders=Object.values(entities).filter(e=>e&&e.type==='character'&&
+   typeof e.name==='string'&&!teamNames.includes(e.name)&&
+   e.map===spawn.map&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&
+   Math.hypot(e.x-spawn.x,e.y-spawn.y)<=180);
+ const fighters=outsiders.filter(c=>Array.isArray(monsters)&&monsters.some(m=>
+   m?.target===c.name&&m.mtype===spawn.target&&m.map===spawn.map&&
+   Number.isFinite(m.x)&&Number.isFinite(m.y)&&
+   Math.hypot(m.x-spawn.x,m.y-spawn.y)<=240)).length;
+ return {players:outsiders.length,fighters,observed:true};
+}
 export function chooseFarmAreaSwitch({
  current,candidate,currentRank,now=Date.now(),holdMs=60000,
  improvement=.2,hasPriorityOrder=false
@@ -60,6 +79,14 @@ export function chooseFarmAreaSwitch({
   return result(currentRank,'unverified-switch-evidence');
  if(now-current.started<holdMs)
   return result(currentRank,'hold-active');
+ // A healthy, directly measured Bee spawn must not be abandoned for an
+ // unseen candidate merely because that candidate has better theoretical XP.
+ // An observed empty/starved current spawn or visible open destination may
+ // still justify normal evidence-supported exploration.
+ if(currentRank.target&&currentRank.target===candidate.target&&
+   currentRank.evidenceSeconds>=60&&currentRank.pressureRatio<=.3&&
+   !(candidate.evidenceSeconds>=60)&&candidate.occupancyObserved!==true)
+  return result(currentRank,'current-healthy-destination-unverified');
  // Score already includes base trip friction. A new move additionally
  // consumes travel that the already occupied, validated spawn avoids.
  // Require a bounded improvement over the existing hysteresis threshold.

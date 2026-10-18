@@ -1,3 +1,18 @@
+// A single missed transport heartbeat must not unselect an otherwise healthy
+// already-active Farmer. Explicit death, stop, inventory lock and realm split
+// still remove availability immediately. Unseen peers get a short grace only.
+// A heartbeat on another game server is not an available combat member.
+// Missing peer evidence remains unknown for controlled browser rotation,
+// but explicitly observed cross-realm players cannot enter a live farm team.
+export function foreignRunningFarmer(member,realm){
+ return member?.running===true&&member.realm!==realm;
+}
+export function selectedFarmerAvailable(member,{selected=false,lastSeen=0,now=Date.now(),realm}={}){
+ if(member&&(!member.running||member.rip||member.inventoryBlocked||member.realm!==realm))return false;
+ if(member?.running&&member.realm===realm)return true;
+ return selected&&Number.isFinite(lastSeen)&&lastSeen>0&&
+  Number.isFinite(now)&&now>=lastSeen&&now-lastSeen<=20000;
+}
 export function selectAccountTeam(members,limit,{boss=false,leader='',current=[],synergy=false,damageType='physical',preferredClasses=[]}={}){
  const chosen=[],add=x=>{if(x&&!chosen.includes(x.name)&&chosen.length<limit)chosen.push(x.name);};
  for(const x of members)if(x.name===leader||!x.rotation&&current.includes(x.name))add(x);
@@ -71,7 +86,7 @@ export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conse
 }
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot;let coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
- const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative';
+ const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative';const lastOnline=new Map();
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
  const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
  if(transition&&p.headless===false&&!transition.browser)transition={...transition,browser:true,legacyRunner:true};
@@ -173,7 +188,7 @@ export function createAccount(bot){
    },{timeout:55000,delay:60000,onSettle(result){if(result!=='returned'){bot.lifecycleChanging=false;if(p.read('albot:account:'+d.in+':incoming')?.id===m.id)p.write('albot:account:'+d.in+':incoming',null);bot.report('Fensterwechsel fehlgeschlagen; ursprünglicher Farmer bleibt aktiv');}}});
   if(!accepted){bot.lifecycleChanging=false;p.write('albot:account:'+d.in+':incoming',null);}
  }
- function receive(from,data){if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
+ function receive(from,data){if(Array.isArray(data?.names)&&data.names.some(n=>foreignRunningFarmer(bot.transport.fresh(n),p.realm())))return;if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
   if(cfg.general.autoRoster){
    const online=cfg.characters.filter(c=>c.enabled&&(c.name===me.name?bot.running:bot.transport.fresh(c.name)?.running&&bot.transport.fresh(c.name)?.realm===p.realm())).map(c=>c.name).sort();
@@ -225,7 +240,10 @@ export function createAccount(bot){
   // start_character/stop_character and does not alter any value operation.
   const online=validNames.filter(name=>{
    const h=cfg.general.autoRoster&&name===me.name?{...p.c,running:bot.running,realm:p.realm(),inventoryBlocked:bot.inventoryBlocked}:bot.transport.fresh(name);
-   return h?.running&&!h.rip&&h.realm===p.realm()&&!h.inventoryBlocked;
+   const seen=h?.running&&!h.rip&&!h.inventoryBlocked&&h.realm===p.realm();
+   if(seen)lastOnline.set(name,Date.now());
+   return selectedFarmerAvailable(h,{selected:bot.farmers.includes(name),
+    lastSeen:lastOnline.get(name)??0,realm:p.realm()});
   }),available=new Set(online);
   if((bot.farmers.some(n=>!available.has(n))||!available.has(bot.leader)||bot.farmers.length<Math.min(cfg.party.maxFarmers,online.length))&&online.length&&Date.now()-changed>=(online.length>=cfg.party.maxFarmers?3000:Math.min(15000,cfg.party.rotationCooldownMs))){
    const preferred=available.has(cfg.party.leader)?cfg.party.leader:available.has(bot.leader)?bot.leader:null;
@@ -265,7 +283,7 @@ export function createAccount(bot){
   // underleveled *offline* farmer is demonstrably behind an active one.
   // Boss/event tasks still select by combat suitability and class synergy.
   const target=training?(swap?bot.farmers.filter(n=>n!==swap.out).concat(swap.in):[...bot.farmers]):
-   selectAccountTeam(members,cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),
+   selectAccountTeam(members.filter(m=>!foreignRunningFarmer(bot.transport.fresh(m.name),p.realm())),cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),
     preferredClasses:bossObjective?.recommended??[],leader:cfg.party.leader,current:bot.farmers,
     synergy:!!cfg.party.gearSynergy,
     damageType:p.G?.monsters?.[bossObjective?.id??leaderActivity?.target??bot.target?.mtype]?.damage_type});

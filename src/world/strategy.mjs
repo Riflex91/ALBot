@@ -33,6 +33,20 @@ export function farmRiskHp(base,live){
 // A monsterhunt's ms changes continuously. That countdown is not evidence
 // that Daisy accepted or completed a quest; only id, count, realm or presence
 // changes qualify as a meaningful authoritative state transition.
+// Quests may be interrupted when a journey has ceased making observable
+// progress. Native smart_move gets a longer search window than direct walk.
+// This controls only travel, never server-authoritative quest completion.
+export function questTravelStalled(visit,character,{now=Date.now(),smart=false,town=false}={}){
+ if(!visit||visit.phase!=='travel'||!Number.isFinite(now)||town)return false;
+ const x=character?.real_x??character?.x,y=character?.real_y??character?.y;
+ if(!Number.isFinite(x)||!Number.isFinite(y)||typeof character?.map!=='string')return false;
+ const prior=visit.progress;
+ if(!prior||!Number.isFinite(prior.at)||prior.at>now||prior.map!==character.map||
+    Math.hypot(x-prior.x,y-prior.y)>12){
+  visit.progress={map:character.map,x,y,at:now};return false;
+ }
+ return now-prior.at>(smart?90000:45000);
+}
 export function questIdentity(q){
  return JSON.stringify(q?{id:q.id??null,c:q.c??null,sn:q.sn??null}:null);
 }
@@ -141,13 +155,25 @@ export function createStrategy(bot){
  }
  function quest(){
   if(questVisit){
+   if(questTravelStalled(questVisit,p.c,{smart:bot.movement.order?.mode==='smart_move',
+    town:bot.movement.townActive})){
+    const elapsed=Date.now()-questVisit.progress.at;
+    questVisit=null;nextQuest=Date.now()+60000;
+    if(bot.movement.order?.owner==='quest'||bot.movement.townActive)bot.movement.stop();
+    bot.event('quest.travelStalled',{elapsedMs:elapsed,
+     reason:'No verified travel progress; resume approved farming'});
+    return false;
+   }
    if(questIdentity(p.c.s?.monsterhunt)!==questVisit.before&&questVisit.phase==='observing'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Aktueller Queststatus hat sich geändert'});questVisit=null;nextQuest=Date.now()+5000;plannedAt=0;return false;}
    if(Date.now()>questVisit.until){const phase=questVisit.phase;questVisit=null;nextQuest=Date.now()+60000;bot.event('quest.timeout',{phase});if(phase==='observing')bot.pause('Monsterhunt ungeklärt: Queststatus prüfen');return true;}
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
   }
   const squadPlan=bot.teamPlan?.heartbeat?.()??
     bot.transport?.fresh?.(bot.leader)?.farmPlan;
-  if(cfg.party.enabled&&squadMarchStillInTransit(p.c,bot.farmers,
+  // Once a quest visit begins, the shared Farm plan is allowed to change.
+  // Requiring that new Farm march to finish would freeze the quest while
+  // strategy.busy simultaneously suppresses combat for up to two minutes.
+  if(!questVisit&&cfg.party.enabled&&squadMarchStillInTransit(p.c,bot.farmers,
     squadPlan,n=>bot.transport?.fresh?.(n))){
    bot.event?.('quest.deferredSquadTravel',{plan:squadPlan.id,
     reason:'All selected Farmers finish their shared route first'});

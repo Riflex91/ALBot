@@ -280,3 +280,93 @@ test('W04 reserve staging never relocates the last protected bank stack',()=>{
  for(let n=0;n<4;n++)bot.bank.preventiveDisposition();
  assert.equal(calls.length,0);
 });
+
+
+// W04 remaining reserve case: a single oversized bank stack must use the
+// ALREADY journaled retrieve -> split -> return route, never sell it directly.
+function partialReserveFixture(){
+ const f=operatingBankFixture(),{bot,inv,bankPack}=f;
+ bot.cfg.merchant.partialBank=true;
+ bot.cfg.merchant.partialBankMaxStack=9999;
+ inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:200};
+ const api=[];
+ bot.p.call=(method,...args)=>{
+  api.push([method,...args]);
+  if(method==='bank_retrieve'){
+   const [pack,slot,dest]=args;
+   assert.equal(pack,'items0');
+   assert.equal(inv[dest],null);
+   inv[dest]={...bankPack[slot]};bankPack[slot]=null;
+  }else if(method==='split'){
+   const [slot,q]=args;
+   const dest=inv.findIndex(i=>!i);
+   assert.ok(dest>=0);
+   inv[dest]={...inv[slot],q};
+   inv[slot]={...inv[slot],q:inv[slot].q-q};
+  }else if(method==='bank_store'){
+   const [slot,pack,dest]=args;
+   assert.equal(pack,'items0');
+   assert.equal(bankPack[dest],null);
+   bankPack[dest]={...inv[slot]};inv[slot]=null;
+  }else throw Error('unexpected API '+method);
+  return Promise.resolve({success:true});
+ };
+ return {...f,api};
+}
+test('W04 partial reserve stages only missing units and restores bank remainder',async()=>{
+ const {bot,calls,inv,bankPack,sales,api}=partialReserveFixture();
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.partial.retrieve');
+ assert.equal(calls[0].params.guard(),true);
+ assert.equal(bot.bank.recoveryStatus().partial.quantity,80);
+ await calls[0].params.call();
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(calls.at(-1).kind,'bank.partial.split');
+ assert.equal(calls.at(-1).params.guard(),true);
+ await calls.at(-1).params.call();
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(calls.at(-1).kind,'bank.partial.return');
+ assert.equal(calls.at(-1).params.guard(),true);
+ await calls.at(-1).params.call();
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(bot.bank.pending,false);
+ assert.deepEqual(api.map(c=>c[0]),['bank_retrieve','split','bank_store']);
+ assert.equal(inv[1].q,20);
+ assert.equal(inv[2].q,80);
+ assert.equal(bankPack[27].q,120);
+ assert.equal(sales.length,0,'partial reserve staging never performs an NPC sale');
+ // Separate new scan, using current physical reserve and live bank state.
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls.at(-1).kind,'bank.reclaim');
+ assert.equal(calls.at(-1).params.guard(),true);
+});
+test('W04 partial staging cancels a prepared un-dispatched intent on revocation',()=>{
+ const {bot,calls,bankPack,api}=partialReserveFixture();
+ bot.bank.preventiveDisposition();
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ bot.cfg.production.autoDisposition=false;
+ assert.equal(calls[0].params.guard(),false);
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(bot.bank.pending,false);
+ assert.equal(bot.inventoryBlocked,false);
+ assert.equal(bankPack[27].q,200);
+ assert.equal(api.length,0);
+});
+test('W04 partial staging refuses one workspace slot, disabled split or stale source',()=>{
+ for(const restriction of ['one-slot','no-partial','source-drift']){
+  const {bot,calls,inv,bankPack,api}=partialReserveFixture();
+  if(restriction==='one-slot')
+   for(let i=2;i<inv.length;i++)inv[i]={name:'filler'+i,q:1};
+  if(restriction==='no-partial')bot.cfg.merchant.partialBank=false;
+  for(let n=0;n<3;n++)bot.bank.preventiveDisposition();
+  if(restriction==='source-drift'){
+   assert.equal(calls[0]?.kind,'bank.partial.retrieve');
+   bankPack[27].q=199;
+   assert.equal(calls[0].params.guard(),false);
+  }else assert.equal(calls.length,0,restriction);
+  assert.equal(api.length,0,restriction);
+ }
+});

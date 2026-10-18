@@ -26,8 +26,8 @@ export function safeEmergencyRallyPoint(character,victim,monster,attackRange=0){
   length=Math.hypot(dx,dy);
  if(length<1)return null;
  const unitX=dx/length,unitY=dy/length,
-  x=monster.x+unitX*Math.max(safe,length),
-  y=monster.y+unitY*Math.max(safe,length);
+  x=monster.x+unitX*Math.max(safe+20,length),
+  y=monster.y+unitY*Math.max(safe+20,length);
  if(Math.hypot(character.x-x,character.y-y)<70)return null;
  // The straight-line corridor must stay outside the hostile radius.
  const vx=x-character.x,vy=y-character.y;

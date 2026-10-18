@@ -257,7 +257,12 @@
       "bossTactics": true,
       "bossMaxSeconds": 300,
       "adaptiveLearning": true,
-      "eventGraceMs": 2500
+      "eventGraceMs": 2500,
+      "seasonalBuff": true,
+      "boosters": false,
+      "activateBoosters": false,
+      "respectHopPenalties": true,
+      "travelBlink": false
     },
     "rules": []
   }

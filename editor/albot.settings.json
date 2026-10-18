@@ -2604,6 +2604,31 @@
             "default": 2500,
             "minimum": 0,
             "maximum": 10000
+          },
+          "seasonalBuff": {
+            "type": "boolean",
+            "title": "Seasonalen kostenlosen Buff bei sicherem Vorbeikommen holen",
+            "default": true
+          },
+          "boosters": {
+            "type": "boolean",
+            "title": "Bereits aktive eigene Booster passend zum Farmziel umschalten",
+            "default": false
+          },
+          "activateBoosters": {
+            "type": "boolean",
+            "title": "Inaktive eigene Booster aktivieren (beginnt Ablaufzeit)",
+            "default": false
+          },
+          "respectHopPenalties": {
+            "type": "boolean",
+            "title": "Optionale Serverwechsel mit unbelegtem Sickness-/Fatigue-Verlust zurückstellen",
+            "default": true
+          },
+          "travelBlink": {
+            "type": "boolean",
+            "title": "Mage-Blink nur auf direkt begehbaren sicheren Reiseabschnitten",
+            "default": false
           }
         },
         "required": [

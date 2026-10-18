@@ -62,7 +62,7 @@ export function createEconomy(bot){
    explicit(i,'inventory')!==r._bankExplicitSource||
    r._bankExplicitSource.action!=='sell'||
    r._bankExplicitSource.enabled!==true))return 0;
-  const reserved=['sell','bank','list','send','swap'].includes(r.action)?
+  const reserved=['sell','bank','list','send','swap','tradeOffer'].includes(r.action)?
    bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??
    (bot.production?.reserved(i)?count(i):0):0;
   if(r._bankOperatingStock){

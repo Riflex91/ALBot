@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createOwnTradeOffer,ownTradeOfferPlan} from '../src/merchant/trade-offer.mjs';
 import {identity,variantCount,surplusQuantity} from '../src/core/policy.mjs';
 import {phaseOf} from '../editor/lib/contract.mjs';
+import {createPorts} from '../src/runtime/ports.mjs';
 
 function fixture(seed=null){
  const slots={trade3:null},inventory=[{name:'sword',level:0},
@@ -233,4 +234,21 @@ test('G09 only paused operator may clear EXACT verified receipt marker',async()=
  assert.equal(f.maker.acknowledgeVerified('R001'),true);
  assert.equal(f.writes.get('albot:trade-offer:v1:M'),null);
  assert.equal(f.maker.status().state,'not-posted');
+});
+
+test('G09 read-only socket UI listener detaches and never interferes with unrelated events',()=>{
+ const rows=[],handlers=new Set();
+ const socket={on:(event,fn)=>{assert.equal(event,'ui');handlers.add(fn);},
+  off:(event,fn)=>{assert.equal(event,'ui');handlers.delete(fn);}};
+ const p=createPorts({parent:{socket}});
+ const cleanup=p.watchOwnTradeSwaps(evt=>rows.push(evt));
+ assert.equal(typeof cleanup,'function');
+ for(const fn of handlers)fn({type:'gold',event:true});
+ assert.equal(rows.length,0);
+ for(const fn of handlers)fn({type:'swap',event:true,seller:'M'});
+ assert.equal(rows.length,1);
+ cleanup();
+ assert.equal(handlers.size,0);
+ const noSocket=createPorts({parent:{}});
+ assert.equal(noSocket.watchOwnTradeSwaps(()=>{}),null);
 });

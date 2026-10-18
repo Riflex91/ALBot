@@ -32,11 +32,11 @@ export function teamPickupThreshold(peers,realm,threshold=30){
 // Physical receive preflight: only identical, unprotected stacks can absorb
 // units without allocating a new inventory slot. An offer acknowledgement
 // never frees a slot or guarantees later delivery.
-export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity}={}){
+export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity,inventorySize}={}){
  // A single send_item is only credited with one new physical stack; the
  // shared planner also checks exact compatible-stack headroom.
  const limit=Number.isFinite(maxNewSlots)?Math.max(0,Math.min(1,Math.floor(maxNewSlots))):1;
- return capacityAfterConsumption(items,[],item,meta,{maxNewSlots:limit})?.units??0;
+ return capacityAfterConsumption(items,[],item,meta,{maxNewSlots:limit,inventorySize})?.units??0;
 }
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
@@ -171,7 +171,7 @@ export function createLogistics(bot){
       verifiedGear||verifiedElixir?Infinity:
         pickup>0?Math.max(storageSlots,pickupSlots):storageSlots);
     return Math.min(nominal,physicalReceiveCapacity(p.c.items,i,
-      p.G.items[i.name],{maxNewSlots}));}
+      p.G.items[i.name],{maxNewSlots,inventorySize:p.c.isize}));}
   function receive(from,m){
     const d=m.data;if(!d||typeof d!=='object')return;
     if(m.type==='offer'){
@@ -336,7 +336,7 @@ export function createLogistics(bot){
     const item=row.variant??{name:row.item,level:0,stat_type:'',p:'',title:''};
     return safeItem(item)&&!!p.G?.items?.[item.name]&&
       physicalReceiveCapacity(p.c.items,item,p.G.items[item.name],
-       {maxNewSlots:0})>0;
+       {maxNewSlots:0,inventorySize:p.c.isize})>0;
   });
   const onSiteRoom=peer=>bot.free()>(cfg.merchant.minFreeSlots??4)||
     mergeableOnSiteOffer(peer);
@@ -496,7 +496,7 @@ export function createLogistics(bot){
         trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
          achievementCarrier:carriedAchievementCarrier(p.c.items),
          inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
-         free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})){
+         free:bot.free()},p.realm(),{reserve:cfg.farming?.freeSlots??4})){
         const item={name:'tracker',level:0,stat_type:'',p:'',title:''};
         variants.set(JSON.stringify(item),item);
       }
@@ -508,7 +508,7 @@ export function createLogistics(bot){
           trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
            achievementCarrier:carriedAchievementCarrier(p.c.items),
            inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
-           free:(p.c.items??[]).filter(i=>!i).length},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
+           free:bot.free()},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
            defaultPotionDemand(item,countNow,true),
         held:isPotion(item)?countNow:undefined,
         surplus:transfer?Math.max(0,countNow-transfer.keep-transfer.teamReserve-

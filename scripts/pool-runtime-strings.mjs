@@ -29,7 +29,7 @@ export function poolRuntimeStrings(source){
  // mangles this table to one local identifier. Account for index lookups
  // conservatively; do not touch keys, directives or personal configuration.
  const rows=[...counts.values()].filter(row=>row.count>=2&&
-  row.bytes-Buffer.byteLength(JSON.stringify(row.value))-row.count*6>12)
+  row.bytes-Buffer.byteLength(JSON.stringify(row.value))-row.count*6>0)
   .sort((a,b)=>(b.bytes-b.count*8)-(a.bytes-a.count*8)||a.value.localeCompare(b.value))
   .slice(0,512);
  if(!rows.length)return source;

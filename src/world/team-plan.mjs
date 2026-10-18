@@ -34,6 +34,22 @@ export function areaPressure(row,now=Date.now(),freshMs=21600000){
  const weight=1-age/freshMs;
  return {empty:row.empty/row.seconds*weight,foreign:row.foreign/row.seconds*weight};
 }
+// Summarize observed pressure across *fresh*, approved spawn observations.
+// Unknown is null, never zero: absence of measurements is not a settled home.
+export function summarizeSpawnPressure(rows,now=Date.now(),freshMs=600000){
+ if(!Array.isArray(rows)||!Number.isFinite(now)||!Number.isFinite(freshMs)||freshMs<=0)
+  return {pressure:null,reason:'invalid-or-missing-evidence',spawns:[]};
+ const observed=rows.filter(r=>r&&Number.isFinite(r.observedAt)&&r.observedAt<=now&&
+  now-r.observedAt<=freshMs&&Number.isFinite(r.evidenceSeconds)&&
+  r.evidenceSeconds>=60&&Number.isFinite(r.pressureRatio)&&
+  r.pressureRatio>=0&&r.pressureRatio<=1&&typeof r.key==='string');
+ if(!observed.length)return {pressure:null,reason:'no-fresh-60s-spawn-evidence',spawns:[]};
+ const ranked=[...observed].sort((a,b)=>b.pressureRatio-a.pressureRatio||b.observedAt-a.observedAt);
+ return {pressure:ranked[0].pressureRatio,reason:'verified-spawn-observations',
+  measuredAt:Math.max(...observed.map(r=>r.observedAt)),
+  spawns:ranked.slice(0,5).map(r=>({key:r.key,pressure:r.pressure,
+   pressureRatio:r.pressureRatio,evidenceSeconds:r.evidenceSeconds,observedAt:r.observedAt}))};
+}
 // The same semantic team-gear identity must index both measured and
 // ranked spawn history; heartbeat timestamps are not gear changes.
 export function farmAreaHistoryKey(realm,hour,spawnKey,gears){
@@ -212,7 +228,7 @@ export function createTeamPlan(bot){
   let hunt=orderedHunt();
   const types=[...new Set([...candidates(),...(hunt?.phase==='combat'&&p.G.monsters?.[hunt.monster]?[hunt.monster]:[])])].filter(allowed),locations=spawnLocations(p.G,types,cfg.world.excludedMaps,cfg.farming.pvp),teamDps=Math.max(1,combat.reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0));
   ranking=locations.filter(s=>!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);
-   const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:balancedFarmUtility(xp,gold);return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,evidenceSeconds:learned?.seconds??0,
+   const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:balancedFarmUtility(xp,gold);return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,evidenceSeconds:learned?.seconds??0,observedAt:learned?.at??null,
    pressureRatio:Math.max(empty,foreign>=2?.75:0),
    pressure:empty>.6?'spawn-starved':foreign>2?'contested':'healthy'};}).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
   // Rank the complete set of *approved* spawns before deciding a quest has
@@ -240,6 +256,9 @@ export function createTeamPlan(bot){
      bot.event?.('hunt.noApprovedSpawn',{owner:hunt.owner,monster:hunt.monster,
       remaining:hunt.remaining,nextOwner:bot.farmers[huntState.index],
       retryAfter:huntState.skipped[hunt.owner].until,
+      diagnostics:{candidateSpawns:spawnLocations(p.G,[hunt.monster],cfg.world.excludedMaps,cfg.farming.pvp).length,
+       allowedMonster:allowed(hunt.monster),approvedRanking:ranking.filter(r=>r.target===hunt.monster).length,
+       permittedMaps:cfg.world.excludedMaps,deadline:huntHorizon?.state??null},
       reason:infeasibleHunt?'Monsterhunt-Zeitfenster / Server nicht passend: '+huntHorizon.state:
         'Kein freigegebener sicherer Spawn; Auftrag bleibt bestehen',
        remainingMs:hunt.remainingMs??null,neededMs:huntHorizon?.neededMs??null});
@@ -330,5 +349,6 @@ export function createTeamPlan(bot){
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){if(!valid(current)||bot.strategy.busy)return false;if(cfg.party.enabled&&me.name!==bot.leader)return false;if(me.name===bot.leader&&cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()))){bot.reason='Warte auf aktive Gruppe vor Farmreise';return true;}// A 250-unit exit stranded ranged farmers outside verified spawn areas.
   if(samePlace(p.c,current)&&distance(p.c,current)<=Math.min(85,Math.max(40,(cfg.farming.orbitRadius??220)/2)))return false;bot.reason='Gemeinsamer Plan: '+current.target;bot.movement.go({...current,radius:65},'farm');return true;},materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
   return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
-   if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,switchAdvice,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
+   if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:summarizeSpawnPressure(ranking).pressure,
+   pressureEvidence:summarizeSpawnPressure(ranking),rawLocalPressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,switchAdvice,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
 }

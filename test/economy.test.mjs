@@ -98,7 +98,7 @@ test('W03 whole-bank retrieval executes with real economy dispatcher and clears 
  await Promise.resolve();
  bot.exec.poll();
  assert.equal(bot.journal,null);
- assert.equal(bot.bank.recover(),true);
+ assert.equal(bot.bank.recover(),false,'confirmed journal already cleared at settlement');
  assert.equal(bot.bank.pending,false);
  assert.equal(data.get('albot:bank-single:M'),null);
  assert.equal(bot.inventoryBlocked,false);

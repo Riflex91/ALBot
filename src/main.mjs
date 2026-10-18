@@ -250,6 +250,7 @@ export function install(root){
   if(cfg.world){bot.respawns=createRespawnCalendar(bot);bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
   if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.combatAssessment=createCombatAssessment(bot);bot.elixirs=createElixirs(bot);bot.seashells=createSeashellCycle(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);bot.opportunities=createWorldOpportunities(bot);bot.rewards=createRewardMail(bot);}
   const cleanup=[];
+  if(bot.tradeOffers){const stop=p.watchOwnTradeSwaps?.(data=>bot.tradeOffers?.observeSwap?.(data));if(typeof stop==='function')cleanup.push(stop);}
   const game=root.game??p.parent.game;if((bot.observations||bot.impactIntents||bot.respawns)&&typeof game?.on==='function'&&typeof game?.remove==='function')for(const [event,handler] of [['hit',d=>{bot.observations?.hit(d);bot.respawns?.hit(d);bot.impactIntents?.observe(d);bot.threats?.hit(d);bot.combatAssessment?.hit(d);bot.bosses?.hit(d);}],['death',d=>{bot.observations?.death(d);bot.respawns?.death(d);bot.threats?.death(d);}],['trade',d=>bot.marketDemand?.sale(d)]].filter(([event])=>event!=='trade'||bot.marketDemand)){const id=game.on(event,handler);cleanup.push(()=>game.remove(id));}
   if(bot.services&&typeof p.c.on==='function'&&(typeof p.c.remove==='function'||typeof p.c.off==='function')){const events=p.c,handler=data=>bot.services.observeMerrit(data),id=events.on('merrit',handler);cleanup.push(()=>typeof events.remove==='function'?events.remove(id):events.off('merrit',handler));}
   if(typeof root.addEventListener==='function')for(const type of ['error','unhandledrejection']){const handler=e=>{report.error(type,e.error??e.reason??e.message);report.flush(true);};root.addEventListener(type,handler);cleanup.push(()=>root.removeEventListener(type,handler));}
@@ -285,7 +286,7 @@ export function install(root){
     if(bot.inventoryBlocked&&(['bank.store','gather.fishing','gather.mining','exchange','gold.send','gold.receive'].includes(bot.journal?.kind)))bot.recovery?.reconcile();
     if(now()<retryAfter)return;
     beginCombatLife(bot);bot.revivals.observe();
-    bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();bot.respawns?.sample();
+    bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();bot.respawns?.sample();bot.tradeOffers?.sample();
     if(!bot.running)return;
     bot.lossGuard?.sample();if(bot.lossGuard?.blocked){bot.transport.heartbeat();bot.pause('Accountgold: mindestens 85 % Verlust innerhalb des Prüfzeitfensters; manuelle Freigabe erforderlich');return;}
     if(bot.lifecycleChanging){bot.teamTravel?.lifecycleTick?.();if(now()-lastHeartbeat>=2000){lastHeartbeat=now();bot.metrics.measure('transport.heartbeat',()=>bot.transport.heartbeat());}return;}
@@ -364,6 +365,7 @@ export function install(root){
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),
     accountGoldStatus:()=>bot.lossGuard?.status()??null,
     acknowledgeAccountGoldLoss:()=>bot.lossGuard?.reset()??false,
+    acknowledgeVerifiedTradeOffer:rid=>bot.tradeOffers?.acknowledgeVerified?.(rid)??false,
     restoreLearning:()=>bot.cloud.restore(),
     bossCatalog:()=>bot.bosses?.catalog()??[],
     explainInventorySlot:slot=>bot.intelligence?.explainInventorySlot?.(slot)??{version:1,mode:'read-only',executable:false,state:'unavailable',reason:'economic-intelligence-not-enabled'},

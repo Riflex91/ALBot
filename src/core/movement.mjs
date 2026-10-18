@@ -34,6 +34,7 @@ export function createMovement(bot){
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
+    if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
     // An asynchronous open_stand may not yet be reflected in character.stand.
     // Never initiate a route while opening/closing the stand is pending.
     if(bot.me?.role==='merchant'&&exec.busy('stand'))return false;

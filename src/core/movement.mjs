@@ -7,21 +7,21 @@ export function createMovement(bot){
   const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,townQueued=false;
   // Only native smart-route failures quarantine a destination map, not normal
   // travel stops or a rejected non-movement action. Keep the cache bounded.
-  const failedEconomyRoutes=new Map(),routeCooldownMs=300000;
+  const failedRoutes=new Map(),routeCooldownMs=300000;
   const routeKey=dest=>dest.map+':'+Math.round(dest.x)+':'+Math.round(dest.y);
   function recordRouteFailure(owner,mode,dest,reason){
-    if(owner!=='economy'||mode!=='smart_move'||typeof dest?.map!=='string'||!Number.isFinite(dest.x)||!Number.isFinite(dest.y))return;
-    failedEconomyRoutes.set(routeKey(dest),{map:dest.map,x:dest.x,y:dest.y,at:Date.now(),reason});
-    if(failedEconomyRoutes.size>16)failedEconomyRoutes.delete(failedEconomyRoutes.keys().next().value);
+    if(!['economy','farm'].includes(owner)||mode!=='smart_move'||typeof dest?.map!=='string'||!Number.isFinite(dest.x)||!Number.isFinite(dest.y))return;
+    failedRoutes.set(owner+':'+routeKey(dest),{owner,map:dest.map,x:dest.x,y:dest.y,at:Date.now(),reason});
+    if(failedRoutes.size>24)failedRoutes.delete(failedRoutes.keys().next().value);
     bot.event?.('movement.route-quarantined',{owner,mode,map:dest.map,x:dest.x,y:dest.y,retryAfter:Date.now()+routeCooldownMs,reason:'Nur Zielpunkt gesperrt: '+reason});
   }
   function failedRecently(dest,owner='economy'){
-    if(owner!=='economy'||typeof dest?.map!=='string')return false;
+    if(!['economy','farm'].includes(owner)||typeof dest?.map!=='string')return false;
     // An unreachable shoreline coordinate must not disable all work on main.
     // Queries with only a map remain supported for status/legacy diagnostics.
-    for(const [key,entry] of failedEconomyRoutes){
-      if(Date.now()-entry.at>=routeCooldownMs){failedEconomyRoutes.delete(key);continue;}
-      if(entry.map===dest.map&&(!Number.isFinite(dest.x)||!Number.isFinite(dest.y)||Math.hypot(dest.x-entry.x,dest.y-entry.y)<10))return true;
+    for(const [key,entry] of failedRoutes){
+      if(Date.now()-entry.at>=routeCooldownMs){failedRoutes.delete(key);continue;}
+      if(entry.owner===owner&&entry.map===dest.map&&(!Number.isFinite(dest.x)||!Number.isFinite(dest.y)||Math.hypot(dest.x-entry.x,dest.y-entry.y)<10))return true;
     }
     return false;
   }

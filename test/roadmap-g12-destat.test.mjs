@@ -106,7 +106,7 @@ test('G12 late stock/rule/capacity drift invalidates queued mutation',()=>{
   const f=fixture();assert.equal(f.tailoring.destatTick(),true);
   if(kind==='rule')f.rule.action='sell';
   if(kind==='stock')f.items[0].stat_type='vit';
-  if(kind==='capacity')f.items[2]={name:'filler'};
+  if(kind==='capacity'){f.items[2]={name:'filler'};f.items[3]={name:'other'};}
   if(kind==='budget')f.rule.goldBudget=1000;
   if(kind==='goal')f.cfg.production.gearTargets=[
    {enabled:true,item:'staff',level:0}];

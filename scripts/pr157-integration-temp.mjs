@@ -188,6 +188,8 @@ s=replace(s,"  note:s=>reports.push(s),perform:(kind,data)=>{work.push({kind,dat
 "  note:s=>reports.push(s),perform:(kind,data)=>{work.push({kind,data});\n   assert.equal(data.guard(),true);assert.equal(data.call(),true);\n   assert.ok(state.get('albot:bank-reclaim:My_Merchant').rollback.dispatchedAt);\n   const old=inv[3];bank[9]=old;inv[3]=null;\n   assert.equal(data.observe(),true);assert.equal(data.onConfirmed(),true);return true;}};",
 'production v2 verified rollback');
 s=replace(s," assert.equal(work.length,1);"," assert.equal(work.length,1,JSON.stringify({reports,current:state.get('albot:bank-reclaim:My_Merchant'),status:m.recoveryStatus()}));",'bank smoke diagnostics');
+s=replace(s," assert.equal(m.recoverCapacity(),true,'restored stack is explicitly reconciled');"," assert.equal(m.recoverCapacity(),false,'synchronous confirmed rollback has already cleared its journal');",'synchronous mock already completed');
+
 save(p,s);
 }
 console.log('PR157_MERGE_SEMANTIC_FIXES_APPLIED');

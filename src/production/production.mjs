@@ -403,8 +403,10 @@ export function createProduction(bot){
     // Unknown mutations never generate success/failure slot statistics.
     const outcome=e.count(next)>after?'improved':
      mutationResult?.success===false?'server-reported-failure':'unclassified';
-    bot.luckySlots?.record({kind,slot:inputs[0],fromLevel:i.level??0,
-     toLevel:next.level,outcome,confirmed:true});
+    // Shadow diagnostics must never alter the already-settled mutation,
+    // even if an optional telemetry consumer malfunctions.
+    try{bot.luckySlots?.record({kind,slot:inputs[0],fromLevel:i.level??0,
+     toLevel:next.level,outcome,confirmed:true});}catch{}
     return true;
    },details:{item:i.name,riskVariant:identity(i),before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
  }

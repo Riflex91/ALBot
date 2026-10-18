@@ -7,6 +7,10 @@
     "build": "node scripts/build.mjs",
     "build:bootstrap": "node scripts/build-bootstrap.mjs --write",
     "check:bootstrap": "node scripts/build-bootstrap.mjs --check",
+    "build:bootstrap:auto": "node scripts/build-auto-bootstrap.mjs --write",
+    "check:bootstrap:auto": "node scripts/build-auto-bootstrap.mjs --check",
+    "verify:release": "node scripts/sign-release.mjs --check",
+    "sign:release": "node scripts/sign-release.mjs --write",
     "test": "node --test test/*.test.mjs editor/test/*.test.mjs",
     "build:editor": "node editor/build.mjs",
     "test:editor": "node --test editor/test/*.test.mjs"

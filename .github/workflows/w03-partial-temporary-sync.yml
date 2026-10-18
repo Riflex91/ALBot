@@ -1,6 +1,8 @@
 # One-time generated personal bot synchronization; remove after success.
 name: W03 partial recovery temporary bundle sync
 on:
+  push:
+    branches: [codex/w00-w01-readonly-disposition-20261018]
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
@@ -8,7 +10,7 @@ permissions:
   contents: write
 jobs:
   sync:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/w00-w01-readonly-disposition-20261018'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/codex/w00-w01-readonly-disposition-20261018') || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/w00-w01-readonly-disposition-20261018')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

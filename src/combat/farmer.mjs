@@ -20,6 +20,17 @@ export function chooseEmergencyFocus(monsters,members=[]){
 }
 // Every transit tick can choose a nearby, fresh, injured teammate,
 // independently of whether an aggro emergency was raised.
+// A shared endpoint, not a moving heartbeat coordinate, keeps all Farmers
+// traveling continuously on the same native navigation route.
+export function sharedFarmMarchDestination(follower,leader,realm){
+ const plan=leader?.farmPlan;
+ if(!leader?.running||leader.rip||leader.realm!==realm||
+    !plan||plan.realm!==realm||!Number.isFinite(plan.x)||
+    !Number.isFinite(plan.y)||typeof plan.map!=='string')return null;
+ const followerEnRoute=!samePlace(follower,plan)||distance(follower,plan)>75;
+ const leaderEnRoute=!samePlace(leader,plan)||distance(leader,plan)>85;
+ return followerEnRoute||leaderEnRoute?{...plan,radius:65}:null;
+}
 export function selectMarchHealingPatient(character,roster,{realm,now=Date.now(),
  threshold=.85}={}){
  if(character?.ctype!=='priest'||!Array.isArray(roster))return null;
@@ -446,24 +457,18 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const leader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}
-      const marchPlan=leader.farmPlan;
-      // All selected Farmers navigate the Leader's ACTUAL farm endpoint.
-      // Chasing the Leader's transient heartbeat coordinate with a 50-70
-      // radius repeatedly concluded movement and caused stop-and-go.
-      // A shared native destination preserves continuous travel, including
-      // across portals and bends. Safety and emergency combat stay above this.
-      const squadMarch=!!marchPlan&&leader.running&&!leader.rip&&
-       marchPlan.realm===p.realm()&&
-       (!samePlace(c,marchPlan)||distance(c,marchPlan)>75||
-        !samePlace(leader,marchPlan)||distance(leader,marchPlan)>85);
-      if(squadMarch){
-       const destination={...marchPlan,radius:65},order=bot.movement.order;
+      // All selected Farmers use the Leader's ACTUAL farm endpoint,
+      // not its moving heartbeat snapshots. Native pathfinding can keep
+      // going without a stop at every intermediate 50-70 unit radius.
+      const destination=sharedFarmMarchDestination(c,leader,p.realm());
+      if(destination){
+       const marchPlan=leader.farmPlan,order=bot.movement.order;
        const oldFollow=order?.owner==='follow'&&(
         !samePlace(order.dest,destination)||
         distance(order.dest,destination)>100);
        if(oldFollow)bot.movement.stop();
-       if(!bot.movement.order){
-        bot.movement.go(destination,'follow');
+       if(!bot.movement.order&&bot.movement.go(destination,'follow')&&
+          bot.movement.order?.owner==='follow'){
         bot.event?.('party.sharedMarchRoute',{plan:marchPlan.id,
          destination:marchPlan.key,reason:'continuous-shared-farm-destination'});
        }

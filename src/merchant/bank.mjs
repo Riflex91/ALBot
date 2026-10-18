@@ -30,6 +30,21 @@ export function bankCapacityPressure(rows,workspace=2,localMap=null){
   locallyBlocked:local.length>0&&local.every(row=>free(row)<=workspace),
   usablePacks};
 }
+// A revoked/not-reproducible emergency sale can be rolled back by storing
+// the exact retrieved, unmodified stack into the SAME empty bank slot.
+// Never guess a slot or clear the checkpoint on incomplete evidence.
+export function reclaimRollbackEvidence(record,carried,bankSlot,bankCount){
+ if(!record?.item||!Number.isSafeInteger(record.before)||
+    !Number.isSafeInteger(record.quantity)||record.quantity<=0||
+    !Number.isSafeInteger(record.bankBefore)||record.bankBefore<record.quantity||
+    !carried||bankSlot!==null&&!(!bankSlot)||
+    identity(carried)!==identity(record.item)||
+    (carried.q??1)!==record.quantity||
+    !Number.isSafeInteger(bankCount)||
+    bankCount!==record.bankBefore-record.quantity)
+  return false;
+ return true;
+}
 export function createBank(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const pendingKey='albot:bank-partial:'+me.name;let pending=p.read(pendingKey)??null;
@@ -485,7 +500,37 @@ export function createBank(bot){
    const next={...r,saleConfirmed:true};if(!p.write(reclaimKey,next))return false;
    reclaiming=next;return true;
   }});return true;}
-  e.note('Bankfreigabe: Bestand oder Verkaufsregel geändert; Auftrag benötigt Prüfung');return true;
+  // If the bank withdrawal completed but a later rule/protection change
+  // withdrew sale authorization, restore that exact item to the *original*
+  // slot. Unlike a sale this is reversible and needs no stale permission.
+  if(count===r.before+r.quantity&&item&&e.safe(item)&&
+     identity(item)===identity(r.item)&&(item.q??1)===r.quantity){
+   const bankMap=packMap(r.pack);
+   if(bankMap&&p.c.map!==bankMap){
+    e.note('Bankfreigabe zurückgenommen: entnommenes Item sicher zur Bank zurückführen');
+    e.travel(location(bankMap),'Bank-Reclaim-Rollback');return true;
+   }
+   const slot=p.c.bank?.[r.pack]?.[r.slot];
+   if(bankMap&&p.c.map===bankMap&&Array.isArray(p.c.bank?.[r.pack])&&
+      reclaimRollbackEvidence(r,item,slot??null,bank)){
+    const sourcePrint=fingerprint(item);
+    e.note('Bankfreigabe zurückgenommen: ursprünglichen Bankstapel wiederherstellen');
+    e.perform('bank.reclaim.rollback',{slots:[r.dest],
+     guard:()=>p.c.map===bankMap&&
+      reclaimRollbackEvidence(r,p.c.items?.[r.dest],
+       p.c.bank?.[r.pack]?.[r.slot]??null,
+       variantCount(p.c.bank?.[r.pack]??[],r.item))&&
+      fingerprint(p.c.items[r.dest])===sourcePrint,
+     call:()=>p.call('bank_store',r.dest,r.pack,r.slot),
+     observe:()=>!p.c.items[r.dest]&&
+      fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&
+      variantCount(p.c.bank?.[r.pack]??[],r.item)===r.bankBefore,
+     details:{item:r.item.name,quantity:r.quantity,pack:r.pack,
+      bankSlot:r.slot,reason:'Widerrufener Notverkauf: reversible Wiederherstellung'}});
+    return true;
+   }
+  }
+  e.note('Bankfreigabe: widersprüchliche Bestände; Gegenstand nicht automatisch verkaufen oder Checkpoint löschen');return true;
  }
  function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),size:items.length,observedLength:p.c.bank?.[pack]?.length??null,used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}
  function gold(){

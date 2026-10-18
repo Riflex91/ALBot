@@ -125,3 +125,45 @@ test('absent Merchant heartbeat does not freeze an independent Farmer',()=>{
  assert.equal(f.bot.target?.id,'mob1');
  assert.ok(f.attacks.includes('attack'));
 });
+
+test('live march regression: Merchant pressure never freezes follower escort',()=>{
+ const f=farmerFixture({free:15,signal:online,monsters:false});
+ f.bot.cfg.party.enabled=true;f.bot.cfg.party.waitForTeam=true;
+ f.bot.farmers=['Farmer','Leader'];f.bot.teamNames=['Farmer','Leader'];
+ f.bot.leader='Leader';
+ const leader={name:'Leader',running:true,rip:false,realm:'EUII',
+  map:'main',in:'main',x:120,y:0,hp:1000,max_hp:1000,
+  farmPlan:{map:'main',in:'main',x:520,y:753}};
+ f.bot.transport.fresh=n=>n==='Merchant'?online:n==='Leader'?leader:null;
+ f.bot.farmer.tick();
+ assert.equal(f.bot.reason,'Gruppenmarsch trotz Lagerdruck: Folge Leader');
+ assert.ok(f.moves.includes('go'),'Escorting must continue under inventory pressure');
+ assert.deepEqual(f.pulls,[],'The escort never grants permission to pull');
+});
+test('live march regression: Leader can reach an authorized farm before storage pressure blocks neutral pulls',()=>{
+ const f=farmerFixture({free:15,signal:online,monsters:false});
+ f.bot.cfg.party.enabled=true;f.bot.cfg.party.waitForTeam=true;
+ f.bot.farmers=['Farmer'];f.bot.leader='Farmer';
+ f.bot.teamPlan={heartbeat:()=>({map:'main',in:'main',x:520,y:753})};
+ let travels=0;f.bot.strategy.travel=()=>{travels++;return true;};
+ f.bot.farmer.tick();
+ assert.equal(travels,1);
+ assert.deepEqual(f.pulls,[]);
+});
+test('live march regression: Priest transit heal takes priority over Merchant capacity stall',()=>{
+ const f=farmerFixture({free:15,signal:online,monsters:false});
+ f.c.ctype='priest';f.bot.cfg.party.enabled=true;
+ f.bot.cfg.party.healing=true;f.bot.farmers=['Farmer','Leader'];
+ f.bot.leader='Leader';
+ f.bot.teamPlan={heartbeat:()=>({map:'main',in:'main',x:520,y:753})};
+ const patient={name:'Leader',running:true,rip:false,realm:'EUII',
+  received:Date.now()-1000,map:'main',in:'main',x:55,y:0,
+  hp:400,max_hp:1000};
+ f.bot.p.G.skills={heal:{range:140}};
+ f.bot.transport.fresh=n=>n==='Merchant'?online:n==='Leader'?patient:null;
+ f.bot.entity=n=>n==='Leader'?patient:null;
+ let rescued=0;f.bot.skills.rescue=()=>{rescued++;return true;};
+ f.bot.farmer.tick();
+ assert.equal(rescued,1);
+ assert.match(f.bot.reason,/Notfallheilung/);
+});

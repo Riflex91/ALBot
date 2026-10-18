@@ -176,3 +176,31 @@ test('a new reservation invalidates a queued capacity sale at its final economy 
  const e=createEconomy(f.bot);assert.equal(e.perform('sell',{slots:[0],rule:r,call:()=>assert.fail('not dispatched')}),true);
  assert.equal(dispatchGuard(),true);f.setReserve(1);assert.equal(dispatchGuard(),false);
 });
+
+test('unreserved plain clutter is banked only from physically verified workspace',()=>{
+ const f=fixture(8);f.c.map='bank';
+ f.G.items.cake={type:'material',g:10,s:9999};
+ f.c.items[0]={name:'cake',q:31};
+ let stores=0;
+ f.bot.bank.store=(slot,rule)=>{stores++;assert.equal(slot,0);
+  assert.equal(rule.action,'bank');return true;};
+ assert.equal(f.planner.tick(),false,'a stale bank catalog cannot permit parking');
+ assert.equal(stores,0);
+ f.bot.bank.observed=true;
+ f.bot.bank.capacityEvidence=()=>({rows:[{pack:'items0',map:'bank',free:10}]});
+ assert.equal(f.planner.tick(),true);
+ assert.equal(stores,1);
+ f.setExplicit({action:'keep'});
+ assert.equal(f.planner.tick(),false,'explicit KEEP forbids automatic clutter movement');
+ assert.equal(stores,1);
+});
+test('unverified bank stock cannot authorize NPC sale by inflating safety reserves',()=>{
+ const f=fixture(8);
+ f.G.items.mystery={type:'material',g:50};
+ f.c.items[0]={name:'mystery',q:1};
+ f.G.craft={something:{items:[[2,'mystery',0]]}};
+ f.stock.push({item:{name:'mystery',q:5},pack:'items0',slot:0});
+ f.bot.economy.npcFor=()=>({map:'main'});
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
+  'offsite stock must not count toward reserves for irreversible sale');
+});

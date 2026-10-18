@@ -198,7 +198,21 @@ export function createOwnLootReceipts(bot,{now=()=>Date.now()}={}){
    recent.push(result);recent=recent.slice(-W13_LOOT_MAX);
    confirmed.push({...result,items:[...row.wanted].map(([variant,quantity])=>({variant,quantity}))});
    confirmed=confirmed.slice(-16);
-   pending=pending.filter(x=>x!==row);
+   // Two chest callbacks captured against the SAME physical starting
+   // inventory can both match one resulting delta. Consume that baseline
+   // exactly once; leave other chest assignments unverified, not credited.
+   const sameBaseline=x=>x.basis.gold===row.basis.gold&&
+    x.basis.stock.size===row.basis.stock.size&&
+    [...x.basis.stock].every(([k,n])=>x.basis.stock.get(k)===n&&
+     row.basis.stock.get(k)===n);
+   for(const other of pending){
+    if(other===row||!sameBaseline(other))continue;
+    recent.push({id:other.id,at:other.at,source:other.source,
+     opener:other.opener,state:'server-attributed-unverified',
+     itemTypes:other.itemTypes,gold:other.gold,physical:false});
+   }
+   recent=recent.slice(-W13_LOOT_MAX);
+   pending=pending.filter(x=>!sameBaseline(x));
    bot.event?.('loot.ownReceipt',result);
   }
  }

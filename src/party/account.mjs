@@ -1,6 +1,12 @@
 // A single missed transport heartbeat must not unselect an otherwise healthy
 // already-active Farmer. Explicit death, stop, inventory lock and realm split
 // still remove availability immediately. Unseen peers get a short grace only.
+// A heartbeat on another game server is not an available combat member.
+// Missing peer evidence remains unknown for controlled browser rotation,
+// but explicitly observed cross-realm players cannot enter a live farm team.
+export function foreignRunningFarmer(member,realm){
+ return member?.running===true&&member.realm!==realm;
+}
 export function selectedFarmerAvailable(member,{selected=false,lastSeen=0,now=Date.now(),realm}={}){
  if(member&&(!member.running||member.rip||member.inventoryBlocked||member.realm!==realm))return false;
  if(member?.running&&member.realm===realm)return true;
@@ -182,7 +188,7 @@ export function createAccount(bot){
    },{timeout:55000,delay:60000,onSettle(result){if(result!=='returned'){bot.lifecycleChanging=false;if(p.read('albot:account:'+d.in+':incoming')?.id===m.id)p.write('albot:account:'+d.in+':incoming',null);bot.report('Fensterwechsel fehlgeschlagen; ursprünglicher Farmer bleibt aktiv');}}});
   if(!accepted){bot.lifecycleChanging=false;p.write('albot:account:'+d.in+':incoming',null);}
  }
- function receive(from,data){if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
+ function receive(from,data){if(data?.names?.some?.(n=>foreignRunningFarmer(bot.transport.fresh(n),p.realm())))return;if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
   if(cfg.general.autoRoster){
    const online=cfg.characters.filter(c=>c.enabled&&(c.name===me.name?bot.running:bot.transport.fresh(c.name)?.running&&bot.transport.fresh(c.name)?.realm===p.realm())).map(c=>c.name).sort();
@@ -277,7 +283,7 @@ export function createAccount(bot){
   // underleveled *offline* farmer is demonstrably behind an active one.
   // Boss/event tasks still select by combat suitability and class synergy.
   const target=training?(swap?bot.farmers.filter(n=>n!==swap.out).concat(swap.in):[...bot.farmers]):
-   selectAccountTeam(members,cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),
+   selectAccountTeam(members.filter(m=>!foreignRunningFarmer(bot.transport.fresh(m.name),p.realm())),cfg.party.maxFarmers,{boss:!!bossObjective||['boss','event'].includes(task),
     preferredClasses:bossObjective?.recommended??[],leader:cfg.party.leader,current:bot.farmers,
     synergy:!!cfg.party.gearSynergy,
     damageType:p.G?.monsters?.[bossObjective?.id??leaderActivity?.target??bot.target?.mtype]?.damage_type});

@@ -3,6 +3,7 @@ import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
 import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
 import {validateBankPartialRecord,classifyBankPartialRecord,partialDispatchDecision} from './bank-partial-recovery.mjs';
+import {validateBankSingleRecord,classifyBankSingleRecord} from './bank-single-recovery.mjs';
 // Evaluate against live carried gold, never stale bank balances or a
 // hypothetical future deposit. Keep the independent hourly/reserve budgets.
 export function emergencyMaterialSaleAllowed(meta,price,quantity,maxUnitValue){
@@ -37,6 +38,7 @@ export function createBank(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  const pendingKey='albot:bank-partial:'+me.name;let pending=p.read(pendingKey)??null;
  const reclaimKey='albot:bank-reclaim:'+me.name;let reclaiming=p.read(reclaimKey)??null;
+ const singleKey='albot:bank-single:'+me.name;let single=p.read(singleKey)??null;
  const pressureKey='albot:bank-pressure:'+me.name;
  let pressure=p.read(pressureKey)??{observations:0,epoch:null,at:0};
  if(!Number.isInteger(pressure.observations)||!Number.isFinite(pressure.at))pressure={observations:0,epoch:null,at:0};
@@ -51,12 +53,16 @@ export function createBank(bot){
  // Two independent bank value intents must never be interpreted as one
  // recoverable sequence. Neither journal is safe to clear without an
  // independent server receipt; reject even if both individually look valid.
- if(pending&&reclaiming){
+ if(single&&!validateBankSingleRecord(single,{
+   owner:me.name,realm:p.realm()}).valid){
+  bot.inventoryBlocked=true;e.note('Bankentnahme: ungültiges Einzeljournal; Bestand prüfen');
+ }
+ if([pending,reclaiming,single].filter(Boolean).length>1){
   bot.inventoryBlocked=true;
-  e.note('Bankkonflikt: Teilentnahme und Bankverkauf gleichzeitig gespeichert; manuell prüfen');
+  e.note('Bankkonflikt: mehrere Bankwertjournale; manuell prüfen');
  }
  function savePending(value){
-  if(value&&reclaiming){
+  if(value&&(reclaiming||single)){
    bot.inventoryBlocked=true;
    e.note('Bankkonflikt: neues Teilentnahme-Journal bei aktivem Bankverkauf verweigert');
    return false;
@@ -66,6 +72,48 @@ export function createBank(bot){
    return false;
   }
   pending=value;return true;
+ }
+ function saveSingle(value){
+  if(value&&(pending||reclaiming||single)){
+   bot.inventoryBlocked=true;
+   e.note('Bankentnahme: konkurrierendes Bankjournal; kein neuer Abruf');
+   return false;
+  }
+  if(p.write(singleKey,value)!==true){
+   bot.inventoryBlocked=true;
+   e.note('Bankentnahme: Einzeljournal nicht speicherbar');
+   return false;
+  }
+  single=value;return true;
+ }
+ function singleEvidence(r){
+  return classifyBankSingleRecord(r,{
+   owner:me.name,realm:p.realm(),inventory:p.c.items,
+   bank:p.c.bank,map:p.c.map,packMap});
+ }
+ function recoverSingle(){
+  if(!single)return false;
+  if(pending||reclaiming){
+   bot.inventoryBlocked=true;e.note('Bankkonflikt: parallele Wertjournale; keine Einzelentnahme');
+   return true;
+  }
+  if(bot.journal||bot.exec?.busy?.('inventory')||
+     bot.exec?.frame?.some?.(x=>x.resources?.includes?.('inventory')))return true;
+  const state=singleEvidence(single);
+  if(state.phase==='unobserved'){
+   ready(single.pack,true); // no off-map bank source can prove a withdrawal
+   return true;
+  }
+  if(state.phase==='prepared-unchanged'||state.phase==='withdrawn'){
+   if(p.write(singleKey,null)===true)single=null;
+   else{
+    bot.inventoryBlocked=true;e.note('Bankentnahme: belegtes Journal nicht löschbar');
+   }
+   return true;
+  }
+  bot.inventoryBlocked=true;
+  e.note('Bankentnahme: API-Ergebnis unklar ('+state.phase+'); manuell prüfen');
+  return true;
  }
  function partialEvidence(r){
   return classifyBankPartialRecord(r,{
@@ -95,6 +143,7 @@ export function createBank(bot){
   return invoke();
  }
  function recover(){
+  if(single)return recoverSingle();
   if(!pending)return false;
   if(reclaiming){
    bot.inventoryBlocked=true;
@@ -359,14 +408,45 @@ export function createBank(bot){
   }if(consolidate()||!r.pack&&expand()||reclaim())return true;e.note('Bank voll: kein freier erlaubter Platz; erlaubte Konsolidierung, Verkauf und Erweiterungsbudget geprüft');return false;
  }
  function retrieve(item,r,wanted){
-  if(pending)return recover();
+  if(single||pending)return recover();
+  if(reclaiming)return false;
   if(bot.free()<1){e.note('Bankentnahme '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}
   if(!ready(r.pack||packFor(item)||'items0'))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
    if(slot<0)continue;const actual=items[slot],q=actual.q??1,fp=fingerprint(actual),dest=p.c.items.findIndex(i=>!i),before=e.count(actual),bankBefore=variantCount(items,actual);
-   return e.perform('bank.retrieve',{rule:r,guard:()=>bot.free()>0&&fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(actual)&&(p.c.items[dest]?.q??1)===q,details:{item:actual.name,quantity:q,pack,before}});
+   // This full-stack retrieval needs its own durable before/after evidence.
+   const at=Date.now(),sourcePrint=fp,record={
+    version:1,owner:me.name,realm:p.realm(),at,pack,slot,dest,
+    item:{...actual},sourcePrint,quantity:q,before,bankBefore,
+    prepared:{kind:'bank.retrieve',session:bot.session,at,realm:p.realm(),
+     pack,slot,dest,sourcePrint}};
+   if(!validateBankSingleRecord(record,{owner:me.name,realm:p.realm()}).valid||
+      !saveSingle(record))return false;
+   const guard=()=>single===record&&singleEvidence(record).phase==='prepared-unchanged';
+   const accepted=e.perform('bank.retrieve',{rule:r,guard,
+    call:()=>{
+     if(!guard()){
+      bot.inventoryBlocked=true;
+      throw Error('Bankentnahme: Quellzustand vor Server-Dispatch unklar');
+     }
+     const next={...record,dispatch:{
+      kind:'bank.retrieve',session:bot.session,at:Date.now(),
+      realm:record.realm,pack,slot,dest,sourcePrint}};
+     if(!validateBankSingleRecord(next,{owner:me.name,realm:p.realm()}).valid||
+        p.write(singleKey,next)!==true){
+      bot.inventoryBlocked=true;
+      throw Error('Bankentnahme: Dispatch-Journal nicht gespeichert');
+     }
+     single=next;
+     return p.call('bank_retrieve',pack,slot,dest);
+    },
+    observe:()=>!!single&&singleEvidence(single).phase==='withdrawn',
+    details:{item:actual.name,quantity:q,pack,before}});
+   if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')&&guard())
+    saveSingle(null);
+   return accepted;
   }
   if(!cfg.merchant.partialBank)return false;
   const take=Math.floor(Math.min(wanted,r.batch,r.maxCount-e.count(item)));if(take<1||!e.remaining(r)||bot.journal||bot.logistics.reserved||bot.inventoryBlocked||bot.exec.busy('inventory')||bot.free()<2)return false;
@@ -735,6 +815,7 @@ export function createBank(bot){
  }
  function recoverCapacity(){
   if(!reclaiming)return false;
+  if(single){bot.inventoryBlocked=true;e.note('Bankkonflikt: Einzelentnahme und Reclaim');return true;}
   if(pending){
    bot.inventoryBlocked=true;
    e.note('Bankkonflikt: mehrere offene Wertjournale; kein Bankverkauf');

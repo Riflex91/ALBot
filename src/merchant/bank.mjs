@@ -1,7 +1,7 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
-import {validateBankReclaimRecord,classifyBankReclaimRecord} from './bank-reclaim-recovery.mjs';
+import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
 import {validateBankPartialRecord,classifyBankPartialRecord} from './bank-partial-recovery.mjs';
 // Evaluate against live carried gold, never stale bank balances or a
 // hypothetical future deposit. Keep the independent hourly/reserve budgets.
@@ -661,7 +661,7 @@ export function createBank(bot){
   if(bot.journal||bot.inventoryBlocked||bot.exec?.busy?.('inventory')||
      bot.exec?.frame?.some?.(x=>x.resources?.includes?.('inventory')))
    return true;
-  const r=reclaiming;
+  let r=reclaiming;
   const evidence=classifyBankReclaimRecord(r,{
    owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
    map:p.c.map,packMap});
@@ -671,24 +671,52 @@ export function createBank(bot){
    return true;
   }
   if(evidence.phase==='unobserved'){
-   // Missing bank packs or a different realm are not empty bank slots.
-   // Never repeat a value operation to "discover" the missing state.
-   e.note('Bankfreigabe: bestätigte Bankkarte fehlt; Auftrag bleibt gesperrt');
-   return true;
-  }
-  if(evidence.phase==='unchanged'||evidence.phase==='sold'){
+   // The source bank pack is NOT visible on the NPC map. An already
+   // durably confirmed withdrawal can follow its explicitly permitted
+   // sale path using the exact LIVE carried stack, but cannot treat the
+   // off-map bank as empty. Other states first return for fresh evidence.
+   if(r.saleConfirmed===true){
+    ready(r.pack,true); // move back to the bank, never sell a second time
+    return true;
+   }
+   const offsite=inspectOffsiteBankReclaim(r,{
+    owner:me.name,realm:p.realm(),inventory:p.c.items});
+   if(!offsite.eligible){
+    ready(r.pack,true); // re-prove the bank source before any further value step
+    e.note('Bankfreigabe: Quellbank nicht beobachtet ('+offsite.reason+'); Rückkehr zur Bank');
+    return true;
+   }
+  }else if(evidence.phase==='unchanged'||evidence.phase==='sold'){
    // Both source AND inventory were independently reconciled. Only
    // saleConfirmed from an earlier onConfirmed receipt qualifies as sold.
    if(p.write(reclaimKey,null)===true)reclaiming=null;
    else e.note('Bankfreigabe: bestätigter Endzustand; Journal nicht löschbar');
    return true;
-  }
-  if(evidence.phase!=='withdrawn'){
+  }else if(evidence.phase==='withdrawn'){
+   // Persist the full addressed withdrawal receipt BEFORE moving to a
+   // different map. This is NOT an NPC-sale receipt or permission to drop
+   // the checkpoint. On any storage error, the Merchant remains blocked.
+   if(!r.withdrawal){
+    const next={...r,withdrawal:{
+     at:Date.now(),realm:r.realm,pack:r.pack,slot:r.slot,
+     dest:r.dest,sourcePrint:r.sourcePrint,
+     inventoryCount:r.before+r.quantity,
+     bankCount:r.bankBefore-r.quantity}};
+    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm()}).valid||
+       p.write(reclaimKey,next)!==true){
+     bot.inventoryBlocked=true;
+     e.note('Bankfreigabe: Entnahmebeleg nicht dauerhaft gespeichert');
+     return true;
+    }
+    reclaiming=next;r=next;
+   }
+  }else{
    e.note('Bankfreigabe: Quell- oder Zielslot weicht ab; manuell prüfen');
    return true;
   }
-  // The exact withdrawn full bank stack is still at its addressed slot.
-  // A second value action is allowed only under all current safety rules.
+  // A verified withdrawal may now travel to an NPC. Offsite continuations
+  // additionally require the persisted source-bank receipt and exact local
+  // inventory evidence; sale rights are re-evaluated on every new attempt.
   const item=p.c.items[r.dest],sale=eligibleBankSale(item),
    source=r.explicitOnly?e.explicit(item):null,
    authorized=!!sale&&cfg.merchant.bankReclaim===true&&

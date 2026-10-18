@@ -1,23 +1,23 @@
 import {fingerprint,protectedItem} from '../core/policy.mjs';
 
 // Read-only proof of exactly one addressed bank deposit; no account-wide lock.
-const safe=n=>Number.isSafeInteger(n)&&n>=0;
+const storeSafe=n=>Number.isSafeInteger(n)&&n>=0;
 export function validateBankStoreRecord(r,{owner,realm,now=Date.now()}={}){
  const no=reason=>({valid:false,reason});
  if(!r||typeof r!=='object'||Array.isArray(r)||r.version!==1||
     typeof owner!=='string'||!owner||r.owner!==owner||
     typeof realm!=='string'||!realm||r.realm!==realm||
-    !safe(now)||!safe(r.at)||r.at<1||r.at>now+2000)
+    !storeSafe(now)||!storeSafe(r.at)||r.at<1||r.at>now+2000)
   return no('invalid-owner-realm-time');
- if(!/^items\d+$/.test(r.pack??'')||!safe(r.source)||r.source>=1000||
-    !safe(r.dest)||r.dest>=42)return no('invalid-store-address');
+ if(!/^items\d+$/.test(r.pack??'')||!storeSafe(r.source)||r.source>=1000||
+    !storeSafe(r.dest)||r.dest>=42)return no('invalid-store-address');
  if(!r.item||typeof r.item.name!=='string'||!r.item.name||
-    protectedItem(r.item)||!safe(r.quantity)||r.quantity<1||
+    protectedItem(r.item)||!storeSafe(r.quantity)||r.quantity<1||
     r.quantity!==(r.item.q??1)||r.sourcePrint!==fingerprint(r.item))
   return no('invalid-store-source');
  const step=s=>!!s&&typeof s==='object'&&!Array.isArray(s)&&
   s.kind==='bank.store'&&typeof s.session==='string'&&!!s.session&&
-  safe(s.at)&&s.at>=r.at&&s.at<=now+2000&&
+  storeSafe(s.at)&&s.at>=r.at&&s.at<=now+2000&&
   s.realm===r.realm&&s.pack===r.pack&&s.source===r.source&&
   s.dest===r.dest&&s.sourcePrint===r.sourcePrint;
  if(!step(r.prepared))return no('invalid-preparation');

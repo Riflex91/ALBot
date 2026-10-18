@@ -61,3 +61,5 @@ jobs:
         run: echo "READ_ONLY_DRY_RUN_COMPLETE"
 
 # Repeat integration after resolver anchor correction
+
+# Rerun for already-integrated hunk handling

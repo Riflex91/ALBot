@@ -9,7 +9,7 @@ function fixture(free=8){
  const cfg=defaultsFor(FULL_DESCRIPTOR.schema),calls=[];cfg.party.merchant='M';cfg.production.enabled=true;cfg.production.compound=true;cfg.production.minChance=.7;
  const c={map:'main',items:[...Array.from({length:42-free},()=>({name:'unknown'})),...Array(free).fill(null)],slots:{}},G={items:{gift:{e:1,s:9999},ring:{type:'ring',compound:true},junk:{type:'helmet',upgrade:true,g:100}},drops:{gift:[[9,'gold',5000],[1,'ring',1]]},craft:{},monsters:{}};
  const stock=[];let bankFree=10,reserved=0,explicit=null,use='no-gear-use';
- const bot={cfg,me:{name:'M',role:'merchant'},p:{c,G,realm:()=> 'EUII'},free:()=>c.items.filter(i=>!i).length,
+ const bot={cfg,me:{name:'M',role:'merchant'},session:'preventive-fixture-session',p:{c,G,realm:()=> 'EUII'},free:()=>c.items.filter(i=>!i).length,
   bank:{catalogStock:()=>stock,capacityEvidence:()=>({rows:[{pack:'items0',free:bankFree}]}),consolidateInventory:()=>false,retrieve:(i,r,q)=>{calls.push(['retrieve',i.name,q]);return true;},reclaim:()=>false},
   economy:{explicit:()=>explicit,rules:()=>null,value:()=>60,npcFor:i=>i==='junk'?{map:'main'}:null,count:i=>c.items.filter(x=>x?.name===i.name&&(x.level??0)===(i.level??0)).length,
    npcSell:(slot,r)=>{calls.push(['sell',slot,r]);return true;}},production:{reservedQuantity:()=>reserved,mutate:(slot,r)=>{calls.push(['compound',slot,r]);return true;}},

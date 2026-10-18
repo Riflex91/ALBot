@@ -1,5 +1,5 @@
 name: Temporary road-aggro bank-recovery bundle sync
-# Rebuild after import allowlist and spectator-rendezvous regression
+# Rebuild after import allowlist, spectator rendezvous and lexical scope fix
 on:
   push:
     branches:

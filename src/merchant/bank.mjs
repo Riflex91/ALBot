@@ -1,5 +1,6 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
+import {scanBankDispositionWindow} from './bank-disposition.mjs';
 // Evaluate against live carried gold, never stale bank balances or a
 // hypothetical future deposit. Keep the independent hourly/reserve budgets.
 export function emergencyMaterialSaleAllowed(meta,price,quantity,maxUnitValue){
@@ -422,6 +423,114 @@ export function createBank(bot){
   if(!Number.isFinite(rarity)||!Number.isFinite(difficulty)||rarity<0||difficulty<0)return null;
   return {r,price,lossScore:price+rarity*1000000+difficulty*100000+1000/Math.max(1,item.q??1)};
  }
+ // A single durable transaction path for BOTH pressure recovery and
+ // preventive, explicitly authorized bank sales. No retained/offsite catalog
+ // may be the source of a withdrawal or a subsequent sale.
+ function stageBankSale(selected,reason,explicitOnly=false){
+  if(pending||reclaiming||bot.journal||bot.inventoryBlocked||
+     bot.logistics?.reserved||bot.exec.busy('inventory')||bot.free()<1||
+     !p.c.bank||me.name!==cfg.party.merchant)return false;
+  const {item,pack,slot}=selected,q=item.q??1,
+   dest=p.c.items.findIndex(i=>!i),before=e.count(item),
+   bankBefore=variantCount(p.c.bank?.[pack]??[],item),
+   fp=fingerprint(item);
+  const admitted=live=>{
+   if(!live||packMap(pack)!==p.c.map||fingerprint(live)!==fp||
+      !Number.isSafeInteger(q)||q<1||bot.free()<1||
+      !!p.c.items[dest]||!cfg.merchant.bankReclaim)return false;
+   const safe=eligibleBankSale(live);
+   return !!safe&&(!explicitOnly||
+     cfg.merchant.preventiveStorage===true&&
+     e.explicit(live)?.action==='sell'&&safe.r===e.explicit(live));
+  };
+  if(dest<0||!admitted(p.c.bank?.[pack]?.[slot]))return false;
+  const record={item:{...item},pack,slot,dest,before,bankBefore,
+   quantity:q,gold:p.c.gold,sourcePrint:fp,
+   expectedSaleGold:e.value(item)*q,reason};
+  if(!p.write(reclaimKey,record))return false;
+  reclaiming=record;
+  return e.perform('bank.reclaim',{guard:()=>admitted(p.c.bank?.[pack]?.[slot]),
+   call:()=>p.call('bank_retrieve',pack,slot,dest),
+   observe:()=>!p.c.bank?.[pack]?.[slot]&&
+     identity(p.c.items[dest])===identity(item)&&
+     (p.c.items[dest]?.q??1)===q,
+   details:{item:item.name,quantity:q,pack,lossScore:selected.lossScore,
+    reason}});
+ }
+ let preventiveScan={revision:null,map:null,defs:null,cursor:0,
+  checked:0,total:0,best:null,completedAt:0,reason:'not-observed'};
+ function resetPreventive(reason='snapshot-changed'){
+  preventiveScan={revision:catalog.revision,map:p.c.map,defs:p.G.items,
+   cursor:0,checked:0,total:0,best:null,completedAt:0,reason};
+ }
+ function preventiveDisposition(){
+  // W04 is opt-in to existing preventive storage AND bank reclaim settings.
+  // It does not reinterpret "keep", inferred low-quality or emergency
+  // material rules as permission to liquidate a bank asset.
+  if(cfg.merchant.preventiveStorage!==true||!cfg.merchant.bankReclaim||
+     !cfg.merchant.bank||!bot.running||me.name!==cfg.party.merchant||
+     pending||reclaiming||bot.journal||bot.inventoryBlocked||
+     bot.logistics?.reserved||bot.exec.busy('inventory'))return false;
+  const rows=packs();
+  if(!lastAtBank||!observed||!p.c.bank||!catalog.observedAt||
+     catalog.realm!==(p.realm?.()??'')||
+     Date.now()-catalog.observedAt>120000)return false;
+  if(preventiveScan.revision!==catalog.revision||
+     preventiveScan.map!==p.c.map||
+     preventiveScan.defs!==p.G.items)resetPreventive();
+  if(preventiveScan.completedAt){
+   if(Date.now()-preventiveScan.completedAt<60000)return false;
+   resetPreventive('periodic-recheck');
+  }
+  const batch=scanBankDispositionWindow(rows,{map:p.c.map,packMap,
+   cursor:preventiveScan.cursor,limit:24,admit:(item,pack,slot)=>{
+    const explicit=e.explicit(item);
+    if(!explicit?.enabled||explicit.action!=='sell')return null;
+    const safe=eligibleBankSale(item);
+    return safe?.r===explicit?{price:safe.price,lossScore:safe.lossScore}:null;
+   }});
+  if(!batch.valid){
+   preventiveScan.reason=batch.reason;return false;
+  }
+  preventiveScan.cursor=batch.nextCursor;
+  preventiveScan.checked+=batch.scanned;
+  preventiveScan.total=batch.total;
+  for(const row of batch.candidates){
+   const value={pack:row.pack,slot:row.slot,
+    lossScore:row.admission.lossScore,price:row.admission.price,
+    variant:identity(row.item),sourcePrint:fingerprint(row.item)};
+   const old=preventiveScan.best;
+   if(!old||value.lossScore<old.lossScore||
+      value.lossScore===old.lossScore&&
+      (value.price<old.price||value.price===old.price&&
+       (value.pack.localeCompare(old.pack)<0||
+        value.pack===old.pack&&value.slot<old.slot)))
+    preventiveScan.best=value;
+  }
+  preventiveScan.reason=batch.complete?'complete':'scanning';
+  if(!batch.complete)return false;
+  preventiveScan.completedAt=Date.now();
+  const selected=preventiveScan.best;
+  if(!selected||bot.free()<1)return false;
+  // Revalidate against the addressed LIVE bank stack. Completion of a
+  // read-only scan is not a withdrawal or a value permission.
+  const item=p.c.bank?.[selected.pack]?.[selected.slot];
+  if(!item||fingerprint(item)!==selected.sourcePrint||
+     identity(item)!==selected.variant||
+     e.explicit(item)?.action!=='sell')return false;
+  const safe=eligibleBankSale(item);
+  if(!safe||safe.r!==e.explicit(item))return false;
+  return stageBankSale({...safe,item,pack:selected.pack,
+   slot:selected.slot},'Vorbeugend: explizite Bank-Verkaufsregel',true);
+ }
+ const preventiveStatus=()=>({
+  revision:preventiveScan.revision,map:preventiveScan.map,
+  checked:preventiveScan.checked,total:preventiveScan.total,
+  cursor:preventiveScan.cursor,complete:!!preventiveScan.completedAt,
+  candidate:preventiveScan.best?{
+   pack:preventiveScan.best.pack,slot:preventiveScan.best.slot}:null,
+  reason:preventiveScan.reason,mode:'observation-not-authorization'
+ });
  function reclaim(preventiveWorkspace=null){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<1)return false;
   const rows=packs(),workspace=Math.max(0,Number.isSafeInteger(preventiveWorkspace)?Math.min(40,preventiveWorkspace):cfg.merchant.bankWorkspace??2);
@@ -455,14 +564,7 @@ export function createBank(bot){
   }
   candidates.sort((a,b)=>a.lossScore-b.lossScore||a.price-b.price||a.item.name.localeCompare(b.item.name)||a.slot-b.slot);
   const selected=candidates[0];if(!selected){e.note('Bankdruck: kein ausdrücklich freigegebenes unreserviertes Item für sicheren Notverkauf');return false;}
-  const {item,pack,slot}=selected,q=item.q??1,dest=p.c.items.findIndex(i=>!i),before=e.count(item),bankBefore=variantCount(p.c.bank[pack],item),fp=fingerprint(item);
-  if(dest<0)return false;
-  const record={item:{...item},pack,slot,dest,before,bankBefore,quantity:q,gold:p.c.gold,sourcePrint:fp,expectedSaleGold:e.value(item)*q};
-  if(!p.write(reclaimKey,record))return false;reclaiming=record;
-  return e.perform('bank.reclaim',{guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest]&&!!eligibleBankSale(p.c.bank[pack][slot]),
-   call:()=>p.call('bank_retrieve',pack,slot,dest),
-   observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(item)&&(p.c.items[dest]?.q??1)===q,
-   details:{item:item.name,quantity:q,pack,lossScore:selected.lossScore,reason:'Bankdruck: geringster risikobereinigter Verlust'}});
+  return stageBankSale(selected,'Bankdruck: geringster risikobereinigter Verlust');
  }
  function recoverCapacity(){if(!reclaiming)return false;if(bot.journal||bot.inventoryBlocked)return true;const r=reclaiming;
   if(!r.item||!e.safe(r.item)||!/^items\d+$/.test(r.pack)||![r.quantity,r.before,r.bankBefore,r.dest,r.slot].every(Number.isSafeInteger)||r.quantity<1||r.dest<0||r.dest>=p.c.items.length){bot.inventoryBlocked=true;e.note('Bankfreigabe: ungültiger Checkpoint');return true;}
@@ -502,5 +604,5 @@ export function createBank(bot){
  return {liveEvidence(){return inspectBankEvidence(p.c.bank,{
    owner:me.name,session:bot.session,realm:p.realm(),map:p.c.map,
    packMap,blocked:!!bot.inventoryBlocked||!!bot.journal||!!pending||!!reclaiming
-  });},capacityEvidence(){packs();return catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Array.isArray(catalog.capacity)?{at:catalog.observedAt,rows:catalog.capacity.map(r=>({...r}))}:null;},goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+  });},capacityEvidence(){packs();return catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Array.isArray(catalog.capacity)?{at:catalog.observedAt,rows:catalog.capacity.map(r=>({...r}))}:null;},goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,preventiveDisposition,preventiveStatus,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

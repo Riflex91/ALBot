@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {farmHealer,farmThroughput} from '../src/world/composition.mjs';
+import {farmHealer,farmThroughput,combatMembers} from '../src/world/composition.mjs';
 import {compactCombatSupport} from '../src/party/transport.mjs';
 import {neutralPullReadiness} from '../src/combat/team-readiness.mjs';
 import {bossDamageShadow,bossProfile} from '../src/combat/bosses.mjs';
@@ -29,4 +29,13 @@ test('boss estimate gives no attack output to a petrified member and catalogs ra
  assert.equal(bossProfile(catalog,'manyeye').supported,false);
  assert.equal(bossProfile(catalog,'mimic').supported,true);
  assert.equal(bossProfile(catalog,'paledino').supported,true);
+});
+
+test('locally visible stoned state overrides a still-healthy peer heartbeat immediately',()=>{
+ const c={...priest,name:'R',ctype:'ranger',s:{}},peer={...priest,s:{},running:true,realm:'EUI'};
+ const bot={cfg:{party:{enabled:true,waitForTeam:true,followDistance:140},farming:{pullHp:.75}},
+  p:{c,G,realm:()=>'EUI'},me:{name:'R'},leader:'R',farmers:['R','P'],
+  transport:{fresh:()=>peer},entity:name=>name==='P'?priest:c};
+ assert.equal(neutralPullReadiness(bot).reason,'peer-condition-blocked');
+ assert.equal(combatMembers(bot).find(p=>p.name==='P').s.stoned.ms,4000);
 });

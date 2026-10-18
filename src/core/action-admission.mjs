@@ -68,3 +68,12 @@ export function createActionAdmission(bot,{now=()=>Date.now()}={}){
   status:()=>({windowMs:4000,cost:sample(),ceiling:ceiling(),denied})
  };
 }
+
+export function currentConditionEvidence(bot,member){
+ const live=member?.name?bot.entity?.(member.name):null;
+ if(!live||live.name!==member.name||live.map!==member.map||
+    String(live.in??live.map)!==String(member.in??member.map))return member;
+ // Merge observed blockers immediately; absence from a local partial entity
+ // never clears an older authenticated condition before its next heartbeat.
+ return {...member,s:{...member.s,...live.s}};
+}

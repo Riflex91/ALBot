@@ -1,4 +1,4 @@
-import {runtimeConditionGate} from '../core/action-admission.mjs';
+import {runtimeConditionGate,currentConditionEvidence} from '../core/action-admission.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
@@ -124,7 +124,7 @@ export function bossReadiness(G,id,live,members,{maxSeconds=300,planned=false,me
 export function createBosses(bot){
  const {p,cfg}=bot;let active=null,damage=0,healing=0,since=Date.now(),phase='IDLE',reason='',definition='',heals=[];
  const healContext=()=>knowledgeFingerprint([p.G.version,p.realm(),bot.farmers.map(n=>semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))]);
- function members(planned){return bot.farmers.map(n=>n===bot.me.name?{...p.c,name:n}:bot.transport.fresh(n)).filter(h=>h&&(h.name===bot.me.name||h.running&&h.realm===p.realm())&&!h.rip&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2)).map(h=>({...h,...h.stats}));}
+ function members(planned){return bot.farmers.map(n=>n===bot.me.name?{...p.c,name:n}:bot.transport.fresh(n)).filter(h=>h&&(h.name===bot.me.name||h.running&&h.realm===p.realm())&&!h.rip&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2)).map(h=>currentConditionEvidence(bot,{...h,...h.stats}));}
  function evaluate(id,live,planned=false){if(!cfg.world.bossTactics||!bossProfile(p.G,id))return null;
   const team=members(planned);if(team.length!==bot.farmers.length)return {safe:false,reason:'Bossgruppe unvollständig',phase:'ASSEMBLE'};
   const profile=bossProfile(p.G,id),maxAdds=Math.max(0,cfg.farming.maxAggro-1);

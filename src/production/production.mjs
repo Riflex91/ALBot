@@ -703,7 +703,30 @@ export function createProduction(bot){
    });}return accepted;};
   if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));
   if(step.kind==='retrieve')return attempt(()=>bot.bank.retrieve(item,r,step.quantity));
-  if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){
+  if(step.kind==='craft')return attempt(()=>craft(step.item,r));
+  if(step.kind==='marketBuy'){
+   // W06: one material/acquisition node, not the rule's entire targetCount.
+   // Replanning, replacing a goal or editing an explicit acquisition rule
+   // immediately invalidates this request before the trade_buy dispatch.
+   const liveStep=step,liveGoal=goal;
+   const ruleSignature=rule=>JSON.stringify([rule?.action,rule?.enabled,
+    rule?.item,rule?.minLevel,rule?.maxLevel,rule?.targetCount,
+    rule?.maxCount,rule?.batch,rule?.maxPrice,rule?.goldBudget,
+    rule?.priceSource,rule?.character,rule?.role]);
+   const signature=ruleSignature(r);
+   return attempt(()=>bot.market.buy(item,r,{
+    quantity:step.quantity,
+    admit:()=>bot.running&&cfg.production.enabled&&
+     !intentBlocked&&!bot.journal&&!bot.inventoryBlocked&&
+     goal===liveGoal&&plan[0]===liveStep&&
+     liveStep.kind==='marketBuy'&&
+     Number.isSafeInteger(liveStep.quantity)&&liveStep.quantity>0&&
+     cfg.production.acquireBy.includes('market')&&
+     e.remaining(r)&&ruleSignature(r)===signature&&
+     ruleSignature(e.rules(item,'acquisition'))===signature
+   }));
+  }
+  if(step.kind==='exchange'){
    const slot=firstEligibleProductionSlot(p.c.items,item,i=>e.safe(i)&&
     e.explicit(i,'inventory')?.action!=='keep'&&e.explicit(i,'production')?.action!=='keep');
    if(slot<0)noteDeferred(step.kind,step.item,'no-safe-matching-inventory-slot');

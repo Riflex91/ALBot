@@ -1,0 +1,70 @@
+name: PR157 finalize verified integration
+on:
+  push:
+    branches: [codex/w00-w01-readonly-disposition-20261018]
+    paths: [.github/workflows/pr157-finalize-temp.yml]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: github.repository == 'Riflex91/ALBot' && github.ref == 'refs/heads/codex/w00-w01-readonly-disposition-20261018'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Guard latest tested main and construct semantic merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "559064ec504ea824881805965fe0ba072c97fc20" || { echo "Main advanced, stop and retest"; exit 1; }
+          git merge --no-commit --no-ff -X ours origin/main
+          node scripts/pr157-integration-temp.mjs
+          git diff --check -- src/ bot.js scripts/build.mjs test/ editor/
+      - run: npm ci --ignore-scripts
+      - name: Full Linux offline suite
+        run: npm test
+      - name: Build production runtime and both bootstraps
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:bootstrap
+          npm run check:bootstrap
+          npm run build:bootstrap:auto
+          npm run check:bootstrap:auto
+      - name: Verify latest user's personal config is unchanged
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import {execFileSync} from 'node:child_process';
+            const a=fs.readFileSync('bot.js','utf8');
+            const b=execFileSync('git',['show','origin/main:bot.js'],{encoding:'utf8'});
+            function cfg(s){const x=s.indexOf('globalThis.ALBotConfig='),y=s.indexOf('/* ALBot ',x);if(x<0||y<x)throw Error('Missing boundaries');return s.slice(x,y);}
+            if(cfg(a)!==cfg(b))throw Error('PERSONAL_CONFIG_CHANGED');
+            console.log('PERSONAL_CONFIG_IDENTICAL_TO_MAIN');
+          "
+      - name: Sign and independently verify release without exposing private key
+        env:
+          ALBOT_RELEASE_SIGNING_KEY_PEM: ${{ secrets.ALBOT_RELEASE_SIGNING_KEY_PEM }}
+        run: |
+          npm run sign:release
+          npm run verify:release
+      - name: Commit verified merge, remove temporary integrations and push with lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -- scripts/pr157-integration-temp.mjs .github/workflows/pr157-integration-temp.yml .github/workflows/pr157-finalize-temp.yml
+          git add -A
+          git diff --cached --check -- src/ bot.js scripts/ test/ editor/ dist/
+          git diff --cached --stat
+          git commit -m "merge(pr157): integrate main quest safeguards and journaled bank rollback"
+          git push origin HEAD:refs/heads/codex/w00-w01-readonly-disposition-20261018

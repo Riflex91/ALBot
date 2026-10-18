@@ -10,7 +10,7 @@ export function assessQuestDetachment(bot){
  if(cfg.party?.enabled!==true||cfg.party?.waitForTeam!==true||
     names.length!==3||!names.includes(me.name)||!bot.running)return null;
  const peer=name=>name===me.name?{
-  name,running:bot.running,rip:!!p.c.rip,realm:p.realm(),
+  name,class:p.c.ctype,running:bot.running,rip:!!p.c.rip,realm:p.realm(),
   map:p.c.map,in:p.c.in??p.c.map,x:p.c.x,y:p.c.y,
   hp:p.c.hp,max_hp:p.c.max_hp,mp:p.c.mp,max_mp:p.c.max_mp,
   questVisit:!!bot.strategy?.busy,journal:!!bot.journal,
@@ -34,8 +34,12 @@ export function assessQuestDetachment(bot){
      h.hp<=0||h.mp<0)return null;
  }
  if(distance(active[0],active[1])>140)return null;
+ // When the leader is collecting the quest, use a verified damage class
+ // instead of automatically making the Priest initiate fresh fights.
+ const standby=active.find(h=>(h.class??h.ctype)!=='priest');
+ if(!standby)return null;
  const puller=active.some(h=>h.name===bot.leader)?
-  bot.leader:active[0].name;
+  bot.leader:standby.name;
  return {visitor:visitors[0].name,puller,
   active:active.map(h=>h.name),target:plan.target,key:plan.key,
   planId:plan.id};

@@ -103,14 +103,32 @@ export function assessLiveSquadMarch(character,peers,{realm,plan,
   const progress=peer.march?.plan===plan.id&&
     peer.march?.realm===realm&&peer.march?.moving===true&&
     peer.questVisit!==true;
-  const reached=samePlace(peer,plan)&&distance(peer,plan)<=85&&
-    peer.march?.plan===plan.id;
+  // Physical arrival at the *verified* destination is sufficient even if
+  // optional plan telemetry was dropped from this peer's heartbeat.
+  const reached=samePlace(peer,plan)&&distance(peer,plan)<=85;
   if(!close&&!progress&&!reached)return {ready:false,
     reason:'teammate-not-on-shared-route',peer:peer.name,
     gap:samePlace(character,peer)?distance(character,peer):null,
     observedMap:peer.map??null};
  }
  return {ready:true,reason:'team-traversing-shared-route'};
+}
+// A change of objective or hunt/farm label at one spawn is NOT a movement
+// destination change. Preserve native smart_move across such handoffs.
+export function sameFarmDestination(a,b){
+ return !!a&&!!b&&a.target===b.target&&samePlace(a,b)&&
+   Number.isFinite(a.x)&&Number.isFinite(a.y)&&
+   Number.isFinite(b.x)&&Number.isFinite(b.y)&&distance(a,b)<=20;
+}
+// A follower may already be moving along the compact leader route before
+// receiving the full validated plan. Adopting that plan must not cancel the
+// same native path merely because its previous local plan was absent.
+export function activeFarmRouteMatches(order,plan){
+ const dest=order?.dest;
+ return !!plan&&!!dest&&['follow','farm'].includes(order.owner)&&
+  samePlace(dest,plan)&&Number.isFinite(dest.x)&&
+  Number.isFinite(dest.y)&&Number.isFinite(plan.x)&&
+  Number.isFinite(plan.y)&&distance(dest,plan)<=100;
 }
 // A projected geometric hop is NOT a navigable game route. A blocked
 // straight line must be routed through native smart_move to the real spawn.
@@ -316,7 +334,25 @@ export function createTeamPlan(bot){
     lastMaterialAck=materialAck.objective;
     bot.event('farmOrder.received',{...materialAck,merchant:cfg.party.merchant});
   }
-  observe();if(cfg.party.enabled&&me.name!==bot.leader){const h=bot.transport.fresh(bot.leader);const next=h?.running&&!h.rip? h?.farmPlan:null;if(valid(next)){const changed=!current||current.id!==next.id;current={...next};roles=h.roles??{};if(changed){if(['farm','world','combat','follow'].includes(bot.movement.order?.owner))bot.movement.stop();bot.target=null;bot.event('plan.adopt',{id:current.id,target:current.target,leader:bot.leader,reason:current.reason});}}else current=null;return;}
+  observe();if(cfg.party.enabled&&me.name!==bot.leader){const h=bot.transport.fresh(bot.leader);const next=h?.running&&!h.rip? h?.farmPlan:null;if(valid(next)){
+   const prior=current,changed=!prior||prior.id!==next.id;
+   current={...next};roles=h.roles??{};
+   if(changed){
+    if(!sameFarmDestination(prior,current)&&
+       !activeFarmRouteMatches(bot.movement.order,current)&&
+       ['farm','world','combat','follow'].includes(bot.movement.order?.owner))
+     bot.movement.stop();
+    bot.target=null;
+    bot.event('plan.adopt',{id:current.id,target:current.target,
+     leader:bot.leader,reason:current.reason});
+   }
+  }else if(!(h?.running&&!h.rip&&h.realm===p.realm()&&
+    !h.farmPlan&&h.march?.plan===current?.id&&valid(current))){
+   // Keep a locally verified plan only while the leader's fresh compact
+   // march ID agrees; never extend its expiry or ignore a changed leader.
+   current=null;
+  }
+  return;}
   if(Date.now()-last<Math.min(10000,cfg.world.cacheTtlMs)&&valid(current))return;last=Date.now();capabilities();const raw=knowledgeFingerprint([p.G.monsters,p.G.maps]);if(raw!==definition){definition=raw;graph=mapGraph(p.G);if(current&&!valid(current)){bot.event('plan.drift',{id:current.id,reason:'Spawn-/Monsterdefinition geändert'});current=null;}}
   const materials=materialRequests(),requests=materials.filter(r=>materialRequestHasWork(r,bot.farmers)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
   const combat=combatMembers(bot,true),composition=compositionOptions(bot,true);
@@ -449,7 +485,7 @@ export function createTeamPlan(bot){
     selected.deferred?'Sicheres Zwischenfarming: '+selected.deferred+' ('+hunt.owner+')':
     selectedRequest?'Gemeinsamer Material-/Elixierbedarf':
     'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
-  if(!same){bot.target=null;if(['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
+  if(!same){bot.target=null;if(!sameFarmDestination(current,proposal)&&['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
   if(!valid(current)||bot.strategy.busy)return false;

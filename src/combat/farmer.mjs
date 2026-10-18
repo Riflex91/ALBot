@@ -23,7 +23,15 @@ export function chooseEmergencyFocus(monsters,members=[]){
 // A shared endpoint, not a moving heartbeat coordinate, keeps all Farmers
 // traveling continuously on the same native navigation route.
 export function sharedFarmMarchDestination(follower,leader,realm){
- const plan=leader?.farmPlan;
+ // Full plans can be dropped to satisfy the transport size limit. Only
+ // the selected leader's fresh compact march endpoint is a safe fallback;
+ // this is escort navigation, NOT permission to farm an unapproved target.
+ const compact=leader?.march;
+ const plan=leader?.farmPlan??(compact?.plan?{
+  id:compact.plan,realm:compact.realm,map:compact.map,
+  in:compact.in??compact.map,x:compact.x,y:compact.y,
+  target:compact.target
+ }:null);
  if(!leader?.running||leader.rip||leader.realm!==realm||
     !plan||plan.realm!==realm||!Number.isFinite(plan.x)||
     !Number.isFinite(plan.y)||typeof plan.map!=='string')return null;
@@ -462,7 +470,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // going without a stop at every intermediate 50-70 unit radius.
       const destination=sharedFarmMarchDestination(c,leader,p.realm());
       if(destination){
-       const marchPlan=leader.farmPlan,order=bot.movement.order;
+       const marchPlan=leader.farmPlan??{
+        id:leader.march?.plan,target:leader.march?.target??'Farmspawn',
+        key:leader.march?.plan
+       },order=bot.movement.order;
        const oldFollow=order?.owner==='follow'&&(
         !samePlace(order.dest,destination)||
         distance(order.dest,destination)>100);

@@ -1,8 +1,31 @@
-import {validMessage,xy} from '../core/policy.mjs';
+import {validMessage,xy,samePlace,distance} from '../core/policy.mjs';
 import {ownSupplyCharacters} from '../items/potion-supply.mjs';
 import {carriedAchievementCarrier} from '../items/achievement-utility.mjs';
 import {inventoryStockEvidence,packInventoryEvidence,unpackInventoryEvidence} from '../items/stock-evidence.mjs';
 import {inspectItemTransferEvidence} from '../items/transfer-reconciliation.mjs';
+// The full ranking contains bulky diagnostics. Recipients only need the
+// authoritative fields required to validate/adopt the shared spawn plan.
+export function compactFarmPlan(plan){
+ if(!plan?.id)return null;
+ const fields=['id','key','target','map','in','x','y','realm','leader',
+  'kind','objective','item','started','expires','definition','bounds',
+  'radius','reason'];
+ return Object.fromEntries(fields.filter(key=>plan[key]!==undefined)
+  .map(key=>[key,plan[key]]));
+}
+// A march contract is independent of the optional, often size-trimmed
+// farmPlan. Advertise only the leader's verified endpoint and whether our
+// CURRENT navigation order actually heads there, never just a moving flag.
+export function sharedMarchStatus(plan,order,realm){
+ if(!plan?.id||plan.realm!==realm||typeof plan.map!=='string'||
+    !Number.isFinite(plan.x)||!Number.isFinite(plan.y))return null;
+ const dest=order?.dest;
+ const moving=!!dest&&['farm','follow'].includes(order.owner)&&
+   samePlace(dest,plan)&&Number.isFinite(dest.x)&&
+   Number.isFinite(dest.y)&&distance(dest,plan)<=100;
+ return {plan:plan.id,realm,map:plan.map,in:plan.in??plan.map,
+  x:plan.x,y:plan.y,target:plan.target??null,moving};
+}
 // A status heartbeat combines independent modules. Preserve the identity,
 // location, balance, journal and item-demand fields needed for safe handoffs;
 // shed optional telemetry before the transport's strict 5 KB message limit.
@@ -14,11 +37,11 @@ export function fitHeartbeat(data,maxLength=4200){
  // uses these counts to avoid allocating duplicate farming quotas. They
  // matter more than optional diagnostic/skill/market telemetry, but lose
  // priority to the core identity, item demand and material requests below.
- for(const key of ['itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','skills','mluck','supplies','materialProgress']){
+ for(const key of ['itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','roles','activity','skills','mluck','supplies','materialProgress','farmPlan']){
   delete d[key];if(length()<=maxLength)return d;
  }
- // bankOwner stays core: trimming a fresh exclusive-access claim would
- // silently let a competing bank action proceed.
+ // bankOwner is required for conservative G11 collision detection;
+ // never drop a fresh active bank claim to shrink a heartbeat.
  // Keep active team identity if possible, but delivery demand takes precedence.
  while(d.materials.length>1&&length()>maxLength)d.materials.pop();
  while(d.items.length>0&&length()>maxLength)d.items.pop();
@@ -111,7 +134,19 @@ export function createTransport(bot){
      }),accountLossGuard:(()=>{const g=bot.lossGuard?.status();return g?.enabled?{blocked:g.blocked,trip:g.trip,resetAt:g.resetAt}:null;})(),bankGoldBalance:(me.name===cfg.party.merchant||c.map?.startsWith('bank'))&&Number.isSafeInteger(c.bank?.gold)&&c.bank.gold>=0?c.bank.gold:null,goldSurplus:bot.gold?.surplus()??0,monsterhunt:(()=>{const q=c.s?.monsterhunt;return q&&typeof q.id==='string'&&Number.isSafeInteger(q.c)&&q.c>=0?{id:q.id,c:q.c,...(Number.isFinite(q.ms)?{ms:Math.max(0,Math.floor(q.ms))}:{}),...(typeof q.sn==='string'?{sn:q.sn}:{})}:null;})(),huntObjective:me.name===bot.leader?bot.teamPlan?.orderedHunt?.()??null:null,goldTransferPending:!!bot.gold?.reserved,goldTransferAt:bot.gold?.transferAt??0,target:bot.target?.id??null,free:bot.free(),achievementCarrier:carriedAchievementCarrier(c.items),storagePressure:me.role==='merchant'&&me.name===cfg.party.merchant&&(bot.merchant?.status?.()?.capacityRecovery===true||bot.free()<=(cfg.merchant?.minFreeSlots??4)),running:bot.running,reserved:!!bot.logistics?.reserved,journal:!!bot.journal||!!bot.bank?.pending,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,lootSlots:bot.logistics?.pickupSlots?.()??0,
       potions:Object.fromEntries(['hpot0','mpot0'].map(id=>[id,
         (c.items??[]).reduce((n,i)=>n+(i?.name===id?(i.q??1):0),0)])),
-      march:(()=>{const route=bot.teamPlan?.heartbeat?.(),order=bot.movement?.order;return route?.id?{plan:route.id,realm:p.realm(),moving:!!order&&['farm','follow'].includes(order.owner)&&!!order.dest&&order.dest.map===route.map}:null;})(),potionConsumption:bot.potionReceipts?.heartbeat(),items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:bot.teamPlan?.heartbeat(),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:packInventoryEvidence(inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),maxRows:32,allowOpaque:true,reserved:i=>bot.production?.reservedQuantity?.(i)??0})),// Minimal elixir stock evidence survives a trimmed status message; the
+      march:(()=>{
+        const own=bot.teamPlan?.heartbeat?.();
+        const lead=me.name===bot.leader?null:bot.transport?.fresh?.(bot.leader);
+        const trusted=lead?.running&&!lead.rip&&lead.realm===p.realm();
+        // A compact leader intent survives heartbeat trimming and can
+        // confirm a follower's already active route even if its own plan
+        // has temporarily vanished.
+        const remote=trusted?(lead.farmPlan??
+          (lead.march?.plan?{...lead.march,id:lead.march.plan}:null)):null;
+        const route=me.name===bot.leader?own:
+          remote??(trusted&&lead.march?.plan===own?.id?own:null);
+        return sharedMarchStatus(route,bot.movement?.order,p.realm());
+      })(),potionConsumption:bot.potionReceipts?.heartbeat(),items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:compactFarmPlan(bot.teamPlan?.heartbeat?.()),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:packInventoryEvidence(inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),maxRows:32,allowOpaque:true,reserved:i=>bot.production?.reservedQuantity?.(i)??0})),// Minimal elixir stock evidence survives a trimmed status message; the
       // optional full gear-stock advertisement can still be discarded.
       elixirStock:me.role==='merchant'?[...new Set((c.items??[])
        .filter(i=>i&&!i.l&&!i.b&&p.G.items?.[i.name]?.type==='elixir')

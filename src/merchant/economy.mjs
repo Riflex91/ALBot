@@ -67,7 +67,7 @@ export function createEconomy(bot){
    (bot.production?.reserved(i)?count(i):0):0;
   if(r._bankOperatingStock){
    const current=bankOperatingStockRule(bot,i,{carried:true});
-   return current?Math.min(i.q??1,r.batch,current.batch):0;
+   return current&&(current._boundedSource??null)===(r._boundedSource??null)?Math.min(i.q??1,r.batch,current.batch):0;
   }
   if(r._autoOperatingStock){
    const current=automaticOperatingStockRule(bot,i);

@@ -1,3 +1,7 @@
+# Umsetzung 0.10.11-candidate: Autonomie-Abgleich (18.10.2026)
+
+[Konkrete Implementierung und Restliste](docs/AUTONOMIE-ABGLEICH-2026-10-18.md), [PR #167](https://github.com/Riflex91/ALBot/pull/167). Aktuellen Main geprüft; vorhandene Overflow-, Bank-, Crafting-, Liefer- und Browserrotation nicht doppelt implementiert. Dauerbetriebs-Lücken in Vorrat/Bank, Aktionskosten, Conditions, Eventbeobachtung, Abreiseloot, Revival, Gearpriorität und Systembelohnungen ergänzt. Die komplette Forschungsroadmap bleibt teilweise offen; Crypt/Cave, Tailoring/De-Statting, Temporal-Loadouts und Tauschmarkt nicht als fertig markieren. Finale GitHub-CI und tatsächlicher Spiel-Livetest sind getrennte Nachweise. Der signierte V2-Kanal bleibt separat.
+
 # Browser-Rotation: laufenden CODE-Slot erhalten (16.10.2026)
 
 Der zuvor nur lokale Fix `1f06f0b` wurde auf Mainbasis `47095a9` (PR #110) integriert. Browserwechsel bindet den aktiven Runner-Slot und speichert den laufenden Code über `upload_code`; veränderter Editor-Slot und unbestätigte Speicherung führen nicht zum falschen Neustart. 904/904 lokale Offlinetests bestanden, Runtime/Werkstatt und persönliche bot.js neu gebaut. Echte Browserrotation noch nicht live bestätigt. [Implementierung, Herkunft und Testablauf](docs/BROWSER-ROTATION-2026-10-15.md).

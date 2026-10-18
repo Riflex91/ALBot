@@ -1,3 +1,11 @@
+# Autonomie 0.10.11-candidate: tatsächlicher Umfang (18.10.2026)
+
+Aktueller Auftrag autorisiert Implementierung und automatischen Merge nach Main. [Implementierungs-/Restmatrix](docs/AUTONOMIE-ABGLEICH-2026-10-18.md) und PR #167 beachten. Endliche Betriebsvorräte, physisch gedeckte Bankdisposition, Kosten-/Condition-Gates, Eventgrace, Abreiseloot, persistente Revive-Todesbindung, Gear-Aufholpriorität, Mehrziel-CBurst und Browser-Systembelohnungs-Mail sind ergänzt. Keine pauschale Vollständigkeit behaupten: vollständige Crypt/Cave-Runs, Tailoring/De-Statting, Temporal-Loadouts, allgemeiner Tauschmarkt und weitere in der Matrix genannte Folgen sind offen. Neue Booleans/Defaults ergänzen alte Profile nur zur Laufzeit; persönliche JSON-Einstellungen nicht überschreiben. Ungeklärte physische Bankdrift ist keine bloße neue Reservation und darf nicht automatisch quittiert werden.
+
+Build erhält alle Werkstattlabels im Paket; nur UI-Metadaten der Runtime-Schemata werden verkleinert. Variantenfelder und benutzerdefinierte Defaults niemals entfernen. Keine Grenzwerterhöhung für Bundle-/Katalogtests. Der signierte V2-Kanal unten ist weiterhin separat und wurde nicht durch diesen Main-Auftrag veröffentlicht.
+
+---
+
 # VERBINDLICH: Tatsächlicher Adventure-Land-Bootstrap (18.10.2026)
 
 - **Nicht annehmen, dass `main/bot.js` im Spiel läuft.** Der vom Benutzer bereitgestellte Ingame-CODE enthält eine eingebettete `globalThis.ALBotConfig` und den signierten Loader [`bootstrap/ingame-loader-v2.js`](bootstrap/ingame-loader-v2.js) (nur Bootstrap-Ausschnitt, ohne persönliche Einstellungen).

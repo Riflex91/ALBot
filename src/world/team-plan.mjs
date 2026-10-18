@@ -172,11 +172,38 @@ import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHu
 // A pending, unobservable or unsafe monsterhunt may not starve the shared
 // farming plan. Only the verified quest monster earns quest priority.
 // Existing safely ranked farm targets remain available as temporary work.
-// Objective labels may change while farmers are already at the same monster
-// spawn. That is not evidence that a new location is better.
+// Ordinary plans must not alternate between bee/main and minimush/halloween
+// while the party has not even reached the chosen spawn. A hunt->farm label
+// change at the SAME species also retains existing location hysteresis.
+// True active hunts, urgent shell refills, material orders and unsafe plans
+// continue through their existing higher-priority decision paths.
 export function shouldHoldOrdinaryLocation(current,next,selectedKind,shellRefill=false){
- return !shellRefill&&selectedKind==='farm'&&
-  ['farm','hunt'].includes(current?.kind)&&current.target===next?.target;
+ return !shellRefill&&selectedKind==='farm'&&!!next&&
+  (current?.kind==='farm'||current?.kind==='hunt'&&
+   current.target===next.target);
+}
+// Keep a verified ordinary farm trip until the actual destination is reached,
+// then observe it for the configured minimum hold time before applying normal
+// score + travel hysteresis. Recomputing trip cost from each passing waypoint
+// is not evidence that the destination became less attractive.
+export function chooseCommittedFarmArea({
+ current,currentRank,candidate,character,now=Date.now(),
+ holdMs=60000,improvement=.2
+}={}){
+ if(!current||!currentRank||currentRank.key!==current.key||!candidate||
+   candidate.key===current.key)
+  return {choice:candidate??null,reason:'new-or-unchanged-farm-spawn'};
+ if(!character||!samePlace(character,current)||
+   !Number.isFinite(distance(character,current))||
+   distance(character,current)>65)
+  return {choice:currentRank,reason:'committed-farm-trip'};
+ if(!Number.isFinite(current.arrivedAt)||current.arrivedAt>now||
+   now-current.arrivedAt<holdMs)
+  return {choice:currentRank,reason:'farm-arrival-observation-hold'};
+ return chooseFarmAreaSwitch({
+  current:{...current,started:current.arrivedAt},
+  currentRank,candidate,now,holdMs,improvement
+ });
 }
 export function selectHuntArea(ranking,hunt){
  const ordinary=ranking?.[0]??null;
@@ -353,6 +380,11 @@ export function createTeamPlan(bot){
    current=null;
   }
   return;}
+  // Arrival is physical evidence, not elapsed time since selecting a route.
+  // Keep it across leader re-ranking of the same destination.
+  if(valid(current)&&!Number.isFinite(current.arrivedAt)&&
+     samePlace(p.c,current)&&distance(p.c,current)<=65)
+   current.arrivedAt=Date.now();
   if(Date.now()-last<Math.min(10000,cfg.world.cacheTtlMs)&&valid(current))return;last=Date.now();capabilities();const raw=knowledgeFingerprint([p.G.monsters,p.G.maps]);if(raw!==definition){definition=raw;graph=mapGraph(p.G);if(current&&!valid(current)){bot.event('plan.drift',{id:current.id,reason:'Spawn-/Monsterdefinition geändert'});current=null;}}
   const materials=materialRequests(),requests=materials.filter(r=>materialRequestHasWork(r,bot.farmers)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
   const combat=combatMembers(bot,true),composition=compositionOptions(bot,true);
@@ -449,8 +481,8 @@ export function createTeamPlan(bot){
    next=choice.choice;
   }
   if(holdOrdinary&&old&&valid(current)&&!selectedRequest){
-   const choice=chooseFarmAreaSwitch({
-    current,candidate:next,currentRank:old,now:Date.now(),
+   const choice=chooseCommittedFarmArea({
+    current,candidate:next,currentRank:old,character:p.c,now:Date.now(),
     holdMs:cfg.farming.planHoldMs??60000,
     improvement:cfg.farming.switchImprovement??.2
    });
@@ -479,7 +511,10 @@ export function createTeamPlan(bot){
   const proposal={...next,bounds,definition:knowledgeFingerprint([p.G.monsters[next.target],bounds]),
    kind:planKind,objective:selectedRequest?.objective??null,item:selectedRequest?.item??null,
    leader:bot.leader,realm:p.realm(),id:same?current.id:bot.session+':plan:'+(++generation),
-   started:same?current.started:Date.now(),expires:Date.now()+cfg.general.messageTtlMs*2,
+   started:same?current.started:Date.now(),
+   arrivedAt:sameFarmDestination(current,next)?current.arrivedAt??null:
+    samePlace(p.c,next)&&distance(p.c,next)<=65?Date.now():null,
+   expires:Date.now()+cfg.general.messageTtlMs*2,
    reason:selected.kind==='hunt'?'Monsterhunt '+hunt.owner+' / '+hunt.monster+' ('+hunt.remaining+' offen)':
     selected.kind==='achievement'?'Tracktrix-Statbonus: '+milestone.milestone.monster+' ('+milestone.milestone.gap+' Score bis '+milestone.milestone.stat+')':
     selected.deferred?'Sicheres Zwischenfarming: '+selected.deferred+' ('+hunt.owner+')':

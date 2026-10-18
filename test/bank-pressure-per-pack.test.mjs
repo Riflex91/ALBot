@@ -51,7 +51,7 @@ function merchantBank({localPacks=2,remoteFree=null}={}){
  const p={c,G:{items:{carrot:{type:'material',s:9999}},bank_packs:defs},
   realm:()=> 'EUII',read:k=>data.get(k)??null,
   write:(k,v)=>{data.set(k,v);return true;}};
- const bot={p,cfg,me:{name:'M',role:'merchant'},economy:e,
+ const bot={p,cfg,me:{name:'M',role:'merchant'},session:'pressure-fixture-session',economy:e,
   running:true,inventoryBlocked:false,journal:null,decisionEpoch:1,
   free:()=>42,logistics:{reserved:false}};
  const bank=createBank(bot);

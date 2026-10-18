@@ -17,41 +17,26 @@ export function gearCatchUpPriority(profile,peers){
 }
 
 
-// W05/W08: compare bounded role-specific slot coverage, not raw gear level
-// or damage across unrelated classes. Complete offline profiles can
-// participate as planning evidence, never as authorization to equip/send.
-const roleSlotWeights={
- healer:{mainhand:10,amulet:3,chest:3,helmet:2,pants:2,shoes:2,gloves:1,ring1:1},
- tank:{mainhand:6,offhand:4,chest:5,helmet:4,pants:4,shoes:2,gloves:2,amulet:1},
- economy:{shoes:4,cape:3,chest:2,helmet:2,pants:2,gloves:1,amulet:2},
- dps:{mainhand:10,chest:3,helmet:2,pants:2,shoes:2,gloves:2,amulet:1,ring1:1}
-};
-function roleCoverage(profile,role){
- const weights=roleSlotWeights[role]??roleSlotWeights.dps;
- if(!profile?.complete||!profile.slots)return null;
- const slots=Object.keys(weights).filter(k=>Object.hasOwn(profile.slots,k));
- if(slots.length<5)return null;
- const total=slots.reduce((n,k)=>n+weights[k],0);
- const equipped=slots.reduce((n,k)=>n+(profile.slots[k]?weights[k]:0),0);
- return {ratio:equipped/total,weights};
+// Account-comparable, role-weighted slot coverage. Incomplete or old
+// profiles never confer authority to equip; only automatic job priority.
+function roleCoverage(p,role){
+ if(!p?.complete||!p.slots)return null;
+ const keys=Object.keys(p.slots);
+ if(keys.length<10)return null;
+ const pivotal=role==='economy'?'shoes':role==='tank'?'chest':'mainhand';
+ return {ratio:(keys.filter(k=>p.slots[k]).length+(p.slots[pivotal]?3:0))/(keys.length+3),pivotal};
 }
 export function crossRoleGearPriority(profile,cohort,{
  role='dps',slot='',now=Date.now(),lastImprovedAt=null
 }={}){
  const own=roleCoverage(profile,role);
- if(!own||!Array.isArray(cohort)||!Number.isFinite(now)||now<0)return 0;
- const current=cohort.filter(entry=>entry?.profile&&
-  Number.isFinite(entry.profile.at)&&entry.profile.at<=now&&
-  now-entry.profile.at<=7*86400000).map(entry=>
-   roleCoverage(entry.profile,entry.role??'dps')).filter(Boolean);
- if(current.length<2)return 0;
- const best=Math.max(...current.map(x=>x.ratio));
- const gap=Math.max(0,best-own.ratio);
- const roleWeight=own.weights[slot]??0;
- // Slot urgency only when another verified member is more prepared overall.
- const vacancy=gap>0&&roleWeight>0&&!profile.slots[slot]?
-  Math.min(12,Math.round(roleWeight*1.2)):0;
- const wait=gap>0&&Number.isSafeInteger(lastImprovedAt)&&lastImprovedAt>0&&
-  lastImprovedAt<=now?Math.min(12,Math.floor((now-lastImprovedAt)/172800000)):0;
- return Math.min(60,Math.max(0,Math.round(gap*40)+vacancy+wait));
+ if(!own||!Array.isArray(cohort))return 0;
+ const values=cohort.filter(x=>x?.profile?.at>0&&now>=x.profile.at&&
+  now-x.profile.at<=604800000).map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);
+ if(values.length<2)return 0;
+ const gap=Math.max(0,Math.max(...values.map(x=>x.ratio))-own.ratio);
+ const vacancy=gap>0&&!profile.slots[slot]?(slot===own.pivotal?10:4):0;
+ const age=gap>0&&lastImprovedAt>0&&lastImprovedAt<=now?
+  Math.min(12,Math.floor((now-lastImprovedAt)/172800000)):0;
+ return Math.min(60,Math.round(gap*40)+vacancy+age);
 }

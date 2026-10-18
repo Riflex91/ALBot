@@ -193,7 +193,9 @@ export function createTeamTravel(bot){
       Number.isFinite(evidence.measuredAt)&&now>=evidence.measuredAt&&
       now-evidence.measuredAt<=120000&&
       evidence.spawns?.some(s=>s.evidenceSeconds>=90&&
-        s.pressureRatio>=w.homePressureThreshold);
+        s.pressureRatio>=w.homePressureThreshold&&
+        Number.isFinite(s.observedAt)&&now>=s.observedAt&&
+        now-s.observedAt<=120000);
     const servers=registry(),current=servers.find(s=>s.realm===homeRealm);
     const available=credible&&Number.isFinite(current?.players)?
       servers.filter(s=>Number.isFinite(s.players)&&

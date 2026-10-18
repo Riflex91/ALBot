@@ -155,7 +155,7 @@ export function createEconomy(bot){
   if(townActive())return false;
   if(bot.recovery?.authorize(kind)===false)return false;const definitions=[...new Set(slots.map(n=>p.c.items[n]?.name).filter(Boolean)),...(rule?.item?[rule.item]:[])];if(definitions.some(name=>bot.content?.approve('item:'+name,[p.G.items[name],p.G.craft?.[name],p.G.drops?.[name]])===false))return false;
   if(kind==='bank.expand'&&!bankExpansionAvailable(cost))return false;
-  if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!remaining(rule))return false;
+  if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.singlePending&&kind==='bank.retrieve')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!remaining(rule))return false;
   if(!budget(cost,loss,rule)){note(kind+': '+budgetExplanation(cost,loss,rule));return false;}
   if(cfg.merchant.budgetMode!=='account-loss'&&!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
   if(!riskAllowed(kind,rule,details,loss)){note('Autonome Mutation: 24h-Risikolimit für Itemvariante ausgeschöpft');return false;}

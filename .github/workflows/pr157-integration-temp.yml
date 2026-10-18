@@ -86,3 +86,5 @@ jobs:
 # Retest with canonical item fingerprint
 
 # Verify immediately reconciled rollback test
+
+# Include main README and AGENTS bootstrap references

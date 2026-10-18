@@ -39,7 +39,6 @@ export function validateBankPartialRecord(r,{owner,realm,now=Date.now()}={}){
    const v=r.dispatches[i];
    if(!v||typeof v!=='object'||Array.isArray(v)||
       v.phase!==phases[i]||typeof v.session!=='string'||!v.session||
-      v.session!==r.prepared.session||
       !integer(v.at)||v.at<r.at||v.at>now+2000||
       (i>0&&v.at<r.dispatches[i-1].at)||
       v.realm!==r.realm||v.pack!==r.pack||

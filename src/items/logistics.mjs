@@ -3,7 +3,7 @@ import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,c
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {inspectReceiveSenderSession} from './transfer-reconciliation.mjs';
-import {capacityAfterConsumption} from './physical-capacity.mjs';
+import {capacityAfterConsumption,physicalInventoryCapacity} from './physical-capacity.mjs';
 import {isAchievementCarrier,carriedAchievementCarrier,trackerDeliveryNeed,trackerMerchantKeep} from './achievement-utility.mjs';
 // Re-evaluate pursuit against every fresh team heartbeat. Never chase an old
 // map or a frozen kite position after the recipient has moved away.
@@ -496,7 +496,7 @@ export function createLogistics(bot){
         trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
          achievementCarrier:carriedAchievementCarrier(p.c.items),
          inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
-         free:bot.free()},p.realm(),{reserve:cfg.farming?.freeSlots??4})){
+         free:physicalInventoryCapacity(p.c.items,{inventorySize:p.c.isize})?.free??0},p.realm(),{reserve:cfg.farming?.freeSlots??4})){
         const item={name:'tracker',level:0,stat_type:'',p:'',title:''};
         variants.set(JSON.stringify(item),item);
       }
@@ -508,7 +508,7 @@ export function createLogistics(bot){
           trackerDeliveryNeed({running:true,rip:false,realm:p.realm(),
            achievementCarrier:carriedAchievementCarrier(p.c.items),
            inventoryBlocked:!!bot.inventoryBlocked,journal:!!bot.journal,
-           free:bot.free()},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
+           free:physicalInventoryCapacity(p.c.items,{inventorySize:p.c.isize})?.free??0},p.realm(),{reserve:cfg.farming?.freeSlots??4})?1:
            defaultPotionDemand(item,countNow,true),
         held:isPotion(item)?countNow:undefined,
         surplus:transfer?Math.max(0,countNow-transfer.keep-transfer.teamReserve-

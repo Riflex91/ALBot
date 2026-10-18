@@ -69,10 +69,10 @@ export function gearChainReady(g,stock,meta){
 // Every action needs physical output space, not an arbitrary gap ABOVE the
 // Merchant's configured reserve. Reusing a stack or freeing consumed input
 // slots can satisfy the requirement even if the inventory is full.
-export function actionCapacity(items,consumed=[],output=null,G={},outputs=1){
+export function actionCapacity(items,consumed=[],output=null,G={},outputs=1,{inventorySize}={}){
  if(!Number.isSafeInteger(outputs)||outputs<0)return false;
  const planned=capacityAfterConsumption(items,consumed,output,
-   output?G.items?.[output.name]:null);
+   output?G.items?.[output.name]:null,{inventorySize});
  return !!planned&&(output?planned.units>=outputs:planned.free>=outputs);
 }
 // Release only the part of other goals' gross demand already backed by
@@ -199,7 +199,7 @@ export function createProduction(bot){
    details:{item:item.name,quantity:sum,required}});
  }
  function capacity(consumed=[],output=null,outputQuantity=1){
-  if(actionCapacity(p.c.items,consumed,output,p.G,outputQuantity))return true;
+  if(actionCapacity(p.c.items,consumed,output,p.G,outputQuantity,{inventorySize:p.c.isize}))return true;
   e.note('Produktionsschritt blockiert: keine freien Ausgabeplätze; physisch frei='+bot.free());
   return false;
  }
@@ -428,7 +428,7 @@ export function createProduction(bot){
    const exchangeRadius=35;
    if(!e.travel(d,'Exchange '+i.name,exchangeRadius))return false;
    const before=e.count(i),initialProof=proof(verified);
-   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return bot.storage?.exchangeAllowed?.(slot,q)!==false&&live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.at(d,exchangeRadius)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G);},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},
+   return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return bot.storage?.exchangeAllowed?.(slot,q)!==false&&live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.at(d,exchangeRadius)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G,1,{inventorySize:p.c.isize});},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},
     onConfirmed:()=>{bot.merchant?.confirmedExchange?.(i.name,slot);return true;},timeout:45000});
   }
  // A production goal may be reprioritized while its already admitted NPC

@@ -22,23 +22,21 @@ export function gearCatchUpPriority(profile,peers){
 // defensive shell and a travelling merchant's shoes are not interchangeable.
 const SLOT_KEYS=['mainhand','offhand','helmet','chest','pants','shoes','gloves',
  'amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
-const SLOT_WEIGHTS={
- healer:{mainhand:4,chest:2,helmet:2,amulet:2},
- tank:{chest:4,offhand:3,helmet:2,pants:2,belt:2},
- dps:{mainhand:4,offhand:2,gloves:2,ring1:2,ring2:2},
- economy:{shoes:4,belt:2,gloves:2,cape:2}
+// Three role-critical slots carry graded coverage weight (4,3,2).
+// All other canonical slots count once; maximum is 15+3+2+1 = 21.
+const SLOT_PRIORITIES={
+ healer:['mainhand','chest','helmet'],
+ tank:['chest','offhand','helmet'],
+ dps:['mainhand','offhand','gloves'],
+ economy:['shoes','belt','gloves']
 };
 function roleCoverage(p,role){
  if(!p?.complete||!p.slots||
     SLOT_KEYS.some(k=>!Object.hasOwn(p.slots,k)))return null;
- const weights=SLOT_WEIGHTS[role]??SLOT_WEIGHTS.dps;
- const pivotal=role==='economy'?'shoes':role==='tank'?'chest':'mainhand';
- let total=0,filled=0;
- for(const key of SLOT_KEYS){
-  const weight=weights[key]??1;total+=weight;
-  if(p.slots[key])filled+=weight;
- }
- return {ratio:filled/total,pivotal};
+ const top=SLOT_PRIORITIES[role]??SLOT_PRIORITIES.dps;
+ const filled=SLOT_KEYS.reduce((sum,k)=>sum+(p.slots[k]?
+  k===top[0]?4:k===top[1]?3:k===top[2]?2:1:0),0);
+ return {ratio:filled/21,pivotal:top[0]};
 }
 export function crossRoleGearPriority(profile,cohort,{
  role='dps',slot='',now=Date.now(),lastImprovedAt=null

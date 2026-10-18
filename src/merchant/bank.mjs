@@ -509,7 +509,8 @@ export function createBank(bot){
     return accepted;
   }if(consolidate()||!r.pack&&expand()||reclaim())return true;e.note('Bank voll: kein freier erlaubter Platz; erlaubte Konsolidierung, Verkauf und Erweiterungsbudget geprüft');return false;
  }
- function retrieve(item,r,wanted){
+ function retrieve(item,r,wanted,purpose=null,targetSlot=-1){
+  const cross=purpose===crossToken;
   if(swapping||storing)return recover();
   if(single||pending)return recover();
   if(reclaiming){
@@ -521,7 +522,7 @@ export function createBank(bot){
   if(!ready(r.pack||packFor(item)||'items0'))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
-   const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
+   const slot=items.findIndex((i,n)=>(!cross||n===targetSlot)&&i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
    if(slot<0)continue;const actual=items[slot],q=actual.q??1,fp=fingerprint(actual),dest=p.c.items.findIndex(i=>!i),before=e.count(actual),bankBefore=variantCount(items,actual);
    // This full-stack retrieval needs its own durable before/after evidence.
    const at=Date.now(),sourcePrint=fp,record={
@@ -531,8 +532,11 @@ export function createBank(bot){
      pack,slot,dest,sourcePrint}};
    if(!validateBankSingleRecord(record,{owner:me.name,realm:p.realm()}).valid||
       !saveSingle(record))return false;
-   const guard=()=>single===record&&singleEvidence(record).phase==='prepared-unchanged';
-   const accepted=e.perform('bank.retrieve',{rule:r,guard,
+   const guard=()=>single===record&&singleEvidence(record).phase==='prepared-unchanged'&&
+     (!cross||cfg.merchant.consolidate===true&&p.c.items.some(i=>
+      simple(i)&&identity(i)===identity(actual)&&(i.q??1)+q<=stackMax(i)));
+   const accepted=e.perform(cross?'bank.merge.retrieve':'bank.retrieve',{
+    rule:cross?null:r,guard,
     call:()=>{
      if(!guard()){
       bot.inventoryBlocked=true;
@@ -550,12 +554,13 @@ export function createBank(bot){
      return p.call('bank_retrieve',pack,slot,dest);
     },
     observe:()=>!!single&&singleEvidence(single).phase==='withdrawn',
+    onConfirmed:()=>!!single&&singleEvidence(single).phase==='withdrawn'&&saveSingle(null),
     details:{item:actual.name,quantity:q,pack,before}});
    if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')&&guard())
     saveSingle(null);
    return accepted;
   }
-  if(!cfg.merchant.partialBank)return false;
+  if(cross||!cfg.merchant.partialBank)return false;
   const take=Math.floor(Math.min(wanted,r.batch,r.maxCount-e.count(item)));if(take<1||!e.remaining(r)||bot.journal||bot.logistics.reserved||bot.inventoryBlocked||bot.exec.busy('inventory')||bot.free()<2)return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;

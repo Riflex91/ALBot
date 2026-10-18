@@ -388,7 +388,8 @@
       "boosters": false,
       "activateBoosters": false,
       "respectHopPenalties": true,
-      "travelBlink": false
+      "travelBlink": false,
+      "rewardMail": true
     },
     "rules": []
   }

@@ -2629,6 +2629,11 @@
             "type": "boolean",
             "title": "Mage-Blink nur auf direkt begehbaren sicheren Reiseabschnitten",
             "default": false
+          },
+          "rewardMail": {
+            "type": "boolean",
+            "title": "Eigene Systembelohnungen über verfügbaren authentifizierten Browser-Mailreader abholen",
+            "default": true
           }
         },
         "required": [

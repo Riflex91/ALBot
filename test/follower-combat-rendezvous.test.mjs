@@ -9,8 +9,8 @@ test('targetless follower approaches a fighting leader even inside old 140-unit 
  assert.equal(r.move,true);
  assert.ok(r.distance>55&&r.distance<140);
  assert.ok(r.radius>=20&&r.radius<=40);
- assert.equal(followerCombatRendezvous({...far,x:535,y:1000},leader,{followDistance:140}).move,true,
-  '35-unit spectator gap should trigger a tighter rendezvous');
+ assert.equal(followerCombatRendezvous({...far,x:545,y:1000},leader,{followDistance:140}).move,true,
+  '45-unit spectator gap should trigger a tighter rendezvous');
  assert.equal(followerCombatRendezvous({...far,x:520,y:1000},leader,{followDistance:140}).move,false);
 });
 test('no neutral pull or unsafe follower motion is authorized without current same-realm leader target',()=>{

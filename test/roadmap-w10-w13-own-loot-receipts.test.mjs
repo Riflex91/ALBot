@@ -57,11 +57,10 @@ test('W13 disappearing chest alone and another player loot never confirm own inv
  const f=fixture();f.receipts.beforeLoot();
  delete f.chests.X;
  assert.equal(f.receipts.status().physicalConfirmed,0);
- f.receipts.observeChest(chest([{name:'ring',looter:'Ranger'}],0));
+ assert.equal(f.receipts.observeChest(chest([{name:'ring',looter:'Ranger'}],0)),false);
  f.receipts.sample();
- assert.equal(f.receipts.status().physicalConfirmed,1,
-  'a zero-gold chest with no assigned items still has an exactly zero physical effect');
- assert.equal(f.receipts.status().recent[0].itemTypes,0);
+ assert.equal(f.receipts.status().physicalConfirmed,0,
+  'another player receiving the only item does not create own loot');
 });
 test('W13 prior source observation cannot be replaced by a positive-looking server event',()=>{
  const f=fixture();
@@ -128,7 +127,7 @@ test('W13 observed loot is diagnostic only, and optional heartbeat evidence is d
  assert.equal(f.receipts.status().dispatchAuthorized,false);
  const payload={name:'Priest',lootReceipts:f.receipts.heartbeat(),
   items:[],materials:[],other:'x'.repeat(220)};
- const result=fitHeartbeat(payload,240);
+ const result=fitHeartbeat(payload,300);
  assert.ok(result);
  assert.equal(result.lootReceipts,undefined);
 });

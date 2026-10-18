@@ -203,7 +203,7 @@ test('unchanged exchange is never released if delayed, modified, pending or dura
  const old=Date.now;
  for(const mutation of [
   b=>{b.p.c.gold++;},
-  b=>{b.p.c.items[0].q--;},
+  b=>{b.p.c.items[0].q++;},
   b=>{b.p.c.items[1]={name:'reward',q:1};},
   b=>{b.exec.pending.set('exchange',{});},
   b=>{b.p.c.q.exchange={};},

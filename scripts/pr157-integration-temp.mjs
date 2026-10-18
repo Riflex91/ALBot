@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
 const show=p=>execFileSync('git',['show','origin/main:'+p],{encoding:'utf8'});
 const read=p=>fs.readFileSync(p,'utf8'),save=(p,s)=>fs.writeFileSync(p,s);
-function replace(s,a,b,k){const n=s.indexOf(a);if(n<0||s.indexOf(a,n+1)>=0)throw Error('Expected one '+k);return s.slice(0,n)+b+s.slice(n+a.length);}
+function replace(s,a,b,k){const n=s.indexOf(a);if(n<0)throw Error('Missing integration anchor '+k);return s.slice(0,n)+b+s.slice(n+a.length);}
 function add(s,a,b,k){return replace(s,a,a+b,k);}
 const cfg=s=>{const x=s.indexOf('globalThis.ALBotConfig='),y=s.indexOf('/* ALBot ',x);if(x<0||y<x)throw Error('Missing personal config');return s.slice(x,y);};
 let a=read('bot.js'),b=show('bot.js');save('bot.js',a.replace(cfg(a),cfg(b)));

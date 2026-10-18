@@ -162,7 +162,10 @@ export function importProfile(descriptor,value){
   if(value.schemaId!==descriptor.schemaId)throw Error('Profil benötigt das Schema '+value.schemaId+'. Zuerst passendes Bot-Paket / Schema laden.');
   const next=descriptor.schemaId==='albot.full/v1'?addMissingDefaults(descriptor.schema,value.config):value.config;const errors=validateProfile(descriptor,next);if(errors.length)throw Error(errors.join('\n'));return structuredClone(next);
 }
-export function exportBundle(descriptor,config,runtime){
+export function exportBundle(descriptor,config,runtime,{target='legacy-code'}={}){
+  if(!['legacy-code','bootstrap-artifact'].includes(target))throw Error('Unbekanntes Ausgabeziel');
+  if(target==='bootstrap-artifact'&&new TextEncoder().encode(runtime?.code??'').length>BOOTSTRAP_RUNTIME_LIMIT)
+   throw Error('Bootstrap-Runtime überschreitet 8 MiB');
   const errors=validateProfile(descriptor,config);if(errors.length)throw Error(errors.join('\n'));
   if(!runtime||runtime.schemaId!==descriptor.schemaId||runtime.contractVersion!==1)throw Error('Passendes fertiges Bot-Paket fehlt. JSON-Profil kann bereits gespeichert werden.');
   // Store field names once, rather than repeating dozens of names for every
@@ -173,7 +176,11 @@ export function exportBundle(descriptor,config,runtime){
   const template=shape(descriptor.schema),safe=x=>JSON.stringify(x).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
   const code='// ALBot '+runtime.version+' | Einstellungen + Runtime\n'+'globalThis.ALBotConfig=('+unpack.toString()+')('+safe(template)+','+safe(encode(template,config))+');\n'+runtime.code+'\n';
   const bytes=new TextEncoder().encode(code).length;
-  if(bytes>SLOT_LIMIT)throw Error('Bot inklusive Einstellungen zu groß: '+bytes+' / '+SLOT_LIMIT+' UTF-8-Bytes.');
+  // A combined bootstrap review artifact is NOT directly pasteable CODE.
+  // The signed loader only downloads the runtime, so allow a bounded config
+  // wrapper without weakening the runtime's 8-MiB loader maximum.
+  const limit=target==='bootstrap-artifact'?BOOTSTRAP_RUNTIME_LIMIT+SLOT_LIMIT:SLOT_LIMIT;
+  if(bytes>limit)throw Error('Bot inklusive Einstellungen zu groß: '+bytes+' / '+limit+' UTF-8-Bytes.');
   return {code,bytes};
 }
 export async function checkPackage(data){

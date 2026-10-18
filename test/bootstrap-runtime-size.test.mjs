@@ -30,4 +30,7 @@ test('legacy CODE export does not pretend to be an 8-MiB game CODE slot',async()
   '/*'+'x'.repeat(SLOT_LIMIT)+'*/\nvoid 0;';
  const runtime={...saved.runtime,code,sha256:createHash('sha256').update(code).digest('hex')};
  assert.throws(()=>exportBundle(saved.descriptor,cfg,runtime),/Bot inklusive Einstellungen zu groß/);
+ const artifact=exportBundle(saved.descriptor,cfg,runtime,{target:'bootstrap-artifact'});
+ assert.ok(artifact.bytes>SLOT_LIMIT);
+ assert.ok(artifact.bytes<=BOOTSTRAP_RUNTIME_LIMIT+SLOT_LIMIT);
 });

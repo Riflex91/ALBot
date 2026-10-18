@@ -36,7 +36,7 @@ test('browser directory log appends chronological events once with character and
  let disk='',name;const handle={getFile:async()=>({size:new TextEncoder().encode(disk).length}),createWritable:async()=>({seek:async()=>{},write:async s=>{disk+=s;},close:async()=>{}})};
  const p={c:{name:'Ranger'},G:{},headless:false,realm:()=> 'EUII',log(){},parent:{showDirectoryPicker:async()=>({name:'Desktop',getFileHandle:async n=>{name=n;return handle;}})}};
  const log=createTestReport(p,'test');log.configure({continuous:true});log.setProvider(()=>({settings:{general:{}},status:{running:true}}));log.event('decision',{reason:'Nachschub vor Produktion'});await log.chooseDirectory();log.event('action.start',{key:'send'});await log.chooseDirectory();
- assert.match(name,/^test-Ranger-\d{4}-.*Z-part001\.jsonl$/);const rows=disk.trim().split('\n').map(JSON.parse);assert.equal(rows.filter(x=>x.type==='action.start').length,1);assert.equal(rows.filter(x=>x.type==='decision')[0].reason,'Nachschub vor Produktion');assert.equal(rows.filter(x=>x.type==='session').length,1);
+ assert.match(name,/^albot-live-Ranger-part001\.jsonl$/);const rows=disk.trim().split('\n').map(JSON.parse);assert.equal(rows.filter(x=>x.type==='action.start').length,1);assert.equal(rows.filter(x=>x.type==='decision')[0].reason,'Nachschub vor Produktion');assert.equal(rows.filter(x=>x.type==='session').length,1);
 });
 test('controlled burst uses explicit mana allocation and full burst cannot promise a remaining reserve',()=>{
  const cfg=defaultsFor(FULL_DESCRIPTOR.schema),calls=[],c={name:'Mage',ctype:'mage',level:80,map:'main',x:0,y:0,hp:100,max_hp:100,mp:1000,max_mp:1000,range:200,slots:{}},target={id:'g',type:'monster',mtype:'goo',hp:200,map:'main',x:1,y:0};

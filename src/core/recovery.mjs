@@ -252,6 +252,60 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
  // Unlike a speculative timeout this requires 60s of elapsed time, two
  // unchanged samples and durable archive+checkpoint writes.
  let unknownExchangeSample=null;
+ let unchangedExchangeSample=null;
+ // A server-rejected exchange (e.g. 'distance') leaves the original source,
+ // every inventory slot and gold exactly as they were. The old code would
+ // quarantine this forever, because no item had been consumed. After 120s
+ // without any pending exchange and two STABLE full snapshots 5s apart,
+ // archive the uncertain command without ever calling exchange again here.
+ // This is not a success receipt and does not infer any drop or gold.
+ function releaseUnchangedExchange(j){
+  const c=p.c,snap=j?.evidence,now=Date.now();
+  if(me.role!=='merchant'||!bot.inventoryBlocked||j?.kind!=='exchange'||
+    !Number.isFinite(j.at)||now-j.at<120000||
+    !Array.isArray(snap?.inventory)||!Array.isArray(c?.items)||
+    snap.realm!==p.realm()||snap.inventory.length!==c.items.length||
+    !Number.isSafeInteger(snap.gold)||c.gold!==snap.gold||
+    !Number.isSafeInteger(j.quantity)||j.quantity<1||
+    !Array.isArray(j.slots)||j.slots.length!==1||
+    bot.exec?.pending?.size||c.q?.exchange||
+    c.items.some(x=>x?.name==='placeholder')||
+    bot.checkpoint?.durable!==true){
+   unchangedExchangeSample=null;return false;
+  }
+  const [slot,source]=j.slots[0];
+  if(!Number.isSafeInteger(slot)||slot<0||slot>=c.items.length||
+    typeof source!=='string'||snap.inventory[slot]!==source||
+    typeof j.item!=='string'||!j.item){
+   unchangedExchangeSample=null;return false;
+  }
+  const live=c.items.map(i=>i?fingerprint(i):null);
+  if(live.some((fp,i)=>fp!==snap.inventory[i])||!live[slot]){
+   unchangedExchangeSample=null;return false;
+  }
+  const signature=JSON.stringify([j.at,j.item,j.quantity,slot,source,
+   snap.realm,snap.gold,live]);
+  if(unchangedExchangeSample?.signature!==signature){
+   unchangedExchangeSample={signature,at:now};return false;
+  }
+  if(now-unchangedExchangeSample.at<5000)return false;
+  const record={version:1,kind:'exchange',status:'unchanged-unverified-no-replay',
+   item:j.item,quantity:j.quantity,sourceSlot:slot,originalAt:j.at,
+   at:now,realm:p.realm(),source,observedGold:c.gold,
+   evidenceSignature:signature};
+  if(p.write?.('albot:exchange-unconfirmed:'+me.name,record)!==true||
+     bot.checkpoint?.clear?.(j)!==true)return false;
+  bot.allocation?.settle?.(j,'unknown');
+  bot.journal=null;bot.inventoryBlocked=false;
+  bot.production?.invalidate?.();bot.intelligence?.invalidate?.();
+  unchangedExchangeSample=null;unknownExchangeSample=null;
+  exchangeStatus={eligible:false,reason:'archived-unchanged-unverified',
+   rewards:[]};
+  bot.event?.('recovery.exchangeUnchangedReleased',{
+   item:j.item,quantity:j.quantity,slot,ageMs:now-j.at,
+   reason:'Gesamtes Inventar und Gold nach Abweisungsfenster unverändert; kein Replay des alten Exchange'});
+  return true;
+ }
  function releaseConsumedExchange(j){
   const c=p.c,snap=j?.evidence;
   if(me.role!=='merchant'||!bot.inventoryBlocked||j?.kind!=='exchange'||
@@ -305,7 +359,14 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
  function reconcileExchange(){
   const audit=inspectExchangeRecovery(bot);
   exchangeStatus={eligible:audit.eligible,reason:audit.reason,rewards:audit.rewards??[]};
-  if(!audit.eligible){exchangeSample=null;return releaseConsumedExchange(bot.journal);}
+  if(!audit.eligible){
+   exchangeSample=null;
+   // Consumption and non-consumption are mutually exclusive. Both paths
+   // demand durable archive writes BEFORE clearing the old value journal.
+   return releaseConsumedExchange(bot.journal)||
+    releaseUnchangedExchange(bot.journal);
+  }
+  unchangedExchangeSample=null;unknownExchangeSample=null;
   const now=Date.now();
   // Require two *identical* completed inventory observations at least one
   // second apart, after the original exchange was dispatched.

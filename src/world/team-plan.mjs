@@ -52,7 +52,9 @@ export function selectHuntArea(ranking,hunt){
    {area:ordinary,kind:'farm',deferred:'NO_SAFE_HUNT_SPAWN'};
  }
  const deferred=hunt.phase==='turnin'?'HUNT_TURNIN_PENDING':
-  hunt.phase==='acquire'?'HUNT_ACQUIRE_PENDING':'HUNT_STATUS_UNVERIFIED';
+  hunt.phase==='acquire'?'HUNT_ACQUIRE_PENDING':
+  hunt.phase==='blocked'?'HUNT_ALL_DEFERRED_NO_SAFE_SPAWN':
+  'HUNT_STATUS_UNVERIFIED';
  return {area:ordinary,kind:'farm',deferred};
 }
 

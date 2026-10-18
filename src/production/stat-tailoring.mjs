@@ -10,7 +10,7 @@ const N01_STAT_TYPES=new Set(['str','int','dex','vit']);
 export function statTailoringCandidate(bot){
  const {p,cfg,me}=bot,e=bot.economy;
  if(me?.role!=='merchant'||!bot.running||!cfg.production?.enabled||
-    cfg.production.gear!==true||cfg.production.statTailoring!==true||
+    cfg.production.gear!==true||
     !Array.isArray(cfg.production.gearTargets)||
     !Array.isArray(cfg.characters)||!Array.isArray(p.c?.items)||
     typeof p.call!=='function'||!p.G?.items)return null;
@@ -72,13 +72,12 @@ export function statTailoringCandidate(bot){
 export function createStatTailoring(bot){
  const {p,cfg,me}=bot;let preview=null;
  const proof=plan=>JSON.stringify([p.G.version,p.G.items?.[plan.item.name],
-  p.G.items?.[plan.scroll.name],cfg.production?.statTailoring,
+  p.G.items?.[plan.scroll.name],cfg.production?.gear,
   cfg.production?.minChance,cfg.production?.gearTargets,cfg.items,
   plan.sourcePrint,plan.scrollPrint,plan.grade,plan.needed,plan.loss]);
  function ready(plan,initial){
   if(!bot.running||bot.journal||bot.inventoryBlocked||
      bot.bank?.pending||bot.logistics?.reserved||p.c.rip||
-     cfg.production?.statTailoring!==true||
      proof(plan)!==initial)return false;
   const fresh=statTailoringCandidate(bot);
   return !!fresh&&fresh.slot===plan.slot&&
@@ -139,7 +138,7 @@ export function createStatTailoring(bot){
   });
  }
  return {tick,status:()=>{const candidate=statTailoringCandidate(bot);
-  return {mode:'explicit-gear-targets-only',enabled:cfg.production?.statTailoring===true,
+  return {mode:'explicit-gear-targets-only',enabled:!!candidate,
    pendingPreview:!!preview,minimum:Math.max(cfg.production?.minChance??1,.65),
    candidate:candidate?{item:candidate.item.name,target:candidate.target.character,
     requiredScrolls:candidate.needed}:null};},close(){preview=null;}};

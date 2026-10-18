@@ -1,0 +1,110 @@
+# One-shot W03 bank_merge_retrieve integration. Remove after completed verification.
+name: ALBot temporary signed auto bootstrap verification
+on:
+  push:
+    branches: [codex/w00-w01-readonly-disposition-20261018]
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/w00-w01-readonly-disposition-20261018
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm test
+      - run: npm run verify:release
+      - name: Synchronize while preserving entire personal configuration
+        shell: bash
+        run: |
+          node scripts/sync-personal-code.mjs --write
+          node --input-type=module <<'EOF'
+          import {readFileSync} from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const old=execFileSync('git',['show','HEAD:bot.js'],{encoding:'utf8'});
+          const current=readFileSync('bot.js','utf8');
+          const config=s=>{
+            const from=s.indexOf('globalThis.ALBotConfig=');
+            const to=s.indexOf('/* ALBot ',from);
+            if(from<0||to<0)throw Error('No personalized config boundary');
+            return JSON.parse(s.slice(from+'globalThis.ALBotConfig='.length,to)
+              .trim().replace(/;\s*$/,''));
+          };
+          const before=config(old),after=config(current);
+          if(JSON.stringify(before)!==JSON.stringify(after))
+            throw Error('Personal configuration changed during synchronization');
+          if(after.farming.hpBelow!==0.7||after.farming.pullHp!==0.75||
+             after.farming.avoidOthers!==true||after.world.risk!=='aggressive')
+            throw Error('Authorized farming/risk values were changed');
+          console.log('All personal configuration fields preserved byte-semantically');
+          EOF
+          npm run build:bootstrap
+          npm run check:bootstrap
+          npm run build:bootstrap:auto
+          npm run check:bootstrap:auto
+      - shell: bash
+        run: |
+          if git diff --quiet -- bot.js dist/albot.runtime.js dist/albot.bootstrap.js dist/albot.bootstrap.auto.js && test -f dist/albot.bootstrap.auto.js && git ls-files --error-unmatch dist/albot.bootstrap.auto.js >/dev/null 2>&1; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- bot.js dist/albot.runtime.js dist/albot.bootstrap.js dist/albot.bootstrap.auto.js
+          git commit -m "build(bootstrap): publish stable signed-release auto-loader"
+          git push origin HEAD:codex/w00-w01-readonly-disposition-20261018
+  linux-verification:
+    needs: sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/w00-w01-readonly-disposition-20261018
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --check
+      - run: npm run check:bootstrap
+      - run: npm run check:bootstrap:auto
+      - run: npm run verify:release
+      - run: npm test
+      - run: npm run build:editor
+      - run: node --check dist/albot.js
+      - shell: bash
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const code=fs.readFileSync('dist/albot.js');
+          const manifest=JSON.parse(fs.readFileSync('dist/manifest.json','utf8'));
+          const sha=crypto.createHash('sha256').update(code).digest('hex');
+          if(code.length>1048576||code.length!==manifest.bytes||sha!==manifest.sha256)
+            throw Error('Shared runtime bytes/hash/manifest mismatch');
+          console.log(JSON.stringify({bytes:code.length,sha256:sha}));
+          EOF
+  windows-verification:
+    needs: sync
+    runs-on: windows-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/w00-w01-readonly-disposition-20261018
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - shell: pwsh
+        run: ./scripts/VERIFY-U01-U07.ps1
+      - run: npm run check:bootstrap:auto
+      - run: npm run verify:release
+      - run: npm run check:bootstrap

@@ -46,7 +46,7 @@ test('a new bank.store never addresses an occupied compatible stack',()=>{
  let destination=null;
  const bank=Array(42).fill(null);bank[18]=old;
  const c={name:'M',map:'bank',in:'bank',items:[out],bank:{items0:bank}};
- const bot={p:{c,G:{items:{beewings:{s:true}},bank_packs:{items0:['bank',0]}},root:{},parent:{},read:()=>null,call:(key,...args)=>{if(key==='bank_store')destination=args[2];return null;}},me:{name:'M'},
+ const bot={p:{c,G:{items:{beewings:{s:true}},bank_packs:{items0:['bank',0]}},root:{},parent:{},read:()=>null,write:()=>true,realm:()=> 'EUII',call:(key,...args)=>{if(key==='bank_store')destination=args[2];return null;}},me:{name:'M'},session:'bank-v3-test',
   cfg:{party:{merchant:'M'},merchant:{bank:true,minFreeSlots:4,bankWorkspace:2,bankBudget:0}},
   journal:null,inventoryBlocked:false,logistics:{reserved:false},
   economy:{safe:()=>true,explicit:()=>null,spare:()=>10,travel:()=>true,count:()=>10,
@@ -185,8 +185,8 @@ test('at 42/42, capacity parking preserves reserved gear and consumes only a ver
  const bot={
   p:{c,G:{items:{ringsj:{type:'ring'},'already-stored':{type:'material'}},
    bank_packs:{items0:['bank',0]}},root:{},parent:{},read:()=>null,
-   realm:()=> 'EUII',call:(method,...args)=>calls.push([method,...args])},
-  me:{name:'M'},running:true,journal:null,inventoryBlocked:false,free:()=>0,
+   realm:()=> 'EUII',write:()=>true,call:(method,...args)=>calls.push([method,...args])},
+  me:{name:'M'},session:'bank-parking-test',running:true,journal:null,inventoryBlocked:false,free:()=>0,
   cfg:{party:{merchant:'M'},merchant:{bank:true,minFreeSlots:4,bankWorkspace:2},
    production:{autoDisposition:true}},
   logistics:{reserved:false},

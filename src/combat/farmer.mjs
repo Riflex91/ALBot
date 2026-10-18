@@ -311,6 +311,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // even though no new escort is being scheduled.
     if(questVisitor&&['follow','quest-escort','cohesion'].includes(
       bot.movement.order?.owner))bot.movement.stop();
+
     // While a Ranger follows an approved native farm route, hostile road
     // aggro must not turn the trip into random spiral/orbit manoeuvres.
     // Keep potion consumption and Priest healing active. This policy does
@@ -505,13 +506,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(cfg.party.enabled&&me.name!==bot.leader&&escortLeader?.running&&
        helpEngagedTeamFight(escortLeader))return;
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
-    // Quest visits are not combat regrouping orders. Without a verified
-    // two-person farm detachment, stop NEW pulls and hold the location.
-    // Existing hostile-defense paths ran before this conservative gate.
-    if(questVisitor&&!detachment){
-     waitSafely('Monsterhunt-NPC-Besuch: Farmanker halten; kein sicherer Zweier-Pull');
-     return;
-    }
+    if(questVisitor&&!detachment){waitSafely('Monsterhunt-NPC-Besuch: Farmanker halten; kein sicherer Zweier-Pull');return;}
     const leader=escortLeader;
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}

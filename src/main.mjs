@@ -24,6 +24,7 @@ import {createAccountStockLedger} from './items/account-stock-ledger.mjs';
 import {createPotionReceipts} from './merchant/potion-receipts.mjs';
 import {createSeashellCycle} from './production/seashell-cycle.mjs';
 import {createEconomicIntelligence} from './production/intelligence.mjs';
+import {physicalInventoryCapacity} from './items/physical-capacity.mjs';
 import {createStoragePlanner} from './merchant/storage-plan.mjs';
 import {createPriorityScheduler} from './core/priority.mjs';
 import {createServices} from './merchant/services.mjs';
@@ -183,7 +184,7 @@ export function install(root){
     checkpoint,
     event(type,data){bot.potionReceipts?.observe(type,data);report.event(type,data);bot.adaptive?.fault(type,data);},
     report(message){if(message!==reportText||now()-reportTime>10000){reportText=message;reportTime=now();p.log(message);report.event('message',{message});}},
-    free(){return p.c.items?.filter(i=>!i).length??0;},count(name){return (p.c.items??[]).reduce((n,i)=>n+(i?.name===name?(i.q??1):0),0);},
+    free(){return physicalInventoryCapacity(p.c.items,{inventorySize:p.c.isize})?.free??0;},count(name){return (p.c.items??[]).reduce((n,i)=>n+(i?.name===name?(i.q??1):0),0);},
     entity(id){const e=resolveLiveEntity(p.entities,id,id===me.name?p.c:null);
      return e?{...e,map:e.map??p.c.map,in:e.in??p.c.in??p.c.map}:null;},
     monsters(){return liveMonsterEntries(p.entities).map(([id,e])=>
@@ -350,6 +351,7 @@ export function install(root){
     acknowledgeAccountGoldLoss:()=>bot.lossGuard?.reset()??false,
     restoreLearning:()=>bot.cloud.restore(),
     bossCatalog:()=>bot.bosses?.catalog()??[],
+    explainInventorySlot:slot=>bot.intelligence?.explainInventorySlot?.(slot)??{version:1,mode:'read-only',executable:false,state:'unavailable',reason:'economic-intelligence-not-enabled'},
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,

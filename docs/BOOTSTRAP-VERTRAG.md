@@ -1,6 +1,6 @@
 # Verbindlicher Bootstrap-/Ladevertrag – überprüfter Ingame-CODE
 
-Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE, zuletzt gekennzeichnet als `ALBot 0.10.9-candidate`, und zum Prüfzeitpunkt öffentlich abrufbares GitHub-Release-Manifest.
+Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das für die Integration signierte Release-Manifest. Der tatsächliche Spielstart wurde nicht beobachtet.
 
 ## Tatsächlicher Ladeweg
 
@@ -11,21 +11,21 @@ Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE, zuletz
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Tatsächlich adressiertes Release-Artefakt (Momentaufnahme 18.10.2026)
+## Signiertes Release-Artefakt (Integrationsstand 18.10.2026)
 
 | Feld | Festgestellter Wert |
 | --- | --- |
 | Manifest-URL | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json` |
 | Manifest-Branch | `codex/w00-w01-readonly-disposition-20261018` |
-| Manifest `sequence` | `1` |
-| Manifest `version` | `0.10.9-candidate` |
+| Manifest `sequence` | `2` |
+| Manifest `version` | `0.10.10-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `686843` |
-| Manifest `sha256` | `e18f1c66ddc216caf62d162207ad98817568e0af968276082a1bcd3db5797319` |
+| Manifest `bytes` | `693552` |
+| Manifest `sha256` | `05ae744175f359ea8d723d0747a4777b682641cf45f33adc2a06165feedc8f4d` |
 | Signaturprüfung | ECDSA-P-256 über die dokumentierten Manifestfelder **gültig** |
 | Ingame-Erfolg | Aus CODE/Manifest allein **nicht nachgewiesen** |
 
-**Konsequenz:** Die persönliche `main/bot.js` (`0.10.10-candidate`) ist **nicht der vom Bootstrap geladenen Datei gleichzusetzen**. Die `main/dist/albot.runtime.js` ist ebenfalls ein anderer, beim Build generierter Stand. Ob eine Änderung aus `main` im Spiel wirksam wird, hängt davon ab, ob das Release-Manifest auf einen neuen, korrekt signierten Runtime-Artefaktstand umgestellt wird. Änderungen des signierten Manifests erfordern einen gültigen Signierschlüssel; ein reiner Branch-Merge bewirkt das nicht.
+**Konsequenz:** Der Bootstrap folgt dem dokumentierten signierten Release-Branch und `manifest.runtimeUrl`, nicht automatisch `main/bot.js`. Integrierte Quelle und signierte Runtime wurden in CI gebaut und kryptografisch verifiziert; ein tatsächlicher Spielstart ist ohne Live-Nachweis unbekannt. Das persönliche Ingame-`ALBotConfig` bleibt unabhängig von der Repository-`bot.js`.
 
 ## Maschinenlesbarer Vertrag und CI
 

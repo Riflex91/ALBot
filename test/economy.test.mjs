@@ -13,7 +13,7 @@ import {createGear} from '../src/production/gear.mjs';
 function fixture(){
  const cfg=defaultsFor(ECONOMY_DESCRIPTOR.schema);cfg.merchant.goldReserve=100;cfg.merchant.maxSpendPerHour=10000;cfg.production.lossBudget=1000;cfg.party.merchant='M';
  const data=new Map(),c={name:'M',map:'bank',in:'bank',x:0,y:-100,gold:10000,items:[{name:'hpot0',q:10},...Array(41).fill(null)],slots:{},bank:{items0:Array(42).fill(null),gold:0}};
- const bot={cfg,me:{name:'M',role:'merchant',goldReserve:100},p:{c,G:{items:{hpot0:{g:20,s:9999}},npcs:{}},read:k=>data.get(k),write:(k,v)=>{data.set(k,structuredClone(v));return true;},realm:()=> 'EUII',call(){throw Error('Unexpected API');}},running:true,inventoryBlocked:false,checkpoint:{durable:true},journal:null,logistics:{reserved:false},free:()=>c.items.filter(x=>!x).length,event(){},report(){},movement:{go(){return false;}},beginValue(j){assert.equal(this.journal,null);this.journal=j;},endValue(s){if(s==='confirmed')this.journal=null;else this.inventoryBlocked=true;}};
+ const bot={cfg,me:{name:'M',role:'merchant',goldReserve:100},session:'economy-test-session',p:{c,G:{items:{hpot0:{g:20,s:9999}},npcs:{}},read:k=>data.get(k),write:(k,v)=>{data.set(k,structuredClone(v));return true;},realm:()=> 'EUII',call(){throw Error('Unexpected API');}},running:true,inventoryBlocked:false,checkpoint:{durable:true},journal:null,logistics:{reserved:false},free:()=>c.items.filter(x=>!x).length,event(){},report(){},movement:{go(){return false;}},beginValue(j){assert.equal(this.journal,null);this.journal=j;},endValue(s){if(s==='confirmed')this.journal=null;else this.inventoryBlocked=true;}};
  let now=Date.now();bot.exec=new Executor({now:()=>now,active:()=>bot.running,limit:4,onError(){}});bot.economy=createEconomy(bot);bot.bank=createBank(bot);
  const rule={...defaultsFor(ECONOMY_DESCRIPTOR.schema.properties.items.items),item:'hpot0',role:'merchant',action:'bank',batch:10,maxCount:100,goldBudget:10000};
  return {bot,c,rule,data,advance:()=>{now+=30000;bot.exec.poll();}};
@@ -75,6 +75,33 @@ test('bank confirms both sides and does not consume a protected or changed slot'
  const {bot,c,rule}=fixture();bot.p.call=(name,slot,pack,dest)=>{assert.equal(name,'bank_store');c.bank[pack][dest]=c.items[slot];c.items[slot]=null;return Promise.resolve();};
  assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.journal,null);assert.equal(c.bank.items0[0].q,10);
  c.items[0]={name:'hpot0',q:10,l:'l'};assert.equal(bot.bank.store(0,rule),false);
+});
+test('W03 whole-bank retrieval executes with real economy dispatcher and clears exact durable journal',async()=>{
+ const {bot,c,rule,data}=fixture();
+ c.bank.items0[7]={name:'hpot0',q:5};
+ let attempts=0;
+ bot.p.call=(name,pack,slot,dest)=>{
+  assert.equal(name,'bank_retrieve');
+  assert.deepEqual([pack,slot,dest],['items0',7,1]);
+  attempts++;
+  c.items[dest]=c.bank[pack][slot];
+  c.bank[pack][slot]=null;
+  return Promise.resolve();
+ };
+ const retrieveRule={...rule,action:'retrieve',pack:'items0',
+  batch:10,maxCount:100};
+ assert.equal(bot.bank.retrieve({name:'hpot0',q:5},retrieveRule,5),true);
+ assert.equal(bot.bank.singlePending,true);
+ assert.equal(attempts,1,'real Executor may dispatch immediately without a decision frame');
+ assert.ok(data.get('albot:bank-single:M').dispatch,
+  'journal is written before actual server API');
+ await Promise.resolve();
+ bot.exec.poll();
+ assert.equal(bot.journal,null);
+ assert.equal(bot.bank.recover(),false,'confirmed journal already cleared at settlement');
+ assert.equal(bot.bank.pending,false);
+ assert.equal(data.get('albot:bank-single:M'),null);
+ assert.equal(bot.inventoryBlocked,false);
 });
 test('empty bank pack exposes 42 slots but an occupied stack is never used as bank_store target',async()=>{
  const {bot,c,rule}=fixture();c.bank.items0=[];assert.equal(bot.bank.capacity()[0].free,42);

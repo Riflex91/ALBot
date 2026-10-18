@@ -91,6 +91,7 @@ export function validateProfile(descriptor,c){
     if(!/^[a-zA-Z0-9_]+$/.test(r.item))errors.push(p+': ungültige Item-ID.');
     if(r.minLevel>r.maxLevel)errors.push(p+': Levelbereich ist umgekehrt.');
     if(r.keep+r.teamReserve>r.maxCount||r.targetCount>r.maxCount||r.targetCount<r.keep+r.teamReserve)errors.push(p+': Reserve ≤ Zielbestand ≤ Maximalbestand erforderlich.');
+    if((r.excessAction??'hold')!=='hold'&&r.action!=='keep')errors.push(p+': Überschussaktion nur mit Behalten-Regel zulässig.');
     if((r.requestBelow??0)>0&&r.requestBelow>r.targetCount)errors.push(p+': Nachschubschwelle darf nicht über dem Zielbestand liegen.');
     if(r.enabled&&r.action==='send'&&!r.recipient)errors.push(p+': Lieferempfänger fehlt.');
     if(r.enabled&&r.action==='send'&&r.character&&r.recipient===r.character)errors.push(p+': Lieferung an sich selbst.');

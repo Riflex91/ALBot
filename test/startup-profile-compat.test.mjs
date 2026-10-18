@@ -40,6 +40,10 @@ test('old saved personalized CODE starts after missing merchant fields are compl
  assert.deepEqual(repaired.merchant.offlineGoldBalances,[]);
  assert.deepEqual(validateProfile(FULL_DESCRIPTOR,repaired),[]);
  const expected=personalConfig();expected.merchant.budgetMode='bounded';expected.merchant.accountLossWindowMs=900000;expected.merchant.offlineGoldBalances=[];
+ // New W02 field is optional in saved CODE. Startup normalization adds
+ // the conservative `hold` default without rewriting personal settings.
+ for(const rule of expected.items??[])if(!Object.hasOwn(rule,'excessAction'))
+  rule.excessAction='hold';
  assert.deepEqual(repaired,expected,
   'no existing custom farmer, merchant or world settings are changed');
 });

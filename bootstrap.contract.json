@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 1,
-      "version": "0.10.9-candidate",
+      "sequence": 2,
+      "version": "0.10.10-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 686843,
-      "sha256": "e18f1c66ddc216caf62d162207ad98817568e0af968276082a1bcd3db5797319"
+      "bytes": 693552,
+      "sha256": "05ae744175f359ea8d723d0747a4777b682641cf45f33adc2a06165feedc8f4d"
     },
     "observedLoadedUrl": null,
-    "note": "Aus dem vom Benutzer übermittelten CODE und dem öffentlich abrufbaren signierten Manifest abgeleitet. Kein Live-Spielabruf beobachtet. Die auf main liegende persönliche bot.js (0.10.10) ist nicht das geladene Artefakt."
+    "note": "Signed manifest and runtime updated by verified integration; this is the configured CODE channel, not a live game observation. The personal in-game ALBotConfig remains independent of repository bot.js."
   }
 }

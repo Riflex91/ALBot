@@ -20,7 +20,7 @@ function fixture(bankPacks){
   bank_packs:{items0:['bank',100],items1:['bank',100]}},
   root:{},parent:{},read:()=>null,write:(k,v)=>{writes.push(k);return true;},
   realm:()=> 'EU:II'};
- const bot={p,cfg,me:{name:'Merchant',role:'merchant'},
+ const bot={p,cfg,me:{name:'Merchant',role:'merchant'},session:'bank-observation-test',
   economy:e,inventoryBlocked:false,journal:null,decisionEpoch:1,
   logistics:{reserved:false},free:()=>c.items.filter(x=>!x).length};
  const bank=createBank(bot);bot.bank=bank;

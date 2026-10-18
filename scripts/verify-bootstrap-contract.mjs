@@ -54,7 +54,7 @@ assert.ok(loaderCode.includes('const raw=await request(manifest.runtimeUrl,83886
 assert.ok(loaderCode.includes('root.crypto.subtle.verify('), 'Signaturprüfung aus dem Loader entfernt');
 assert.ok(loaderCode.includes('await digest(raw)!==manifest.sha256'), 'Hashprüfung aus dem Loader entfernt');
 assert.equal(loader.inspectedManifest.runtimeUrl, loader.inspectedResolvedRuntimeUrl);
-assert.equal(loader.inspectedManifest.version, '0.10.9-candidate');
+assert.ok(/^0\.\d+\.\d+-candidate$/.test(loader.inspectedManifest.version), 'Release snapshot version unrecognized');
 for (const path of ['README.md', 'AGENTS.md', 'docs/BOOTSTRAP-VERTRAG.md']) {
   const content = read(path);
   assert.ok(content.includes(loader.configuredManifestUrl), path + ' muss den Ingame-Manifest-Kanal nennen');

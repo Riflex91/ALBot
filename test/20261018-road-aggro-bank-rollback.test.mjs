@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {committedFarmTransit,roadAggroTravelDecision} from '../src/combat/transit-defense.mjs';
 import {selectedFarmerAvailable} from '../src/party/account.mjs';
 import {reclaimRollbackEvidence,createBank} from '../src/merchant/bank.mjs';
+import {fingerprint as canonicalFingerprint} from '../src/core/policy.mjs';
 const char={name:'My_Ranger1',map:'main',in:'main',x:1200,y:420,hp:4000,max_hp:4200};
 const plan={id:'p:1',key:'halloween:minimush:4',map:'halloween',
  in:'halloween',x:8,y:630,kind:'farm'};
@@ -54,19 +55,29 @@ test('Merchant safely dispatches exact bank-rollback instead of entering an eter
  inv[0]=prior;inv[3]={...item};bank[1]={name:'beewings',level:0,q:11};
  const state=new Map(),reports=[],work=[];
  const fp=x=>x?JSON.stringify([x.name,x.level??0,'','','','','','',''])+':'+(x.q??1):':1';
- const record={item,pack:'items0',slot:9,dest:3,before:2,bankBefore:18,
-  quantity:7,sourcePrint:fp(item),gold:100,expectedSaleGold:7};
+ const at=Date.now(),sourcePrint=canonicalFingerprint(item);
+ const record={version:2,owner:'My_Merchant',realm:'EUII',at,item,
+  pack:'items0',slot:9,dest:3,before:2,bankBefore:18,quantity:7,
+  sourcePrint,gold:100,expectedSaleGold:7,explicitOnly:false,
+  prepared:{kind:'bank.reclaim',session:'previous',at,realm:'EUII',
+   pack:'items0',slot:9,dest:3,sourcePrint},
+  dispatch:{kind:'bank.reclaim',session:'previous',at,realm:'EUII',
+   pack:'items0',slot:9,dest:3,sourcePrint},
+  withdrawal:{at,realm:'EUII',pack:'items0',slot:9,dest:3,
+   sourcePrint,inventoryCount:9,bankCount:11}};
  state.set('albot:bank-reclaim:My_Merchant',record);
  const p={c:{name:'My_Merchant',map:'bank',bank:{items0:bank,gold:0},items:inv,gold:100},
   G:{bank_packs:{items0:['bank']},items:{beewings:{type:'material'}}},
   realm:()=> 'EUII',read:k=>state.get(k)??null,
-  write:(k,v)=>{state.set(k,v);return true;},root:{},parent:{}};
+  write:(k,v)=>{state.set(k,v);return true;},root:{},parent:{},call:()=>true};
  const e={safe:i=>!!i,explicit:()=>null,rules:()=>({action:'keep'}),
   value:()=>1,remaining:()=>true,
   count:i=>p.c.items.reduce((n,x)=>n+(x?.name===i.name?(x.q??1):0),0),
   note:s=>reports.push(s),perform:(kind,data)=>{work.push({kind,data});
-   assert.equal(data.guard(),true);const old=inv[3];bank[9]=old;inv[3]=null;
-   assert.equal(data.observe(),true);return true;}};
+   assert.equal(data.guard(),true);assert.equal(data.call(),true);
+   assert.ok(state.get('albot:bank-reclaim:My_Merchant').rollback.dispatchedAt);
+   const old=inv[3];bank[9]=old;inv[3]=null;
+   assert.equal(data.observe(),true);assert.equal(data.onConfirmed(),true);return true;}};
  const bot={p,cfg:{party:{merchant:'My_Merchant'},merchant:{bank:true,bankReclaim:true},
   production:{autoDisposition:false,goals:[],gearTargets:[]}},
   me:{name:'My_Merchant'},economy:e,inventoryBlocked:false,logistics:{reserved:false},
@@ -74,10 +85,10 @@ test('Merchant safely dispatches exact bank-rollback instead of entering an eter
  const m=createBank(bot);
  assert.equal(m.pending,true);
  assert.equal(m.recoverCapacity(),true);
- assert.equal(work.length,1);
+ assert.equal(work.length,1,JSON.stringify({reports,current:state.get('albot:bank-reclaim:My_Merchant'),status:m.recoveryStatus()}));
  assert.equal(work[0].kind,'bank.store');
  assert.equal(work[0].data.details.reason,'revoked-emergency-sale-rollback');
- assert.equal(m.recoverCapacity(),true,'restored stack is explicitly reconciled');
+ assert.equal(m.recoverCapacity(),false,'synchronous confirmed rollback has already cleared its journal');
  assert.equal(m.pending,false,'checkpoint cleared only after seeing exact restored bank state');
  assert.equal(state.get('albot:bank-reclaim:My_Merchant'),null);
 });

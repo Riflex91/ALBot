@@ -11,7 +11,9 @@ const data=()=>({
 });
 test('Merchant receives already collected material counts after unnecessary telemetry is shed',()=>{
  const d={...data(),performance:'x'.repeat(2400),
-  bankOwner:'y'.repeat(2500),skills:'z'.repeat(2100)};
+  bankOwner:{owner:'Ranger1',session:'test-session',realm:'EUII',
+   purpose:'bank.retrieve',epoch:1700000000000,expires:1700000010000},
+  skills:'z'.repeat(2100)};
  const result=fitHeartbeat(d,4200);
  assert.ok(result,'the compressed heartbeat should remain valid');
  assert.deepEqual(result.materialProgress,d.materialProgress,
@@ -19,7 +21,8 @@ test('Merchant receives already collected material counts after unnecessary tele
  assert.deepEqual(result.items,d.items,
    'physical item-offer summaries must remain intact');
  assert.equal(result.name,'Ranger1');
- assert.equal(result.bankOwner,undefined);
+ assert.deepEqual(result.bankOwner,d.bankOwner,
+   'a real active bank claim is security-critical, never optional telemetry');
  assert.ok(JSON.stringify(result).length<=4200);
 });
 test('full material progress is unchanged in normally sized heartbeat',()=>{
@@ -70,4 +73,11 @@ test('oversized heartbeat with lost material evidence cannot authorize another f
   name=>peers[name],'EUII',{freeReserve:4});
  assert.deepEqual(reopened,{remaining:1,quotas:[
   {name:'Ranger1',quantity:8},{name:'Ranger2',quantity:2}]});
+});
+
+test('G11 oversized bank owner cannot be hidden to make a heartbeat fit',()=>{
+ const d={...data(),bankOwner:{owner:'Ranger1',session:'test-session',
+  realm:'EUII',purpose:'bank.retrieve',extra:'x'.repeat(5000)}};
+ assert.equal(fitHeartbeat(d,4200),null,
+  'missing a live bank claim would make account access appear safe');
 });

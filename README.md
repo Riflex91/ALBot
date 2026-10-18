@@ -1,12 +1,11 @@
-## WICHTIG: Tatsächlicher Ingame-Bootstrap und sein Ladeziel (18.10.2026)
+# Neuer Auto-Bootstrap: Runtime-Updates ohne erneutes CODE-Einfügen (Draft, 18.10.2026)
 
-**Der im Spiel eingesetzte Bootstrap lädt NICHT `main/bot.js`.** Der übermittelte Ingame-CODE enthält `globalThis.ALBotConfig` und danach einen **signierten Release-Loader** (Referenzkopie ohne persönliche Einstellungen: [`bootstrap/ingame-loader-v2.js`](bootstrap/ingame-loader-v2.js)). Dieser ruft zuerst das [Release-Manifest](https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json) auf und führt danach ausschließlich die im signierten Feld `runtimeUrl` angegebene Runtime aus.
+Die neue **[dist/albot.bootstrap.auto.js](dist/albot.bootstrap.auto.js)** benutzt einen fest hinterlegten öffentlichen ECDSA-P-256-Schlüssel und das signierte Freigabemanifest **[dist/albot.release.json](dist/albot.release.json)**. Nach einmaliger Installation lädt sie bei jedem CODE-Start automatisch die jeweils **signierte und freigegebene** Runtime und prüft SHA-256 vor der Ausführung. `general.autostart=true` bleibt aktiviert. **Live bestätigt:** Am 18.10.2026 hat der Nutzer den Auto-Bootstrap V2 mit aktiviertem Autostart auf allen vier Charakteren erfolgreich getestet (My_Ranger1, My_Ranger2, My_Priest und My_Merchant). **V2 ist der bevorzugte Startweg** für neue CODE-Slots; Logs und Dauerbetrieb sind nicht unabhängig verifiziert. Die alte erfolgreiche Bootstrap-Datei `dist/albot.bootstrap.js` und `bot.js` bleiben erhalten. Der private Releaseschlüssel wird nicht in Git abgelegt; zur Freigabe späterer Updates braucht der GitHub-Workflow das Secret `ALBOT_RELEASE_SIGNING_KEY_PEM`. [Installation, Key-Setup und Releaseablauf](docs/BOOTSTRAP-AUTO-RELEASE.md).
 
-**Nicht vom Ingame-Bootstrap geladenes Vergleichsartefakt:** `https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js` (persönliche `main/bot.js`, nicht identisch mit dem signierten Release).
+---
+# Optionaler SHA-256-Bootstrap (Draft, 18.10.2026)
 
-**Bei Prüfung am 18.10.2026:** `runtimeUrl` = [`dist/albot.runtime.js` im Release-Branch](https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js), **Version `0.10.9-candidate`**, Sequenz `1`. Der Bootstrap prüft ECDSA-P-256-Signatur, SHA-256, Bytezahl und Versions-Header vor der Codeausführung. Die persönliche `main/bot.js` ist ein *anderes Artefakt* (`0.10.10-candidate`) und wird von diesem Bootstrap **nicht** unmittelbar geladen. Quellcode-/Manifest-Inspektion belegt den konfigurierten Pfad; ein tatsächlich erfolgreicher Lauf im Spiel ist nicht separat nachgewiesen.
-
-**Pflicht für weitere KIs:** [`bootstrap.contract.json`](bootstrap.contract.json) und [`docs/BOOTSTRAP-VERTRAG.md`](docs/BOOTSTRAP-VERTRAG.md) vor Änderungen lesen. **Änderungen an `main/bot.js` oder `main/dist/` erreichen den laufenden Bootstrap nicht automatisch!** Der Manifest-Branch muss bestehen bleiben, und jeder neue Release muss gültig signiert sowie zur Konfiguration kompatibel sein. GitHub Actions prüft nach frischem Build getrennt (a) die Artefakte in `main` und (b) den realen Manifest→Runtime-Kanal inklusive Signatur und Hash.
+Der neue `dist/albot.bootstrap.js` ist ein kleiner **optionaler** CODE-Loader. Er übernimmt die unveränderte persönliche Konfiguration und lädt die Runtime aus GitHub erst nach vollständigem SHA-256-Vergleich. `bot.js` bleibt die bisherige vollständige, sofortige Startvariante. **Noch kein CORS-/CSP-Livetest im Adventure-Land-Runner; nicht ungeprüft zur Standarddatei machen.** [Setup, Grenzen und sichere Abnahme](docs/BOOTSTRAP-2026-10-18.md).
 
 ---
 
@@ -127,3 +126,8 @@ Das Headless-Handbuch ist eine Kopie der Client-Dokumentation. Seine Installatio
 Vollbetriebs-Testprotokoll: Browser **Testordner wählen** → fortlaufendes JSONL; Headless mit tools/client-test-report.js automatisch Desktop/ALBot-Testlogs. Jede Datei enthält Charakter und UTC-Startzeit. Historische kompakte Berichte bleiben unter test-logs/CHARAKTER/. Details und Reparatur des gemeldeten vollen Browser-Speichers: [LIVE-A.md](docs/LIVE-A.md).
 
 Aktuelle Risikokorrektur: [0.6.2](docs/CHANGELOG-0.6.2.md). Prat aus den letzten Logs wird nicht als sicheres Teamziel behandelt. Fehlgeschlagene Ziele erhalten eine zeitlich begrenzte Sperre; Rückzug/Erholung haben Vorrang vor Merchant-Aufträgen. Neue Livebestätigung ausstehend.
+
+
+## Dokumentierter Ingame-Bootstrap-Kanal
+
+Der überprüfte Bootstrap-Vertrag steht in `bootstrap.contract.json` und `docs/BOOTSTRAP-VERTRAG.md`. Die persönliche Hauptdatei liegt unter https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js. Der beobachtete CODE-Quelltext verweist auf https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json. Das signierte Manifest benennt https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js. Der Ingame-Ladeerfolg ist noch **nicht** live beobachtet.

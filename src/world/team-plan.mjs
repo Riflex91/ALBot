@@ -611,8 +611,22 @@ export function createTeamPlan(bot){
     return true;
    }
    if(!march.ready){
-    // Do not chase the quest owner. Only an independently validated
-    // two-farmer detachment may continue conservative neutral pulls.
+    // When a FOLLOWER is the active hunter, escort that member to Daisy
+    // instead of abandoning them for the old farming destination. The
+    // other followers receive squadQuestVisit and stay with the Leader.
+    if(march.reason==='teammate-on-quest-visit'&&
+       !squadCombatEngaged(bot.monsters(),bot.teamNames,peers)){
+     const npc=bot.economy?.destination?.('monsterhunter');
+     if(npc&&Number.isFinite(npc.x)&&Number.isFinite(npc.y)&&
+        bot.strategy?.permittedMap?.(npc.map)!==false){
+      if(bot.movement.order?.owner==='farm')bot.movement.stop();
+      bot.reason='Monsterhunt: Gruppenbegleitung zu Daisy ('+march.peer+')';
+      if(!samePlace(p.c,npc)||distance(p.c,npc)>75){
+       if(!bot.movement.order)bot.movement.go({...npc,radius:65},'quest-escort');
+      }else if(bot.movement.order?.owner==='quest-escort')bot.movement.stop();
+      return true;
+     }
+    }
     if(['farm','quest-escort'].includes(bot.movement.order?.owner))bot.movement.stop();
     bot.reason='Gruppenmarsch pausiert (echte Trennung/Gefahr): '+march.reason+' / '+(march.peer??'Team');
     if(march.reason!==marchState.reason||march.peer!==marchState.peer||Date.now()-marchState.at>12000){

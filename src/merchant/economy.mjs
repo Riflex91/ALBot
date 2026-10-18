@@ -1,5 +1,6 @@
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace,surplusQuantity} from '../core/policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
+import {boundedExcessSaleRule,boundedStockSurplus,boundedStockVariantAllowed,localVariantQuantity} from '../items/stock-policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {MUTATION_RISK_WINDOW_MS,mutationRiskLimit,mutationRiskAllowed} from './mutation-risk.mjs';
 // Adventure Land server (node/server.js) uses B.sell_dist = 400 for the
@@ -24,9 +25,9 @@ export function saleReceiptMatches(receipt,item,quantity,gold){
 }
 // NPC purchase uses actual stack capacity. One free slot permits a normal
 // scroll or potion purchase even at the Merchant's preferred 4-slot reserve.
-export function purchaseFits(items,item,quantity,meta){
+export function purchaseFits(items,item,quantity,meta,{inventorySize}={}){
  if(!Number.isSafeInteger(quantity)||quantity<1)return false;
- const planned=capacityAfterConsumption(items,[],item,meta);
+ const planned=capacityAfterConsumption(items,[],item,meta,{inventorySize});
  return !!planned&&planned.units>=quantity;
 }
 export function createEconomy(bot){
@@ -37,7 +38,16 @@ export function createEconomy(bot){
  let ledger=p.read(ledgerKey)??{hour:Date.now(),spent:0,loss:0,goals:{}};
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
  const explicit=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
- const rules=(item,phase='inventory')=>explicit(item,phase)??bot.production?.derivedRule(item,phase)??(()=>{const r=bot.intelligence?.disposition(item);return r&&phaseOf(r.action)===phase?r:null;})()??null;
+ const rules=(item,phase='inventory')=>{
+  const selected=explicit(item,phase);
+  if(selected)return phase==='inventory'&&selected.action==='keep'?
+   boundedExcessSaleRule({item,inventory:p.c.items,G:p.G,rule:selected,
+    reserved:bot.production?.reservedQuantity?.(item)??0})??selected:selected;
+  return bot.production?.derivedRule(item,phase)??(()=>{
+   const r=bot.intelligence?.disposition(item);
+   return r&&phaseOf(r.action)===phase?r:null;
+  })()??null;
+ };
  const count=item=>variantCount(p.c.items,item);
  const downstreamSatisfied=(item,r)=>{
   if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;
@@ -45,7 +55,30 @@ export function createEconomy(bot){
   return count({...item,level:production.targetLevel})>=Math.min(production.targetCount,production.maxCount);
  };
  const safe=i=>!protectedItem(i)&&typeof i.name==='string'&&i.name!=='placeholder';
- const spare=(slot,r)=>{const i=p.c.items[slot];if(!safe(i)||!r)return 0;const reserved=['sell','bank','list','send'].includes(r.action)?bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??(bot.production?.reserved(i)?count(i):0):0;return Math.min(i.q??1,r.batch,surplusQuantity(count(i),reserved,r.keep??0,r.teamReserve??0));};
+ const spare=(slot,r)=>{
+  const i=p.c.items[slot];if(!safe(i)||!r)return 0;
+  if(r._bankExplicitSource&&(
+   explicit(i,'inventory')!==r._bankExplicitSource||
+   r._bankExplicitSource.action!=='sell'||
+   r._bankExplicitSource.enabled!==true))return 0;
+  const reserved=['sell','bank','list','send'].includes(r.action)?
+   bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??
+   (bot.production?.reserved(i)?count(i):0):0;
+  if(r._autoBoundedExcess){
+   const source=r._boundedSource;
+   // Source rule, role, scope and current physical state are rechecked at
+   // scheduling AND dispatch; the earlier derived rule is never authority.
+   if(explicit(i,'inventory')!==source||source.action!=='keep'||
+      source.excessAction!=='sell'||!boundedStockVariantAllowed(p.G,i))
+    return 0;
+   const policy=boundedStockSurplus({held:localVariantQuantity(p.c.items,i),
+    reserved,keep:source.keep,teamReserve:source.teamReserve,
+    maximum:source.maxCount});
+   return policy.valid?Math.max(0,Math.min(i.q??1,r.batch,policy.excess)):0;
+  }
+  return Math.min(i.q??1,r.batch,
+   surplusQuantity(count(i),reserved,r.keep??0,r.teamReserve??0));
+ };
  const value=i=>{try{const v=p.call('item_value',i);return Number.isFinite(v)&&v>=0?v:Infinity;}catch{return Infinity;}};
  const goalId=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,g.gearSlot??'']);
  function goalSpent(g){const index=cfg.production.goals.indexOf(g);return Math.max(ledger.goals[goalId(g)]??0,index>=0?ledger.goals[String(index)]??0:0);}
@@ -122,14 +155,13 @@ export function createEconomy(bot){
   if(townActive())return false;
   if(bot.recovery?.authorize(kind)===false)return false;const definitions=[...new Set(slots.map(n=>p.c.items[n]?.name).filter(Boolean)),...(rule?.item?[rule.item]:[])];if(definitions.some(name=>bot.content?.approve('item:'+name,[p.G.items[name],p.G.craft?.[name],p.G.drops?.[name]])===false))return false;
   if(kind==='bank.expand'&&!bankExpansionAvailable(cost))return false;
-  const rollback=kind==='bank.store'&&bot.bank?.reclaiming&&
-   details.reason==='revoked-emergency-sale-rollback';
-  if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind)||rollback)||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!remaining(rule))return false;
+  const rollback=kind==='bank.store'&&details.reason==='revoked-emergency-sale-rollback'&&bot.bank?.reclaiming===true&&bot.bank?.rollbackPending===true;
+  if(closed||!bot.running||bot.inventoryBlocked||bot.journal||bot.bank?.pending&&!kind.startsWith('bank.partial.')&&!(bot.bank.singlePending&&['bank.retrieve','bank.merge.retrieve'].includes(kind))&&!(bot.bank.storePending&&kind==='bank.store')&&!(bot.bank.swapPending&&kind==='bank.consolidate')&&!(bot.bank.reclaiming&&['bank.reclaim','sell'].includes(kind))&&!rollback||bot.logistics.reserved||!bot.checkpoint.durable||p.c.rip||exec.busy('inventory')||!remaining(rule))return false;
   if(!budget(cost,loss,rule)){note(kind+': '+budgetExplanation(cost,loss,rule));return false;}
   if(cfg.merchant.budgetMode!=='account-loss'&&!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
   if(!riskAllowed(kind,rule,details,loss)){note('Autonome Mutation: 24h-Risikolimit für Itemvariante ausgeschöpft');return false;}
   const prints=slots.map(s=>[s,fingerprint(p.c.items[s])]);
-  const valid=()=>bot.running&&!closed&&!townActive()&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&(!rule?._capacitySale||slots.length===1&&!!bot.storage?.lowQualityRule?.(p.c.items[slots[0]]))&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
+  const valid=()=>bot.running&&!closed&&!townActive()&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&(kind.startsWith('bank.')?bot.recovery?.bankDispatchAllowed?.(kind)!==false:true)&&(!rule?._capacitySale||slots.length===1&&!!bot.storage?.lowQualityRule?.(p.c.items[slots[0]]))&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
     (kind!=='bank.expand'||bankExpansionAvailable(cost))&&
     riskAllowed(kind,rule,details,loss)&&guard();
   return exec.run(kind,['inventory','gold','economy'],valid,()=>{
@@ -154,12 +186,12 @@ export function createEconomy(bot){
   const price=meta.g;if(!Number.isFinite(price)||price<=0||price>r.maxPrice)return false;
   const before=count(item),q=Math.floor(Math.min(quantity,r.batch,r.maxCount-before,Math.floor((cfg.merchant.budgetMode==='account-loss'?Math.max(0,p.c.gold):r.goldBudget)/price)));
   if(q<1||!extraGuard())return false;
-  if(!purchaseFits(p.c.items,item,q,meta)){
+  if(!purchaseFits(p.c.items,item,q,meta,{inventorySize:p.c.isize})){
    note('NPC-Kauf '+item.name+': physische Inventarplätze fehlen (frei: '+bot.free()+')');
    return false;
   }
   if(!budget(q*price,0,r)||!npcTravel(npcFor(item.name),'NPC '+item.name))return false;
-  return perform('buy',{cost:q*price,rule:r,guard:()=>extraGuard()&&purchaseFits(p.c.items,item,q,meta)&&npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
+  return perform('buy',{cost:q*price,rule:r,guard:()=>extraGuard()&&purchaseFits(p.c.items,item,q,meta,{inventorySize:p.c.isize})&&npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
  function npcSell(slot,r,{onConfirmed=()=>true}={}){const i=p.c.items[slot],sourceBefore=i?.q??1,q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice||!remaining(r)||!budget(0,0,r))return false;const before=count(i),gold=p.c.gold;let receipt=null;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!npcTravel(d,'NPC-Verkauf'))return false;
   return perform('sell',{slots:[slot],rule:r,onConfirmed,guard:()=>spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>Promise.resolve(p.call('sell',slot,q)).then(result=>{receipt=result;return result;}),observe:()=>{

@@ -7,6 +7,7 @@ on:
       - .github/workflows/regen-albot-pr.yml
       - src/merchant/bank.mjs
       - src/merchant/bank-partial-recovery.mjs
+      - scripts/pool-runtime-strings.mjs
       - test/roadmap-w04-bank-disposition.test.mjs
 permissions:
   contents: write

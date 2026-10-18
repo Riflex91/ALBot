@@ -1020,7 +1020,7 @@ export function createMerchant(bot){
       return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);
      });
    if(trackerAcquisition.eligible())add('tracker.exchange',{priority:250},()=>trackerAcquisition.tick());
-   add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production.helpers',{priority:-125},()=>bot.production.helperSupply?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());
+   add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production.helpers',{priority:-125},()=>bot.production.helperSupply?.()??false);add('production',null,()=>bot.production.tick());add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());if(cfg.merchant.bankReclaim&&cfg.merchant.preventiveStorage)add('bank.preventive',{priority:-180},()=>bot.bank.preventiveDisposition());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>{buff();return bot.services.tick();});
   }
@@ -1038,7 +1038,7 @@ export function createMerchant(bot){
    // A gold-only/stack-preserving reward is not a reason to abandon an
    // authorized NPC worksite for speculative gear or token/coin banking.
    const step=job.id==='production'?bot.production?.status?.()?.steps?.[0]:null;
-   const detour=['tracker.exchange','bank.gold','bank.consolidate','bank.capacity','market.background','mluck.service'].includes(job.id)||
+   const detour=['tracker.exchange','bank.gold','bank.consolidate','bank.capacity','bank.preventive','market.background','mluck.service'].includes(job.id)||
     job.id==='production'&&['retrieve','marketBuy','upgrade','compound'].includes(step?.kind);
    if(worksiteHeld&&detour){
     if(Date.now()-lastWorksiteDeferral>20000){

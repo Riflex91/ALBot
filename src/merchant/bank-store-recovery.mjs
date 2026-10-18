@@ -38,7 +38,7 @@ export function classifyBankStoreRecord(r,{
   return {phase:'unobserved',reason:'bank-map-unresolved'};
  }
  if(bankMap!==map||!bank||!Array.isArray(bank[r.pack])||
-    bank[r.pack].length>42||r.dest>=bank[r.pack].length)
+    bank[r.pack].length>42)
   return {phase:'unobserved',reason:'addressed-pack-not-current'};
  const source=inventory[r.source],dest=bank[r.pack][r.dest];
  if(source&&fingerprint(source)===r.sourcePrint&&!dest)

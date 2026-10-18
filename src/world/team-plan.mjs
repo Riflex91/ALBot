@@ -208,7 +208,7 @@ import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHu
 // True active hunts, urgent shell refills, material orders and unsafe plans
 // continue through their existing higher-priority decision paths.
 export function shouldHoldOrdinaryLocation(current,next,selectedKind,shellRefill=false){
- return !shellRefill&&selectedKind==='farm'&&!!next&&
+ return !shellRefill&&['farm','achievement'].includes(selectedKind)&&!!next&&
   (current?.kind==='farm'||current?.kind==='hunt'&&
    current.target===next.target);
 }

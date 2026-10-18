@@ -103,7 +103,7 @@ test('W04 only explicit currently permitted plain bank assets enter preventive r
  assert.equal(bot.bank.preventiveDisposition(),false);
  assert.equal(bot.bank.preventiveStatus().checked,24);
  assert.equal(calls.length,0,'a partial scan never authorizes withdrawal');
- assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(bot.bank.preventiveDisposition(),true,JSON.stringify(bot.bank.preventiveStatus()));
  assert.equal(bot.bank.preventiveStatus().checked,42);
  assert.equal(bot.bank.preventiveStatus().complete,true);
  assert.equal(bot.bank.pending,true,'a durable reclaim state prevents parallel work');
@@ -117,7 +117,7 @@ test('W04 only explicit currently permitted plain bank assets enter preventive r
 test('W04 late sell-rule revocation blocks already staged withdrawal dispatch',()=>{
  const {bot,calls,setRule}=fixture();
  bot.bank.preventiveDisposition();
- assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(bot.bank.preventiveDisposition(),true,JSON.stringify(bot.bank.preventiveStatus()));
  setRule(null);
  assert.equal(calls[0].params.guard(),false);
 });

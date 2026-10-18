@@ -21,8 +21,8 @@ jobs:
       - run: npm run build
       - run: node scripts/sync-personal-code.mjs --write
       - run: node scripts/verify-bootstrap-contract.mjs
-      - run: node scripts/verify-bootstrap-channel.mjs
       - run: npm test
+      - run: node scripts/verify-bootstrap-channel.mjs
       - run: npm run build:editor
       - name: Preserve personal configuration and commit generated artifacts
         shell: bash

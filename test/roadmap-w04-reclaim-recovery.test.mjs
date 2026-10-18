@@ -8,10 +8,16 @@ import {createBank} from '../src/merchant/bank.mjs';
 const item={name:'ore',q:10},owner='M',realm='EU:I',pack='items0',now=1700000000000;
 const empty=()=>Array(42).fill(null);
 function record(extra={}){
- return {version:2,owner,realm,at:now,item:{...item},pack,slot:27,
+ const at=extra.at??now;
+ const r={version:2,owner,realm,at,item:{...item},pack,slot:27,
   dest:0,before:0,bankBefore:10,quantity:10,
   gold:1000,sourcePrint:fingerprint(item),expectedSaleGold:20,
   explicitOnly:true,...extra};
+ if(!Object.hasOwn(extra,'prepared'))
+  r.prepared={at,kind:'bank.reclaim',session:'original-browser-session',
+   realm:r.realm,pack:r.pack,slot:r.slot,dest:r.dest,
+   sourcePrint:r.sourcePrint};
+ return r;
 }
 const context=(r,{source={...item},target=null,map='bank',bankPresent=true}={})=>{
  const inventory=empty(),bankPack=empty();
@@ -287,6 +293,38 @@ test('W04 rejected queued action remains releasable if never actually dispatched
  assert.equal(f.calls.length,1);
  assert.equal(f.store.get('albot:bank-reclaim:M'),null);
  assert.equal(f.gameCalls.length,0);
+});
+test('W04 legacy V2 without preparation cannot be mistaken for a never-sent request',()=>{
+ const old=record({at:Date.now(),prepared:undefined});
+ const f=fixture({saved:old});
+ assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'legacy-unchanged-uncertain');
+ assert.equal(f.bot.bank.recoveryStatus().requiresManualReview,true);
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.bot.bank.pending,true);
+ assert.equal(f.sales.length,0);
+ assert.equal(f.gameCalls.length,0);
+ assert.deepEqual(f.store.get('albot:bank-reclaim:M'),old);
+});
+test('W04 new prepared unchanged checkpoint may be cleared without an API dispatch',()=>{
+ const recent=record({at:Date.now()});
+ const f=fixture({saved:recent});
+ assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'unchanged');
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.bot.inventoryBlocked,false);
+ assert.equal(f.bot.bank.pending,false);
+ assert.equal(f.store.get('albot:bank-reclaim:M'),null);
+});
+test('W04 malformed prepared receipt blocks all automatic bank recovery',()=>{
+ const r=record();
+ for(const corrupted of [{kind:'bank.other'},{session:''},
+  {slot:1},{realm:'other'},{pack:'items3'},{at:now-1},
+  {sourcePrint:'incorrect'},{dest:99}]){
+  const bad=record({prepared:{...r.prepared,...corrupted}});
+  assert.equal(validateBankReclaimRecord(bad,{owner,realm,now}).valid,
+   false,JSON.stringify(corrupted));
+  assert.equal(context(bad).phase,'invalid');
+ }
 });
 test('W04 a restart with dispatched unchanged source does not release intent',()=>{
  const r=record({at:Date.now()});

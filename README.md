@@ -1,11 +1,10 @@
-## Verbindlicher Bot-Dateivertrag für Bootstrap und andere KIs (18.10.2026)
+## WICHTIG: Tatsächlicher Ingame-Bootstrap und sein Ladeziel (18.10.2026)
 
-**Kanonisches persönliches Laufzeitartefakt:** [`bot.js`](bot.js) auf `main`, Raw-Adresse: `https://raw.githubusercontent.com/Riflex91/ALBot/main/bot.js`.
-`bot.js` enthält die persönliche `globalThis.ALBotConfig` und die ausführbare Runtime. `dist/albot.js` ist ein separates generisches Paket, `dist/albot.runtime.js` die beim Build erzeugte Runtime; diese Dateien dürfen nicht mit der persönlichen `bot.js` verwechselt werden.
+**Der im Spiel eingesetzte Bootstrap lädt NICHT `main/bot.js`.** Der übermittelte Ingame-CODE enthält `globalThis.ALBotConfig` und danach einen **signierten Release-Loader** (Referenzkopie ohne persönliche Einstellungen: [`bootstrap/ingame-loader-v2.js`](bootstrap/ingame-loader-v2.js)). Dieser ruft zuerst das [Release-Manifest](https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json) auf und führt danach ausschließlich die im signierten Feld `runtimeUrl` angegebene Runtime aus.
 
-**Wichtige Beweisgrenze:** Der tatsächlich im Adventure-Land-CODE-Feld eingesetzte externe Bootstrap wurde noch nicht als Quelldatei bereitgestellt. Daher ist **nicht nachgewiesen, welche URL dieser Bootstrap wirklich lädt**. Die obige URL ist die maßgebliche Adresse des persönlichen Artefakts, **keine Behauptung über den derzeitigen Ingame-Loader**.
+**Bei Prüfung am 18.10.2026:** `runtimeUrl` = [`dist/albot.runtime.js` im Release-Branch](https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js), **Version `0.10.9-candidate`**, Sequenz `1`. Der Bootstrap prüft ECDSA-P-256-Signatur, SHA-256, Bytezahl und Versions-Header vor der Codeausführung. Die persönliche `main/bot.js` ist ein *anderes Artefakt* (`0.10.10-candidate`) und wird von diesem Bootstrap **nicht** unmittelbar geladen. Quellcode-/Manifest-Inspektion belegt den konfigurierten Pfad; ein tatsächlich erfolgreicher Lauf im Spiel ist nicht separat nachgewiesen.
 
-Die maschinenlesbare Quelle dieser Zuordnung ist [`bootstrap.contract.json`](bootstrap.contract.json); Details, Änderungen und Grenzen stehen im [Bootstrap-/Ladevertrag](docs/BOOTSTRAP-VERTRAG.md). GitHub Actions führt `node scripts/verify-bootstrap-contract.mjs` **nach** `npm run build` aus und prüft Version, Dokumentation, Personal-Bundle, Runtime und Bundle-Manifest. Sobald der echte Ingame-Bootstrap verfügbar ist, muss sein Ladeziel separat mit dem Vertrag verglichen und dokumentiert werden.
+**Pflicht für weitere KIs:** [`bootstrap.contract.json`](bootstrap.contract.json) und [`docs/BOOTSTRAP-VERTRAG.md`](docs/BOOTSTRAP-VERTRAG.md) vor Änderungen lesen. **Änderungen an `main/bot.js` oder `main/dist/` erreichen den laufenden Bootstrap nicht automatisch!** Der Manifest-Branch muss bestehen bleiben, und jeder neue Release muss gültig signiert sowie zur Konfiguration kompatibel sein. GitHub Actions prüft nach frischem Build getrennt (a) die Artefakte in `main` und (b) den realen Manifest→Runtime-Kanal inklusive Signatur und Hash.
 
 ---
 

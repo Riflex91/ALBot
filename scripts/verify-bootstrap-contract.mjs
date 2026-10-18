@@ -43,20 +43,27 @@ assert.equal(manifest.sha256, createHash('sha256').update(bytes(contract.generic
 assert.equal(manifest.runtimeBytes, bytes(contract.builtRuntime).length, 'Manifest-Runtime-Bytezahl stimmt nicht');
 
 assert.ok(contract.inGameLoader && typeof contract.inGameLoader === 'object', 'Loader-Status fehlt');
-if (contract.inGameLoader.status === 'unverified') {
-  assert.equal(contract.inGameLoader.trackedSourcePath, null, 'Unverifizierter Loader darf keinen belegten Repository-Quellpfad behaupten');
-  assert.equal(contract.inGameLoader.observedLoadedUrl, null, 'Unverifizierter Loader darf keine beobachtete Ladeadresse behaupten');
-  console.warn('HINWEIS: Der externe Ingame-Bootstrap wurde nicht bereitgestellt; sein tatsächliches Ladeziel ist NICHT verifiziert.');
-} else {
-  assert.fail('Loader-Status geändert: Verifikationslogik für den echten Bootstrap zuerst implementieren und prüfen.');
+const loader = contract.inGameLoader;
+assert.equal(loader.status, 'source-reviewed', 'Ingame-Loader muss als geprüftes, aber nicht live-beobachtetes Quellmaterial markiert sein');
+assert.equal(loader.trackedSourcePath, 'bootstrap/ingame-loader-v2.js');
+assert.equal(loader.releaseChannelRef, 'codex/w00-w01-readonly-disposition-20261018');
+assert.equal(loader.observedLoadedUrl, null, 'Ohne Live-Nachweis keine beobachtete URL behaupten');
+const loaderCode = read(loader.trackedSourcePath);
+assert.ok(loaderCode.includes('const channel="' + loader.configuredManifestUrl + '"'), 'Der Loader zeigt auf einen anderen Manifest-Kanal');
+assert.ok(loaderCode.includes('const raw=await request(manifest.runtimeUrl,8388608);'), 'Der Loader lädt die Runtime nicht mehr dynamisch aus manifest.runtimeUrl');
+assert.ok(loaderCode.includes('root.crypto.subtle.verify('), 'Signaturprüfung aus dem Loader entfernt');
+assert.ok(loaderCode.includes('await digest(raw)!==manifest.sha256'), 'Hashprüfung aus dem Loader entfernt');
+assert.equal(loader.inspectedManifest.runtimeUrl, loader.inspectedResolvedRuntimeUrl);
+assert.equal(loader.inspectedManifest.version, '0.10.9-candidate');
+for (const path of ['README.md', 'AGENTS.md', 'docs/BOOTSTRAP-VERTRAG.md']) {
+  const content = read(path);
+  assert.ok(content.includes(loader.configuredManifestUrl), path + ' muss den Ingame-Manifest-Kanal nennen');
+  assert.ok(content.includes(loader.inspectedResolvedRuntimeUrl), path + ' muss die aus dem Manifest bekannte Runtime-URL nennen');
 }
-
 console.log(JSON.stringify({
-  status: 'pass',
-  version: VERSION,
-  personalCode: contract.canonicalPersonalCode,
-  canonicalUrl: contract.canonicalPersonalRawUrl,
-  runtimeVerified: true,
-  generatedBundleVerified: true,
-  inGameLoader: contract.inGameLoader.status
+  status: 'pass', mainBuildVersion: VERSION,
+  mainPersonalCode: contract.canonicalPersonalCode,
+  inGameManifest: loader.configuredManifestUrl,
+  inspectedInGameVersion: loader.inspectedManifest.version,
+  inGameLoader: loader.status
 }));

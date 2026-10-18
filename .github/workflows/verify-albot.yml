@@ -24,6 +24,8 @@ jobs:
         run: node scripts/sync-personal-code.mjs --check
       - name: Verify documented bootstrap target and version contract
         run: node scripts/verify-bootstrap-contract.mjs
+      - name: Verify signed in-game release manifest and runtime
+        run: node scripts/verify-bootstrap-channel.mjs
       - name: Full offline tests
         run: npm test
       - name: Build editor package

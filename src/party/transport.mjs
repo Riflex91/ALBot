@@ -14,9 +14,11 @@ export function fitHeartbeat(data,maxLength=4200){
  // uses these counts to avoid allocating duplicate farming quotas. They
  // matter more than optional diagnostic/skill/market telemetry, but lose
  // priority to the core identity, item demand and material requests below.
- for(const key of ['itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','bankOwner','skills','mluck','supplies','materialProgress']){
+ for(const key of ['itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','farmPlan','roles','activity','skills','mluck','supplies','materialProgress']){
   delete d[key];if(length()<=maxLength)return d;
  }
+ // bankOwner stays core: trimming a fresh exclusive-access claim would
+ // silently let a competing bank action proceed.
  // Keep active team identity if possible, but delivery demand takes precedence.
  while(d.materials.length>1&&length()>maxLength)d.materials.pop();
  while(d.items.length>0&&length()>maxLength)d.items.pop();

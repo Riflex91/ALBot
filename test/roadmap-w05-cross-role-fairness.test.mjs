@@ -48,3 +48,40 @@ test('W05 role-specific vacancies and upper bound are deterministic',()=>{
  assert.ok(shoes<=60);
  assert.equal(crossRoleGearPriority(empty,[],{role:'economy',slot:'shoes',now}),0);
 });
+
+
+test('W05 equal slot counts use actual role weights, not interchangeable occupancy',()=>{
+ const strong=profile('ranger',Object.keys(slots));
+ const healerChest=profile('priest',['chest']);
+ const healerStaff=profile('priest',['mainhand']);
+ const priority=(self,role)=>crossRoleGearPriority(self,
+  [{profile:self,role},{profile:strong,role:'dps'}],
+  {role,slot:'shoes',now});
+ assert.ok(priority(healerChest,'healer')>priority(healerStaff,'healer'),
+  'Priest mainhand carries more utility than chest with same slot count');
+ const tankShoes=profile('warrior',['shoes']);
+ const tankChest=profile('warrior',['chest']);
+ assert.ok(priority(tankShoes,'tank')>priority(tankChest,'tank'),
+  'Tank chest carries more coverage than shoes with same slot count');
+ const merchantBelt=profile('merchant',['belt']);
+ const merchantShoes=profile('merchant',['shoes']);
+ assert.ok(priority(merchantBelt,'economy')>priority(merchantShoes,'economy'),
+  'Merchant movement slot is explicitly weighted');
+});
+
+test('W05 absent canonical slots or stale/future owner never grant cross-role priority',()=>{
+ const weak=profile('priest',[]);
+ const strong=profile('ranger',Object.keys(slots));
+ const base=self=>crossRoleGearPriority(self,
+  [{profile:self,role:'healer'},{profile:strong,role:'dps'}],
+  {role:'healer',slot:'mainhand',now});
+ assert.ok(base(weak)>0);
+ assert.equal(base({...weak,at:now-8*86400000}),0);
+ assert.equal(base({...weak,at:now+1}),0);
+ const malformed=structuredClone(weak);
+ delete malformed.slots.offhand;
+ assert.equal(base(malformed),0,'incomplete keyset is not complete gear evidence');
+ const extra=structuredClone(weak);
+ extra.slots.fake1={name:'unrelated'};
+ assert.equal(base(extra),base(weak),'unknown UI slots cannot raise gear coverage');
+});

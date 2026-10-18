@@ -110,3 +110,15 @@ test('role and spawn helpers carry no transaction or boss attack authority',()=>
  assert.equal(Object.hasOwn(choice,'authorize'),false);
  assert.equal(Object.hasOwn(choice,'attack'),false);
 });
+
+test('verified sustained crowd relief accepts an independently sampled safer nearby spawn',()=>{
+ const decision=chooseFarmAreaSwitch({current,currentRank:{...old,pressureRatio:.75,evidenceSeconds:95},
+  candidate:{...next,score:90,travelSeconds:95,pressureRatio:.1,evidenceSeconds:120},
+  now,holdMs:60000,improvement:.2});
+ assert.equal(decision.reason,'verified-crowded-spawn-relief');
+ assert.equal(decision.choice.key,next.key);
+ const unverified=chooseFarmAreaSwitch({current,currentRank:{...old,pressureRatio:.75,evidenceSeconds:95},
+  candidate:{...next,score:90,travelSeconds:95,pressureRatio:.1,evidenceSeconds:10},
+  now,holdMs:60000});
+ assert.equal(unverified.choice.key,old.key);
+});

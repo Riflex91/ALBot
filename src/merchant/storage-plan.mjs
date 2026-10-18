@@ -62,8 +62,11 @@ export function createStoragePlanner(bot){
   const required=Math.max(bot.production?.reservedQuantity?.(i)??0,...purposes.recipes.map(r=>r.quantity),0);
   // Exact variants across BOTH stores satisfy the reserve; never count an
   // equipped, protected or speculative offline item as disposable backing.
+  // A cached offsite bank fingerprint is advisory, not spend/sale authority.
+  // Only current physical bank observation can back a reserve before selling.
+  const verifiedBank=bot.bank?.observed===true&&p.c.map?.startsWith('bank');
   const held=(p.c.items??[]).filter(x=>plain(x)&&identity(x)===identity(i)).reduce((n,x)=>n+(x.q??1),0)+
-   bankStock().filter(r=>plain(r.item)&&identity(r.item)===identity(i)).reduce((n,r)=>n+(r.item.q??1),0);
+   (verifiedBank?bankStock():[]).filter(r=>plain(r.item)&&identity(r.item)===identity(i)).reduce((n,r)=>n+(r.item.q??1),0);
   const q=i.q??1,price=e.value(i);if(!Number.isSafeInteger(q)||q<1||held-q<required||!Number.isFinite(price)||price<0||price>(cfg.production.autoGearSellMaxValue??1000000))return null;
   return {...defaultsFor(ITEM_RULE),name:'Lagerplanung: ersetzbar '+i.name,item:i.name,action:'sell',batch:q,maxCount:Math.max(held,1),minPrice:price,
    _autoDisposition:true,_capacitySale:true,replacement:evidence,keep:0,teamReserve:0};
@@ -87,6 +90,29 @@ export function createStoragePlanner(bot){
  function tick(){
   refresh();if(!enabled()||!active||bot.journal||bot.inventoryBlocked||bot.bank?.pending||bot.logistics?.reserved||bot.gold?.reserved||bot.exec.busy('inventory'))return false;
   if(bot.bank?.consolidateInventory?.())return true;
+  // Reversible clutter parking precedes any proposed NPC sale. Never use
+  // speculative cached/offsite bank room, consume protected quest sources,
+  // or override an explicit item disposition.
+  const physicalBank=bot.bank?.observed===true&&p.c.map?.startsWith('bank');
+  const freeBank=physicalBank&&bot.bank?.capacityEvidence?.()?.rows?.some(r=>
+   r.map===p.c.map&&r.free>(cfg.merchant.bankWorkspace??2));
+  if(freeBank){
+   const clutter=new Set(['partyhat','cake','pumpkinspice','elixirstr0',
+    'elixirint0','elixirvit0','seashell']);
+   for(let slot=0;slot<p.c.items.length;slot++){
+    const i=p.c.items[slot],meta=p.G.items?.[i?.name];
+    if(!i||!clutter.has(i.name)||!usable(i)||manual(i)||
+       !meta||meta.e||bot.production?.reservedQuantity?.(i)>0)continue;
+    const q=i.q??1;
+    const rule={name:'Umkehrbares Clutter-Banking '+i.name,item:i.name,
+     action:'bank',enabled:true,batch:q,maxCount:999999,
+     keep:0,teamReserve:0,maxActions:0,goldBudget:0,lossBudget:0};
+    last={kind:'clutter-bank',item:i.name,quantity:q,slot};
+    if(bot.bank?.store?.(slot,rule)){
+     bot.event?.('storage.clutterBankPlanned',last);return true;
+    }
+   }
+  }
   const candidates=[],groups=new Map(),stock=bankStock();
   const key=i=>identity(i),all=[...(p.c.items??[]).flatMap((item,slot)=>item?[{item,slot}]:[]),...stock];
   for(const row of all){const i=row.item,m=p.G.items?.[i.name];if(!usable(i)||(i.q??1)!==1||!m.compound||!cfg.production.compound||(i.level??0)>=(cfg.production.autoGearMaxLevel??5))continue;
@@ -118,6 +144,23 @@ export function createStoragePlanner(bot){
    last={kind:'sell',item:i.name,slot,netAccountSlots:1,replacement:r.replacement};
    if(e.npcSell(slot,r)||bot.movement.order?.owner==='economy'||bot.journal){bot.event?.('storage.plan',last);return true;}}
   if(bankPressure()&&p.c.map?.startsWith('bank')&&bot.bank.reclaim((cfg.merchant.bankWorkspace??2)+2))return true;
+  // Explain *why* surplus stacks are held. An item without a verified,
+  // authorized disposition stays in inventory; the log supports later review.
+  const watch=new Set(['partyhat','cake','seashell','pumpkinspice',
+   'elixirstr0','elixirint0','elixirvit0']);
+  const held=(p.c.items??[]).filter(i=>i&&watch.has(i.name)).map(i=>({
+   item:i.name,quantity:i.q??1,level:i.level??0,
+   authorizedAction:e.explicit?.(i)?.action??e.rules?.(i,'inventory')?.action??'keep',
+   productionReserve:bot.production?.reservedQuantity?.(i)??0,
+   replaceableSale:!!lowQualityRule(i)}));
+  last={kind:'no-actionable-capacity',free:bot.free(),reserve:reserve(),
+   target:target(),bankPressure:bankPressure(),bankVerified:bot.bank?.observed===true,
+   items:held};
+  if(Date.now()-noteAt>=60000){noteAt=Date.now();
+   bot.event?.('storage.capacityDeferred',{
+    ...last,items:held.map(i=>i.item+':'+i.quantity+':'+i.authorizedAction+
+     ':reserve='+i.productionReserve).join('|'),
+    reason:'No verified permitted sale/bank recovery; no implicit disposal'});}
   return false;
  }
  return {tick,lowQualityRule,exchangeAllowed,refresh,receiveNewSlots:()=>enabled()?Math.max(0,bot.free()-reserve()):Infinity,get active(){refresh();return active;},status:()=>({enabled:enabled(),active,reserve:reserve(),target:target(),bankPressure:bankPressure(),last})};

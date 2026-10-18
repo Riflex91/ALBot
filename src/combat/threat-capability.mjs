@@ -12,7 +12,7 @@ const refusal=(reason,detail={})=>({decision:'retreat',viable:false,
 // naturally aggressive live monster may be evaluated for team defense.
 // A missing healer/teammate or stale heartbeat makes the result RETREAT.
 export function estimateThreatCapability({
- monster,meta,team,now=Date.now(),observed=[],allowHealing=true
+ monster,meta,team,now=Date.now(),observed=[],otherMonsters=[],allowHealing=true
 }={}){
  if(!monster?.id||!monster.target||!isNaturallyAggressive({monsters:{[monster.mtype]:meta}},monster)||
    !finite(monster.hp,1,100000000)||!finite(meta?.attack,0,100000)||
@@ -57,7 +57,32 @@ export function estimateThreatCapability({
  const victim=members.find(m=>m.name===monster.target);
  if(!victim)return refusal('victim-not-verified');
  const otherAggro=members.reduce((n,m)=>n+(finite(m.threats,0,20)?Math.max(0,m.threats-(m.name===victim.name?1:0)):0),0);
- if(otherAggro>0)return refusal('other-team-aggro-unmodelled',{otherAggro});
+ // Multiple attackers may be defended only when every *additional* aggro
+ // reported by fresh team heartbeats is visible and its actual species
+ // damage can be independently bounded. Unknown mobs still fail closed.
+ const extra=Array.isArray(otherMonsters)?otherMonsters.filter(m=>
+  m?.id!==monster.id&&members.some(x=>x.name===m?.target)):null;
+ if(otherAggro>0&&(!extra||extra.length!==otherAggro||otherAggro>3))
+  return refusal('other-team-aggro-unmodelled',{otherAggro,visible:extra?.length??0});
+ const secondary=[];
+ for(const m of extra??[]){
+  const target=members.find(x=>x.name===m.target),metaOther=m.meta;
+  if(!target||!isNaturallyAggressive({monsters:{[m.mtype]:metaOther}},m)||
+    !finite(m.hp,1,100000000)||!finite(metaOther?.attack,0,100000)||
+    !finite(metaOther?.frequency,.01,100)||!finite(metaOther?.hp,1,100000000))
+   return refusal('other-team-aggro-unverified',{otherAggro,id:m?.id});
+  const protection=metaOther.damage_type==='magical'?'resistance':'armor';
+  const pierce=protection==='armor'?metaOther.apiercing??0:metaOther.rpiercing??0;
+  const multiplier=damageMultiplier(target.stats[protection]-pierce);
+  if(!finite(multiplier,.01,1.5))
+   return refusal('other-team-defense-unverified',{member:target.name});
+  secondary.push({id:m.id,victim:target.name,hp:m.hp,
+   incoming:metaOther.attack*metaOther.frequency*cap(multiplier,.05,1.5)*1.3});
+ }
+ if(secondary.length&&members.some(x=>{
+   const owned=secondary.filter(m=>m.victim===x.name).length;
+   return owned!==Math.max(0,x.threats-(x.name===victim.name?1:0));
+  }))return refusal('other-team-aggro-count-mismatch',{otherAggro});
  const healer=allowHealing?members.find(m=>m.class==='priest'&&
   Array.isArray(m.skills)&&m.skills.includes('heal')&&
   Array.isArray(m.capabilities?.ready)&&m.capabilities.ready.includes('heal')&&
@@ -103,15 +128,23 @@ export function estimateThreatCapability({
    observedIncoming??0)*1.3;
  const effectiveHeal=Math.min(healingDps,incomingDps*.8);
  const netDps=Math.max(0,incomingDps-effectiveHeal);
- const ttk=monster.hp/Math.max(.01,teamDps);
- const survival=netDps>0?victim.hp/netDps:300;
+ const ttk=(monster.hp+secondary.reduce((n,m)=>n+m.hp,0))/
+  Math.max(.01,teamDps*(secondary.length?.65:1));
+ const survival=members.reduce((min,m)=>{
+  const side=secondary.filter(x=>x.victim===m.name)
+   .reduce((n,x)=>n+x.incoming,0);
+  const actual=m.name===victim.name?netDps+side:side;
+  return Math.min(min,actual>0?m.hp/actual:300);
+ },300);
  const safeTime=ttk*1.5+3; // latency/coordination + low-confidence hit margin
  const targetHealth=victim.hp/victim.max_hp;
  const viable=teamDps>0&&safeTime<survival*.72&&
-   targetHealth>=.4&&monster.hp>=1;
+   targetHealth>=.4&&monster.hp>=1&&
+   members.every(m=>!secondary.some(x=>x.victim===m.name)||m.hp/m.max_hp>=.4);
  return {decision:viable?'defend':'retreat',viable,
   reason:viable?'bounded-team-capacity':'insufficient-time-to-kill',
-  evidence:'bounded-client-estimate',monster:monster.mtype,
+  evidence:'bounded-client-estimate',otherAggroMode:secondary.length?'fully-observed-bounded':'single-aggro',
+  secondaryAggro:secondary.length,monster:monster.mtype,
   monsterId:monster.id,victim:victim.name,partySize:members.length,
   teamDps:Math.round(teamDps),incomingDps:Math.round(incomingDps),
   healingDps:Math.round(effectiveHeal),ttkSeconds:+ttk.toFixed(2),
@@ -153,6 +186,9 @@ export function createCombatAssessment(bot){
  function assess(m){
   const outcome=estimateThreatCapability({monster:m,
    meta:bot.p.G.monsters?.[m?.mtype],team:team(),now:now(),observed:hits,
+   otherMonsters:bot.monsters().filter(x=>x?.id!==m?.id&&
+    bot.farmers.includes(x?.target)&&x.hp>0&&!x.dead).map(x=>({
+     ...x,meta:bot.p.G.monsters?.[x.mtype]})),
    allowHealing:bot.cfg?.party?.healing!==false});
   last={at:now(),...outcome};
   const key=[m?.id,outcome.decision,outcome.reason,outcome.victim].join(':');

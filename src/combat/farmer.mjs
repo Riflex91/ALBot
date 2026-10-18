@@ -6,6 +6,18 @@ import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-co
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
+// Deterministic emergency focus prevents each Ranger from independently
+// picking a different engaged attacker while a teammate is in danger.
+// Incomplete patient data ranks LAST; it never becomes invented survivability.
+export function chooseEmergencyFocus(monsters,members=[]){
+ const health=new Map((members??[]).filter(m=>m&&typeof m.name==='string'&&
+  Number.isFinite(m.hp)&&Number.isFinite(m.max_hp)&&m.max_hp>0)
+  .map(m=>[m.name,m.hp/m.max_hp]));
+ return (monsters??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
+   health.has(m.target)).slice().sort((a,b)=>
+   health.get(a.target)-health.get(b.target)||
+   a.hp-b.hp||String(a.id).localeCompare(String(b.id)))[0]??null;
+}
 export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
@@ -24,7 +36,7 @@ export function potionResource(c,threshold=300){
  return hp>threshold?'hp':mp>threshold?'mp':null;
 }
 export function createFarmer(bot){
-  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0};
+  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   // Observe real outgoing basic attacks in addition to skill casts. Failed
@@ -259,7 +271,19 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const emergency=bot.combatAssessment?.emergency?.();
     if(emergency?.active&&rescueTeam(emergency))return;
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
-    const danger=threat??emergency?.monsters?.slice().sort((a,b)=>distance(c,a)-distance(c,b))[0];
+    const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
+      bot.transport?.fresh?.(name)).filter(Boolean);
+    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
+    const danger=rescueFocus??threat;
+    if(rescueFocus&&rescueFocus.id!==threat?.id){
+      const key=rescueFocus.id+':'+rescueFocus.target;
+      if(lastEmergencyFocus.key!==key||now-lastEmergencyFocus.at>=12000){
+       lastEmergencyFocus={key,at:now};
+       bot.event?.('combat.emergencyFocus',{selected:rescueFocus.id,
+        victim:rescueFocus.target,ownThreat:threat?.id??null,
+        source:'fresh-lowest-hp-teammate'});
+      }
+    }
     if(danger){
       const assessment=bot.combatAssessment?.assess(danger);
       if(assessment?.viable&&bot.allowed(danger)){

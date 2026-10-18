@@ -236,6 +236,6 @@ test('high spawn pressure and autoHop cannot split a character already on explic
  t.tick();t.tick();
  assert.equal(f.calls.filter(c=>c[0]==='change_server').length,0);
  assert.equal(t.status().reunion.target,'EUII');
- assert.equal(f.events.some(e=>e.type==='server.homeCrowdedHeld'),true);
+ assert.equal(f.events.some(e=>e.type==='server.homeEscapeDeferred'),true);
  t.close();
 });

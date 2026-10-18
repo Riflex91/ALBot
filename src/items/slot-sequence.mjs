@@ -75,6 +75,7 @@ function apply(items,step,G,size){
   consumed=[{slot:a,quantity:qty(items[a])}];mergedUnits=qty(items[a]);
   placed=[b];
  }else if(kind==='withdraw'||kind==='receive'){
+  if(kind==='withdraw'&&qty(step.item)!==step.quantity)return null;
   const result=addOutput(next,step.item,step.quantity,G,size,kind==='withdraw');
   if(!result)return null;
   placed=result.slots;newSlots=result.newSlots;mergedUnits=result.mergedUnits;
@@ -129,6 +130,7 @@ export function planPhysicalSlotSequence(items,steps,G,{
  for(const s of steps){
   if(!s||typeof s.id!=='string'||!s.id||ids.has(s.id)||
      s.permitted!==true||!['remove','merge','receive','withdraw','produce'].includes(s.kind)||
+     (s.kind==='produce'&&(s.deterministic!==true||Array.isArray(s.outcomes)))||
      !Array.isArray(s.after??[])||(s.after??[]).some(id=>typeof id!=='string'))
    return fail('invalid-or-unpermitted-step');
   ids.add(s.id);

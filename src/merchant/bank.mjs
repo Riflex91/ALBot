@@ -65,7 +65,7 @@ export function createBank(bot){
   bot.inventoryBlocked=true;e.note('Bankeinlagerung: ungültiges Journal');
  }
  if(swapping&&!validateBankSwapRecord(swapping,{owner:me.name,realm:p.realm()}).valid){
-  bot.inventoryBlocked=true;e.note('Bankkonsolidierung: ungültiges Journal');
+  bot.inventoryBlocked=true;e.note('Bank-Swap: ungültiges Journal');
  }
  if([pending,reclaiming,single,storing,swapping].filter(Boolean).length>1){
   bot.inventoryBlocked=true;
@@ -109,11 +109,11 @@ export function createBank(bot){
  }
  function saveSwap(value){
   if(value&&(pending||reclaiming||single||storing||swapping)){
-   bot.inventoryBlocked=true;e.note('Bankkonsolidierung: widersprechendes Journal');
+   bot.inventoryBlocked=true;e.note('Bank-Swap: widersprechendes Journal');
    return false;
   }
   if(p.write(swapKey,value)!==true){
-   bot.inventoryBlocked=true;e.note('Bankkonsolidierung: Journal nicht gespeichert');
+   bot.inventoryBlocked=true;e.note('Bank-Swap: Journal nicht gespeichert');
    return false;
   }
   swapping=value;return true;
@@ -137,7 +137,7 @@ export function createBank(bot){
    return true;
   }
   bot.inventoryBlocked=true;
-  e.note('Bankkonsolidierung: Versand ungeklärt ('+phase+')');
+  e.note('Bank-Swap: Versand ungeklärt ('+phase+')');
   return true;
  }
  function storeEvidence(r){
@@ -599,11 +599,11 @@ export function createBank(bot){
    if(packMap(pack)!==p.c.map||!simple(x)||!simple(y)||
       !Number.isSafeInteger(qa)||!Number.isSafeInteger(qb)||qa<1||qb<1||
       identity(x)!==identity(y)||qa+qb>stackMax(x))continue;
-   const at=Date.now(),fa=fingerprint(x),fb=fingerprint(y),total=qa+qb;
-   const record={version:1,owner:me.name,realm:p.realm(),at,pack,a,b,
+   const at=Date.now(),fa=fingerprint(x),fb=fingerprint(y),total=qa+qb,
+    kind='bank.consolidate',realm=p.realm();
+   const record={version:1,owner:me.name,realm,at,pack,a,b,
     first:{...x},second:{...y},qa,qb,total,fa,fb,
-    prepared:{kind:'bank.consolidate',session:bot.session,at,
-     realm:p.realm(),pack,a,b,fa,fb}};
+    prepared:{kind,session:bot.session,at,realm,pack,a,b,fa,fb}};
    if(!validateBankSwapRecord(record,{owner:me.name,realm:p.realm()}).valid||
       !saveSwap(record))return false;
    const guard=()=>swapping===record&&
@@ -612,25 +612,24 @@ export function createBank(bot){
     simple(p.c.bank?.[pack]?.[a])&&simple(p.c.bank?.[pack]?.[b])&&
     (p.c.bank?.[pack]?.[a]?.q??1)+(p.c.bank?.[pack]?.[b]?.q??1)<=
       stackMax(p.c.bank?.[pack]?.[a]);
-   const accepted=e.perform('bank.consolidate',{guard,
+   const done=()=>!!swapping&&['merged-a','merged-b'].includes(swapEvidence(swapping).phase);
+   const accepted=e.perform(kind,{guard,
     call:()=>{
      if(!guard()){
       bot.inventoryBlocked=true;
-      throw Error('Bankkonsolidierung: Quelle vor Dispatch unklar');
+      throw Error('Bank-Swap: Quelle vor Dispatch unklar');
      }
-     const next={...record,dispatch:{kind:'bank.consolidate',session:bot.session,
-      at:Date.now(),realm:record.realm,pack,a,b,fa,fb}};
+     const next={...record,dispatch:{kind,session:bot.session,
+      at:Date.now(),realm,pack,a,b,fa,fb}};
      if(!validateBankSwapRecord(next,{owner:me.name,realm:p.realm()}).valid||
         p.write(swapKey,next)!==true){
       bot.inventoryBlocked=true;
-      throw Error('Bankkonsolidierung: Dispatchbeleg nicht gespeichert');
+      throw Error('Bank-Swap: Dispatchbeleg nicht gespeichert');
      }
      swapping=next;return p.call('bank_swap',pack,a,b);
     },
-    observe:()=>!!swapping&&['merged-a','merged-b'].includes(swapEvidence(swapping).phase),
-    onConfirmed:()=>!!swapping&&
-     ['merged-a','merged-b'].includes(swapEvidence(swapping).phase)&&saveSwap(null),
-    details:{item:x.name,quantity:total,pack,from:a,to:b}});
+    observe:done,onConfirmed:()=>done()&&saveSwap(null),
+    details:{item:x.name,quantity:total,pack}});
    if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')&&guard())
     saveSwap(null);
    return accepted;

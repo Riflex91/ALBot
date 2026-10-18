@@ -67,3 +67,5 @@ jobs:
 # Rerun after no-op already-merged escort handling
 
 # Integration validation after removing auto-merge duplicate exports
+
+# Verify fixed farmer tick and bank diagnostics

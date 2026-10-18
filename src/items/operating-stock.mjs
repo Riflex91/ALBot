@@ -37,6 +37,6 @@ export function automaticOperatingStockRule(bot,item){
  return {...defaultsFor(ITEM_RULE),name:'Betriebsvorrat '+item.name,
   enabled:true,item:item.name,role:me.role,character:me.name,action:'sell',
   minLevel:0,maxLevel:0,priority:-350,keep:floor,teamReserve:0,
-  batch:Math.min(100,excess),maxCount:1000000000,minPrice:Math.floor(price),
+  batch:Math.min(9999,item.q??1,excess),maxCount:1000000000,minPrice:Math.floor(price),
   _autoDisposition:true,_autoOperatingStock:true};
 }

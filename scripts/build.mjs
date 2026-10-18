@@ -5,6 +5,7 @@ import {Script} from 'node:vm';
 import {createHash} from 'node:crypto';
 import {minify} from 'terser';
 import {poolRuntimeStrings} from './pool-runtime-strings.mjs';
+import {compactRuntimeSchema} from './compact-runtime-schema.mjs';
 import {FULL_DESCRIPTOR as LIVE_DESCRIPTOR} from '../src/config/full.mjs';
 import {VERSION} from '../src/version.mjs';
 import {checkDescriptor,defaultsFor,envelope,exportBundle,checkPackage} from '../editor/lib/contract.mjs';
@@ -25,7 +26,12 @@ for(const path of files){
  }
 }
 checkDescriptor(LIVE_DESCRIPTOR);
-const chunks=await Promise.all(files.map(async path=>'// '+path+'\n'+(await readFile(path,'utf8')).replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace(/^export /gm,'')));
+const chunks=await Promise.all(files.map(async path=>{
+ let content=(await readFile(path,'utf8')).replace(/\r\n/g,'\n');
+ if(path.startsWith('src/config/')||path==='editor/lib/schema.mjs')
+  content=compactRuntimeSchema(content);
+ return '// '+path+'\n'+content.replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
+}));
 const source='/* ALBot '+version+' · Vollbetrieb Live-Test pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';
 const minimized=await minify(poolRuntimeStrings(source),{ecma:2022,compress:{defaults:true,pure_getters:false,inline:false,booleans:true,comparisons:true,conditionals:true,sequences:true,dead_code:true,unused:true,evaluate:true,properties:true,join_vars:true,if_return:true,reduce_vars:true,passes:2},mangle:true,format:{comments:false}});
 if(!minimized.code)throw Error('Minifizierung lieferte keinen Code.');

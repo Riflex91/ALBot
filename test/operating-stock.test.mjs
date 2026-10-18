@@ -24,7 +24,7 @@ test('working reserve covers all farmers and preserves non-replaceable supplies'
  assert.equal(operatingStockFloor('scroll2',bot.cfg,3),null);
  assert.equal(operatingStockFloor('cryptkey',bot.cfg,3),null);
  const rule=automaticOperatingStockRule(bot,bot.p.c.items[0]);
- assert.equal(rule.keep,100);assert.equal(rule.batch,100);
+ assert.equal(rule.keep,100);assert.equal(rule.batch,190);
 });
 test('explicit keep, variants, gold price and active reservations block automatic sale',()=>{
  const bot=fixture(),item=bot.p.c.items[0];
@@ -41,7 +41,7 @@ test('explicit keep, variants, gold price and active reservations block automati
 });
 test('dispatch recalculates quantity, configuration and reservation instead of trusting derived sale',()=>{
  const bot=fixture(),item=bot.p.c.items[0],rule=automaticOperatingStockRule(bot,item);
- assert.equal(bot.economy.spare(0,rule),100);
+ assert.equal(bot.economy.spare(0,rule),190);
  bot.production.reservedQuantity=()=>199;assert.equal(bot.economy.spare(0,rule),1);
  bot.production.reservedQuantity=()=>200;assert.equal(bot.economy.spare(0,rule),0);
  bot.production.reservedQuantity=()=>0;bot.cfg.merchant.preventiveStorage=false;

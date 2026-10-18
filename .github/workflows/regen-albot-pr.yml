@@ -1,0 +1,38 @@
+name: Temporary W05 role-fairness artifact synchronization
+on:
+  push:
+    branches:
+      - codex/w05-role-weighted-fairness-20261018
+    paths:
+      - .github/workflows/regen-albot-pr.yml
+      - src/production/gear-fairness.mjs
+      - test/roadmap-w05-cross-role-fairness.test.mjs
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.repository == 'Riflex91/ALBot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm test
+      - run: npm run build:editor
+      - name: Commit regenerated artifacts preserving personal settings
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json profiles/full-solo.json profiles/full-team.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build: sync W05 role-fairness runtime without changing personal configuration"
+            git push origin HEAD:codex/w05-role-weighted-fairness-20261018
+          fi

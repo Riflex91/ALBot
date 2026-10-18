@@ -353,40 +353,6 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // Continuing to pull exactly at the reserve would produce uncollectable
     // drops indefinitely. A fresh Merchant pressure signal also pauses
     // optional pulls while its own hysteretic capacity controller recovers.
-    const merchantHeartbeat=bot.transport?.fresh?.(cfg.party?.merchant);
-    const storageHold=farmingStoragePressure({
-      free:bot.free(),reserve:cfg.farming.freeSlots,
-      merchant:merchantHeartbeat,realm:p.realm()
-    });
-    const engaged=bot.monsters().some(m=>defensiveFarmTarget(m,bot.teamNames));
-    if(storageHold&&!engaged){
-      bot.reason=storageHold==='MERCHANT_CAPACITY'?
-        'Lagerdruck beim Merchant: freiwillige Farm-Pulls pausiert':
-        'Inventarreserve erreicht: neue Farm-Pulls pausiert';
-      bot.target=null;
-      if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();
-      bot.skills.rotation(null);
-      return;
-    }
-    // Equip a carried compatible weapon before resuming the farm plan.
-    // gear.equip keeps game-class, equipment and value-journal guards.
-    if(!c.slots?.mainhand&&cfg.production?.gear&&bot.gear?.equip&&!bot.journal&&!bot.inventoryBlocked){
-      const hands=p.G.classes?.[c.ctype],candidate=c.items
-        .map((item,slot)=>({item,slot,meta:p.G.items?.[item?.name]}))
-        .filter(({item,meta})=>item&&meta&&
-          (meta.type==='weapon'||meta.type==='tool')&&
-          (Object.hasOwn(hands?.mainhand??{},meta.wtype??meta.type)||
-           Object.hasOwn(hands?.doublehand??{},meta.wtype??meta.type)))
-        .sort((a,b)=>(b.item.level??0)-(a.item.level??0))[0];
-      if(candidate){
-       const rule={enabled:true,name:'Kampfbereitschaft: Waffe anlegen',
-        item:candidate.item.name,action:'equip',slot:'mainhand',
-        keep:0,teamReserve:0,maxActions:0,goldBudget:0,lossBudget:0};
-       if(bot.gear.equip(candidate.slot,rule)){
-        bot.reason='Kampfwaffe anlegen: '+candidate.item.name;return;
-       }
-      }
-    }
     // A traveling Priest does not merely chase the leader: actively heal any
     // injured squad member before following the next march waypoint.
     if(c.ctype==='priest'&&cfg.party.enabled&&cfg.party.healing){
@@ -423,6 +389,55 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        }
       }
      }
+    }
+    const merchantHeartbeat=bot.transport?.fresh?.(cfg.party?.merchant);
+    const storageHold=farmingStoragePressure({
+      free:bot.free(),reserve:cfg.farming.freeSlots,
+      merchant:merchantHeartbeat,realm:p.realm()
+    });
+    const engaged=bot.monsters().some(m=>defensiveFarmTarget(m,bot.teamNames));
+    if(storageHold&&!engaged){
+      // Storage backpressure forbids new pulls, NOT the noncombat escort.
+      // Previously this returned before the follower could even follow the
+      // Leader; both Rangers and Priest stopped at the same unvisited map.
+      const escort=cfg.party.enabled&&me.name!==bot.leader?
+        bot.transport?.fresh?.(bot.leader):null;
+      const march=escort?.running&&!escort.rip&&escort.realm===p.realm()&&
+        escort.farmPlan&&(!samePlace(escort,escort.farmPlan)||
+         distance(escort,escort.farmPlan)>85);
+      if(march&&(!samePlace(c,escort)||distance(c,escort)>50)){
+       if(['combat','kite'].includes(bot.movement.order?.owner))bot.movement.stop();
+       bot.target=null;
+       bot.reason='Gruppenmarsch trotz Lagerdruck: Folge '+bot.leader;
+       if(!bot.movement.order)bot.movement.go({...escort,radius:35},'follow');
+       bot.skills.rotation(null);return;
+      }
+      bot.reason=storageHold==='MERCHANT_CAPACITY'?
+        'Lagerdruck beim Merchant: freiwillige Farm-Pulls pausiert':
+        'Inventarreserve erreicht: neue Farm-Pulls pausiert';
+      bot.target=null;
+      if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();
+      bot.skills.rotation(null);
+      return;
+    }
+    // Equip a carried compatible weapon before resuming the farm plan.
+    // gear.equip keeps game-class, equipment and value-journal guards.
+    if(!c.slots?.mainhand&&cfg.production?.gear&&bot.gear?.equip&&!bot.journal&&!bot.inventoryBlocked){
+      const hands=p.G.classes?.[c.ctype],candidate=c.items
+        .map((item,slot)=>({item,slot,meta:p.G.items?.[item?.name]}))
+        .filter(({item,meta})=>item&&meta&&
+          (meta.type==='weapon'||meta.type==='tool')&&
+          (Object.hasOwn(hands?.mainhand??{},meta.wtype??meta.type)||
+           Object.hasOwn(hands?.doublehand??{},meta.wtype??meta.type)))
+        .sort((a,b)=>(b.item.level??0)-(a.item.level??0))[0];
+      if(candidate){
+       const rule={enabled:true,name:'Kampfbereitschaft: Waffe anlegen',
+        item:candidate.item.name,action:'equip',slot:'mainhand',
+        keep:0,teamReserve:0,maxActions:0,goldBudget:0,lossBudget:0};
+       if(bot.gear.equip(candidate.slot,rule)){
+        bot.reason='Kampfwaffe anlegen: '+candidate.item.name;return;
+       }
+      }
     }
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     const leader=bot.transport.fresh(bot.leader);

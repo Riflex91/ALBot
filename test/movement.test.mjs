@@ -199,3 +199,28 @@ test('merchant failed smart route quarantines only that shoreline waypoint, not 
   now+=300001;assert.equal(m.failedRecently(blocked),false,'Waypoint cooldown must expire');
  }finally{Date.now=old;}
 });
+
+test('rejected farm smart_move quarantines only the failed waypoint and allows reroute',async()=>{
+ const original=Date.now;let now=100000;Date.now=()=>now;
+ try{
+  const events=[],c={name:'Leader',map:'main',in:'main',x:315,y:95};
+  const bot={running:true,me:{role:'farmer'},cfg:{world:{excludedMaps:[]},farming:{pvp:false}},
+   event:(...e)=>events.push(e)};
+  bot.p={c,root:{},parent:{},G:{maps:{main:{}}},has:()=>true,
+   call:kind=>kind==='can_move_to'?false:
+    kind==='smart_move'?Promise.reject(new Error('failed')):Promise.resolve()};
+  bot.exec=new Executor({now:()=>now,active:()=>bot.running,limit:4,onError(){}});
+  const m=createMovement(bot),point={map:'main',in:'main',x:335.186,y:177.968,radius:20};
+  m.go(point,'farm');
+  assert.equal(m.order?.mode,'smart_move');
+  await Promise.resolve();await Promise.resolve();bot.exec.poll();
+  assert.equal(m.failedRecently(point,'farm'),true);
+  assert.equal(m.failedRecently({...point,x:385},'farm'),false);
+  assert.equal(m.failedRecently(point,'economy'),false,
+   'Farm failures never blacklist independent merchant work');
+  assert.equal(m.failedRecently({map:'main',in:'main',x:546,y:1059},'farm'),false);
+  assert.ok(events.some(([name,data])=>name==='movement.route-quarantined'&&data.owner==='farm'));
+  now+=300001;
+  assert.equal(m.failedRecently(point,'farm'),false);
+ }finally{Date.now=original;}
+});

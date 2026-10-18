@@ -131,7 +131,7 @@ test('squad march halts if Priest is far behind, unhealthy or stale',async()=>{
  const dest={map:'main',in:'main',x:1000,y:0};
  assert.equal(assessFarmMarch(hero,[patient],{realm:'EUII',now,destination:dest}).reason,
   'teammate-behind');
- const close={...patient,x:135};
+ const close={...patient,x:115};
  assert.equal(assessFarmMarch(hero,[close],{realm:'EUII',now,destination:dest}).reason,
   'projected-healer-leash');
  const healthy={...close,x:180};

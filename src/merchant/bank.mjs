@@ -546,7 +546,29 @@ export function createBank(bot){
   if(!p.write(reclaimKey,record))return false;
   reclaiming=record;
   const accepted=e.perform('bank.reclaim',{guard:()=>admitted(p.c.bank?.[pack]?.[slot]),
-   call:()=>p.call('bank_retrieve',pack,slot,dest),
+   call:()=>{
+    // Persist an exact dispatch receipt BEFORE the server API is called.
+    // A stale 'unchanged' snapshot is no longer proof of a missing request.
+    const current=reclaiming;
+    if(current!==record||classifyBankReclaimRecord(current,{
+     owner:me.name,realm:p.realm(),inventory:p.c.items,
+     bank:p.c.bank,map:p.c.map,packMap}).phase!=='unchanged'){
+     bot.inventoryBlocked=true;
+     throw Error('Bankfreigabe: Quelle vor API-Aufruf nicht eindeutig');
+    }
+    const next={...current,dispatch:{
+     at:Date.now(),kind:'bank.reclaim',session:bot.session,
+     realm:current.realm,pack:current.pack,slot:current.slot,
+     dest:current.dest,sourcePrint:current.sourcePrint}};
+    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm()}).valid||
+       p.write(reclaimKey,next)!==true){
+     bot.inventoryBlocked=true;
+     e.note('Bankfreigabe: API-Dispatch-Beleg nicht dauerhaft gespeichert');
+     throw Error('Bankfreigabe: API-Dispatch ohne dauerhaften Beleg verweigert');
+    }
+    reclaiming=next;
+    return p.call('bank_retrieve',pack,slot,dest);
+   },
    observe:()=>!p.c.bank?.[pack]?.[slot]&&
      identity(p.c.items[dest])===identity(item)&&
      (p.c.items[dest]?.q??1)===q,
@@ -708,6 +730,12 @@ export function createBank(bot){
     e.note('Bankfreigabe: Quellbank nicht beobachtet ('+offsite.reason+'); Rückkehr zur Bank');
     return true;
    }
+  }else if(evidence.phase==='dispatched-unchanged'){
+   // A dispatched request can complete after the last observation or
+   // after a browser restart. Do not clear or repeat it automatically.
+   bot.inventoryBlocked=true;
+   e.note('Bankfreigabe: Entnahme-API aufgerufen, Ausgang unbekannt; manuell prüfen');
+   return true;
   }else if(evidence.phase==='unchanged'||evidence.phase==='sold'){
    // Both source AND inventory were independently reconciled. Only
    // saleConfirmed from an earlier onConfirmed receipt qualifies as sold.
@@ -770,7 +798,7 @@ export function createBank(bot){
      owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items}):null;
   const needsReview=collision||
    ['ambiguous','invalid'].includes(partial?.phase)||
-   ['ambiguous','invalid'].includes(reclaim?.phase);
+   ['ambiguous','invalid','dispatched-unchanged'].includes(reclaim?.phase);
   return {
    mode:'read-only-no-authorization',executable:false,
    blocked:collision||!!bot.inventoryBlocked||!!bot.journal,
@@ -787,6 +815,7 @@ export function createBank(bot){
     inventorySlot:reclaiming.dest,item:reclaiming.item?.name??null,
     quantity:reclaiming.quantity,
     withdrawalRecorded:!!reclaiming.withdrawal,
+    dispatchRecorded:!!reclaiming.dispatch,
     saleConfirmed:reclaiming.saleConfirmed===true,
     offsiteEligible:offsite?.eligible??false,
     offsiteReason:offsite?.reason??null}:null

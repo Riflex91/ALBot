@@ -195,7 +195,7 @@ export function createBank(bot){
     candidate.q<=allowed&&e.spare(index,r)===candidate.q);
    if(sibling>=0)return store(sibling,r,parking);
    if(bot.free()<1){e.note('Bank-Split '+item.name+': ein physisch freier Inventarplatz benötigt');return false;}const before=item.q,dest=p.c.items.findIndex(x=>!x);
-   return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
+   return e.perform('bank.split',{slots:[slot],rule:r,guard:()=>bot.free()>0&&!p.c.items[dest]&&e.spare(slot,r)>=allowed,call:()=>p.call('split',slot,allowed),observe:()=>p.c.items[slot]?.q===before-allowed&&p.c.items.some((x,n)=>n!==slot&&identity(x)===identity(item)&&x.q===allowed),details:{item:item.name,quantity:allowed,before}});
   }
   const rows=packs(),workspace=parkVerified?0:(cfg.merchant.bankWorkspace??0);
   // A merely empty slot is NOT available to ordinary stores if using it
@@ -252,7 +252,7 @@ export function createBank(bot){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
    const slot=items.findIndex(i=>i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
    if(slot<0)continue;const actual=items[slot],q=actual.q??1,fp=fingerprint(actual),dest=p.c.items.findIndex(i=>!i),before=e.count(actual),bankBefore=variantCount(items,actual);
-   return e.perform('bank.retrieve',{rule:r,guard:()=>fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(actual)&&(p.c.items[dest]?.q??1)===q,details:{item:actual.name,quantity:q,pack,before}});
+   return e.perform('bank.retrieve',{rule:r,guard:()=>bot.free()>0&&fingerprint(p.c.bank?.[pack]?.[slot])===fp&&!p.c.items[dest],call:()=>p.call('bank_retrieve',pack,slot,dest),observe:()=>!p.c.bank?.[pack]?.[slot]&&identity(p.c.items[dest])===identity(actual)&&(p.c.items[dest]?.q??1)===q,details:{item:actual.name,quantity:q,pack,before}});
   }
   if(!cfg.merchant.partialBank)return false;
   const take=Math.floor(Math.min(wanted,r.batch,r.maxCount-e.count(item)));if(take<1||!e.remaining(r)||bot.journal||bot.logistics.reserved||bot.inventoryBlocked||bot.exec.busy('inventory')||bot.free()<2)return false;

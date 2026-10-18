@@ -55,7 +55,6 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    if(!scope||!same(scope,where)||
       Math.hypot(entity.x-p.c.x,entity.y-p.c.y)>900)continue;
    visible.add(entity.id);
-   const existing=rows.get(entity.id);
    rows.delete(entity.id);
    rows.set(entity.id,{id:entity.id,monster:entity.mtype,...scope,
     x:entity.x,y:entity.y,lastSeenAt:time,

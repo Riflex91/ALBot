@@ -85,7 +85,10 @@ export function createTeamTravel(bot){
     .map(n=>[n,bot.transport?.fresh?.(n)??null]));
   return teamRealmRendezvous({farmers:names,localName:me.name,
     localRealm:p.realm(),peers,
-    homeRealm:home.phase==='escaped'&&p.realm()!==homeRealm?'':homeRealm,
+    // An authorized crowd escape lasts only until its persisted retry deadline.
+    // Afterwards even a sole Farmer must rejoin the configured home realm;
+    // requestHop() cannot do so if the Merchant is already on that realm.
+    homeRealm:home.phase==='escaped'&&Date.now()<home.retryAt&&p.realm()!==homeRealm?'':homeRealm,
     fixedLeader:cfg.party.leader??''});
  }
 

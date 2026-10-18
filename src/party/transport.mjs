@@ -3,6 +3,16 @@ import {ownSupplyCharacters} from '../items/potion-supply.mjs';
 import {carriedAchievementCarrier} from '../items/achievement-utility.mjs';
 import {inventoryStockEvidence,packInventoryEvidence,unpackInventoryEvidence} from '../items/stock-evidence.mjs';
 import {inspectItemTransferEvidence} from '../items/transfer-reconciliation.mjs';
+// The full ranking contains bulky diagnostics. Recipients only need the
+// authoritative fields required to validate/adopt the shared spawn plan.
+export function compactFarmPlan(plan){
+ if(!plan?.id)return null;
+ const fields=['id','key','target','map','in','x','y','realm','leader',
+  'kind','objective','item','started','expires','definition','bounds',
+  'radius','reason'];
+ return Object.fromEntries(fields.filter(key=>plan[key]!==undefined)
+  .map(key=>[key,plan[key]]));
+}
 // A march contract is independent of the optional, often size-trimmed
 // farmPlan. Advertise only the leader's verified endpoint and whether our
 // CURRENT navigation order actually heads there, never just a moving flag.
@@ -134,7 +144,7 @@ export function createTransport(bot){
         const route=me.name===bot.leader?own:
           remote??(trusted&&lead.march?.plan===own?.id?own:null);
         return sharedMarchStatus(route,bot.movement?.order,p.realm());
-      })(),potionConsumption:bot.potionReceipts?.heartbeat(),items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:bot.teamPlan?.heartbeat(),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:packInventoryEvidence(inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),maxRows:32,allowOpaque:true,reserved:i=>bot.production?.reservedQuantity?.(i)??0})),// Minimal elixir stock evidence survives a trimmed status message; the
+      })(),potionConsumption:bot.potionReceipts?.heartbeat(),items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:compactFarmPlan(bot.teamPlan?.heartbeat?.()),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:packInventoryEvidence(inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),maxRows:32,allowOpaque:true,reserved:i=>bot.production?.reservedQuantity?.(i)??0})),// Minimal elixir stock evidence survives a trimmed status message; the
       // optional full gear-stock advertisement can still be discarded.
       elixirStock:me.role==='merchant'?[...new Set((c.items??[])
        .filter(i=>i&&!i.l&&!i.b&&p.G.items?.[i.name]?.type==='elixir')

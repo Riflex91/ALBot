@@ -65,3 +65,5 @@ jobs:
 # Rerun for already-integrated hunk handling
 
 # Rerun after no-op already-merged escort handling
+
+# Integration validation after removing auto-merge duplicate exports

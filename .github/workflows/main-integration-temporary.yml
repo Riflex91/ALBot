@@ -1,5 +1,5 @@
 # One-shot W03 bank_merge_retrieve integration. Remove after completed verification.
-name: ALBot temporary main integration
+name: ALBot temporary verified bootstrap candidate
 on:
   push:
     branches: [codex/w00-w01-readonly-disposition-20261018]
@@ -44,13 +44,15 @@ jobs:
             throw Error('Authorized farming/risk values were changed');
           console.log('All personal configuration fields preserved byte-semantically');
           EOF
+          npm run build:bootstrap
+          npm run check:bootstrap
       - shell: bash
         run: |
-          if git diff --quiet -- bot.js; then exit 0; fi
+          if git diff --quiet -- bot.js dist/albot.runtime.js && test -f dist/albot.bootstrap.js && git ls-files --error-unmatch dist/albot.bootstrap.js >/dev/null 2>&1; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- bot.js
-          git commit -m "build(W03): synchronize main-integration recovery into personal runtime"
+          git add -- bot.js dist/albot.runtime.js dist/albot.bootstrap.js
+          git commit -m "build(bootstrap): publish pinned runtime and opt-in personal loader"
           git push origin HEAD:codex/w00-w01-readonly-disposition-20261018
   linux-verification:
     needs: sync
@@ -67,6 +69,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node scripts/sync-personal-code.mjs --check
+      - run: npm run check:bootstrap
       - run: npm test
       - run: npm run build:editor
       - run: node --check dist/albot.js
@@ -97,3 +100,4 @@ jobs:
       - run: npm ci --ignore-scripts
       - shell: pwsh
         run: ./scripts/VERIFY-U01-U07.ps1
+      - run: npm run check:bootstrap

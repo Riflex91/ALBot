@@ -29,6 +29,12 @@ Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 
 Freigabe über den vorhandenen [Signierworkflow](https://github.com/Riflex91/ALBot/actions/runs/39155452952), aus Main `c684764e9c526e877c7c8d16130b376a787b2bd2`: 1.430/1.430 Offlinetests, persönliche Einstellungen unverändert, Manifest und Runtime gemeinsam veröffentlicht. Der vorhandene V2-Loader kann diese Version ohne Neuinstallation beim nächsten CODE-Start laden. Kein neuer Ingame-Ladevorgang beobachtet.
 
+## Getrennte Größenverträge (Bootstrap und alte CODE-Ausgabe)
+
+- **Externe signierte Runtime:** Der vorhandene V2-Loader lädt höchstens 8.388.608 Bytes (8 MiB); Manifest `bytes`, gültige ECDSA-P-256-Signatur, SHA-256, Runtime-Header und Downgrade-Schutz bleiben Pflicht. Eine alte **900-KiB-Benchmark** des vollständigen Regelkatalogs ist **keine** Bootstrap-Grenze und darf Runtimeänderungen nicht sperren.
+- **Legacy-Direkt-CODE/Werkstatt:** Der bisherige direkte `exportBundle`-Pfad besitzt weiterhin das separate 1-MiB-CODE-Limit. Dieses wird **nicht** stillschweigend zu 8 MiB erhöht: ein so großes Direkt-CODE-Paket wäre nicht automatisch im Spiel einfügbar. Die Prüfung `checkPackage` akzeptiert dagegen externe Runtime-Pakete bis zur tatsächlichen Bootstrap-Grenze.
+- **Build-Artefakt:** `main/dist/albot.runtime.js` bleibt nur ein Build. Der aktive Loader führt weiterhin das separat signierte `manifest.runtimeUrl` aus; ein Main-Merge ist kein Release. Künftige Builds oberhalb 1 MiB für den legacy Direkt-CODE-Export benötigen eine eigene, ausdrücklich bootstrap-orientierte Werkstattausgabe, nicht das Verschweigen des Exportlimits.
+
 ## Maschinenlesbarer Vertrag und CI
 
 - [`bootstrap.contract.json`](../bootstrap.contract.json): Quelle der Zuordnung von `main`-Artefakt und externem Ingame-Release-Kanal. `inGameLoader.status=source-reviewed` bedeutet nur, dass die übermittelte Quelle und ihr Manifest geprüft wurden; `observedLoadedUrl=null` bleibt bestehen, bis ein tatsächlicher Ladevorgang belegt ist.

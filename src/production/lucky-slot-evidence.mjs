@@ -41,7 +41,7 @@ export function createLuckySlotEvidence(bot,{now=()=>Date.now()}={}){
    executable:false,predictionAuthorized:false,
    session,realm,windowMs:MAX_AGE,
    observed:rows.length,slots:[...slots.values()].sort((a,b)=>a.slot-b.slot)
-    .slice(0,50)};
+    .slice(0,16)};
  }
  return {record,status,close(){rows.length=0;}};
 }

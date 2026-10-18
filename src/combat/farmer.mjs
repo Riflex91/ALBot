@@ -306,6 +306,11 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const detachment=assessQuestDetachment(bot);
     const questVisitor=(bot.farmers??[]).find(n=>n!==me.name&&
       bot.transport?.fresh?.(n)?.questVisit===true);
+    // Cancel an ALREADY QUEUED follower/escort route as soon as the NPC
+    // visitor appears. Otherwise native smart_move may continue to Daisy
+    // even though no new escort is being scheduled.
+    if(questVisitor&&['follow','quest-escort','cohesion'].includes(
+      bot.movement.order?.owner))bot.movement.stop();
     // While a Ranger follows an approved native farm route, hostile road
     // aggro must not turn the trip into random spiral/orbit manoeuvres.
     // Keep potion consumption and Priest healing active. This policy does

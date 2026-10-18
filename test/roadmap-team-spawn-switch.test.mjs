@@ -157,3 +157,27 @@ test('Priest selects weakest fresh transit patient, ignoring dead/foreign or ful
  assert.equal(selectMarchHealingPatient(priest,[peer('R1',200,{received:now-6000})],{
   realm:'EUII',now}),null);
 });
+
+test('regression live 10:10:49 blocked geometric hop selects native pathfinder instead of same failed coordinate',async()=>{
+ const {chooseMarchWaypoint}=await import('../src/world/team-plan.mjs');
+ const leader={map:'main',in:'main',x:315.406,y:95.301};
+ const goal={map:'main',in:'main',x:546,y:1059,key:'main:bee:15'};
+ const priest={name:'Priest',map:'main',in:'main',x:311.471,y:39.957};
+ const ranger={name:'Ranger2',map:'main',in:'main',x:313.439,y:26.084};
+ const get=(failed=()=>false)=>chooseMarchWaypoint(leader,goal,[priest,ranger],{
+  canMove:(x,y)=>!(x>325&&x<350&&y>155&&y<205),
+  failed,maxGap:165,step:85
+ });
+ const route=get();
+ assert.equal(route.reason,'native-path-around-obstacle');
+ assert.equal(route.point.x,goal.x);
+ assert.equal(route.point.y,goal.y);
+ const detour=get(p=>p.x===goal.x&&p.y===goal.y);
+ assert.equal(detour.reason,'verified-local-detour');
+ assert.ok(detour.point.x!==335.186||detour.point.y!==177.968);
+ assert.ok(Math.hypot(detour.point.x-priest.x,detour.point.y-priest.y)<=165);
+ const blocked=chooseMarchWaypoint(leader,goal,[priest,ranger],{
+  canMove:()=>false,failed:p=>p.x===goal.x&&p.y===goal.y});
+ assert.equal(blocked.reason,'no-navigable-safe-route');
+ assert.equal(blocked.point,null);
+});

@@ -43,6 +43,7 @@ export function createBank(bot){
  const singleKey='albot:bank-single:'+me.name;let single=p.read(singleKey)??null;
  const storeKey='albot:bank-store:'+me.name;let storing=p.read(storeKey)??null;
  const swapKey='albot:bank-swap:'+me.name;let swapping=p.read(swapKey)??null;
+ const crossToken=Symbol();
  const pressureKey='albot:bank-pressure:'+me.name;
  let pressure=p.read(pressureKey)??{observations:0,epoch:null,at:0};
  if(!Number.isInteger(pressure.observations)||!Number.isFinite(pressure.at))pressure={observations:0,epoch:null,at:0};
@@ -632,56 +633,21 @@ export function createBank(bot){
  }
  // Cross-pack full-stack transfer uses one durable single-retrieve journal.
  function consolidateAcross(){
-  if(pending||reclaiming||single||storing||swapping||!cfg.merchant.bank||
-     !cfg.merchant.consolidate||!p.c.bank||bot.journal||
-     bot.inventoryBlocked||bot.logistics?.reserved||
-     bot.exec?.busy?.('inventory'))return false;
-  const dest=p.c.items.findIndex(x=>!x);
-  if(dest<0)return false;
+  if(single||pending||reclaiming||storing||swapping||bot.inventoryBlocked||
+     bot.journal||bot.logistics?.reserved||bot.exec?.busy?.('inventory')||
+     !cfg.merchant.bank||!cfg.merchant.consolidate||!p.c.bank)return false;
+  if(!p.c.items.some(i=>!i))return false;
   for(const [pack,items] of packs()){
    if(packMap(pack)!==p.c.map)continue;
    for(let slot=0;slot<items.length;slot++){
     const item=items[slot],q=item?.q??1,max=stackMax(item);
     if(!simple(item)||!p.c.items.some(i=>simple(i)&&
        identity(i)===identity(item)&&(i.q??1)+q<=max))continue;
-    const at=Date.now(),sourcePrint=fingerprint(item),
-     before=variantCount(p.c.items,item),bankBefore=variantCount(items,item),
-     record={version:1,owner:me.name,realm:p.realm(),at,pack,slot,dest,
-      item:{...item},sourcePrint,quantity:q,before,bankBefore,
-      prepared:{kind:'bank.retrieve',session:bot.session,at,realm:p.realm(),
-       pack,slot,dest,sourcePrint}};
-    if(!validateBankSingleRecord(record,{owner:me.name,realm:p.realm()}).valid||
-       !saveSingle(record))return false;
-    const guard=()=>single===record&&
-     singleEvidence(record).phase==='prepared-unchanged'&&
-     cfg.merchant.bank===true&&cfg.merchant.consolidate===true&&
-     p.c.items.some(i=>simple(i)&&identity(i)===identity(item)&&
-      (i.q??1)+q<=stackMax(i));
-    const accepted=e.perform('bank.merge.retrieve',{guard,
-     call:()=>{
-      if(!guard()){
-       bot.inventoryBlocked=true;
-       throw Error('Bankmerge: Quellzustand verändert');
-      }
-      const next={...record,dispatch:{kind:'bank.retrieve',
-       session:bot.session,at:Date.now(),realm:record.realm,
-       pack,slot,dest,sourcePrint}};
-      if(!validateBankSingleRecord(next,{owner:me.name,realm:p.realm()}).valid||
-         p.write(singleKey,next)!==true){
-       bot.inventoryBlocked=true;
-       throw Error('Bankmerge: Dispatchbeleg fehlt');
-      }
-      single=next;
-      return p.call('bank_retrieve',pack,slot,dest);
-     },
-     observe:()=>!!single&&singleEvidence(single).phase==='withdrawn',
-     onConfirmed:()=>!!single&&singleEvidence(single).phase==='withdrawn'&&
-      saveSingle(null),
-     details:{item:item.name,pack,bankSlot:slot,inventorySlot:dest,
-      quantity:q,reason:'cross-pack-merge'}});
-    if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')&&guard())
-     saveSingle(null);
-    return accepted;
+    const before=e.count(item);
+    if(!Number.isSafeInteger(before)||before<0||
+       !Number.isSafeInteger(before+q))return false;
+    return retrieve(item,{pack,batch:q,maxCount:before+q},
+     q,crossToken,slot);
    }
   }
   return false;

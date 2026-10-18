@@ -133,7 +133,7 @@ test('W04 failed checkpoint clear retains conservative block after rejected queu
  const f=fixture({perform:false});
  const write=f.bot.p.write;
  let calls=0;
- f.bot.p.write=(k,v)=>++calls===1?write(k,v):false;
+ f.bot.p.write=(k,v)=>k==='albot:bank-reclaim:M'?++calls===1?write(k,v):false:write(k,v);
  f.bot.bank.preventiveDisposition();
  assert.equal(f.bot.bank.preventiveDisposition(),false);
  assert.equal(f.bot.bank.pending,true);

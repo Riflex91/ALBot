@@ -106,3 +106,11 @@ kein Beweis für die neue Browser-ECDSA-Prüfung. Zunächst nur einen
 Farmer testen; den ursprünglichen CODE-Slot sichern und beim Fehler
 zurückwechseln. Der Code wird in dieser Entwicklungsrunde nicht
 automatisch im Spiel installiert.
+
+## GitHub-Secret: erfolgreicher Funktionstest (18.10.2026)
+
+Der Benutzer bestätigte, dass das Actions-Secret `ALBOT_RELEASE_SIGNING_KEY_PEM` eingerichtet wurde. Der separate [Offline-Secret-Probelauf 39143885418](https://github.com/Riflex91/ALBot/actions/runs/39143885418) hat anschließend **innerhalb von GitHub Actions** den privaten Schlüssel tatsächlich verwendet: ein neues, nur temporär erzeugtes Release-Manifest mit Sequenz 2 wurde mit `scripts/sign-release.mjs --write` signiert und unmittelbar mit `scripts/sign-release.mjs --check` gegen die öffentliche Repo-Schlüsseldatei und die gebaute Runtime verifiziert. **1.356/1.356 Tests grün.**
+
+Dieser Test hat **keine Runtime und kein Manifest veröffentlicht**, keine Game-Slots verändert und keine Änderung an Main durchgeführt. Der Probelauf-Workflow ist wieder entfernt; das öffentlich verfügbare, installierbare Erstmanifest bleibt bei **Sequenz 1**. Der normale Signierworkflow war zwischenzeitlich wegen einer nicht korrekt YAML-quotierten Release-Condition ungültig; seine Condition wurde korrigiert und der nachfolgende normale Push-Lauf wurde wie vorgesehen **übersprungen**, statt eine Release-Publikation auszulösen.
+
+**Nächster Schritt:** `dist/albot.bootstrap.auto.js` einmalig in einem gesicherten Adventure-Land-CODE-Testslot testen, während `general.autostart=true` aktiv ist. Erst nach erfolgreicher V2-Livebestätigung ein weiteres Runtime-Release explizit freigeben. Den privaten PEM-Schlüssel niemals im Chat, in Logs oder im Repository posten.

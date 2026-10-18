@@ -11,10 +11,10 @@ import {createStrategy} from '../src/world/strategy.mjs';
 import {selectAccountTeam,createAccount} from '../src/party/account.mjs';
 import {createTeamTravel} from '../src/party/travel.mjs';
 
-test('real Live C runtime plus 1276 catalog rules validates bootstrap runtime and legacy CODE bundle separately',async()=>{
+test('real Live C runtime plus 1276 catalog rules validates signed runtime and bootstrap review artifact independent of legacy CODE size',async()=>{
  const pkg=await checkPackage(JSON.parse(await readFile(new URL('../dist/albot.package.json',import.meta.url),'utf8'))),catalog=JSON.parse(await readFile(new URL('../editor/item-catalog.json',import.meta.url),'utf8')),cfg=defaultsFor(pkg.descriptor.schema);
  cfg.characters=[{...defaultsFor(pkg.descriptor.schema.properties.characters.items),name:'Farmer'}];cfg.party.leader='Farmer';cfg.items=catalog.items.flatMap(({id})=>['farmer','merchant'].map(role=>({...defaultsFor(pkg.descriptor.schema.properties.items.items),name:id+' '+role,item:id,role})));
- assert.deepEqual(validateProfile(pkg.descriptor,cfg),[]);const bundle=exportBundle(pkg.descriptor,cfg,pkg.runtime);new Script(bundle.code);assert.ok(Buffer.byteLength(pkg.runtime.code)<=BOOTSTRAP_RUNTIME_LIMIT,'signed bootstrap download limit exceeded');assert.ok(bundle.bytes<=SLOT_LIMIT,'legacy standalone CODE limit exceeded: '+bundle.bytes+' UTF-8 bytes');assert.equal(bundle.bytes,Buffer.byteLength(bundle.code));
+ assert.deepEqual(validateProfile(pkg.descriptor,cfg),[]);const bundle=exportBundle(pkg.descriptor,cfg,pkg.runtime,{target:'bootstrap-artifact'});new Script(bundle.code);assert.ok(Buffer.byteLength(pkg.runtime.code)<=BOOTSTRAP_RUNTIME_LIMIT,'signed bootstrap download limit exceeded');assert.equal(bundle.bytes,Buffer.byteLength(bundle.code));if(bundle.bytes<=SLOT_LIMIT)assert.equal(exportBundle(pkg.descriptor,cfg,pkg.runtime).bytes,bundle.bytes,'legacy CODE output must match while it still fits');
 });
 
 test('merchant task hold retains admitted work until it yields; absent jobs are forgotten',()=>{

@@ -119,7 +119,12 @@ test('W04 missing bank pack, altered target or revoked explicit rule never repea
   f.bot.bank.recoverCapacity();
   assert.equal(f.sales.length,0,JSON.stringify(altered));
   assert.equal(f.bot.bank.pending,true);
-  assert.equal(f.store.get('albot:bank-reclaim:M'),prior);
+  const retained=f.store.get('albot:bank-reclaim:M');
+  assert.equal(retained.version,2);
+  assert.notEqual(retained.saleConfirmed,true,'withdrawal evidence alone never proves NPC sale');
+  if(altered.bankItem===null&&altered.carried?.q===10)
+   assert.ok(retained.withdrawal,'exact bank withdrawal is journaled despite revoked sale right');
+  else assert.equal(retained,prior,'ambiguous physical source must not mutate checkpoint');
  }
 });
 test('W04 rejected bank action releases intent only after exact before-image proof',()=>{

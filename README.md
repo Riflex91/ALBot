@@ -1,3 +1,9 @@
+# Optionaler SHA-256-Bootstrap (Draft, 18.10.2026)
+
+Der neue `dist/albot.bootstrap.js` ist ein kleiner **optionaler** CODE-Loader. Er übernimmt die unveränderte persönliche Konfiguration und lädt die Runtime aus GitHub erst nach vollständigem SHA-256-Vergleich. `bot.js` bleibt die bisherige vollständige, sofortige Startvariante. **Noch kein CORS-/CSP-Livetest im Adventure-Land-Runner; nicht ungeprüft zur Standarddatei machen.** [Setup, Grenzen und sichere Abnahme](docs/BOOTSTRAP-2026-10-18.md).
+
+---
+
 # ALBot 0.10.8-candidate – aktuell (15.10.2026)
 
 Upgrade-Scrollwahl: Die persönliche [bot.js](bot.js) verwendet 65 % globale Mindestchance. Bei unzureichender scroll0-Chance prüft die Gear-Produktion scroll1, verwendet vorhandene Exemplare oder fordert ein Exemplar beim NPC an. Der echte Upgrade-Aufruf benötigt weiterhin eine frische ausreichende Servervorschau mit scroll1. 806/806 Offlinetests bestanden; Runtime, persönliche Bundleparität und Werkstatt geprüft. Neue Liveabnahme offen. [Befund, Ablauf und Grenzen](docs/CHANGELOG-0.10.8.md).

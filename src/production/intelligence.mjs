@@ -3,6 +3,7 @@ import {isAchievementCarrier} from '../items/achievement-utility.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
 import {itemPurposes} from '../items/purposes.mjs';
+import {boundedStockSurplus,boundedStockVariantAllowed} from '../items/stock-policy.mjs';
 import {mutationContext,mutationHelpers} from './helpers.mjs';
 import {gearScore,gearCompatible,gearSuitability,gearSlotPriority,autoGearTargetLevel} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
@@ -382,26 +383,36 @@ export function describeInventoryDisposition({
   Number.isSafeInteger(explicit?.teamReserve??0)&&(explicit?.teamReserve??0)>=0;
  const keep=explicit?.keep??0,teamReserve=explicit?.teamReserve??0;
  const free=countsValid?surplusQuantity(local,reserved,keep,teamReserve):null;
+ const boundedOptIn=explicit?.action==='keep'&&explicit.excessAction==='sell';
+ const bounded=boundedOptIn?boundedStockSurplus({held:local,reserved,keep,
+  teamReserve,maximum:explicit.maxCount}):null;
+ const boundedEligible=boundedOptIn&&bounded?.valid&&bounded.excess>0&&
+  boundedStockVariantAllowed(G,item);
  const purposes=itemPurposes(G,item);
  const hardProtected=protectedItem(item)||isAchievementCarrier(item);
  const source=explicit?'explicit':autoDecision?'last-observed-auto':'none';
- const proposedAction=explicit?.action??autoDecision?.nextStep??null;
+ const proposedAction=boundedEligible?'sell':explicit?.action??autoDecision?.nextStep??null;
  const amount=Number.isSafeInteger(item.q??1)&&(item.q??1)>0?item.q??1:null;
  const batch=Number.isSafeInteger(explicit?.batch)&&explicit.batch>0?
   explicit.batch:null;
- const provisionalSlotUpperBound=free===null||amount===null?null:Math.min(free,amount,batch??amount);
+ const provisionalSlotUpperBound=free===null||amount===null?null:
+  Math.min(free,amount,batch??amount,boundedOptIn?(boundedEligible?bounded.excess:0):amount);
  let state='rule-observed',reason='';
  if(valueBlocked){state='value-effect-unclear';reason='unresolved-value-journal';}
  else if(hardProtected){state='protected';reason='physical-item-protection';}
  else if(!countsValid){state='observation-unverified';reason='unknown-or-invalid-quantity';}
  else if(free===0){state='no-surplus';reason='reservation-or-keep-bound';}
  else if(explicit&&!actionRemaining){state='action-limit';reason='explicit-rule-action-limit';}
+ else if(boundedOptIn&&!boundedEligible){state='no-bounded-excess';reason=
+  bounded?.valid?'stock-below-maximum-or-protected-variant':'bounded-stock-unverified';}
+ else if(boundedEligible){state='bounded-excess-observed';reason=
+  'explicit-opt-in-not-dispatch-authority';}
  else if(!explicit&&purposes.protected){state='purpose-protected';reason='automatic-purpose-guard';}
  else if(!explicit&&!autoDecision){state='no-rule-observed';reason='no-observed-disposition-candidate';}
  else if(!explicit){state='auto-candidate-observed';reason='cached-not-currently-authorized';}
  else {state='explicit-rule-observed';reason='rule-exists-not-dispatch-authority';}
  // Even an observed automatic candidate is not a currently executable rule.
- const slotUpperBound=state==='explicit-rule-observed'?provisionalSlotUpperBound:0;
+ const slotUpperBound=['explicit-rule-observed','bounded-excess-observed'].includes(state)?provisionalSlotUpperBound:0;
  const destination=proposedAction==='send'?explicit?.recipient??null:
   proposedAction==='bank'?'bank':proposedAction==='sell'?'npc':
   proposedAction==='list'?'market':null;
@@ -419,6 +430,10 @@ export function describeInventoryDisposition({
   observedRule:{source,name:explicit?.name??null,action:proposedAction,
    lastAutomaticObservationAt:autoDecision?.at??null,
    automaticReason:autoDecision?.reason??null},
+  stockPolicy:boundedOptIn?{kind:'local-opt-in',target:explicit.targetCount,
+   maximum:explicit.maxCount,protectedFloor:bounded.protectedFloor,
+   boundedExcess:bounded.excess,eligible:!!boundedEligible,
+   confirmed:false}:null,
   possibleUnreservedQuantity:free,slotRemovalUpperBound:slotUpperBound,
   destination,physicalSlotEffect:{confirmed:false,potentialFreedSlots:potentialFreed,
    reason:'intermediate capacity, recipient and post-dispatch result not proven'},

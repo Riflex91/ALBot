@@ -4,8 +4,9 @@ import {createHash,webcrypto} from 'node:crypto';
 import {Script,createContext,runInContext} from 'node:vm';
 import {createBootstrap,personalPrefix} from '../scripts/bootstrap-support.mjs';
 
-const prefix='// ALBot unit bootstrap\n'+'globalThis.ALBotConfig={"test":true};\n';
-const runtime='/* ALBot 0.10.9-candidate */\nglobalThis.__BootSmoke=(globalThis.__BootSmoke??0)+1;\n';
+const prefix='// ALBot unit bootstrap\n'+'globalThis.ALBotConfig={"general":{"autostart":true},"test":true};\n';
+const runtime='/* ALBot 0.10.9-candidate */\nglobalThis.__BootSmoke=(globalThis.__BootSmoke??0)+1;\n'+
+ 'globalThis.ALBot={status:()=>({running:true,reason:"Start"})};\n';
 const encode=x=>new TextEncoder().encode(x);
 function contextFor(source,{payload=runtime,http=200,hasCrypto=true}={}){
  const calls=[];
@@ -38,11 +39,21 @@ test('bootstrap executes verified runtime exactly once and exposes status',async
  assert.equal(ctx.__BootSmoke,undefined);
  assert.equal(await ctx.ALBotBootstrapReady,true);
  assert.equal(ctx.__BootSmoke,1);
- assert.equal(ctx.ALBotBootstrapStatus.phase,'launched');
+ assert.equal(ctx.ALBotBootstrapStatus.phase,'running');
  assert.equal(calls.length,1);
  assert.equal(calls[0].params.credentials,'omit');
  assert.equal(calls[0].params.cache,'no-store');
  assert.equal(calls[0].params.mode,'cors');
+});
+test('bootstrap refuses to report success if configured autostart did not run',async()=>{
+ const denial='/* ALBot 0.10.9-candidate */\n'+
+  'globalThis.ALBot={status:()=>({running:false,reason:"Account gold safety gate"})};\n';
+ const made=createBootstrap({prefix,runtime:denial});
+ const {ctx}=contextFor(made.code,{payload:denial});
+ await assert.rejects(ctx.ALBotBootstrapReady,/autostart refused.*Account gold/);
+ await Promise.resolve();
+ assert.equal(ctx.ALBotBootstrapStatus.phase,'blocked');
+ assert.equal(ctx.ALBot.status().running,false);
 });
 test('bootstrap hash mismatch aborts before executing untrusted content',async()=>{
  const made=createBootstrap({prefix,runtime});

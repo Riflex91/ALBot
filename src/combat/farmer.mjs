@@ -165,8 +165,7 @@ export function createFarmer(bot){
     // A Ranger already following a valid farm route can drink while moving.
     // Stopping that route at 40% HP to orbit a roadside bigbird repeatedly
     // separated both Rangers from the healer in captured live traces.
-    if(rest&&me.role==='farmer'&&p.c.ctype!=='priest'&&
-       roadTravel().continueRoute){
+    if(rest&&me.role==='farmer'&&roadTravel().continueRoute){
       bot.reason='Erholung unterwegs: Route beibehalten, Trank/Heiler aktiv';
       bot.skills?.rotation?.(null);return true;
     }
@@ -307,8 +306,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // aggro must not turn the trip into random spiral/orbit manoeuvres.
     // Keep potion consumption and Priest healing active. This policy does
     // not apply after arrival, to the Merchant, or to unrelated travel.
-    const road=me.role==='farmer'&&c.ctype!=='priest'?roadTravel():null;
-    if(road?.continueRoute){
+    const road=me.role==='farmer'?roadTravel():null;
+    if(road?.continueRoute&&(c.ctype!=='priest'||
+       bot.monsters().some(m=>m?.target===c.name))){
       bot.target=null;
       bot.reason='Gruppenreise trotz Weg-Aggro: Route halten, Tränke und Heiler';
       if(now-lastRoadAggroAt>=10000){lastRoadAggroAt=now;
@@ -601,5 +601,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const attack=trackedAttack(target.id);
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
   }
-  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
+  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
+    // The emergency scheduler executes BEFORE normal farmer.tick. Honor the
+    // same verified road-route exception here or its preflight will trigger
+    // an orbit/retreat before the main combat loop can preserve the route.
+    if(me.role==='farmer'&&roadTravel().continueRoute)return false;
+    const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
 }

@@ -1,4 +1,5 @@
 import {neutralPullReadiness} from './team-readiness.mjs';
+import {assessQuestDetachment} from './quest-detachment.mjs';
 import {distance} from '../core/policy.mjs';
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
 // Promote one new concurrent pull only after the previous size has a
@@ -40,16 +41,16 @@ export function createEncounter(bot){
  const key='albot:pull:'+bot.me.name;let profiles=bot.p.read(key)??{},active=null,phase='RECOVER',capacity=1,context='',lastSave=0;
  function members(){return bot.farmers.map(n=>n===bot.me.name?{name:n,running:bot.running,hp:bot.p.c.hp,max_hp:bot.p.c.max_hp,mp:bot.p.c.mp,max_mp:bot.p.c.max_mp,gear:bot.gear?.snapshot(),capabilities:bot.capabilities?.snapshot()}:bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip);}
  function complete(failed){if(!active)return;const row=profiles[active.key]??{samples:0,seconds:0,xp:0,failures:0};row.samples++;row.seconds+=(Date.now()-active.at)/1000;row.xp+=Math.max(0,(bot.p.c.xp??0)-active.xp);row.failures+=failed?1:0;bot.adaptive?.episode({target:active.target,contextKey:active.adaptiveContext,seconds:(Date.now()-active.at)/1000,reward:Math.max(0,(bot.p.c.xp??0)-active.xp),failed});row.at=Date.now();profiles[active.key]=row;active=null;profiles=Object.fromEntries(Object.entries(profiles).sort((a,b)=>b[1].at-a[1].at).slice(0,96));if(Date.now()-lastSave>30000){lastSave=Date.now();bot.p.write(key,profiles);}}
- function tick(){const ms=members(),target=bot.strategy?.heartbeat?.()?.target??bot.teamPlan?.target(),mobs=bot.monsters().filter(m=>bot.teamNames.includes(m.target)),healthy=ms.length===bot.farmers.length&&ms.every(h=>h.hp/h.max_hp>=(bot.cfg.farming.pullHp??.8)&&h.mp/Math.max(1,h.max_mp)>=(bot.cfg.farming.pullMp??.5));
+ function tick(){const detachment=assessQuestDetachment(bot),ms=members(),target=bot.strategy?.heartbeat?.()?.target??bot.teamPlan?.target(),mobs=bot.monsters().filter(m=>bot.teamNames.includes(m.target)),healthy=!detachment&&ms.length===bot.farmers.length&&ms.every(h=>h.hp/h.max_hp>=(bot.cfg.farming.pullHp??.8)&&h.mp/Math.max(1,h.max_mp)>=(bot.cfg.farming.pullMp??.5));
   context=knowledgeFingerprint([ms.map(h=>[h.name,h.gear?.slots,h.gear?.stats]),target,bot.p.G.monsters?.[target]]);
   const aoe=ms.flatMap(h=>h.capabilities?.aoe??[]),max=(bot.me?.role==='farmer'||bot.cfg.party.aoe)&&aoe.length?Math.min(bot.cfg.farming.maxAggro,bot.cfg.party.aoeMaxTargets,Math.max(...aoe.map(s=>s.capacity))):1;
-  capacity=verifiedAdaptiveCapacity(profiles,context,max,healthy,
+  capacity=detachment?1:verifiedAdaptiveCapacity(profiles,context,max,healthy,
    bot.cfg.farming.adaptivePull!==false);
   const noThreeFailure=!(profiles[context+':3']?.failures>0);
   // An encounter at zero current aggro can safely start with a verified
   // 3shot only if THREE ordinary, same-spawn targets pass every local filter.
   // This avoids repeating the perpetual size-two cold start from live logs.
-  if(bot.me.name===bot.leader&&bot.me.role==='farmer'&&
+  if(!detachment&&bot.me.name===bot.leader&&bot.me.role==='farmer'&&
     safeThreeShotOpportunity({healthy,max,failed:!noThreeFailure,
       planned:target,visible:bot.monsters(),teamNames:bot.teamNames,safe:m=>
        !bot.recovering&&bot.teamPlan?.wantsCombat?.()!==false&&
@@ -65,9 +66,18 @@ export function createEncounter(bot){
  }
  function permit(m){
   if(m.target)return true;
-  if(bot.me.name!==bot.leader&&bot.cfg.party.enabled)return false;
-  if(!neutralPullReadiness(bot).ready)return false;
+  const readiness=neutralPullReadiness(bot);
+  if(!readiness.ready)return false;
+  const detached=readiness.detachment;
+  if(bot.me.name!==(detached?.puller??bot.leader)&&bot.cfg.party.enabled)return false;
   const engaged=bot.monsters().filter(x=>x.target&&bot.teamNames.includes(x.target)).length;
+  // During a solo Monsterhunt visit, only one attached farmer may pull
+  // exactly one approved spawn mob, using the LIVE two-person risk model.
+  // No adaptive multi-pull, AoE probing or neutral attack while aggro exists.
+  if(detached)return !bot.recovering&&!bot.p.c.rip&&
+    engaged===0&&m.mtype===detached.target&&
+    bot.teamPlan?.wantsCombat?.()!==false&&
+    bot.strategy?.safeTarget?.(m.mtype,m,true)===true;
   const planned=m.mtype&&m.mtype===bot.teamPlan?.target();
   if(planned&&bot.teamPlan?.wantsCombat?.()===false)return false;
   if(phase==='BUILD')return engaged<capacity;
@@ -85,7 +95,7 @@ export function createEncounter(bot){
   return false;
  }
  function pull(){
-  if(bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.teamPlan?.target()||!bot.teamPlan.wantsCombat()||
+  if(assessQuestDetachment(bot)||bot.me.name!==bot.leader||phase!=='BUILD'||capacity<2||!bot.teamPlan?.target()||!bot.teamPlan.wantsCombat()||
      !neutralPullReadiness(bot).ready)return false;
   const engaged=bot.monsters().filter(m=>m.target&&bot.teamNames.includes(m.target));
   if(!engaged.length||engaged.length>=capacity||bot.recovering)return false;

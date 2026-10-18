@@ -1682,6 +1682,20 @@
                 "farm": "Gezielt farmen"
               }
             },
+            "excessAction": {
+              "type": "string",
+              "title": "Überschuss bei Behalten-Regel (nur ausdrücklich)",
+              "default": "hold",
+              "maxLength": 160,
+              "enum": [
+                "hold",
+                "sell"
+              ],
+              "x-labels": {
+                "hold": "Nicht automatisch verwerten",
+                "sell": "NPC-Verkauf über Maximalbestand"
+              }
+            },
             "keep": {
               "type": "integer",
               "title": "Mindestbestand behalten",
@@ -2455,11 +2469,13 @@
             "enum": [
               "conservative",
               "balanced",
+              "assertive",
               "aggressive"
             ],
             "x-labels": {
               "conservative": "Vorsichtig",
               "balanced": "Ausgewogen",
+              "assertive": "Offensiv (kontrolliertes Risiko)",
               "aggressive": "Aggressiv"
             }
           },

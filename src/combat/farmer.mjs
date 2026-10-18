@@ -1,6 +1,7 @@
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
 import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
+import {assessQuestDetachment} from './quest-detachment.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 import {roadAggroTravelDecision,committedFarmTransit} from './transit-defense.mjs';
@@ -241,7 +242,7 @@ function recoverCohesion(now){
   if(me.name!==bot.leader)return false;
   const away=(bot.farmers??[]).filter(n=>n!==me.name).map(n=>{
     const h=bot.transport.fresh(n);
-    return h?.running&&!h.rip&&h.realm===p.realm()&&samePlace(p.c,h)?
+    return h?.running&&!h.rip&&!h.questVisit&&h.realm===p.realm()&&samePlace(p.c,h)?
       {name:n,h,distance:distance(p.c,h)}:null;
   }).filter(r=>r&&r.distance>cfg.party.followDistance*2)
     .sort((a,b)=>b.distance-a.distance||a.name.localeCompare(b.name));
@@ -302,6 +303,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
+    const detachment=assessQuestDetachment(bot);
+    const questVisitor=(bot.farmers??[]).find(n=>n!==me.name&&
+      bot.transport?.fresh?.(n)?.questVisit===true);
+    // Cancel an ALREADY QUEUED follower/escort route as soon as the NPC
+    // visitor appears. Otherwise native smart_move may continue to Daisy
+    // even though no new escort is being scheduled.
+    if(questVisitor&&['follow','quest-escort','cohesion'].includes(
+      bot.movement.order?.owner))bot.movement.stop();
+
     // While a Ranger follows an approved native farm route, hostile road
     // aggro must not turn the trip into random spiral/orbit manoeuvres.
     // Keep potion consumption and Priest healing active. This policy does
@@ -496,6 +506,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(cfg.party.enabled&&me.name!==bot.leader&&escortLeader?.running&&
        helpEngagedTeamFight(escortLeader))return;
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
+    if(questVisitor&&!detachment){waitSafely('Monsterhunt-NPC-Besuch: Farmanker halten; kein sicherer Zweier-Pull');return;}
     const leader=escortLeader;
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}
@@ -521,7 +532,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        bot.reason='Gruppenmarsch: durchgehend zu '+marchPlan.target;
        bot.skills.rotation(null);return;
       }
-      if(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg)){
+      if(!detachment&&(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg))){
        if(helpEngagedTeamFight(leader))return;
        bot.target=null;bot.reason='Folge '+bot.leader;
        if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();
@@ -529,13 +540,13 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         Math.max(20,followerReassemblyDistance(cfg)/2))},'follow');
        bot.skills.rotation(null);return;
       }
-      if(leader.questVisit===true||leader.squadQuestVisit===true){waitSafely('Monsterhunt-NPC-Besuch: bei der Gruppe bleiben');return;}
+      if(!detachment&&(leader.questVisit===true||leader.squadQuestVisit===true)){waitSafely('Monsterhunt-NPC-Besuch: am Farmanker bleiben');return;}
     }
-    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
+    if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&n!==detachment?.visitor&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
     // The leader's first neutral pull is admitted only after all selected
     // farmers have actually assembled at this spawn. Engaged-team defense
     // stays available even if a member has fallen behind.
-    if(me.name===bot.leader&&!bot.monsters().some(m=>m.target&&bot.teamNames.includes(m.target))){
+    if(me.name===(detachment?.puller??bot.leader)&&!bot.monsters().some(m=>m.target&&bot.teamNames.includes(m.target))){
      const ready=neutralPullReadiness(bot);
      if(!ready.ready){waitSafely('Gruppe sammeln: '+(ready.peer??ready.reason));return;}
     }

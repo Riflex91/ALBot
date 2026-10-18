@@ -70,6 +70,18 @@ export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}
      w.bankCount!==record.bankBefore-record.quantity)
    return reject('invalid-durable-withdrawal-receipt');
  }
+ if(record.rollback!==undefined){
+  const b=record.rollback;
+  if(!record.dispatch||!record.withdrawal||record.saleConfirmed||
+     !b||typeof b!=='object'||Array.isArray(b)||
+     !safe(b.at)||b.at<record.at||b.at>now+2000||
+     typeof b.session!=='string'||!b.session||b.realm!==record.realm||
+     b.pack!==record.pack||b.source!==record.dest||
+     b.dest!==record.slot||b.sourcePrint!==record.sourcePrint||
+     (b.dispatchedAt!==undefined&&(!safe(b.dispatchedAt)||
+      b.dispatchedAt<b.at||b.dispatchedAt>now+2000)))
+   return reject('invalid-bank-rollback-receipt');
+ }
  return {valid:true,reason:null};
 }
 // Only a previously VERIFIED and persisted withdrawal may continue to an
@@ -116,6 +128,18 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
  const original=!!source&&fingerprint(source)===record.sourcePrint,
   withdrawn=!source&&!!target&&fingerprint(target)===record.sourcePrint,
   empty=!target;
+ if(record.rollback){
+  if(original&&empty&&count===record.before&&bankCount===record.bankBefore)
+   return record.rollback.dispatchedAt!==undefined?
+    {phase:'restored',reason:'exact-dispatched-rollback',confirmed:true}:
+    {phase:'ambiguous',reason:'effect-without-dispatch',confirmed:false};
+  if(withdrawn&&count===record.before+record.quantity&&
+     bankCount===record.bankBefore-record.quantity)
+   return record.rollback.dispatchedAt!==undefined?
+    {phase:'rollback-dispatched-unchanged',reason:'sent-uncertain',confirmed:false}:
+    {phase:'rollback-prepared',reason:'unsent-and-exact',confirmed:false};
+  return {phase:'ambiguous',reason:'rollback-slot-mismatch',confirmed:false};
+ }
  if(!record.saleConfirmed&&original&&empty&&
     count===record.before&&bankCount===record.bankBefore)
   return record.dispatch?

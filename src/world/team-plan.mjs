@@ -410,6 +410,18 @@ export function createTeamPlan(bot){
    current=null;
   }
   return;}
+  // A quest collection/turn-in is an individual errand. Keep the existing
+  // farm anchor stable throughout the visit, even if travel score, team DPS
+  // or the provisional hunt rotation changes while a member is absent.
+  // Existing target/plan validation continues to deny unsafe attacks.
+  const questAbsent=cfg.party.enabled&&
+   (bot.strategy?.busy||(bot.farmers??[]).some(n=>n!==me.name&&
+    bot.transport?.fresh?.(n)?.questVisit===true));
+  if(questAbsent&&current){
+   current.expires=Date.now()+cfg.general.messageTtlMs*2;
+   switchAdvice={reason:'monsterhunt-npc-anchor-hold',from:current.key,to:current.key};
+   return;
+  }
   // Do not replace a valid shared plan while an ally still has hostile aggro.
   // The next tick after that fight may reconsider urgent quest/material work.
   const fightPeers=(bot.farmers??[]).filter(n=>n!==me.name)
@@ -563,6 +575,20 @@ export function createTeamPlan(bot){
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
   if(!valid(current)||bot.strategy.busy)return false;
   if(cfg.party.enabled&&me.name!==bot.leader)return false;
+  // The quest owner's NPC journey is NEVER a farm march destination.
+  // A leader at the anchor stays there; an incomplete travelling squad
+  // pauses rather than following the departing quest owner.
+  if((bot.farmers??[]).some(n=>n!==me.name&&
+      bot.transport?.fresh?.(n)?.questVisit===true)){
+   if(bot.movement.order?.owner==='quest-escort')bot.movement.stop();
+   if(!samePlace(p.c,current)||distance(p.c,current)>65){
+    if(bot.movement.order?.owner==='farm')bot.movement.stop();
+    bot.reason='Monsterhunt-Besuch: Farmroute bis Rückkehr pausiert';
+    return true;
+   }
+   if(bot.movement.order?.owner==='farm')bot.movement.stop();
+   return false;
+  }
   if(samePlace(p.c,current)&&distance(p.c,current)<=65)return false;
   let destination={...current,radius:65};
   if(cfg.party.enabled&&me.name===bot.leader){

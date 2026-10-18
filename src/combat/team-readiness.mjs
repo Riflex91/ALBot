@@ -1,4 +1,5 @@
 import {distance,samePlace} from '../core/policy.mjs';
+import {assessQuestDetachment} from './quest-detachment.mjs';
 
 // Neutral pulls require live, healthy, colocated participants. Defensive
 // combat against an existing attacker remains allowed independently.
@@ -42,8 +43,10 @@ export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;
  if(cfg.party?.enabled===false||cfg.party?.waitForTeam!==true)
   return {ready:true,reason:'no-team-hold'};
- if(me.name!==bot.leader)return {ready:false,reason:'follower-cannot-pull'};
- const names=bot.farmers??[];
+ const detachment=assessQuestDetachment(bot);
+ const puller=detachment?.puller??bot.leader;
+ if(me.name!==puller)return {ready:false,reason:'follower-cannot-pull'};
+ const names=detachment?.active??bot.farmers??[];
  if(!names.length)return {ready:false,reason:'missing-roster'};
  const maxDistance=neutralPullDistance(cfg);
  for(const name of names){
@@ -56,10 +59,15 @@ export function neutralPullReadiness(bot){
     !Number.isFinite(peer.y)||distance(p.c,peer)>maxDistance)
    return {ready:false,peer:name,reason:'peer-not-assembled'};
   if(!Number.isFinite(peer.hp)||!Number.isFinite(peer.max_hp)||
-    peer.max_hp<=0||peer.hp/peer.max_hp<(cfg.farming.pullHp??.8)||
+    peer.max_hp<=0||peer.hp/peer.max_hp<(detachment?Math.max(.9,cfg.farming.pullHp??.8):(cfg.farming.pullHp??.8))||
     !Number.isFinite(peer.mp)||!Number.isFinite(peer.max_mp)||
-    peer.max_mp<=0||peer.mp/peer.max_mp<.15)
+    peer.max_mp<=0||peer.mp/peer.max_mp<(detachment?.3:.15))
    return {ready:false,peer:name,reason:'peer-recovering'};
  }
- return {ready:true,reason:'assembled'};
+ if(detachment&&(p.c.hp/Math.max(1,p.c.max_hp)<Math.max(.9,cfg.farming.pullHp??.8)||
+    p.c.mp/Math.max(1,p.c.max_mp)<.3||bot.recovering||
+    bot.monsters().some(m=>m?.hp>0&&!m.dead&&m.target&&bot.teamNames.includes(m.target))))
+  return {ready:false,reason:'detached-team-not-ready'};
+ return {ready:true,reason:detachment?'two-farmer-conservative': 'assembled',
+  detachment};
 }

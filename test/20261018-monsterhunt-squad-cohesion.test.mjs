@@ -47,6 +47,9 @@ test('queued smart_move is not proof of real progress after 30 seconds of standi
 test('leader quest trip takes precedence over the old shared spawn endpoint',()=>{
  assert.equal(sharedFarmMarchDestination(leader,{...peer,questVisit:true,
   farmPlan:plan},realm),null);
+ assert.equal(sharedFarmMarchDestination(leader,{...peer,squadQuestVisit:true,
+  farmPlan:plan},realm),null,
+  'escort to Daisy must preempt the stale shared farm route');
  assert.ok(sharedFarmMarchDestination(leader,{...peer,questVisit:false,
   farmPlan:plan},realm));
 });

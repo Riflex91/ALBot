@@ -32,7 +32,7 @@ export function sharedFarmMarchDestination(follower,leader,realm){
   in:compact.in??compact.map,x:compact.x,y:compact.y,
   target:compact.target
  }:null);
- if(!leader?.running||leader.rip||leader.questVisit===true||leader.realm!==realm||
+ if(!leader?.running||leader.rip||leader.questVisit===true||leader.squadQuestVisit===true||leader.realm!==realm||
     !plan||plan.realm!==realm||!Number.isFinite(plan.x)||
     !Number.isFinite(plan.y)||typeof plan.map!=='string')return null;
  const followerEnRoute=!samePlace(follower,plan)||distance(follower,plan)>75;
@@ -501,7 +501,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         Math.max(20,followerReassemblyDistance(cfg)/2))},'follow');
        bot.skills.rotation(null);return;
       }
-      if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
+      if(leader.questVisit===true||leader.squadQuestVisit===true){waitSafely('Monsterhunt-NPC-Besuch: bei der Gruppe bleiben');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();
     // The leader's first neutral pull is admitted only after all selected

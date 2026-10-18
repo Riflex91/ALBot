@@ -18,6 +18,18 @@ export function chooseEmergencyFocus(monsters,members=[]){
    health.get(a.target)-health.get(b.target)||
    a.hp-b.hp||String(a.id).localeCompare(String(b.id)))[0]??null;
 }
+// Every transit tick can choose a nearby, fresh, injured teammate,
+// independently of whether an aggro emergency was raised.
+export function selectMarchHealingPatient(character,roster,{realm,now=Date.now(),
+ threshold=.85}={}){
+ if(character?.ctype!=='priest'||!Array.isArray(roster))return null;
+ return roster.filter(h=>h?.name&&h.name!==character.name&&
+  h.running&&!h.rip&&h.realm===realm&&samePlace(character,h)&&
+  Number.isFinite(h.received)&&h.received<=now&&now-h.received<=4000&&
+  Number.isFinite(h.hp)&&Number.isFinite(h.max_hp)&&h.max_hp>0&&
+  h.hp>0&&h.hp/h.max_hp<threshold).sort((a,b)=>
+   a.hp/a.max_hp-b.hp/b.max_hp||a.name.localeCompare(b.name))[0]??null;
+}
 export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
@@ -36,7 +48,7 @@ export function potionResource(c,threshold=300){
  return hp>threshold?'hp':mp>threshold?'mp':null;
 }
 export function createFarmer(bot){
-  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0};
+  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   // Observe real outgoing basic attacks in addition to skill casts. Failed
@@ -374,6 +386,43 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         bot.reason='Kampfwaffe anlegen: '+candidate.item.name;return;
        }
       }
+    }
+    // A traveling Priest does not merely chase the leader: actively heal any
+    // injured squad member before following the next march waypoint.
+    if(c.ctype==='priest'&&cfg.party.enabled&&cfg.party.healing){
+     const route=bot.teamPlan?.heartbeat?.(),lead=bot.transport?.fresh?.(bot.leader);
+     const travelling=route&&(!samePlace(c,route)||distance(c,route)>85)||
+      ['follow','farm','cohesion'].includes(bot.movement.order?.owner)||
+      lead?.farmPlan&&(!samePlace(c,lead.farmPlan)||distance(c,lead.farmPlan)>85);
+     if(travelling){
+      const peers=(bot.farmers??[]).filter(n=>n!==c.name)
+       .map(n=>bot.transport?.fresh?.(n));
+      const patient=selectMarchHealingPatient(c,peers,{realm:p.realm(),now});
+      if(patient){
+       const range=p.G.skills?.heal?.range??c.range,visible=bot.entity?.(patient.name);
+       if(visible&&samePlace(c,visible)&&distance(c,visible)<=range-10){
+        if(bot.skills.rescue?.(visible)){
+         bot.reason='Gruppenmarsch: Notfallheilung '+patient.name;
+         bot.event?.('party.marchHeal',{patient:patient.name,
+          hpRatio:patient.hp/patient.max_hp,distance:Math.round(distance(c,patient))});
+         return;
+        }
+       }else if(Number.isFinite(range)&&range>50&&distance(c,patient)<650){
+        const key=patient.name;
+        if(bot.movement.order?.owner!=='combat'){
+         if(['follow','farm','cohesion'].includes(bot.movement.order?.owner))bot.movement.stop();
+         bot.movement.go({...patient,radius:Math.max(45,range-25)},'combat');
+        }
+        if(lastMarchHeal.key!==key||now-lastMarchHeal.at>12000){
+         lastMarchHeal={key,at:now};
+         bot.event?.('party.marchHealApproach',{patient:patient.name,
+          distance:Math.round(distance(c,patient)),hpRatio:patient.hp/patient.max_hp});
+        }
+        bot.reason='Gruppenmarsch: Heiler nähert sich '+patient.name;
+        bot.skills.rotation(null);return;
+       }
+      }
+     }
     }
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     const leader=bot.transport.fresh(bot.leader);

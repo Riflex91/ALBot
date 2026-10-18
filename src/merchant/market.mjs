@@ -46,15 +46,30 @@ export function createMarket(bot){
  function offerWaitMs(item){
   return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());
  }
- function buy(item,r){
+ function buy(item,r,scope=null){
+  // Production-market procurement is tied to one live finite plan step.
+  // Ordinary explicitly configured market-buy tasks retain their behavior.
+  const finite=scope!==null;
+  if(finite&&(!scope||!Number.isSafeInteger(scope.quantity)||
+      scope.quantity<1||scope.quantity>1000000||
+      typeof scope.admit!=='function'||scope.admit()!==true))return false;
   for(const player of Object.values(p.entities)){
    if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
    for(const [slot,offer] of Object.entries(player.slots??{})){
     const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!variant(offer,item)||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
-    const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
+    const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before,finite?scope.quantity:Infinity)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
     if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
     noOffers.delete(identity(item));
-    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>p.call('trade_buy',bot.entity(player.id??player.name),slot,q),observe:()=>e.count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
+    let response=null,dispatchGold=null;
+    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity)&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
+    observe:()=>finite?
+     !!response&&typeof response==='object'&&!response.failed&&
+      response.success!==false&&Number.isSafeInteger(dispatchGold)&&
+      p.c.gold===dispatchGold-cost&&e.count(item)===before+q:
+     e.count(item)>=before+q,
+    details:{item:item.name,variant:identity(item),quantity:q,before,
+     unitPrice,seller:player.name??player.id,tradeSlot:slot,rid,
+     source:finite?'finite-production-plan':'explicit-market-rule'}});
    }
   }
   // A search for missing live player offers is not an admitted purchase.

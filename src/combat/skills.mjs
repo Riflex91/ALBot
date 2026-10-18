@@ -1,3 +1,4 @@
+import {controlledBurstPlan} from './controlled-burst.mjs';
 import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {nativeSkillCooldown} from '../core/skill-wakeups.mjs';
 import {distance,samePlace,matches} from '../core/policy.mjs';
@@ -217,13 +218,27 @@ export function createSkills(bot){
       neutralCount>additional){count(id,'targetBlocked');return false;}
       argsTarget=aimed?selected:null;target=selected[0];}
     if(id==='energize'){extra=Math.floor(Math.min(target.max_mp-target.mp,p.c.mp-p.c.max_mp*reserve,200));if(extra<=0)return false;}
-    let burstMana=0;if(id==='cburst'){const budget=Math.floor(Math.min(p.c.mp-p.c.max_mp*reserve-(s.mp??0),p.c.max_mp*(control?.manaBudget??1)));burstMana=Math.min(budget,Math.ceil((target?.hp??0)/Math.max(.001,s.ratio??.5)));if(!target||burstMana<=0)return false;argsTarget=[[target.id,burstMana]];}
+    let burstMana=0,burstTargets=[];
+    if(id==='cburst'){
+     const budget=Math.floor(Math.min(p.c.mp-p.c.max_mp*reserve-(s.mp??0),
+      p.c.max_mp*(control?.manaBudget??1)));
+     const group=target?.target&&bot.teamNames.includes(target.target)&&
+      cfg.party.advancedSkills!==false?
+      [target,...bot.monsters().filter(e=>eligible(e)&&samePlace(p.c,e)&&
+       distance(p.c,e)<(s.range??p.c.range)-5)]:[target];
+     burstTargets=controlledBurstPlan(p.c,group.map(e=>e&&
+      ({...p.G.monsters?.[e.mtype],...e})),s,{budget,reserve,
+      maxTargets:control?.maxTargets??maxTargets,primary:target?.id});
+     burstMana=burstTargets.reduce((n,row)=>n+row[1],0);
+     if(!burstTargets.length||burstMana<=0)return false;
+     argsTarget=burstTargets;target=bot.entity(burstTargets[0][0]);
+    }
     const consume=s.consume,prior=consume?bot.count(consume):0;
     if(s.hostile&&target&&target.type!=='monster')return false;
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
     const guard=()=>ready(id,target,reserve)&&
-      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve)&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
+      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
     if(!guard()){
       const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
       const cost=id==='burst'?p.c.mp:s.mp??0;
@@ -240,7 +255,7 @@ export function createSkills(bot){
       const invoked=id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
       // Only AFTER a real game API invocation, record shadow reservations.
       // Returning a promise from the skill is not equivalent to a hit.
-      const affected=multi?selected.map(x=>x.id):
+      const affected=id==='cburst'?burstTargets.map(row=>row[0]):multi?selected.map(x=>x.id):
        target?.id?[target.id]:target?.name?[target.name]:[];
       if((s.hostile||id==='heal')&&affected.length){
        // Only normal aimed ranger hits have calibrated damage multipliers.

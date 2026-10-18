@@ -16,7 +16,7 @@ export function publicCallCost(name,args=[]){
   equip:4,unequip:7,swap:1,imove:1,loot:4,open_chest:1.1,
   get_secondhands:17,get_players:13,get_tracker:51,
   buy:1,buy_with_gold:1,sell:1,upgrade:1,compound:1,craft:1,
-  exchange:1,bank_store:1,bank_retrieve:1,bank_swap:1,
+  exchange:1,exchange_buy:1,bank_store:1,bank_retrieve:1,bank_swap:1,
   bank_deposit:1,bank_withdraw:1,send_item:1,send_gold:1,
   respawn:1,stop:1,town:1,change_target:.5,interact:1,
   activate:1,shift:1,cave_enter:1,cave_info:1,cave_reply:1,cave_exit:1,
@@ -57,7 +57,10 @@ export function createActionAdmission(bot,{now=()=>Date.now()}={}){
  return {
   allow(key,resources=[]){
    const gate=runtimeConditionGate(bot.p.c,bot.p.G,key,resources);
-   return gate.allowed?budget(key,key==='move'?8:1):defer(gate.reason,key);
+   const cost=/tracker/.test(key)?51:/ponty|secondhand/.test(key)?17:
+    /unequip/.test(key)?7:/potion/.test(key)?8:/equip/.test(key)?4:
+    key==='move'?8:/loot/.test(key)?4:1;
+   return gate.allowed?budget(key,cost):defer(gate.reason,key);
   },
   allowCM(to,message){return budget('transport',publicCallCost('send_cm',[to,message]));},
   record(name,args){const cost=publicCallCost(name,args);

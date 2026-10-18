@@ -146,3 +146,9 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{
 
 Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{callCostCeiling:number('Normale Aktionskosten im 4-Sekunden-Fenster (Überlebensreserve separat)',160,60,170)});
 FULL_DESCRIPTOR.schema.properties.world.properties.eventGraceMs=number('Beobachtungslücke bei Events maximal halten (ms)',2500,0,10000);
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{
+ seasonalBuff:bool('Seasonalen kostenlosen Buff bei sicherem Vorbeikommen holen',true),
+ boosters:bool('Bereits aktive eigene Booster passend zum Farmziel umschalten',false),
+ activateBoosters:bool('Inaktive eigene Booster aktivieren (beginnt Ablaufzeit)',false)
+});

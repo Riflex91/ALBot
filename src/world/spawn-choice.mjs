@@ -63,6 +63,15 @@ export function chooseFarmAreaSwitch({
  // Score already includes base trip friction. A new move additionally
  // consumes travel that the already occupied, validated spawn avoids.
  // Require a bounded improvement over the existing hysteresis threshold.
+ // Relieve objectively crowded spawns even when a safer nearby site offers
+ // marginally less raw XP. Both sites need independent 90s observation.
+ const verified=r=>Number.isFinite(r.evidenceSeconds)&&r.evidenceSeconds>=90&&
+  Number.isFinite(r.pressureRatio)&&r.pressureRatio>=0&&r.pressureRatio<=1;
+ if(verified(currentRank)&&verified(candidate)&&
+   currentRank.pressureRatio>=.65&&candidate.pressureRatio<=.3&&
+   candidate.travelSeconds<=currentRank.travelSeconds+120&&
+   candidate.score>=currentRank.score*.85)
+  return result(candidate,'verified-crowded-spawn-relief',.85);
  const extraTravel=Math.max(0,candidate.travelSeconds-currentRank.travelSeconds);
  const extraImprovement=Math.min(.35,extraTravel/600);
  const threshold=1+improvement+extraImprovement;

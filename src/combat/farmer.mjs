@@ -447,11 +447,38 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(cfg.party.enabled&&bot.leader!==me.name){
       if(!leader?.running||leader.realm!==p.realm()||leader.rip){waitSafely('Warte auf Kampf-Leader');return;}
       const marchPlan=leader.farmPlan;
-      const squadMarch=!!marchPlan&&(!samePlace(leader,marchPlan)||
-       distance(leader,marchPlan)>85);
-      const followLimit=squadMarch?Math.min(70,followerReassemblyDistance(cfg)):
-       followerReassemblyDistance(cfg);
-      if(!samePlace(c,leader)||distance(c,leader)>followLimit){if(helpEngagedTeamFight(leader))return;bot.target=null;bot.reason='Folge '+bot.leader;if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();bot.movement.go({...leader,radius:Math.min(cfg.party.followDistance/2,Math.max(20,followerReassemblyDistance(cfg)/2))},'follow');bot.skills.rotation(null);return;}
+      // All selected Farmers navigate the Leader's ACTUAL farm endpoint.
+      // Chasing the Leader's transient heartbeat coordinate with a 50-70
+      // radius repeatedly concluded movement and caused stop-and-go.
+      // A shared native destination preserves continuous travel, including
+      // across portals and bends. Safety and emergency combat stay above this.
+      const squadMarch=!!marchPlan&&leader.running&&!leader.rip&&
+       marchPlan.realm===p.realm()&&
+       (!samePlace(c,marchPlan)||distance(c,marchPlan)>75||
+        !samePlace(leader,marchPlan)||distance(leader,marchPlan)>85);
+      if(squadMarch){
+       const destination={...marchPlan,radius:65},order=bot.movement.order;
+       const oldFollow=order?.owner==='follow'&&(
+        !samePlace(order.dest,destination)||
+        distance(order.dest,destination)>100);
+       if(oldFollow)bot.movement.stop();
+       if(!bot.movement.order){
+        bot.movement.go(destination,'follow');
+        bot.event?.('party.sharedMarchRoute',{plan:marchPlan.id,
+         destination:marchPlan.key,reason:'continuous-shared-farm-destination'});
+       }
+       bot.target=null;
+       bot.reason='Gruppenmarsch: durchgehend zu '+marchPlan.target;
+       bot.skills.rotation(null);return;
+      }
+      if(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg)){
+       if(helpEngagedTeamFight(leader))return;
+       bot.target=null;bot.reason='Folge '+bot.leader;
+       if(['combat','farm','kite'].includes(bot.movement.order?.owner))bot.movement.stop();
+       bot.movement.go({...leader,radius:Math.min(cfg.party.followDistance/2,
+        Math.max(20,followerReassemblyDistance(cfg)/2))},'follow');
+       bot.skills.rotation(null);return;
+      }
       if(leader.questVisit===true){waitSafely('Begleite Monsterhunt-Reise des Leaders');return;}
     }
     if(cfg.party.enabled&&cfg.party.waitForTeam&&bot.farmers.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||!samePlace(c,bot.transport.fresh(n))||bot.transport.fresh(n)?.realm!==p.realm()||distance(c,bot.transport.fresh(n))>cfg.party.followDistance*2))){if(leader?.running&&helpEngagedTeamFight(leader))return;if(recoverCohesion(now)){bot.skills.rotation(null);return;}waitSafely('Warte auf Gruppe');return;}if(bot.movement.order?.owner==='cohesion')bot.movement.stop();

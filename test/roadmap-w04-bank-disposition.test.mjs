@@ -218,12 +218,22 @@ test('W04 staged operating stock keeps the physical floor through withdrawal and
  assert.equal(sales.length,1);assert.equal(sales[0].rule._bankOperatingStock,true);
  assert.equal(sales[0].rule.keep,100);
 });
-test('W04 reserve loss after withdrawal rolls back instead of selling against cached bank copies',async()=>{
+test('W04 new reservation after withdrawal rolls back instead of selling against cached bank copies',async()=>{
  const {bot,calls,sales,inv}=operatingBankFixture();
  bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
- await calls[0].params.call();inv[1].q=99;
+ await calls[0].params.call();bot.production={reservedQuantity:()=>1,reserved:()=>true};
  bot.bank.recoverCapacity();
  assert.equal(sales.length,0);
  assert.equal(calls.at(-1).kind,'bank.store');
  assert.equal(calls.at(-1).params.guard(),true);
+});
+
+test('W04 unexplained reserve-stock drift after withdrawal remains quarantined instead of guessing a rollback',async()=>{
+ const {bot,calls,sales,inv}=operatingBankFixture();
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ await calls[0].params.call();inv[1].q=99;
+ bot.bank.recoverCapacity();
+ assert.equal(sales.length,0);assert.equal(calls.length,1);
+ assert.equal(bot.bank.pending,true);
+ assert.equal(bot.bank.recoveryStatus().requiresManualReview,true);
 });

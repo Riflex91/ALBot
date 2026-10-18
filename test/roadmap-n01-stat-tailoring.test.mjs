@@ -14,7 +14,7 @@ function fixture(){
  const profile={complete:true,class:'priest',level:50,realm:'EUI',at:now,
   slots:{mainhand:null,offhand:null}};
  const cfg={characters:[{name:'P',class:'priest',enabled:true,role:'farmer'}],
-  production:{enabled:true,gear:true,statTailoring:true,gearTargets:[target],
+  production:{enabled:true,gear:true,gearTargets:[target],
    minChance:.65},items:[],merchant:{budgetMode:'bounded'}};
  let mutationOptions=null,previewResponse={calculate:true,chance:.99999,
   scroll:'strscroll',item:{name:'staff',level:0}};
@@ -55,7 +55,7 @@ test('N01 grade 1 stat mutation requires ten grade-qualified pscrolls for exact 
  const f=fixture(),r=statTailoringCandidate(f.bot);
  assert.equal(r?.needed,10);
  assert.equal(r?.scrollSlot,1);
- assert.equal(r?.loss,3000);
+ assert.equal(r?.loss,2000);
  assert.equal(r?.target,f.target);
  f.items[1].q=9;assert.equal(statTailoringCandidate(f.bot),null);
  f.items[1].q=20;f.G.items.strscroll.grade=0;
@@ -63,9 +63,9 @@ test('N01 grade 1 stat mutation requires ten grade-qualified pscrolls for exact 
 });
 test('N01 always opt-in, protects existing stat and locks, refuses stale/other realm or fulfilled target',()=>{
  const f=fixture();
- f.cfg.production.statTailoring=false;
+ f.cfg.production.gear=false;
  assert.equal(statTailoringCandidate(f.bot),null);
- f.cfg.production.statTailoring=true;
+ f.cfg.production.gear=true;
  f.items[0].stat_type='dex';assert.equal(statTailoringCandidate(f.bot),null);
  delete f.items[0].stat_type;f.items[0].l=true;
  assert.equal(statTailoringCandidate(f.bot),null);
@@ -84,11 +84,11 @@ test('N01 server calculate proof is mandatory and cannot be replaced by a made-u
  await Promise.resolve();await Promise.resolve();
  assert.equal(t.tick(),true);
  assert.equal(f.mutation?.kind,'upgrade');
- assert.equal(f.mutation?.loss,3000);
+ assert.equal(f.mutation?.loss,2000);
  assert.equal(f.mutation?.guard(),true);
  assert.equal(f.calls.filter(r=>r[0]==='upgrade').length,1,
   'only read-only calculate preview was dispatched');
- f.target.budget=2999;
+ f.target.budget=1999;
  assert.equal(f.mutation.guard(),false,'late budget change cancels execution');
 });
 test('N01 confirmed stat effect requires the exact item and consumed scroll quantity',async()=>{

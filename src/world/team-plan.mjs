@@ -88,6 +88,34 @@ export function assessFarmMarch(character,peers,{realm,now=Date.now(),
 // A teammate already traversing the SAME verified plan must not immobilize
 // the Leader merely because a portal placed them on a different map.
 // Compact march intents are carried even when large heartbeats shed farmPlan.
+export function squadCombatEngaged(monsters,teamNames=[],peers=[]){
+ const names=new Set(teamNames);
+ return (monsters??[]).some(m=>m?.hp>0&&!m.dead&&names.has(m.target))||
+  (peers??[]).some(h=>h?.running&&!h.rip&&Number.isFinite(h.threats)&&h.threats>0);
+}
+// A queued smart_move can stay flagged as active even without any physical
+// progress. Keep a position/time witness for each follower on the same plan.
+export function stalledSquadRoutePeer(peers,plan,observed,now=Date.now(),stallMs=30000){
+ if(!(observed instanceof Map)||!plan?.id||!Number.isFinite(now))return null;
+ const active=new Set();
+ for(const peer of peers??[]){
+  if(!peer?.name)continue;active.add(peer.name);
+  const traveling=peer.running&&!peer.rip&&peer.march?.plan===plan.id&&
+   peer.march?.moving===true&&!peer.questVisit&&!(peer.threats>0)&&
+   Number.isFinite(peer.x)&&Number.isFinite(peer.y)&&
+   (!samePlace(peer,plan)||distance(peer,plan)>85);
+  if(!traveling){observed.delete(peer.name);continue;}
+  const old=observed.get(peer.name);
+  if(!old||old.plan!==plan.id||!samePlace(old,peer)||
+     distance(old,peer)>18||old.at>now){
+   observed.set(peer.name,{plan:plan.id,map:peer.map,in:peer.in??peer.map,
+    x:peer.x,y:peer.y,at:now});continue;
+  }
+  if(now-old.at>=stallMs)return peer.name;
+ }
+ for(const key of observed.keys())if(!active.has(key))observed.delete(key);
+ return null;
+}
 export function assessLiveSquadMarch(character,peers,{realm,plan,
  now=Date.now(),maxGap=300,hpFloor=.6}={}){
  if(!character||!plan?.id||!Array.isArray(peers))return {ready:false,reason:'invalid-plan'};
@@ -97,6 +125,8 @@ export function assessLiveSquadMarch(character,peers,{realm,plan,
      now-peer.received>4000||!Number.isFinite(peer.hp)||
      !Number.isFinite(peer.max_hp)||peer.max_hp<=0)
    return {ready:false,reason:'teammate-unverified',peer:peer?.name??null};
+  if(peer.threats>0)return {ready:false,reason:'teammate-in-combat',peer:peer.name};
+  if(peer.questVisit===true)return {ready:false,reason:'teammate-on-quest-visit',peer:peer.name};
   if(peer.hp/peer.max_hp<hpFloor)return {ready:false,
    reason:'teammate-needs-heal',peer:peer.name,hpRatio:peer.hp/peer.max_hp};
   const close=samePlace(character,peer)&&distance(character,peer)<=maxGap;
@@ -258,7 +288,7 @@ export function balancedFarmUtility(xp,gold){
  return Math.pow(Math.max(1,xp),.65)*Math.pow(Math.max(1,gold),.35);
 }
 export function createTeamPlan(bot){
- const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0},routeBlockedAt=0;let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
+ const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0},routeBlockedAt=0,routeProgress=new Map();let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
   return farmAreaHistoryKey(p.realm(),new Date(now).getUTCHours(),spawnKey,
@@ -380,6 +410,14 @@ export function createTeamPlan(bot){
    current=null;
   }
   return;}
+  // Do not replace a valid shared plan while an ally still has hostile aggro.
+  // The next tick after that fight may reconsider urgent quest/material work.
+  const fightPeers=(bot.farmers??[]).filter(n=>n!==me.name)
+   .map(n=>bot.transport?.fresh?.(n));
+  if(valid(current)&&squadCombatEngaged(bot.monsters(),bot.teamNames,fightPeers)){
+   current.expires=Date.now()+cfg.general.messageTtlMs*2;
+   return;
+  }
   // Arrival is physical evidence, not elapsed time since selecting a route.
   // Keep it across leader re-ranking of the same destination.
   if(valid(current)&&!Number.isFinite(current.arrivedAt)&&
@@ -534,6 +572,18 @@ export function createTeamPlan(bot){
    // Only *actual* separation/serious injury interrupts the live path.
    const march=assessLiveSquadMarch(p.c,peers,{realm:p.realm(),
     plan:current,maxGap:300,hpFloor:.6});
+   const stuck=stalledSquadRoutePeer(peers,current,routeProgress);
+   if(stuck&&march.ready){
+    if(bot.movement.order?.owner==='farm')bot.movement.stop();
+    bot.reason='Gruppenmarsch wartet auf festhängendes Mitglied: '+stuck;
+    if(marchState.reason!=='teammate-route-stalled'||marchState.peer!==stuck||
+      Date.now()-marchState.at>12000){
+     marchState={reason:'teammate-route-stalled',peer:stuck,at:Date.now()};
+     bot.event?.('party.marchPaused',{plan:current.id,
+      reason:'teammate-route-stalled',peer:stuck});
+    }
+    return true;
+   }
    if(!march.ready){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     bot.reason='Gruppenmarsch pausiert (echte Trennung/Gefahr): '+march.reason+' / '+(march.peer??'Team');

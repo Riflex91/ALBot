@@ -193,6 +193,7 @@ function operatingBankFixture(){
  bot.cfg.production.autoDisposition=true;
  bot.p.G.items.scroll0={type:'uscroll',g:1000,s:9999};
  bot.economy.npcFor=()=>({map:'main',x:0,y:0});
+ bot.economy.travel=()=>true;
  inv[1]={name:'scroll0',q:100};
  bot.p.call=(name,pack,slot,dest)=>{
   assert.equal(name,'bank_retrieve');inv[dest]=bankPack[slot];bankPack[slot]=null;
@@ -236,4 +237,46 @@ test('W04 unexplained reserve-stock drift after withdrawal remains quarantined i
  assert.equal(sales.length,0);assert.equal(calls.length,1);
  assert.equal(bot.bank.pending,true);
  assert.equal(bot.bank.recoveryStatus().requiresManualReview,true);
+});
+
+
+test('W04 reserve staging withdraws a protected full stack before a separate bank sale',async()=>{
+ const {bot,calls,inv,bankPack,sales}=operatingBankFixture();
+ inv[1].q=20;
+ bankPack[26]={name:'scroll0',q:80};
+ // First scan must prefer the 80-unit floor restoration, not the 20-unit sale.
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.retrieve');
+ assert.equal(bot.bank.recoveryStatus().single.reserveStage.floor,100);
+ assert.equal(calls[0].params.guard(),true);
+ await calls[0].params.call();
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(bot.bank.pending,false);
+ // The remaining bank stack is now saleable only because 100 units are
+ // physically present in the inventory, not because a bank catalog says so.
+ assert.equal(inv[1].q,20);
+ assert.equal(inv[0].q,80);
+ assert.equal(bankPack[26],null);
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls.at(-1).kind,'bank.reclaim');
+ assert.equal(calls.at(-1).params.guard(),true);
+ assert.equal(sales.length,0,'no NPC sale before observed sale withdrawal');
+});
+test('W04 reserve staging cannot dispatch after late physical-floor drift',()=>{
+ const {bot,calls,inv,bankPack}=operatingBankFixture();
+ inv[1].q=20;
+ bankPack[26]={name:'scroll0',q:80};
+ bot.bank.preventiveDisposition();
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.retrieve');
+ inv[1].q=100;
+ assert.equal(calls[0].params.guard(),false);
+});
+test('W04 reserve staging never relocates the last protected bank stack',()=>{
+ const {bot,calls,inv,bankPack}=operatingBankFixture();
+ inv[1].q=20;bankPack[27]={name:'scroll0',q:80};
+ for(let n=0;n<4;n++)bot.bank.preventiveDisposition();
+ assert.equal(calls.length,0);
 });

@@ -1,4 +1,4 @@
-import {bankOperatingStockRule} from '../items/operating-stock.mjs';
+import {bankOperatingStockRule,bankOperatingReserveNeed} from '../items/operating-stock.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
@@ -525,7 +525,7 @@ export function createBank(bot){
     return accepted;
   }if(consolidate()||!r.pack&&expand()||reclaim())return true;e.note('Bank voll: kein freier erlaubter Platz; erlaubte Konsolidierung, Verkauf und Erweiterungsbudget geprüft');return false;
  }
- function retrieve(item,r,wanted,purpose=null,targetSlot=-1){
+ function retrieve(item,r,wanted,purpose=null,targetSlot=-1,reserveStage=null){
   const cross=purpose===crossToken;
   if(swapping||storing)return recover();
   if(single||pending)return recover();
@@ -538,19 +538,21 @@ export function createBank(bot){
   if(!ready(r.pack||packFor(item)||'items0'))return false;
   for(const [pack,items] of packs()){
    if((r.pack&&r.pack!==pack)||packMap(pack)!==p.c.map)continue;
-   const slot=items.findIndex((i,n)=>(!cross||n===targetSlot)&&i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
+   const slot=items.findIndex((i,n)=>(targetSlot<0||n===targetSlot)&&i&&identity(i)===identity(item)&&e.safe(i)&&(i.q??1)<=Math.min(wanted,r.batch,r.maxCount-e.count(item)));
    if(slot<0)continue;const actual=items[slot],q=actual.q??1,fp=fingerprint(actual),dest=p.c.items.findIndex(i=>!i),before=e.count(actual),bankBefore=variantCount(items,actual);
    // This full-stack retrieval needs its own durable before/after evidence.
    const at=Date.now(),sourcePrint=fp,record={
     version:1,owner:me.name,realm:p.realm(),at,pack,slot,dest,
     item:{...actual},sourcePrint,quantity:q,before,bankBefore,
+    ...(reserveStage?{reserveStage:{floor:reserveStage.floor,variant:reserveStage.variant}}:{}),
     prepared:{kind:'bank.retrieve',session:bot.session,at,realm:p.realm(),
      pack,slot,dest,sourcePrint}};
    if(!validateBankSingleRecord(record,{owner:me.name,realm:p.realm()}).valid||
       !saveSingle(record))return false;
    const guard=()=>single===record&&singleEvidence(record).phase==='prepared-unchanged'&&
      (!cross||cfg.merchant.consolidate===true&&p.c.items.some(i=>
-      simple(i)&&identity(i)===identity(actual)&&(i.q??1)+q<=stackMax(i)));
+      simple(i)&&identity(i)===identity(actual)&&(i.q??1)+q<=stackMax(i)))&&
+     (!reserveStage||reserveStage.guard?.()===true);
    const accepted=e.perform(cross?'bank.merge.retrieve':'bank.retrieve',{
     rule:cross?null:r,guard,
     call:()=>{
@@ -891,7 +893,17 @@ export function createBank(bot){
    cursor:preventiveScan.cursor,limit:24,admit:(item,pack,slot)=>{
     const explicit=e.explicit(item);
     const safe=eligibleBankSale(item);
-    return safe&&(safe.r._bankOperatingStock||explicit?.enabled&&explicit.action==='sell'&&safe.r===explicit)?{price:safe.price,lossScore:safe.lossScore}:null;
+    if(safe&&(safe.r._bankOperatingStock||
+       explicit?.enabled&&explicit.action==='sell'&&safe.r===explicit))
+     return {price:safe.price,lossScore:safe.lossScore};
+    // Before selling a different bank stack, stage a missing physical floor.
+    const need=bankOperatingReserveNeed(bot,item),q=item?.q??1;
+    if(!need||q>need.missing||!Number.isSafeInteger(q))return null;
+    const localBank=rows.filter(([name])=>packMap(name)===p.c.map)
+     .reduce((count,[,items])=>count+items.reduce((n,held)=>
+      n+(held&&identity(held)===identity(item)?held.q??1:0),0),0);
+    if(!Number.isSafeInteger(localBank)||need.held+localBank<=need.floor)return null;
+    return {price:0,lossScore:-q-1e9,reserveStage:true};
    }});
   if(!batch.valid){
    preventiveScan.reason=batch.reason;return false;
@@ -902,7 +914,8 @@ export function createBank(bot){
   for(const row of batch.candidates){
    const value={pack:row.pack,slot:row.slot,
     lossScore:row.admission.lossScore,price:row.admission.price,
-    variant:identity(row.item),sourcePrint:fingerprint(row.item)};
+    variant:identity(row.item),sourcePrint:fingerprint(row.item),
+     reserveStage:row.admission.reserveStage===true};
    const old=preventiveScan.best;
    if(!old||value.lossScore<old.lossScore||
       value.lossScore===old.lossScore&&
@@ -921,6 +934,27 @@ export function createBank(bot){
   const item=p.c.bank?.[selected.pack]?.[selected.slot];
   if(!item||fingerprint(item)!==selected.sourcePrint||
      identity(item)!==selected.variant)return false;
+  if(selected.reserveStage){
+   const need=bankOperatingReserveNeed(bot,item),q=item.q??1;
+   if(!need||q>need.missing)return false;
+   const localBank=rows.filter(([name])=>packMap(name)===p.c.map)
+    .reduce((sum,[,items])=>sum+items.reduce((n,held)=>
+     n+(held&&identity(held)===identity(item)?held.q??1:0),0),0);
+   if(need.held+localBank<=need.floor)return false;
+   // The existing single-bank journal durably records this reserved stage
+   // before API dispatch and recovers exact slot evidence after interruption.
+   const stage={floor:need.floor,variant:identity(item),guard:()=>{
+    const live=p.c.bank?.[selected.pack]?.[selected.slot],
+     current=bankOperatingReserveNeed(bot,live);
+    return !!current&&current.floor===need.floor&&
+     identity(live)===identity(item)&&current.missing>=q&&
+     packMap(selected.pack)===p.c.map;
+   }};
+   return retrieve(item,{enabled:true,name:'Bank-Reservestaging',
+    item:item.name,action:'retrieve',pack:selected.pack,
+    batch:q,maxCount:need.held+q,keep:0,teamReserve:0},
+    q,null,selected.slot,stage);
+  }
   const safe=eligibleBankSale(item),source=e.explicit(item),operating=!!safe?.r._bankOperatingStock;
   if(!safe||!operating&&(safe.r!==source||source?.action!=='sell'))return false;
   return stageBankSale({...safe,item,pack:selected.pack,
@@ -932,7 +966,8 @@ export function createBank(bot){
   cursor:preventiveScan.cursor,complete:!!preventiveScan.completedAt,
   candidate:preventiveScan.best?{
    pack:preventiveScan.best.pack,slot:preventiveScan.best.slot}:null,
-  reason:preventiveScan.reason,mode:'observation-not-authorization'
+  reason:preventiveScan.reason,mode:'observation-not-authorization',
+   reserveStage:!!preventiveScan.best?.reserveStage
  });
  function reclaim(preventiveWorkspace=null){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<1)return false;
@@ -1172,7 +1207,8 @@ export function createBank(bot){
     phase:collision?'conflict':singleResult.phase,reason:singleResult.reason,
     pack:single.pack,sourceSlot:single.slot,inventorySlot:single.dest,
     item:single.item?.name??null,quantity:single.quantity,
-    preparationRecorded:!!single.prepared,dispatchRecorded:!!single.dispatch}:null,
+    preparationRecorded:!!single.prepared,dispatchRecorded:!!single.dispatch,
+     reserveStage:single.reserveStage??null}:null,
    partial:pending?{
     phase:collision?'conflict':partial.phase,reason:partial.reason,
     pack:pending.pack,sourceSlot:pending.bankSlot,

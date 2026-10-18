@@ -76,3 +76,42 @@ export function bankOperatingStockRule(bot,item,{carried=false}={}){
     price<rule.minPrice||!e.remaining(rule))return null;
  return {...rule,batch:q,_bankOperatingStock:true,_carriedProtectedFloor:floor};
 }
+
+
+// W04: a protected operating floor may be staged from verified bank stock
+// before a DIFFERENT bank stack is considered for sale. This is a
+// read-only need, never an implicit permission to withdraw or liquidate.
+// Only full, ordinary stack variants qualify; unknown policy is fail-closed.
+export function bankOperatingReserveNeed(bot,item){
+ const {p,economy:e}=bot,meta=p.G.items?.[item?.name],q=item?.q??1;
+ if(bot.me.role!=='merchant'||!e?.safe?.(item)||
+    !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
+    !Number.isSafeInteger(q)||q<1||q>9999||
+    meta.quest||meta.q||meta.e||meta.exchange||meta.event||
+    meta.cash||meta.cash_item||meta.soulbound||meta.compound||
+    meta.upgrade||meta.rare||meta.rarity||meta.action||
+    meta.onclick||meta.offering||meta.throw||meta.ignore||
+    meta.wtype||meta.class||meta.grades||meta.tier)return null;
+ const source=e.explicit(item,'inventory');
+ let floor;
+ if(source){
+  if(source.enabled!==true||source.action!=='keep'||
+     source.excessAction!=='sell'||!Number.isSafeInteger(source.batch)||
+     source.batch<1||!Number.isSafeInteger(source.keep)||
+     !Number.isSafeInteger(source.teamReserve)||
+     source.keep<0||source.teamReserve<0)return null;
+  floor=source.keep+source.teamReserve;
+ }else{
+  const rule=operatingStockBaseRule(bot,item);
+  if(!rule)return null;
+  floor=rule.keep;
+ }
+ const reserved=bot.production?.reservedQuantity?.(item)??0;
+ const held=localVariantQuantity(p.c.items,item);
+ if(!Number.isSafeInteger(reserved)||reserved<0||
+    !Number.isSafeInteger(held)||held<0||
+    !Number.isSafeInteger(floor+reserved))return null;
+ floor+=reserved;
+ if(floor===0||held>=floor)return null;
+ return {floor,held,missing:floor-held};
+}

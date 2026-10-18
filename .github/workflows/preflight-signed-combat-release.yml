@@ -1,0 +1,53 @@
+name: Combat signed-release preflight (temporary)
+on:
+  push:
+    branches: [prep/verified-combat-signed-release-20261018]
+permissions:
+  contents: read
+jobs:
+  test-combat-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build actual release-branch source and bundled runtime
+        run: npm run build
+      - name: Run full offline regression suite
+        run: npm test
+      - name: Preserve personal configuration and verify runtime sync
+        shell: bash
+        run: |
+          cp bot.js /tmp/albot-release-personal-before.js
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const config=path=>{
+            const s=fs.readFileSync(path,'utf8');
+            const a=s.indexOf('globalThis.ALBotConfig='), b=s.indexOf('/* ALBot ',a);
+            if(a<0||b<a)throw Error('Cannot verify personal config boundaries');
+            return s.slice(a,b);
+          };
+          if(config('/tmp/albot-release-personal-before.js')!==config('bot.js'))
+            throw Error('Personal ALBotConfig must be preserved byte-for-byte');
+          EOF
+      - name: Verify pinned auto-bootstrap code stays intact
+        run: npm run check:bootstrap:auto
+      - name: Build and syntax-check editor
+        run: npm run build:editor
+      - name: Check bundled-runtime JS and byte limits
+        shell: bash
+        run: |
+          node --check dist/albot.runtime.js
+          node --check dist/albot.js
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          const b=fs.statSync('dist/albot.runtime.js').size;
+          if(b<=0||b>8388608)throw Error('Release runtime is too large');
+          console.log('Release candidate runtime size: '+b);
+          EOF

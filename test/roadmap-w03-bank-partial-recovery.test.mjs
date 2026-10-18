@@ -236,7 +236,7 @@ test('W03 persisted first step can advance in a different browser session',()=>{
  assert.equal(f.calls.at(-1).options.call(),true);
  const saved=f.store.get('albot:bank-partial:M');
  assert.equal(saved.dispatches.length,2);
- assert.equal(saved.dispatches[0].session,'old-session');
+ assert.equal(saved.dispatches[0].session,'original-session');
  assert.equal(saved.dispatches[1].session,'new');
 });
 test('W03 invalid or reordered dispatch history is not admissible',()=>{

@@ -83,3 +83,30 @@ test('W01: API explanation never invokes the auto planner, sends actions or requ
  assert.equal(dispatches,0);
  assert.equal(result.executable,false);
 });
+
+test('W01/W02: opt-in bounded sale is a read-only candidate, never physical confirmation',()=>{
+ const item={name:'ore',q:20};
+ const rule={...sell,action:'keep',enabled:true,excessAction:'sell',
+  targetCount:10,maxCount:12,batch:100};
+ const result=explain([item],{explicit:rule,reserved:6});
+ assert.equal(result.state,'bounded-excess-observed');
+ assert.equal(result.observedRule.action,'sell');
+ assert.equal(result.stockPolicy.maximum,12);
+ assert.equal(result.stockPolicy.protectedFloor,12);
+ assert.equal(result.stockPolicy.boundedExcess,8);
+ assert.equal(result.slotRemovalUpperBound,8);
+ assert.equal(result.physicalSlotEffect.confirmed,false);
+ assert.equal(result.executable,false);
+});
+test('W01/W02: opt-in never promotes protected potions or insufficient stock to a sale',()=>{
+ const item={name:'potion',q:20};
+ const rule={...sell,action:'keep',enabled:true,excessAction:'sell',targetCount:10,maxCount:12};
+ const held=explain([item],{explicit:rule,reserved:20});
+ assert.equal(held.state,'no-surplus');
+ assert.equal(held.slotRemovalUpperBound,0);
+ const rare=explain([{name:'ore',q:20,stat_type:'str'}],{
+  explicit:rule,reserved:0
+ });
+ assert.equal(rare.state,'no-bounded-excess');
+ assert.equal(rare.slotRemovalUpperBound,0);
+});

@@ -1,4 +1,5 @@
 name: Temporary assertive-risk personalized bundle synchronization
+# Regenerate after final squad-cohesion and Monsterhunt source fixes.
 on:
   push:
     branches:

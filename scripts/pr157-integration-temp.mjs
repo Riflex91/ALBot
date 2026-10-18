@@ -167,11 +167,11 @@ save(p,s);
 }
 {
 const p='test/20261018-road-aggro-bank-rollback.test.mjs';let s=read(p);
-s=add(s,"import {reclaimRollbackEvidence,createBank} from '../src/merchant/bank.mjs';\n","import {fingerprint} from '../src/core/policy.mjs';\n",'production fp');
+s=add(s,"import {reclaimRollbackEvidence,createBank} from '../src/merchant/bank.mjs';\n","import {fingerprint as canonicalFingerprint} from '../src/core/policy.mjs';\n",'production fp');
 const x=s.indexOf(" const record={item,pack:'items0',slot:9,dest:3,before:2,bankBefore:18,"),y=s.indexOf(" state.set('albot:bank-reclaim:My_Merchant',record);",x);
 if(x<0||y<0)throw Error('outdated smoke fixture changed');
 const stamp=[
-" const at=Date.now(),sourcePrint=fingerprint(item);",
+" const at=Date.now(),sourcePrint=canonicalFingerprint(item);",
 " const record={version:2,owner:'My_Merchant',realm:'EUII',at,item,",
 "  pack:'items0',slot:9,dest:3,before:2,bankBefore:18,quantity:7,",
 "  sourcePrint,gold:100,expectedSaleGold:7,explicitOnly:false,",

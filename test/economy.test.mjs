@@ -92,12 +92,11 @@ test('W03 whole-bank retrieval executes with real economy dispatcher and clears 
   batch:10,maxCount:100};
  assert.equal(bot.bank.retrieve({name:'hpot0',q:5},retrieveRule,5),true);
  assert.equal(bot.bank.singlePending,true);
- assert.equal(data.get('albot:bank-single:M').dispatch,undefined);
- await Promise.resolve();
- bot.exec.poll();
- assert.equal(attempts,1);
+ assert.equal(attempts,1,'real Executor may dispatch immediately without a decision frame');
  assert.ok(data.get('albot:bank-single:M').dispatch,
   'journal is written before actual server API');
+ await Promise.resolve();
+ bot.exec.poll();
  assert.equal(bot.journal,null);
  assert.equal(bot.bank.recover(),true);
  assert.equal(bot.bank.pending,false);

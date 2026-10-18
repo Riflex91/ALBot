@@ -1660,6 +1660,7 @@
                 "bank",
                 "retrieve",
                 "sell",
+                "swap",
                 "buy",
                 "list",
                 "wishlist",
@@ -1679,6 +1680,7 @@
                 "bank": "Bank einlagern",
                 "retrieve": "Bank entnehmen",
                 "sell": "NPC-Verkauf",
+                "swap": "Expliziter 1:1-Itemtausch (Angebot annehmen)",
                 "buy": "NPC-Kauf",
                 "list": "Markt anbieten",
                 "wishlist": "Kaufgesuch",
@@ -1832,6 +1834,52 @@
               "default": 1,
               "minimum": 0,
               "maximum": 1
+            },
+            "wantItem": {
+              "type": "string",
+              "title": "Tausch: erhaltene Item-ID (nur exakte Einzelitems)",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "items"
+            },
+            "wantLevel": {
+              "type": "integer",
+              "title": "Tausch: exakter Eingangslevel",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 99
+            },
+            "wantQuantity": {
+              "type": "integer",
+              "title": "Tausch: exakte Empfangsmenge",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "wantStatType": {
+              "type": "string",
+              "title": "Tausch: Stat-Typ der Gegenleistung (leer = ohne)",
+              "default": "",
+              "maxLength": 160
+            },
+            "wantProperty": {
+              "type": "string",
+              "title": "Tausch: Eigenschaft p der Gegenleistung (leer = ohne)",
+              "default": "",
+              "maxLength": 160
+            },
+            "wantTitle": {
+              "type": "string",
+              "title": "Tausch: Titel der Gegenleistung (leer = ohne)",
+              "default": "",
+              "maxLength": 160
+            },
+            "wantTargetCount": {
+              "type": "integer",
+              "title": "Tausch: maximaler bereits gehaltener Zielbestand",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 9999
             },
             "recipe": {
               "type": "string",

@@ -35,8 +35,9 @@ const x=m.indexOf('  // A quest collection/turn-in is an individual errand.'),y=
 if(x<0||y<0)throw Error('main anchor logic missing');
 s=replace(s,'  // Do not replace a valid shared plan while an ally still has hostile aggro.',m.slice(x,y)+'  // Do not replace a valid shared plan while an ally still has hostile aggro.','preserve farm anchor');
 const z=s.indexOf('     // When a FOLLOWER is the active hunter, escort that member to Daisy'),w=s.indexOf("     if(['farm','quest-escort'].includes(bot.movement.order?.owner))",z);
-if(z<0||w<0)throw Error('old escort changed');
-s=s.slice(0,z)+'     // Individual quest visits never redirect the remaining farm squad.\n'+s.slice(w);
+if(z>=0&&w>z)s=s.slice(0,z)+'     // Individual quest visits never redirect the remaining farm squad.\n'+s.slice(w);
+else if(z<0)console.log('Already merged: no forced NPC escort');
+else throw Error('Cannot safely remove conflicting escort branch');
 save(p,s);
 }
 {

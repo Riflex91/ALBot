@@ -13,10 +13,10 @@ save(p,s);
 }
 {
 const p='src/combat/farmer.mjs';let s=read(p),m=show(p);
-s=add(s,"import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';","\nimport {assessQuestDetachment} from './quest-detachment.mjs';",'quest import');
+if(!s.includes("import {assessQuestDetachment} from './quest-detachment.mjs';"))s=add(s,"import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';","\nimport {assessQuestDetachment} from './quest-detachment.mjs';",'quest import');
 const x=m.indexOf('    const detachment=assessQuestDetachment(bot);'),y=m.indexOf('    // While a Ranger follows an approved native farm route',x);
 if(x<0||y<0)throw Error('main quest init missing');
-s=add(s,'    const c=p.c,now=Date.now();\n',m.slice(x,y),'quest init');
+if(!s.includes('    const detachment=assessQuestDetachment(bot);'))s=add(s,'    const c=p.c,now=Date.now();\n',m.slice(x,y),'quest init');
 s=add(s,"    if(bot.strategy?.travel()){bot.skills.rotation(null);return;}\n","    if(questVisitor&&!detachment){waitSafely('Monsterhunt-NPC-Besuch: Farmanker halten; kein sicherer Zweier-Pull');return;}\n",'quest hold');
 s=replace(s,'      if(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg)){','      if(!detachment&&(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg))){','no follower chase');
 s=replace(s,"      if(leader.questVisit===true||leader.squadQuestVisit===true){waitSafely('Monsterhunt-NPC-Besuch: bei der Gruppe bleiben');return;}","      if(!detachment&&(leader.questVisit===true||leader.squadQuestVisit===true)){waitSafely('Monsterhunt-NPC-Besuch: am Farmanker bleiben');return;}",'quest hold follower');
@@ -33,7 +33,7 @@ save(p,s);
 const p='src/world/team-plan.mjs';let s=read(p),m=show(p);
 const x=m.indexOf('  // A quest collection/turn-in is an individual errand.'),y=m.indexOf('  // Do not replace a valid shared plan while an ally still has hostile aggro.',x);
 if(x<0||y<0)throw Error('main anchor logic missing');
-s=replace(s,'  // Do not replace a valid shared plan while an ally still has hostile aggro.',m.slice(x,y)+'  // Do not replace a valid shared plan while an ally still has hostile aggro.','preserve farm anchor');
+if(!s.includes('  const questAbsent=cfg.party.enabled&&'))s=replace(s,'  // Do not replace a valid shared plan while an ally still has hostile aggro.',m.slice(x,y)+'  // Do not replace a valid shared plan while an ally still has hostile aggro.','preserve farm anchor');
 const z=s.indexOf('     // When a FOLLOWER is the active hunter, escort that member to Daisy'),w=s.indexOf("     if(['farm','quest-escort'].includes(bot.movement.order?.owner))",z);
 if(z>=0&&w>z)s=s.slice(0,z)+'     // Individual quest visits never redirect the remaining farm squad.\n'+s.slice(w);
 else if(z<0)console.log('Already merged: no forced NPC escort');
@@ -44,7 +44,7 @@ save(p,s);
 const p='src/merchant/bank.mjs';let s=read(p),m=show(p);
 const x=m.indexOf('export function reclaimRollbackEvidence('),y=m.indexOf('\n}',x)+2;
 if(x<0||y<=x)throw Error('No main rollback verifier');
-s=add(s,"import {validateBankSwapRecord,classifyBankSwapRecord} from './bank-swap-recovery.mjs';\n",'\n'+m.slice(x,y)+'\n','main exact rollback verifier');
+if(!s.includes('export function reclaimRollbackEvidence('))s=add(s,"import {validateBankSwapRecord,classifyBankSwapRecord} from './bank-swap-recovery.mjs';\n",'\n'+m.slice(x,y)+'\n','main exact rollback verifier');
 s=replace(s,"  }else if(evidence.phase==='unchanged'||evidence.phase==='sold'){",
 "  }else if(evidence.phase==='restored'){\n   if(p.write(reclaimKey,null)===true)reclaiming=null;\n   else bot.inventoryBlocked=true;\n   return true;\n  }else if(evidence.phase==='rollback-dispatched-unchanged'){\n   bot.inventoryBlocked=true;e.note('Bankrücklagerung: Versand unklar; nicht wiederholen');return true;\n  }else if(evidence.phase==='rollback-prepared')return dispatchRollback(r);\n  else if(evidence.phase==='unchanged'||evidence.phase==='sold'){",
 'reclaim rollback outcome');

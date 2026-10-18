@@ -4,6 +4,7 @@ const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
 import {itemPurposes} from '../items/purposes.mjs';
 import {boundedStockSurplus,boundedStockVariantAllowed} from '../items/stock-policy.mjs';
+import {physicalInventoryCapacity} from '../items/physical-capacity.mjs';
 import {mutationContext,mutationHelpers} from './helpers.mjs';
 import {gearScore,gearCompatible,gearSuitability,gearSlotPriority,autoGearTargetLevel} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
@@ -354,7 +355,7 @@ function mutationEconomics(i,{heldOverride=null}={}){
    // Its cached decision is informative, not current execution permission.
    const explicit=item?bot.economy?.explicit?.(item,'inventory')??null:null;
    const observed=item?decisionLedger.get(identity(item))??null:null;
-   return describeInventoryDisposition({item,slot,inventory:p.c.items??[],
+   return describeInventoryDisposition({item,slot,inventory:p.c.items??[],inventorySize:p.c.isize,
     G:p.G,explicit,autoDecision:observed,
     reserved:item?bot.production?.reservedQuantity?.(item)??0:0,
     actionRemaining:explicit?bot.economy?.remaining?.(explicit)??true:true,
@@ -366,7 +367,7 @@ function mutationEconomics(i,{heldOverride=null}={}){
 // This deliberately does not call disposition(), rules(), a bank transaction,
 // or the Executor: a diagnostic request must never initiate a value action.
 export function describeInventoryDisposition({
- item,slot,inventory=[],G={},explicit=null,autoDecision=null,
+ item,slot,inventory=[],inventorySize,G={},explicit=null,autoDecision=null,
  reserved=0,actionRemaining=true,valueBlocked=false,now=Date.now()
 }={}){
  const invalid={version:1,mode:'read-only',executable:false,state:'observation-unverified'};
@@ -416,8 +417,15 @@ export function describeInventoryDisposition({
  const destination=proposedAction==='send'?explicit?.recipient??null:
   proposedAction==='bank'?'bank':proposedAction==='sell'?'npc':
   proposedAction==='list'?'market':null;
- const potentialFreed=(['sell','send','bank','exchange','dismantle'].includes(proposedAction)&&
-  amount!==null&&slotUpperBound!==null&&slotUpperBound>=amount)?1:0;
+ // G01: removing a whole overflow row is NOT an ordinary free slot until
+ // the official signed isize capacity becomes positive.
+ const baseCapacity=physicalInventoryCapacity(inventory,{inventorySize});
+ const afterWhole=inventory.slice();afterWhole[slot]=null;
+ const afterCapacity=physicalInventoryCapacity(afterWhole,{inventorySize});
+ const wholeRemovalCandidate=['sell','send','bank','exchange','dismantle'].includes(proposedAction)&&
+  amount!==null&&slotUpperBound!==null&&slotUpperBound>=amount;
+ const potentialFreed=wholeRemovalCandidate&&baseCapacity&&afterCapacity?
+  Math.max(0,afterCapacity.free-baseCapacity.free):0;
  return {version:1,mode:'read-only',executable:false,state,reason,
   observation:{at:now,source:'current-client-inventory',freshForDispatch:false},
   item:{name:item.name,level:item.level??0,stat_type:item.stat_type??'',
@@ -436,6 +444,8 @@ export function describeInventoryDisposition({
    confirmed:false}:null,
   possibleUnreservedQuantity:free,slotRemovalUpperBound:slotUpperBound,
   destination,physicalSlotEffect:{confirmed:false,potentialFreedSlots:potentialFreed,
-   reason:'intermediate capacity, recipient and post-dispatch result not proven'},
+   signedFreeBefore:baseCapacity?.signedFree??null,
+  signedFreeAfterWholeRemoval:wholeRemovalCandidate?afterCapacity?.signedFree??null:null,
+  reason:'intermediate capacity, recipient and post-dispatch result not proven'},
   nextRecheck:'next planner tick and mandatory fresh executor guard'};
 }

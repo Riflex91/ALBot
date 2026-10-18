@@ -138,3 +138,21 @@ test('live threat status responds only to already engaged natural aggression',()
  assert.equal(assessment.canDefend(current),false,'no defensive permission for neutral');
  assessment.close();
 });
+
+test('fully observed weak secondary aggro may be defended but missing attacker still fails closed',()=>{
+ const m=monster('easyaggro',150),meta={...aggressive,hp:150,attack:5,frequency:.3,resistance:0};
+ const peers=team().map(x=>({...x,stats:{...x.stats}}));
+ peers[1].threats=1;
+ const blocked=estimate(m,peers,meta);
+ assert.equal(blocked.viable,false);
+ assert.equal(blocked.reason,'other-team-aggro-unmodelled');
+ const second={id:'other-223',type:'monster',mtype:'easyaggro',
+  map:'halloween',in:'halloween',x:-480,y:-540,target:'My_Ranger2',
+  hp:100,max_hp:150,meta};
+ const accepted=estimate(m,peers,meta,{otherMonsters:[second]});
+ assert.equal(accepted.viable,true,JSON.stringify(accepted));
+ assert.equal(accepted.secondaryAggro,1);
+ const unknown=estimate(m,peers,meta,{otherMonsters:[{...second,meta:null}]});
+ assert.equal(unknown.viable,false);
+ assert.equal(unknown.reason,'other-team-aggro-unverified');
+});

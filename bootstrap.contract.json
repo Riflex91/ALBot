@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 3,
-      "version": "0.10.10-candidate",
+      "sequence": 4,
+      "version": "0.10.11-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 686855,
-      "sha256": "3c47ce5f94987016c6adac867479266932ff921c642d2bfa6fce9bd4d732429d"
+      "bytes": 687439,
+      "sha256": "92c0e27aa8020f5a658601d9e050f876e8e0ed43901dc3b11cf541086093a559"
     },
     "observedLoadedUrl": null,
-    "note": "Öffentliches signiertes Release sequence=3 erneut source-reviewed; neue Main-Autonomiemodule ändern diesen Release-Branch nicht. Kein beobachteter Ingame-Ladevorgang."
+    "note": "Öffentliches signiertes Release sequence=4, 0.10.11-candidate, aus geprüftem Main über bestehenden Signierworkflow veröffentlicht; Signatur und Runtime-Hash verifiziert. Vorhandener V2-Loader unverändert. Kein beobachteter neuer Ingame-Ladevorgang."
   }
 }

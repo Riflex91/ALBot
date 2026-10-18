@@ -9,7 +9,7 @@ const list = (title,items,description='') => ({type:'array',title,description,it
 const ids = (title,catalog='') => list(title,text('ID','',{'x-catalog':catalog,minLength:1}));
 const classes={auto:'Automatisch',warrior:'Warrior',ranger:'Ranger',mage:'Mage',priest:'Priest',rogue:'Rogue',paladin:'Paladin',merchant:'Merchant'};
 const roles={all:'Alle Rollen',farmer:'Farmer',merchant:'Merchant'};
-const actions={keep:'Behalten / schützen',consume:'Verbrauchen',equip:'Ausrüsten',send:'An Charakter liefern',bank:'Bank einlagern',retrieve:'Bank entnehmen',sell:'NPC-Verkauf',swap:'Expliziter 1:1-Itemtausch (Angebot annehmen)',buy:'NPC-Kauf',list:'Markt anbieten',wishlist:'Kaufgesuch',marketBuy:'Markt kaufen',upgrade:'Upgrade',compound:'Compound',destat:'De-Statting (nur genaue Überschussregel)',exchange:'Exchange',craft:'Craft',farm:'Gezielt farmen'};
+const actions={keep:'Behalten / schützen',consume:'Verbrauchen',equip:'Ausrüsten',send:'An Charakter liefern',bank:'Bank einlagern',retrieve:'Bank entnehmen',sell:'NPC-Verkauf',swap:'Expliziter 1:1-Itemtausch (Angebot annehmen)',tradeOffer:'Einmaliges eigenes Tauschangebot (explizit)',buy:'NPC-Kauf',list:'Markt anbieten',wishlist:'Kaufgesuch',marketBuy:'Markt kaufen',upgrade:'Upgrade',compound:'Compound',destat:'De-Statting (nur genaue Überschussregel)',exchange:'Exchange',craft:'Craft',farm:'Gezielt farmen'};
 export const ACTIONS = actions;
 export const ITEM_RULE = obj('Item-Regel',{
   name:text('Regelname','Neue Regel',{minLength:1}),enabled:flag('Aktiv',true),priority:int('Priorität (höher gewinnt)',0,-10000,10000),

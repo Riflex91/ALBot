@@ -508,8 +508,8 @@ export function createMerchant(bot){
   // An actionable, user-authored stand rule takes precedence over depot
   // storage even before the Market controller has activated the stand.
   const marketDemand=(cfg.items??[]).some(r=>r.enabled&&
-    (r.action==='list'&&(p.c.items??[]).some((i,slot)=>
-      i&&e.rules(i)?.action==='list'&&e.spare(slot,e.rules(i))>0)||
+    (['list','tradeOffer'].includes(r.action)&&(p.c.items??[]).some((i,slot)=>
+      i&&['list','tradeOffer'].includes(e.rules(i)?.action)&&e.spare(slot,e.rules(i))>0)||
     r.action==='wishlist'&&e.rules({name:r.item,level:r.minLevel??0},
       'acquisition')===r&&e.count({name:r.item,level:r.minLevel??0})<
       Math.min(r.targetCount,r.maxCount)));
@@ -978,7 +978,7 @@ export function createMerchant(bot){
    const i=p.c.items[slot];if(!e.safe(i))continue;const inventory=e.rules(i),production=e.rules(i,'production');
    for(const [phase,r] of [['inventory',inventory],['production',production]]){
     if(!r||!e.remaining(r)||['keep','send','consume'].includes(r.action))continue;
-    if(['sell','bank','list','exchange','swap'].includes(r.action)&&e.spare(slot,r)<1)continue;
+    if(['sell','bank','list','exchange','swap','tradeOffer'].includes(r.action)&&e.spare(slot,r)<1)continue;
     if(['upgrade','compound'].includes(r.action)&&(i.level??0)>=r.targetLevel)continue;
     let run;if(r.action==='sell')run=()=>{if(r._autoDisposition===true&&bot.market?.sellToBid?.(slot,r))return true;const ask=me.role==='merchant'?bot.marketDemand?.proposal(i,r):null;return ask?bot.market.listing(slot,ask):e.npcSell(slot,r);};
     if(r.action==='equip')run=()=>bot.gear.equip(slot,r);
@@ -986,6 +986,7 @@ export function createMerchant(bot){
      if(r.action==='bank')run=()=>bot.bank.store(slot,r);
      if(r.action==='list')run=()=>bot.market.sellToBid?.(slot,r)||bot.market.listing(slot,r);
      if(r.action==='swap')run=()=>bot.swaps?.tick(slot,r)??false;
+     if(r.action==='tradeOffer')run=()=>bot.tradeOffers?.post(slot,r)??false;
      if(r.action==='exchange')run=()=>bot.production.exchange(slot,r);
      if(['upgrade','compound'].includes(r.action))run=()=>bot.production.mutate(slot,r);
     }

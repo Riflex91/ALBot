@@ -16,7 +16,16 @@ const p='src/combat/farmer.mjs';let s=read(p),m=show(p);
 if(!s.includes("import {assessQuestDetachment} from './quest-detachment.mjs';"))s=add(s,"import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';","\nimport {assessQuestDetachment} from './quest-detachment.mjs';",'quest import');
 const x=m.indexOf('    const detachment=assessQuestDetachment(bot);'),y=m.indexOf('    // While a Ranger follows an approved native farm route',x);
 if(x<0||y<0)throw Error('main quest init missing');
-if(!s.includes('    const detachment=assessQuestDetachment(bot);'))s=add(s,'    const c=p.c,now=Date.now();\n',m.slice(x,y),'quest init');
+const tickStart=s.indexOf('  function tick(){');
+const initAt=s.indexOf('    const c=p.c,now=Date.now();',tickStart);
+if(tickStart<0||initAt<tickStart)throw Error('No real farmer tick initializer');
+const scope=s.slice(initAt,initAt+900);
+if(!scope.includes('const detachment=assessQuestDetachment(bot);')||
+   !scope.includes('const questVisitor=')){
+ const insert=m.slice(x,y);
+ // Main contains both verified values and immediate cancellation of stale escort routes.
+ s=s.slice(0,initAt+'    const c=p.c,now=Date.now();'.length)+'\n'+insert+s.slice(initAt+'    const c=p.c,now=Date.now();'.length);
+}
 s=add(s,"    if(bot.strategy?.travel()){bot.skills.rotation(null);return;}\n","    if(questVisitor&&!detachment){waitSafely('Monsterhunt-NPC-Besuch: Farmanker halten; kein sicherer Zweier-Pull');return;}\n",'quest hold');
 s=replace(s,'      if(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg)){','      if(!detachment&&(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg))){','no follower chase');
 s=replace(s,"      if(leader.questVisit===true||leader.squadQuestVisit===true){waitSafely('Monsterhunt-NPC-Besuch: bei der Gruppe bleiben');return;}","      if(!detachment&&(leader.questVisit===true||leader.squadQuestVisit===true)){waitSafely('Monsterhunt-NPC-Besuch: am Farmanker bleiben');return;}",'quest hold follower');
@@ -178,6 +187,7 @@ s=replace(s,'root:{},parent:{}};','root:{},parent:{},call:()=>true};','mock bank
 s=replace(s,"  note:s=>reports.push(s),perform:(kind,data)=>{work.push({kind,data});\n   assert.equal(data.guard(),true);const old=inv[3];bank[9]=old;inv[3]=null;\n   assert.equal(data.observe(),true);return true;}};",
 "  note:s=>reports.push(s),perform:(kind,data)=>{work.push({kind,data});\n   assert.equal(data.guard(),true);assert.equal(data.call(),true);\n   assert.ok(state.get('albot:bank-reclaim:My_Merchant').rollback.dispatchedAt);\n   const old=inv[3];bank[9]=old;inv[3]=null;\n   assert.equal(data.observe(),true);assert.equal(data.onConfirmed(),true);return true;}};",
 'production v2 verified rollback');
+s=replace(s," assert.equal(work.length,1);"," assert.equal(work.length,1,JSON.stringify({reports,current:state.get('albot:bank-reclaim:My_Merchant'),status:m.recoveryStatus()}));",'bank smoke diagnostics');
 save(p,s);
 }
 console.log('PR157_MERGE_SEMANTIC_FIXES_APPLIED');

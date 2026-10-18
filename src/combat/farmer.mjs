@@ -396,7 +396,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       merchant:merchantHeartbeat,realm:p.realm()
     });
     const engaged=bot.monsters().some(m=>defensiveFarmTarget(m,bot.teamNames));
-    if(storageHold&&!engaged){
+    const sharedDest=bot.teamPlan?.heartbeat?.();
+    const leaderEnRoute=cfg.party.enabled&&me.name===bot.leader&&
+      sharedDest&&(!samePlace(c,sharedDest)||distance(c,sharedDest)>85);
+    if(storageHold&&!engaged&&!leaderEnRoute){
       // Storage backpressure forbids new pulls, NOT the noncombat escort.
       // Previously this returned before the follower could even follow the
       // Leader; both Rangers and Priest stopped at the same unvisited map.

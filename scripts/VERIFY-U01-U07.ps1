@@ -16,6 +16,9 @@ if (-not (Test-Path 'node_modules/terser')) { throw 'Abhaengigkeiten fehlen: zue
 Write-Host '1/5: Klassischen Bot bauen (frisches Test-Artefakt)'
 & npm.cmd run build
 Check-Exit 'npm run build'
+Write-Host 'Pruefe dokumentierten Bootstrap-/Artefaktvertrag'
+& node scripts/verify-bootstrap-contract.mjs
+Check-Exit 'Bootstrap-/Artefaktvertrag'
 Write-Host '2/5: Node-Pruefungen (einschliesslich Runtime-Artefakt)'
 & npm.cmd test
 Check-Exit 'npm test'

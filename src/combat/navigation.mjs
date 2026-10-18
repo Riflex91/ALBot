@@ -39,8 +39,8 @@ export function createCombatNavigation(bot){
   if(!bot.cfg.farming.kiting||!t||!samePlace(c,t))return false;
   // A road attacker is not a reason to cancel a verified smart_move to the
   // squad's spawn. Potions and Priest healing continue in the farmer loop.
-  const plan=bot.teamPlan?.heartbeat?.()??bot.transport?.fresh?.(bot.leader)?.farmPlan;
-  if(committedFarmTransit(c,bot.movement.order,plan))return false;
+  const routePlan=bot.teamPlan?.heartbeat?.()??bot.transport?.fresh?.(bot.leader)?.farmPlan;
+  if(committedFarmTransit(c,bot.movement.order,routePlan))return false;
   const eligibility=activeKiteEligibility(c,t,bot.p.G.monsters?.[t.mtype]);
   const now=Date.now();
   if(!eligibility.allowed){

@@ -515,7 +515,7 @@ export function createBank(bot){
       reclaimRollbackEvidence(r,item,slot??null,bank)){
     const sourcePrint=fingerprint(item);
     e.note('Bankfreigabe zurückgenommen: ursprünglichen Bankstapel wiederherstellen');
-    e.perform('bank.reclaim.rollback',{slots:[r.dest],
+    e.perform('bank.store',{slots:[r.dest],
      guard:()=>p.c.map===bankMap&&
       reclaimRollbackEvidence(r,p.c.items?.[r.dest],
        p.c.bank?.[r.pack]?.[r.slot]??null,
@@ -526,7 +526,8 @@ export function createBank(bot){
       fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&
       variantCount(p.c.bank?.[r.pack]??[],r.item)===r.bankBefore,
      details:{item:r.item.name,quantity:r.quantity,pack:r.pack,
-      bankSlot:r.slot,reason:'Widerrufener Notverkauf: reversible Wiederherstellung'}});
+      sourceSlot:r.dest,bankSlot:r.slot,bankTargetBefore:fingerprint(null),
+      bankTargetQuantity:0,reason:'revoked-emergency-sale-rollback'}});
     return true;
    }
   }

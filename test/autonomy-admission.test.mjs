@@ -89,3 +89,11 @@ test('gear catchup compares observed same-class equipment and never invents offl
  assert.equal(gearCatchUpPriority(strong,[weak,strong]),0);
  assert.equal(gearCatchUpPriority(weak,[weak,mage,{...strong,complete:false}]),0);
 });
+
+test('call governor reserves the full price before an expensive scan starts',()=>{
+ const bot={cfg:{general:{}},p:{c:{cc:150},G:{}},event:()=>{}};
+ const a=createActionAdmission(bot,{now:()=>100});
+ assert.equal(a.allow('ponty.scan',['market']),false);
+ assert.equal(a.allow('get.tracker',['tracker']),false);
+ assert.equal(a.allow('potion',['inventory']),true);
+});

@@ -23,7 +23,7 @@ export function beginCombatLife(bot){
  if(prior&&prior.dead===dead)return false;
  bot.combatLife={dead,generation:(prior?.generation??0)+1};
  if(prior){
-  bot.target=null;
+  bot.target=null;bot.impactIntents?.close();
   for(const resource of ['attack','mana','skill','movement'])bot.exec.cancelResource(resource);
   bot.movement.stop();
   bot.event?.('combat.lifeGeneration',{...bot.combatLife,reason:dead?'death':'revived'});

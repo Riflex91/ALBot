@@ -1,3 +1,4 @@
+import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {damageMultiplier,outgoingDamageEstimate} from '../combat/damage-model.mjs';
 
@@ -15,7 +16,7 @@ export function compositionOptions(bot,planned=false){
 }
 function freshCapability(c,id,options){
  const cap=c.capabilities,age=Date.now()-(cap?.at??0);
- return age>=0&&age<(options.ttl??10000)&&(cap?.sustainable??cap?.ready)?.includes(id)&&!c.s?.stunned&&!c.s?.silenced;
+ return age>=0&&age<(options.ttl??10000)&&(cap?.sustainable??cap?.ready)?.includes(id)&&runtimeConditionGate(c,options.G,'skill:'+id,['mana','skill']).allowed;
 }
 export function farmHealer(members,options={}){
  const skill=options.G?.skills?.heal;if(!options.healing||!skill||members.length<2)return null;
@@ -38,7 +39,7 @@ export function farmHealing(healer,members,seconds,options={}){
  return Math.max(0,casts*amount);
 }
 export function farmThroughput(monster,members,count,options={}){
- const healer=farmHealer(members,options),active=members.filter(c=>c!==healer&&c.attack>0&&c.frequency>0);
+ const healer=farmHealer(members,options),active=members.filter(c=>c!==healer&&c.attack>0&&c.frequency>0&&runtimeConditionGate(c,options.G,'attack',['attack']).allowed);
  // Every member uses its own damage type and armor/resistance piercing.
  // Safety uncertainty is distinct from the official damage multiplier.
  const perMember=c=>outgoingDamageEstimate(c,monster,{

@@ -1,3 +1,4 @@
+import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 
@@ -41,6 +42,7 @@ export function followerCombatRendezvous(follower,leader,{
 }
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;
+ if(!runtimeConditionGate(p.c,p.G,'attack',['attack']).allowed)return {ready:false,reason:'actor-condition-blocked'};
  if(cfg.party?.enabled===false||cfg.party?.waitForTeam!==true)
   return {ready:true,reason:'no-team-hold'};
  const detachment=assessQuestDetachment(bot);
@@ -55,6 +57,7 @@ export function neutralPullReadiness(bot){
   if(!peer?.running||peer.rip||peer.realm!==p.realm()||
     peer.inventoryBlocked||peer.journal||peer.reserved)
    return {ready:false,peer:name,reason:'peer-not-ready'};
+  if(!runtimeConditionGate(peer,p.G,'attack',['attack']).allowed)return {ready:false,peer:name,reason:'peer-condition-blocked'};
   if(!samePlace(p.c,peer)||!Number.isFinite(peer.x)||
     !Number.isFinite(peer.y)||distance(p.c,peer)>maxDistance)
    return {ready:false,peer:name,reason:'peer-not-assembled'};

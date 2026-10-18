@@ -152,3 +152,8 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{
  boosters:bool('Bereits aktive eigene Booster passend zum Farmziel umschalten',false),
  activateBoosters:bool('Inaktive eigene Booster aktivieren (beginnt Ablaufzeit)',false)
 });
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{
+ respectHopPenalties:bool('Optionale Serverwechsel mit unbelegtem Sickness-/Fatigue-Verlust zurückstellen',true),
+ travelBlink:bool('Mage-Blink nur auf direkt begehbaren sicheren Reiseabschnitten',false)
+});

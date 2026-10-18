@@ -1,3 +1,4 @@
+import {boundedInterceptPoint} from './intercept.mjs';
 import {potionChannelPolicy,rankRecoveryPotion} from './recovery-policy.mjs';
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
@@ -83,7 +84,7 @@ export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
 }
-export function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
+export function combatApproach(character,target,range,canMove){const a=xy(character),lead=boundedInterceptPoint(character,target,{range}),b=lead&&canMove(lead.x,lead.y)?lead:xy(target),d=Math.hypot(a.x-b.x,a.y-b.y),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
 export function recoveryHpThreshold(rest,hpBelow,resumeAbove,preparing,pullHp){

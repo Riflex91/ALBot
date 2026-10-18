@@ -41,7 +41,7 @@ test('browser directory log appends chronological events once with character and
 test('controlled burst uses explicit mana allocation and full burst cannot promise a remaining reserve',()=>{
  const cfg=defaultsFor(FULL_DESCRIPTOR.schema),calls=[],c={name:'Mage',ctype:'mage',level:80,map:'main',x:0,y:0,hp:100,max_hp:100,mp:1000,max_mp:1000,range:200,slots:{}},target={id:'g',type:'monster',mtype:'goo',hp:200,map:'main',x:1,y:0};
  const bot={cfg,p:{c,G:{maps:{main:{}},skills:{burst:{class:['mage'],hostile:true,mp:0,target:true,ratio:.5},cburst:{class:['mage'],hostile:true,mp:80,ratio:.5}},items:{}},parent:{},call:(id,...args)=>id==='is_on_cooldown'?false:calls.push(args)},teamNames:['Mage'],monsters:()=>[],entity:()=>target,allowed:()=>true,running:true,exec:{run:(key,resources,guard,call)=>{if(!guard())return false;call();return true;}}};const skills=createSkills(bot);
- assert.equal(skills.use('burst',target,.25),false);assert.equal(skills.use('cburst',target,.4),true);assert.deepEqual(calls[0][1],[['g',400]]);
+ assert.equal(skills.use('burst',target,.25),false);assert.equal(skills.use('cburst',target,.4),true);assert.deepEqual(calls[0][1],[['g',445]]) // 200 HP / (0.5 ratio × 0.9 lower damage bound), rounded up;
 });
 
 test('directory capability detects CODE or parent APIs and explains download fallback',async()=>{

@@ -1,9 +1,10 @@
+import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
 // Mechanic adapters are derived from design/monsters.js and node/server.js.
 // Unsupported mechanics are catalogued with an explicit refusal, never guessed.
-const BOSS_NAMES=['phoenix','jr','greenjr','mvampire','fvampire','goldenbat','pinkgoo','snowman','wabbit','dragold','icegolem','franky','mrgreen','mrpumpkin','crabxx','crabx','grinch','skeletor','stompy','cutebee','rharpy','rimedjinn'];
+const BOSS_NAMES=['phoenix','jr','greenjr','mvampire','fvampire','goldenbat','pinkgoo','snowman','wabbit','dragold','icegolem','franky','mrgreen','mrpumpkin','crabxx','crabx','grinch','skeletor','stompy','cutebee','rharpy','rimedjinn','manyeye','mimic','paledino'];
 export function bossProfile(G,id){
  const m=G.monsters?.[id];if(!m)return null;
  if(!BOSS_NAMES.includes(id)&&!m.special&&!m.cooperative&&!m.boss)return null;
@@ -24,7 +25,7 @@ export function bossProfile(G,id){
 // A candidate's DAMAGE may never exceed the legacy gate until live
 // calibration. This is not permission to attack and does not affect pull logic.
 export function bossDamageShadow(monster,members,{physicalOnly=false,mode='damage',
- healer=null,uncertainty=.15}={}){
+ healer=null,uncertainty=.15,conditions={}}={}){
  const blocked=reason=>({valid:false,mode:'shadow-only',reason,
   authority:'conservative-gate',oldEstimate:null,newEstimate:null});
  if(!monster||!Array.isArray(members)||!members.length||
@@ -53,7 +54,7 @@ export function bossDamageShadow(monster,members,{physicalOnly=false,mode='damag
   const newRate=measured.damage*c.frequency;
   // Priests who may be healing have NO simultaneous guaranteed attack time.
   // This preserves the existing exclusive-healer risk assumption.
-  const attacking=healer!==c.name;
+  const attacking=healer!==c.name&&runtimeConditionGate(c,{conditions},'attack',['attack']).allowed;
   legacy+=oldRate;current+=attacking?newRate:0;
   rows.push({name:c.name??null,type,oldDps:oldRate,
    newDps:attacking?newRate:0,healerExcluded:!attacking,
@@ -87,9 +88,9 @@ export function bossReadiness(G,id,live,members,{maxSeconds=300,planned=false,me
  const worstHit=x=>Math.ceil((x.attack??Infinity)*1.1*(x.crit>0?2+Math.max(0,x.critdamage??0)/100:1));
  // A designated priest must not be credited simultaneously with healing
  // and full DPS. Existing evidence-based healing checks remain in force.
- const healers=members.filter(c=>(c.ctype??c.class)==='priest');
+ const healers=members.filter(c=>(c.ctype??c.class)==='priest'&&runtimeConditionGate(c,G,'skill:heal',['mana','attack']).allowed);
  damageShadow=bossDamageShadow(m,members,{physicalOnly:profile.physicalOnly,
-  mode:profile.mode,healer:healers.length&&members.length>1&&
+  mode:profile.mode,conditions:G.conditions,healer:healers.length&&members.length>1&&
    metrics?.seconds>=10&&metrics?.healing>0?healers[0].name:null});
  if(!damageShadow.valid)return reject('Boss-Schadensmodell: '+damageShadow.reason);
  const measured=metrics?.seconds>=10&&metrics.damage>0?metrics.damage/metrics.seconds:null;

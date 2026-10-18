@@ -335,7 +335,7 @@ globalThis.ALBotConfig={
     "allowedBosses": [],
     "allowedEvents": [],
     "excludedMaps": [],
-    "risk": "assertive",
+    "risk": "aggressive",
     "serverHop": true,
     "allowedRealms": [
       "EUI",

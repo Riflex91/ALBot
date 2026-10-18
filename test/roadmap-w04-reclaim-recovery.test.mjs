@@ -50,13 +50,14 @@ test('W04 missing or foreign bank observations are never treated as empty slots'
 function fixture({saved,bankItem={...item},carried=null,realmValue=realm,
  write=true,perform=true,rules=true}={}){
  const store=new Map(saved?[['albot:bank-reclaim:M',saved]]:[]);
- const calls=[],sales=[],notes=[],travels=[],items=empty(),bankPack=empty();
+ const calls=[],sales=[],notes=[],travels=[],gameCalls=[],items=empty(),bankPack=empty();
  items[0]=carried;bankPack[27]=bankItem;
  const sourceRule={enabled:true,action:'sell',item:'ore',batch:10,
   maxCount:9999,keep:0,teamReserve:0,minPrice:0,maxActions:0};
  const p={c:{map:'bank',items,bank:{items0:bankPack},
   gold:1000,slots:{}},G:{items:{ore:{type:'material',s:9999,g:2}}},
   realm:()=>realmValue,read:k=>store.get(k)??null,
+  call:(...args)=>{gameCalls.push(args);return true;},
   write:(k,v)=>{if(write!==true)return false;store.set(k,v);return true;}};
  const bot={p,me:{name:'M',role:'merchant'},session:'new-session',
   cfg:{party:{merchant:'M'},merchant:{bank:true,bankReclaim:true,
@@ -76,7 +77,7 @@ function fixture({saved,bankItem={...item},carried=null,realmValue=realm,
    perform:(kind,args)=>{calls.push({kind,args});return perform;}
   }};
  bot.bank=createBank(bot);
- return {bot,store,calls,sales,notes,travels,bankPack,items,sourceRule};
+ return {bot,store,calls,sales,notes,travels,gameCalls,bankPack,items,sourceRule};
 }
 test('W04 restart reconciles untouched bank checkpoint without selling',()=>{
  const f=fixture({saved:record({at:Date.now()})});
@@ -233,4 +234,92 @@ test('W04 offsite receipt fails closed when altered, missing or forged',()=>{
   owner,realm,now,inventory}).eligible,false);
  assert.equal(inspectOffsiteBankReclaim(record({withdrawal:wd,saleConfirmed:true}),{
   owner,realm,now,inventory}).eligible,false);
+});
+
+const dispatch=(r,at=Date.now())=>({
+ at,kind:'bank.reclaim',session:'original-browser-session',
+ realm:r.realm,pack:r.pack,slot:r.slot,dest:r.dest,
+ sourcePrint:r.sourcePrint
+});
+test('W04 bank_retrieve is never called before a durable dispatch receipt exists',()=>{
+ const f=fixture();
+ f.bot.bank.preventiveDisposition();
+ f.bot.bank.preventiveDisposition();
+ assert.equal(f.calls.length,1,'reclaim intent is enqueued exactly once');
+ assert.equal(f.gameCalls.length,0,'enqueue alone is not server execution');
+ const before=f.store.get('albot:bank-reclaim:M');
+ assert.equal(before.dispatch,undefined);
+ const invoke=f.calls[0].args.call;
+ assert.equal(invoke(),true);
+ assert.deepEqual(f.gameCalls[0],['bank_retrieve','items0',27,0]);
+ const after=f.store.get('albot:bank-reclaim:M');
+ assert.equal(after.version,2);
+ assert.equal(after.dispatch.kind,'bank.reclaim');
+ assert.equal(after.dispatch.sourcePrint,after.sourcePrint);
+ assert.equal(after.dispatch.session,'new-session');
+ const diagnosed=f.bot.bank.recoveryStatus();
+ assert.equal(diagnosed.reclaim.dispatchRecorded,true);
+ assert.equal(diagnosed.reclaim.phase,'dispatched-unchanged');
+ assert.equal(diagnosed.requiresManualReview,true);
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.bot.inventoryBlocked,true,'no immediate release after uncertain dispatch');
+ assert.equal(f.bot.bank.pending,true);
+ assert.equal(f.gameCalls.length,1,'no duplicate bank_retrieve');
+});
+test('W04 failed dispatch receipt write blocks API call even with a queued closure',()=>{
+ const f=fixture();
+ f.bot.bank.preventiveDisposition();
+ f.bot.bank.preventiveDisposition();
+ assert.equal(f.calls.length,1);
+ const write=f.bot.p.write;
+ f.bot.p.write=(k,v)=>k==='albot:bank-reclaim:M'&&v?.dispatch?
+  false:write(k,v);
+ assert.throws(()=>f.calls[0].args.call(),/dauerhaften Beleg/);
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.gameCalls.length,0,'never call game when durable receipt failed');
+ assert.equal(f.store.get('albot:bank-reclaim:M').dispatch,undefined);
+ assert.equal(f.bot.bank.pending,true);
+});
+test('W04 rejected queued action remains releasable if never actually dispatched',()=>{
+ const f=fixture({perform:false});
+ f.bot.bank.preventiveDisposition();
+ f.bot.bank.preventiveDisposition();
+ assert.equal(f.calls.length,1);
+ assert.equal(f.store.get('albot:bank-reclaim:M'),null);
+ assert.equal(f.gameCalls.length,0);
+});
+test('W04 a restart with dispatched unchanged source does not release intent',()=>{
+ const r=record({at:Date.now()});
+ const f=fixture({saved:{...r,dispatch:dispatch(r)}});
+ assert.equal(f.bot.inventoryBlocked,false);
+ assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'dispatched-unchanged');
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.bot.bank.pending,true);
+ assert.equal(f.sales.length,0);
+ assert.equal(f.gameCalls.length,0);
+ assert.ok(f.store.get('albot:bank-reclaim:M').dispatch);
+});
+test('W04 a dispatched call can progress if exact withdrawn source becomes visible',()=>{
+ const r=record({at:Date.now()});
+ const f=fixture({saved:{...r,dispatch:dispatch(r)},
+  bankItem:null,carried:{...item}});
+ assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'withdrawn');
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.bot.inventoryBlocked,false);
+ assert.equal(f.sales.length,1);
+ const saved=f.store.get('albot:bank-reclaim:M');
+ assert.ok(saved.withdrawal);
+ assert.ok(saved.dispatch);
+});
+test('W04 invalid dispatch provenance cannot authorize sale or journal clearance',()=>{
+ const r=record(),d=dispatch(r,now);
+ for(const bad of [{kind:'bank.other'},{session:''},{realm:'US:I'},
+  {pack:'items1'},{slot:20},{dest:5},{sourcePrint:'forged'},
+  {at:now-1},{at:now+5000}]){
+  const recordWithBad={...r,dispatch:{...d,...bad}};
+  assert.equal(validateBankReclaimRecord(recordWithBad,{owner,realm,now}).valid,
+   false,JSON.stringify(bad));
+  assert.equal(context(recordWithBad).phase,'invalid');
+ }
 });

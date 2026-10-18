@@ -26,7 +26,7 @@ for(const path of files){
 checkDescriptor(LIVE_DESCRIPTOR);
 const chunks=await Promise.all(files.map(async path=>'// '+path+'\n'+(await readFile(path,'utf8')).replace(/\r\n/g,'\n').replace(/^import .*;\n/gm,'').replace(/^export /gm,'')));
 const source='/* ALBot '+version+' · Vollbetrieb Live-Test pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';
-const minimized=await minify(source,{ecma:2022,compress:false,mangle:true,format:{comments:false}});
+const minimized=await minify(source,{ecma:2022,compress:{defaults:false,booleans:true,comparisons:true,conditionals:true,sequences:true},mangle:true,format:{comments:false}});
 if(!minimized.code)throw Error('Minifizierung lieferte keinen Code.');
 const code='/* ALBot '+version+' · Vollbetrieb Live-Test pending */\n'+minimized.code;
 new Script(code);

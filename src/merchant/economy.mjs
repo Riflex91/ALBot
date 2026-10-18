@@ -1,5 +1,6 @@
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace,surplusQuantity} from '../core/policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
+import {boundedExcessSaleRule,boundedStockSurplus,boundedStockVariantAllowed,localVariantQuantity} from '../items/stock-policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {MUTATION_RISK_WINDOW_MS,mutationRiskLimit,mutationRiskAllowed} from './mutation-risk.mjs';
 // Adventure Land server (node/server.js) uses B.sell_dist = 400 for the
@@ -37,7 +38,16 @@ export function createEconomy(bot){
  let ledger=p.read(ledgerKey)??{hour:Date.now(),spent:0,loss:0,goals:{}};
  if(!Number.isFinite(ledger.hour)||!Number.isFinite(ledger.spent)||!Number.isFinite(ledger.loss)||!ledger.goals||typeof ledger.goals!=='object')ledger={hour:Date.now(),spent:cfg.merchant.maxSpendPerHour,loss:cfg.production.lossBudget,goals:{}};
  const explicit=(item,phase='inventory')=>chooseRule(cfg.items.filter(r=>phaseOf(r.action)==='all'||phaseOf(r.action)===phase),item,{role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
- const rules=(item,phase='inventory')=>explicit(item,phase)??bot.production?.derivedRule(item,phase)??(()=>{const r=bot.intelligence?.disposition(item);return r&&phaseOf(r.action)===phase?r:null;})()??null;
+ const rules=(item,phase='inventory')=>{
+  const selected=explicit(item,phase);
+  if(selected)return phase==='inventory'&&selected.action==='keep'?
+   boundedExcessSaleRule({item,inventory:p.c.items,G:p.G,rule:selected,
+    reserved:bot.production?.reservedQuantity?.(item)??0})??selected:selected;
+  return bot.production?.derivedRule(item,phase)??(()=>{
+   const r=bot.intelligence?.disposition(item);
+   return r&&phaseOf(r.action)===phase?r:null;
+  })()??null;
+ };
  const count=item=>variantCount(p.c.items,item);
  const downstreamSatisfied=(item,r)=>{
   if(!r||!['buy','retrieve','marketBuy','wishlist'].includes(r.action))return false;
@@ -45,7 +55,26 @@ export function createEconomy(bot){
   return count({...item,level:production.targetLevel})>=Math.min(production.targetCount,production.maxCount);
  };
  const safe=i=>!protectedItem(i)&&typeof i.name==='string'&&i.name!=='placeholder';
- const spare=(slot,r)=>{const i=p.c.items[slot];if(!safe(i)||!r)return 0;const reserved=['sell','bank','list','send'].includes(r.action)?bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??(bot.production?.reserved(i)?count(i):0):0;return Math.min(i.q??1,r.batch,surplusQuantity(count(i),reserved,r.keep??0,r.teamReserve??0));};
+ const spare=(slot,r)=>{
+  const i=p.c.items[slot];if(!safe(i)||!r)return 0;
+  const reserved=['sell','bank','list','send'].includes(r.action)?
+   bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??
+   (bot.production?.reserved(i)?count(i):0):0;
+  if(r._autoBoundedExcess){
+   const source=r._boundedSource;
+   // Source rule, role, scope and current physical state are rechecked at
+   // scheduling AND dispatch; the earlier derived rule is never authority.
+   if(explicit(i,'inventory')!==source||source.action!=='keep'||
+      source.excessAction!=='sell'||!boundedStockVariantAllowed(p.G,i))
+    return 0;
+   const policy=boundedStockSurplus({held:localVariantQuantity(p.c.items,i),
+    reserved,keep:source.keep,teamReserve:source.teamReserve,
+    maximum:source.maxCount});
+   return policy.valid?Math.max(0,Math.min(i.q??1,r.batch,policy.excess)):0;
+  }
+  return Math.min(i.q??1,r.batch,
+   surplusQuantity(count(i),reserved,r.keep??0,r.teamReserve??0));
+ };
  const value=i=>{try{const v=p.call('item_value',i);return Number.isFinite(v)&&v>=0?v:Infinity;}catch{return Infinity;}};
  const goalId=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,g.gearSlot??'']);
  function goalSpent(g){const index=cfg.production.goals.indexOf(g);return Math.max(ledger.goals[goalId(g)]??0,index>=0?ledger.goals[String(index)]??0:0);}

@@ -1,6 +1,6 @@
 ## Dauerbetrieb 0.10.11-candidate (18.10.2026)
 
-[Umgesetzte Autonomiemodule, Einstellungen, Prüfungen und ausdrücklich offene Roadmap-Pakete](docs/AUTONOMIE-ABGLEICH-2026-10-18.md). Neu sind unter anderem endliche Betriebsvorräte mit getragener Bankreserve, Aktionskosten-/Condition-Gates, sichere Eventgrace, Revive-Todesbindung und Systembelohnungs-Mail. Persönliche Einstellungen bleiben unverändert. **Der separate signierte V2-Release-Kanal wird durch einen Main-Merge nicht aktualisiert.** Der neue Mainstand ist als persönliche [bot.js](bot.js) verfügbar; neue Spiel-Liveabnahme offen.
+[Umgesetzte Autonomiemodule, Einstellungen, Prüfungen und ausdrücklich offene Roadmap-Pakete](docs/AUTONOMIE-ABGLEICH-2026-10-18.md). Neu sind unter anderem endliche Betriebsvorräte mit getragener Bankreserve, Aktionskosten-/Condition-Gates, sichere Eventgrace, Revive-Todesbindung und Systembelohnungs-Mail. Persönliche Einstellungen bleiben unverändert. **Für den vorhandenen V2-Bootstrap wurde `0.10.11-candidate` gesondert über den Signierworkflow veröffentlicht (sequence 4).** Beim nächsten CODE-Start lädt der vorhandene Bootstrap diese Version; persönliche Einstellungen und Loader bleiben unverändert. Neue Spiel-Liveabnahme offen.
 
 ---
 

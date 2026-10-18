@@ -87,7 +87,7 @@ Die automatische Betriebsvorratsregel gilt nur ohne explizite Itemregel. Ein exp
 
 `main/bot.js` enthält nach dem Merge die neu gebaute gemeinsame Runtime mit unveränderter persönlicher Konfiguration. `dist/albot.runtime.js` ist dieselbe Runtime ohne persönlichen JSON-Vorspann; die Werkstatt enthält das vollständige Paket.
 
-**Der installierte signierte V2-Loader lädt weiterhin einen anderen Branch.** Maßgeblich sind [BOOTSTRAP-VERTRAG](BOOTSTRAP-VERTRAG.md) und [bootstrap.contract.json](../bootstrap.contract.json). Geprüfter öffentlicher Snapshot: sequence 3, 0.10.10-candidate. Dieser PR verändert weder Release-Branch noch Schlüssel oder Signatur. Ein Main-Merge allein beweist daher kein Update der bereits im Spiel über V2 geladenen Runtime. Für den neuen Mainstand die persönliche Main-`bot.js` verwenden; für ein automatisches V2-Update ist eine gesonderte signierte Freigabe über die vorhandene Pipeline erforderlich.
+**Der installierte signierte V2-Loader verwendet weiterhin den bestehenden Release-Branch; dieser wurde anschließend auf ausdrücklichen Benutzerwunsch auf `0.10.11-candidate` (sequence 4) veröffentlicht.** Maßgeblich sind [BOOTSTRAP-VERTRAG](BOOTSTRAP-VERTRAG.md) und [bootstrap.contract.json](../bootstrap.contract.json). Die vorhandene Pipeline baut und testet die Runtime, erhält persönliche Einstellungen und signiert das neue Manifest mit dem bestehenden Releaseschlüssel. Der vorhandene Bootstrap lädt beim nächsten CODE-Start die neue Version; keine Neuinstallation erforderlich. Signatur-/Hashprüfung bleiben unverändert. Kein neuer Ingame-Ladevorgang beobachtet. Weitere Roadmap-Implementierung wurde auf Benutzerwunsch gestoppt.
 
 ## Nachweise und Primärquellen
 

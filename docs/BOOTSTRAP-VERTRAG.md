@@ -17,15 +17,17 @@ Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 | --- | --- |
 | Manifest-URL | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json` |
 | Manifest-Branch | `codex/w00-w01-readonly-disposition-20261018` |
-| Manifest `sequence` | `3` |
-| Manifest `version` | `0.10.10-candidate` |
+| Manifest `sequence` | `4` |
+| Manifest `version` | `0.10.11-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `686855` |
-| Manifest `sha256` | `3c47ce5f94987016c6adac867479266932ff921c642d2bfa6fce9bd4d732429d` |
+| Manifest `bytes` | `687439` |
+| Manifest `sha256` | `92c0e27aa8020f5a658601d9e050f876e8e0ed43901dc3b11cf541086093a559` |
 | Signaturprüfung | ECDSA-P-256 über die dokumentierten Manifestfelder **gültig** |
 | Ingame-Erfolg | Aus CODE/Manifest allein **nicht nachgewiesen** |
 
 **Konsequenz:** Der Bootstrap folgt dem dokumentierten signierten Release-Branch und `manifest.runtimeUrl`, nicht automatisch `main/bot.js`. Integrierte Quelle und signierte Runtime wurden in CI gebaut und kryptografisch verifiziert; ein tatsächlicher Spielstart ist ohne Live-Nachweis unbekannt. Das persönliche Ingame-`ALBotConfig` bleibt unabhängig von der Repository-`bot.js`.
+
+Freigabe über den vorhandenen [Signierworkflow](https://github.com/Riflex91/ALBot/actions/runs/39155452952), aus Main `c684764e9c526e877c7c8d16130b376a787b2bd2`: 1.430/1.430 Offlinetests, persönliche Einstellungen unverändert, Manifest und Runtime gemeinsam veröffentlicht. Der vorhandene V2-Loader kann diese Version ohne Neuinstallation beim nächsten CODE-Start laden. Kein neuer Ingame-Ladevorgang beobachtet.
 
 ## Maschinenlesbarer Vertrag und CI
 

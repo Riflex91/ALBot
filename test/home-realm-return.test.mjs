@@ -137,7 +137,7 @@ test('fresh measured crowded home triggers a coordinated non-PvP escape and defe
    transport:{fresh:()=>null,send:()=>Promise.resolve(true)},
    teamPlan:{status:()=>({pressure,pressureEvidence:{
     reason:'verified-spawn-observations',measuredAt:clock-1000,
-    spawns:[{key:'main:bee:15',pressureRatio:.75,evidenceSeconds:95}]
+    spawns:[{key:'main:bee:15',pressureRatio:.75,evidenceSeconds:95,observedAt:clock-1000}]
    }})},event:(name,data)=>events.push({name,data}),report(){}};
   const travel=createTeamTravel(bot);
   travel.tick();clock+=95000;sync();travel.tick();

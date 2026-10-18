@@ -147,6 +147,7 @@ test('easy NPC replacement and complete negative utility authorize low-level jun
 test('recipe backing is counted across bank and inventory without consuming the last batch',()=>{
  const f=fixture();f.c.items[0]={name:'junk',level:0};f.G.craft={out:{items:[[1,'junk']]}};
  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null);f.stock.push({pack:'items0',slot:0,item:{name:'junk',level:0}});
+ f.c.map='bank';f.bot.bank.observed=true;
  assert.ok(f.planner.lowQualityRule(f.c.items[0]));f.stock[0].item.l=true;assert.equal(f.planner.lowQualityRule(f.c.items[0]),null);
 });
 test('incoming transfers preserve the preventive reserve while still allowing stack merges',()=>{

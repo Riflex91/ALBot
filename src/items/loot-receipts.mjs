@@ -190,6 +190,7 @@ export function createOwnLootReceipts(bot,{now=()=>Date.now()}={}){
      bot.inventoryBlocked||bot.bank?.pending||bot.logistics?.reserved)
    return;
   for(const row of [...pending]){
+   if(!pending.includes(row))continue; // invalidated by a preceding proof
    if(!w13SameDelta(row.basis.stock,stock,row.wanted)||
       gold!==row.basis.gold+row.gold)continue;
    const result={id:row.id,at:now(),source:row.source,

@@ -1,3 +1,4 @@
+import {bankOperatingStockRule} from '../items/operating-stock.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
@@ -760,8 +761,10 @@ export function createBank(bot){
  }
  // v3-guided conservative capacity recovery: non-destructive measures
  // first, then the least-loss eligible item only.
- function eligibleBankSale(item){
+ function eligibleBankSale(item,{carried=false}={}){
   if(!e.safe(item)||item.data!==undefined||item.p||item.title||item.stat_type||item.acc||item.rid||item.skin||item.expires||item.special||item.v||(item.level??0)>0)return null;
+  const operating=bankOperatingStockRule(bot,item,{carried});
+  if(operating)return {r:operating,price:e.value(item),lossScore:e.value(item)+1000/Math.max(1,item.q??1)};
   const meta=p.G.items?.[item.name],price=e.value(item),explicit=e.explicit(item),original=explicit??e.rules(item);
   const planned=bot.storage?.lowQualityRule?.(item);
   if(planned)return {r:planned,price,lossScore:price+1000/Math.max(1,item.q??1)};
@@ -866,8 +869,9 @@ export function createBank(bot){
  }
  function preventiveDisposition(){
   // W04 is opt-in to existing preventive storage AND bank reclaim settings.
-  // It does not reinterpret "keep", inferred low-quality or emergency
-  // material rules as permission to liquidate a bank asset.
+  // Explicit keep+excessAction and autonomous replaceable operating stock
+  // need the full reserve physically carried. Other keep/low-quality rules
+  // are not reinterpreted as preventive bank liquidation permission.
   if(cfg.merchant.preventiveStorage!==true||!cfg.merchant.bankReclaim||
      !cfg.merchant.bank||!bot.running||me.name!==cfg.party.merchant||
      pending||reclaiming||bot.journal||bot.inventoryBlocked||
@@ -886,9 +890,8 @@ export function createBank(bot){
   const batch=scanBankDispositionWindow(rows,{map:p.c.map,packMap,
    cursor:preventiveScan.cursor,limit:24,admit:(item,pack,slot)=>{
     const explicit=e.explicit(item);
-    if(!explicit?.enabled||explicit.action!=='sell')return null;
     const safe=eligibleBankSale(item);
-    return safe?.r===explicit?{price:safe.price,lossScore:safe.lossScore}:null;
+    return safe&&(safe.r._bankOperatingStock||explicit?.enabled&&explicit.action==='sell'&&safe.r===explicit)?{price:safe.price,lossScore:safe.lossScore}:null;
    }});
   if(!batch.valid){
    preventiveScan.reason=batch.reason;return false;
@@ -917,12 +920,11 @@ export function createBank(bot){
   // read-only scan is not a withdrawal or a value permission.
   const item=p.c.bank?.[selected.pack]?.[selected.slot];
   if(!item||fingerprint(item)!==selected.sourcePrint||
-     identity(item)!==selected.variant||
-     e.explicit(item)?.action!=='sell')return false;
-  const safe=eligibleBankSale(item);
-  if(!safe||safe.r!==e.explicit(item))return false;
+     identity(item)!==selected.variant)return false;
+  const safe=eligibleBankSale(item),source=e.explicit(item),operating=!!safe?.r._bankOperatingStock;
+  if(!safe||!operating&&(safe.r!==source||source?.action!=='sell'))return false;
   return stageBankSale({...safe,item,pack:selected.pack,
-   slot:selected.slot},'Vorbeugend: explizite Bank-Verkaufsregel',true);
+   slot:selected.slot},operating?'Vorbeugend: Betriebsvorrat physisch vollständig gedeckt':'Vorbeugend: explizite Bank-Verkaufsregel',!operating);
  }
  const preventiveStatus=()=>({
   revision:preventiveScan.revision,map:preventiveScan.map,
@@ -1097,7 +1099,7 @@ export function createBank(bot){
   // A verified withdrawal may now travel to an NPC. Offsite continuations
   // additionally require the persisted source-bank receipt and exact local
   // inventory evidence; sale rights are re-evaluated on every new attempt.
-  const item=p.c.items[r.dest],sale=eligibleBankSale(item),
+  const item=p.c.items[r.dest],sale=eligibleBankSale(item,{carried:true}),
    source=r.explicitOnly?e.explicit(item):null,
    authorized=!!sale&&cfg.merchant.bankReclaim===true&&
     (!r.explicitOnly||(cfg.merchant.preventiveStorage===true&&

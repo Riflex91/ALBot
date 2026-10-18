@@ -143,3 +143,19 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.party.properties,{
  balanceLevelGap:number('Levelabstand für automatische Aufholrotation',2,1,100),
  balanceHoldMs:number('Mindestzeit zwischen Aufholwechseln (ms)',1800000,300000,86400000)
 });
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.general.properties,{callCostCeiling:number('Normale Aktionskosten im 4-Sekunden-Fenster (Überlebensreserve separat)',160,60,170)});
+FULL_DESCRIPTOR.schema.properties.world.properties.eventGraceMs=number('Beobachtungslücke bei Events maximal halten (ms)',2500,0,10000);
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{
+ seasonalBuff:bool('Seasonalen kostenlosen Buff bei sicherem Vorbeikommen holen',true),
+ boosters:bool('Bereits aktive eigene Booster passend zum Farmziel umschalten',false),
+ activateBoosters:bool('Inaktive eigene Booster aktivieren (beginnt Ablaufzeit)',false)
+});
+
+Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{
+ respectHopPenalties:bool('Optionale Serverwechsel mit unbelegtem Sickness-/Fatigue-Verlust zurückstellen',true),
+ travelBlink:bool('Mage-Blink nur auf direkt begehbaren sicheren Reiseabschnitten',false)
+});
+
+FULL_DESCRIPTOR.schema.properties.world.properties.rewardMail=bool('Eigene Systembelohnungen über verfügbaren authentifizierten Browser-Mailreader abholen',true);

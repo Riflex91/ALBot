@@ -1,3 +1,9 @@
+## Dauerbetrieb 0.10.11-candidate (18.10.2026)
+
+[Umgesetzte Autonomiemodule, Einstellungen, Prüfungen und ausdrücklich offene Roadmap-Pakete](docs/AUTONOMIE-ABGLEICH-2026-10-18.md). Neu sind unter anderem endliche Betriebsvorräte mit getragener Bankreserve, Aktionskosten-/Condition-Gates, sichere Eventgrace, Revive-Todesbindung und Systembelohnungs-Mail. Persönliche Einstellungen bleiben unverändert. **Der separate signierte V2-Release-Kanal wird durch einen Main-Merge nicht aktualisiert.** Der neue Mainstand ist als persönliche [bot.js](bot.js) verfügbar; neue Spiel-Liveabnahme offen.
+
+---
+
 ## Kampf-KI: verifizierte Priest-Heilung und Ranger-Rettung (18.10.2026)
 
 [Implementierung, Schutzgrenzen, Tests und getrennte Release-Freigabe](docs/COMBAT-HEILUNG-2026-10-18.md). Die Änderungen auf `main` ersetzen das signierte Ingame-Release nicht automatisch.

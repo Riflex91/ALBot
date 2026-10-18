@@ -40,6 +40,7 @@ test('old saved personalized CODE starts after missing merchant fields are compl
  assert.deepEqual(repaired.merchant.offlineGoldBalances,[]);
  assert.deepEqual(validateProfile(FULL_DESCRIPTOR,repaired),[]);
  const expected=personalConfig();expected.merchant.budgetMode='bounded';expected.merchant.accountLossWindowMs=900000;expected.merchant.offlineGoldBalances=[];
+ expected.general.callCostCeiling=160;expected.world.eventGraceMs=2500;expected.world.seasonalBuff=true;expected.world.boosters=false;expected.world.activateBoosters=false;expected.world.respectHopPenalties=true;expected.world.travelBlink=false;expected.world.rewardMail=true;
  // New W02 field is optional in saved CODE. Startup normalization adds
  // the conservative `hold` default without rewriting personal settings.
  for(const rule of expected.items??[])if(!Object.hasOwn(rule,'excessAction'))

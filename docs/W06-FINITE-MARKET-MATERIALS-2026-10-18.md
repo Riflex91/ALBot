@@ -1,0 +1,22 @@
+# W06 – endlich begrenzte Materialbeschaffung aus Live-Marktangeboten
+
+Stand: 18.10.2026, auf Basis von G09 PR #183.
+
+## Vorhandener Vertrag
+
+Die existierende Produktionsplanung kann bereits einen `marketBuy`-Schritt erzeugen, wenn ein Material nicht aus aktuellem Bestand/Bank, einem freigegebenen NPC, einem Rezept oder einer erreichbaren anderen Quelle kommt und `market` in `production.acquireBy` zugelassen ist. Der Merchant kann an aktuell sichtbaren, erreichbaren Händlerständen mit `trade_buy` kaufen. **Das ist kein Beleg für ein irgendwann vorhandenes Angebot.** Der bisherige Marktcheck verifiziert ohnehin Preis, exakten Item-Level/Stat-/Eigenschafts-/Titelvergleich, Stand, Live-`rid`, Limit, Gold und Bestand.
+
+Der Serverhandler `node/server.js` aus `kaansoral/adventureland_mongodb` (festgehaltener Vergleichsstand) zeigt für `trade_buy`: Goldabzug `listing.price*q`, Inventarzuwachs, aber nur `success_response({})` **ohne Empfangsslot**. Die Runtime darf keinen Slotbeleg erfinden.
+
+## Dieses Inkrement
+
+- Vorher fehlte dem Produktions-`marketBuy`-Dispatch die noch benötigte **endliche Menge des konkreten Schritts**. `market.buy` durfte die gesamte Batch-/Zielmenge der Itemregel verwenden und damit mehr Material kaufen als geplant.
+- Der Produktionspfad übergibt nun `quantity: step.quantity`. Das live erlaubte Kaufquantum ist das Minimum von vorhandenem Angebot, `r.batch`, `r.targetCount - tatsächlicher Bestand`, `r.maxCount - tatsächlicher Bestand` und dem konkreten Produktionsbedarf.
+- Eine eigene `admit()`-Prüfung bindet den Job an **denselben noch aktuellen Produktionsschritt und dasselbe Ziel**, aktive Produktion, erlaubtes `acquireBy:market`, nicht blockiertes Inventar, gültige Regel (einschließlich neu geprüfter Feldsignatur) und verbleibende Aktionsquote. Sie wird vor Planung und nochmals beim eigentlichen Dispatch angewendet; bei Änderung erfolgt kein Kauf.
+- Bestehender `economy.perform('market.buy')` bleibt der einzige Wertpfad, mit allen aktuellen Kosten-/Verlust-/Gold-/Journalsperren. Für Produktionsmaterial wird eine bestätigte Kaufwirkung **nur** angenommen, wenn der offizielle Promise-Erfolg vorliegt, der Inventarbestand der spezifischen Variante um **genau die ausgewählte Menge** zunimmt **und** der Goldbestand um exakt `unitPrice * quantity` fällt. Fehlender Servererfolg oder ein abweichender Wertabgleich lässt das Journal offen, ohne Blind-Retry.
+- Bereits ausdrücklich konfigurierte eigenständige `marketBuy`-Regeln behalten ihren bestehenden Modus. Das Inkrement autorisiert **keine zusätzlichen Materialien, Preisobergrenzen, Reiche, Charaktere oder Goldrisiken**, sondern begrenzt bereits genehmigte Produktionskäufe.
+- Ein aktuell nicht sichtbarer Anbieter bleibt kein bestätigter Kauf: Der vorhandene endliche Reise-/Reprobe-/No-Offer-Mechanismus gilt weiter; das Ergebnis ist ein wartender oder gesperrter Materialbedarf und keine erfundene Ankunfts-/Kaufquittung.
+
+## Noch offen
+
+Volle Materialbeschaffung über direkte ungebundene Warenangebote, Warenlieferungen von anderen Spielern, gesicherte nicht-reproduzierbare Rezeptnebenwege, accountweite Rewardallokation und echte Live-Game-Quittungen bleiben getrennte W06-/W13-Restpunkte. Das Inkrement ist kein signierter Ingame-Release und wurde offline getestet.

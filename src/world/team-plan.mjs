@@ -36,7 +36,7 @@ export function areaPressure(row,now=Date.now(),freshMs=21600000){
 }
 // Summarize observed pressure across *fresh*, approved spawn observations.
 // Unknown is null, never zero: absence of measurements is not a settled home.
-export function summarizeSpawnPressure(rows,now=Date.now(),freshMs=600000){
+export function summarizeSpawnPressure(rows,now=Date.now(),freshMs=180000){
  if(!Array.isArray(rows)||!Number.isFinite(now)||!Number.isFinite(freshMs)||freshMs<=0)
   return {pressure:null,reason:'invalid-or-missing-evidence',spawns:[]};
  const observed=rows.filter(r=>r&&Number.isFinite(r.observedAt)&&r.observedAt<=now&&

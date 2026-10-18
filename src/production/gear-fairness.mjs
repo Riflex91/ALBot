@@ -17,20 +17,38 @@ export function gearCatchUpPriority(profile,peers){
 }
 
 
-// Account-comparable, role-weighted slot coverage. Incomplete or old
-// profiles never confer authority to equip; only automatic job priority.
+// Comparable [0..1] role-dependent slot coverage, NOT raw DPS, gear level,
+// combat eligibility or a spend authority. A priest's mainhand, a tank's
+// defensive shell and a travelling merchant's shoes are not interchangeable.
+const SLOT_KEYS=['mainhand','offhand','helmet','chest','pants','shoes','gloves',
+ 'amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
+const SLOT_WEIGHTS={
+ healer:{mainhand:4,chest:2,helmet:2,amulet:2},
+ tank:{chest:4,offhand:3,helmet:2,pants:2,belt:2},
+ dps:{mainhand:4,offhand:2,gloves:2,ring1:2,ring2:2},
+ economy:{shoes:4,belt:2,gloves:2,cape:2}
+};
 function roleCoverage(p,role){
- if(!p?.complete||!p.slots)return null;
- const keys=Object.keys(p.slots);
- if(keys.length<10)return null;
+ if(!p?.complete||!p.slots||
+    SLOT_KEYS.some(k=>!Object.hasOwn(p.slots,k)))return null;
+ const weights=SLOT_WEIGHTS[role]??SLOT_WEIGHTS.dps;
  const pivotal=role==='economy'?'shoes':role==='tank'?'chest':'mainhand';
- return {ratio:(keys.filter(k=>p.slots[k]).length+(p.slots[pivotal]?3:0))/(keys.length+3),pivotal};
+ let total=0,filled=0;
+ for(const key of SLOT_KEYS){
+  const weight=weights[key]??1;total+=weight;
+  if(p.slots[key])filled+=weight;
+ }
+ return {ratio:filled/total,pivotal};
 }
 export function crossRoleGearPriority(profile,cohort,{
  role='dps',slot='',now=Date.now(),lastImprovedAt=null
 }={}){
  const own=roleCoverage(profile,role);
- if(!own||!Array.isArray(cohort))return 0;
+ // A loaded but outdated/off-realm cached profile cannot earn automatic
+ // account-wide priority. The same bounded age applies to peer profiles.
+ if(!own||!Array.isArray(cohort)||!Number.isFinite(now)||
+    !Number.isFinite(profile?.at)||profile.at<=0||profile.at>now||
+    now-profile.at>604800000)return 0;
  const values=cohort.filter(x=>x?.profile?.at>0&&now>=x.profile.at&&
   now-x.profile.at<=604800000).map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);
  if(values.length<2)return 0;

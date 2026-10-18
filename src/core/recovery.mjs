@@ -1,6 +1,7 @@
 import {identity,fingerprint} from './policy.mjs';
 import {inspectItemTransferEvidence,inspectPairedItemTransfer,inspectReceiveSenderSession} from '../items/transfer-reconciliation.mjs';
 import {exchangeDrops} from '../production/materials.mjs';
+import {bankOwnershipConflict} from './bank-ownership.mjs';
 // A gathering skill may time out without producing an item. Only a complete,
  // untouched, durable before-image can release that uncertainty automatically.
  // Never replay the skill or infer a missing reward from its cooldown.
@@ -210,7 +211,36 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return true;
  }
 
- function authorize(kind){if(!kind.startsWith('bank.'))return true;if(me.name!==cfg.party.merchant)return false;const other=[...bot.transport.peers].map(([name,h])=>({name,...h})).find(h=>h.bankOwner&&h.name!==me.name&&h.running&&Date.now()-h.received<cfg.general.messageTtlMs);if(other){conflict=other.name;bot.report('Bankbesitz-Konflikt: '+other.name);return false;}conflict=null;lease={owner:me.name,session:bot.session,realm:p.realm(),epoch:Date.now(),purpose:kind,expires:Date.now()+cfg.general.messageTtlMs};return true;}
+ function bankPeersAllow(){
+  const evidence=bankOwnershipConflict(bot.transport?.peers??[],{
+   owner:me.name,session:bot.session,realm:p.realm(),now:Date.now(),
+   ttlMs:cfg.general?.messageTtlMs??10000});
+  if(!evidence.allowed){
+   if(conflict!==evidence.conflict)
+    bot.report?.('Bankbesitz-Konflikt: '+(evidence.conflict??evidence.reason));
+   conflict=evidence.conflict??evidence.reason;
+   return false;
+  }
+  conflict=null;return true;
+ }
+ function authorize(kind){
+  if(!kind.startsWith('bank.'))return true;
+  if(me.name!==cfg.party.merchant||!bankPeersAllow())return false;
+  const now=Date.now(),ttl=cfg.general?.messageTtlMs??10000;
+  lease={owner:me.name,session:bot.session,realm:p.realm(),
+   epoch:now,purpose:kind,expires:now+ttl};
+  return true;
+ }
+ // Executor.flush() may run after new authenticated peer heartbeats arrive.
+ // Never treat the earlier admission snapshot as final dispatch permission.
+ function bankDispatchAllowed(kind){
+  if(!kind.startsWith('bank.'))return true;
+  return me.name===cfg.party.merchant&&
+   lease?.owner===me.name&&lease.session===bot.session&&
+   lease.realm===p.realm()&&lease.purpose===kind&&
+   Number.isFinite(lease.expires)&&lease.expires>Date.now()&&
+   bankPeersAllow();
+ }
  // Resolve a legacy bank_store that the server executed as a stack swap.
  // Both addressed slots, the complete before-inventory and gold must match.
  // Do not infer success from global item counts or from the bank pack total.
@@ -401,5 +431,5 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   if(confirmed){bot.event('recovery.confirmed',{kind:j.kind,reason:'Gepinnte Bestände und Gold-/Equipänderung stimmen überein'});bot.inventoryBlocked=false;bot.endValue('confirmed');return !bot.journal;}
   bot.event('recovery.unresolved',{kind:j.kind,reason:'Beobachtung ist nicht eindeutig; kein erneuter Versand'});return false;
  }
- return {authorize,reconcile,itemStatus,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus}),goldEvidence,close(){lease=null;}};
+ return {authorize,bankDispatchAllowed,reconcile,itemStatus,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus}),goldEvidence,close(){lease=null;}};
 }

@@ -8,6 +8,13 @@ export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?
 // AoE is a normal farmer capability. Limits on hostile targets, pulls,
 // mana, PVP, weapons and cooldowns are still enforced in use().
 export const aoePermitted=bot=>bot.me?.role==='farmer'||bot.cfg?.party?.aoe===true;
+// Foreign-owned monsters may be attacked as normal farm mobs only when the
+// user explicitly disables ownership avoidance; off-plan and unsafe enemies
+// do not become eligible merely because somebody else has aggro.
+export function eligibleEngagedFarmMob(m,teamNames=[],planned=null,avoidOthers=true){
+ return !!m?.target&&(teamNames.includes(m.target)||
+  avoidOthers===false&&!!planned&&m.mtype===planned);
+}
 export function highestDpsFarmer(bot,allies){
  const selected=new Set(bot.farmers??[]);
  return (allies??[]).filter(a=>a&&selected.has(a.name)&&
@@ -134,7 +141,7 @@ export function createSkills(bot){
     // Targeted skills can initiate a controlled encounter: a neutral mob is
     // allowed only if the team plan, danger checks and planner all approve it.
     // Untargeted AoE must account for EVERY visible mob inside its effect area.
-    const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&bot.allowed(e));
+    const eligible=e=>eligibleEngagedFarmMob(e,bot.teamNames,bot.teamPlan?.target(),cfg.farming.avoidOthers)&&bot.allowed(e);
     // Skill target count is distinct from permission to pull NEW monsters.
     // Three already engaged party threats do not create a third new pull.
     const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets,aimed?Infinity:cfg.farming.maxAggro??Infinity);
@@ -158,7 +165,7 @@ export function createSkills(bot){
       const phase=bot.encounter?.status?.(),plan=bot.teamPlan?.target?.();
       const reasons=visible.filter(e=>!candidates.includes(e)).map(e=>{
        let reason='not-selected';
-       if(e.target)reason=bot.teamNames.includes(e.target)?'party-target-unsafe':'other-target';
+       if(e.target)reason=eligibleEngagedFarmMob(e,bot.teamNames,plan,cfg.farming.avoidOthers)?'engaged-target-unsafe':'other-target';
        else if(!plan||e.mtype!==plan)reason='different-or-missing-farm-target';
        else if(bot.cfg.party.enabled&&bot.me?.name!==bot.leader)
         reason='follower-not-authorized-to-pull';
@@ -336,7 +343,7 @@ export function createSkills(bot){
       const remaining=phase?.phase==='BUILD'?Math.max(0,Math.min(
         (phase.capacity??1)-engaged,(cfg.farming.maxAggro??1)-engaged)):0;
       const safe=bot.monsters().filter(m=>distance(c,m)<shotRange&&
-        ((m.target&&bot.teamNames.includes(m.target)&&bot.allowed(m))||
+        ((eligibleEngagedFarmMob(m,bot.teamNames,bot.teamPlan?.target(),cfg.farming.avoidOthers)&&bot.allowed(m))||
         (!m.target&&remaining>0&&m.mtype===bot.teamPlan?.target()&&bot.allowed(m)&&
          bot.strategy?.safeTarget?.(m.mtype,m)!==false)));
       const safeCount=Math.min(cfg.party.aoeMaxTargets,engaged+Math.min(remaining,safe.filter(m=>!m.target).length));
@@ -347,7 +354,7 @@ export function createSkills(bot){
           if(!def)return [];
           const range=(def.range??c.range)-5;
           const inRange=safe.filter(m=>distance(c,m)<range);
-          const engagedHere=inRange.filter(m=>m.target&&bot.teamNames.includes(m.target));
+          const engagedHere=inRange.filter(m=>eligibleEngagedFarmMob(m,bot.teamNames,bot.teamPlan?.target(),cfg.farming.avoidOthers));
           const neutralHere=inRange.filter(m=>!m.target).sort((a,b)=>distance(c,a)-distance(c,b));
           const targets=maximalSafeAimedTargets(engagedHere,neutralHere,remaining,
             Math.min(capacity,cfg.party.aoeMaxTargets));

@@ -85,10 +85,13 @@ test('briefly missing Ranger heartbeat does not eject existing healthy Farmer',(
  assert.equal(selectedFarmerAvailable({running:true,realm:'EUII'},options),true);
  for(const peer of [{running:false,realm:'EUII'},
   {running:true,realm:'USIV'},
-  {running:true,realm:'EUII',rip:true},
   {running:true,realm:'EUII',inventoryBlocked:true}]){
   assert.equal(selectedFarmerAvailable(peer,options),false);
  }
+ assert.equal(selectedFarmerAvailable({running:true,realm:'EUII',rip:true},options),true,
+  'a recently observed selected Farmer stays rostered during ordinary respawn');
+ assert.equal(selectedFarmerAvailable({running:true,realm:'EUII',rip:true},
+  {...options,now:145001}),false,'respawn grace must expire');
 });
 
 test('diagnostic helpers never authorize new attack, server or value actions',()=>{

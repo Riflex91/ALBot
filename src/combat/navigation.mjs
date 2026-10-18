@@ -1,6 +1,7 @@
 import {distance,xy,samePlace} from '../core/policy.mjs';
 import {isNaturallyAggressive} from './aggression.mjs';
 import {planOrbitalKite} from './orbital-kiting.mjs';
+import {committedFarmTransit} from './transit-defense.mjs';
 // Explicitly engaged monsters may be passive by species (for example when
 // a ranger pulled them). Only actual SELF-aggro authorizes evasive movement.
 // A verified speed advantage is necessary, but not sufficient to promise
@@ -36,6 +37,10 @@ export function createCombatNavigation(bot){
  function rangePosition(t){
   const c=bot.p.c;
   if(!bot.cfg.farming.kiting||!t||!samePlace(c,t))return false;
+  // A road attacker is not a reason to cancel a verified smart_move to the
+  // squad's spawn. Potions and Priest healing continue in the farmer loop.
+  const routePlan=bot.teamPlan?.heartbeat?.()??bot.transport?.fresh?.(bot.leader)?.farmPlan;
+  if(committedFarmTransit(c,bot.movement.order,routePlan))return false;
   const eligibility=activeKiteEligibility(c,t,bot.p.G.monsters?.[t.mtype]);
   const now=Date.now();
   if(!eligibility.allowed){

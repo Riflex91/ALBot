@@ -3,6 +3,7 @@ import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
 import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
+import {roadAggroTravelDecision,committedFarmTransit} from './transit-defense.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
@@ -69,6 +70,11 @@ export function potionResource(c,threshold=300){
 export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
+  let lastRoadAggroAt=0;
+  const travelPlan=()=>bot.teamPlan?.heartbeat?.()??
+    bot.transport?.fresh?.(bot.leader)?.farmPlan;
+  const roadTravel=()=>roadAggroTravelDecision(p.c,bot.movement?.order,
+    travelPlan(),bot.monsters?.()??[],bot.teamNames??bot.farmers??[]);
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   // Observe real outgoing basic attacks in addition to skill casts. Failed
   // or no-target results invalidate provisional damage immediately.
@@ -156,6 +162,13 @@ export function createFarmer(bot){
     }
     if(c.hp/c.max_hp<cfg.farming.restBelow)rest=true;
     if(rest&&c.hp/c.max_hp>=cfg.farming.resumeAbove)rest=false;
+    // A Ranger already following a valid farm route can drink while moving.
+    // Stopping that route at 40% HP to orbit a roadside bigbird repeatedly
+    // separated both Rangers from the healer in captured live traces.
+    if(rest&&me.role==='farmer'&&roadTravel().continueRoute){
+      bot.reason='Erholung unterwegs: Route beibehalten, Trank/Heiler aktiv';
+      bot.skills?.rotation?.(null);return true;
+    }
     if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>e?.target===c.name&&e.hp>0&&!e.dead).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
@@ -289,6 +302,21 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
     const c=p.c,now=Date.now();
+    // While a Ranger follows an approved native farm route, hostile road
+    // aggro must not turn the trip into random spiral/orbit manoeuvres.
+    // Keep potion consumption and Priest healing active. This policy does
+    // not apply after arrival, to the Merchant, or to unrelated travel.
+    const road=me.role==='farmer'?roadTravel():null;
+    if(road?.continueRoute&&(c.ctype!=='priest'||
+       bot.monsters().some(m=>m?.target===c.name))){
+      bot.target=null;
+      bot.reason='Gruppenreise trotz Weg-Aggro: Route halten, Tränke und Heiler';
+      if(now-lastRoadAggroAt>=10000){lastRoadAggroAt=now;
+       bot.event?.('combat.roadAggroRouteHeld',{hostiles:road.hostileCount,
+        destination:travelPlan()?.key??null,owner:bot.movement.order?.owner,
+        hpRatio:c.hp/Math.max(1,c.max_hp)});}
+      bot.skills?.rotation?.(null);return;
+    }
     // Navigation is not coupled to farm-plan selection or the monster's
     // natural-aggro flag. A passive monster becomes a REAL self-threat once
     // it attacks this farmer; kite before follow/travel/team-defense returns.
@@ -573,5 +601,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const attack=trackedAttack(target.id);
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
   }
-  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
+  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
+    // The emergency scheduler executes BEFORE normal farmer.tick. Honor the
+    // same verified road-route exception here or its preflight will trigger
+    // an orbit/retreat before the main combat loop can preserve the route.
+    if(me.role==='farmer'&&roadTravel().continueRoute)return false;
+    const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
 }

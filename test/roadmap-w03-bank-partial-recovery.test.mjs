@@ -1,18 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fingerprint} from '../src/core/policy.mjs';
-import {classifyBankPartialRecord,validateBankPartialRecord}
+import {classifyBankPartialRecord,validateBankPartialRecord,partialDispatchDecision}
  from '../src/merchant/bank-partial-recovery.mjs';
 import {createBank} from '../src/merchant/bank.mjs';
 
 const owner='M',realm='EU:I',now=1700000000000;
 const material={name:'beewing',q:131},blank=()=>Array(42).fill(null);
 function checkpoint(extra={}){
- return {version:2,owner,realm,at:now,pack:'items0',
+ const at=extra.at??now;
+ const r={version:2,owner,realm,at,pack:'items0',
   bankSlot:7,dest:0,splitSlot:1,item:{...material},
   sourcePrint:fingerprint(material),total:131,take:100,
   before:0,bankBefore:131,...extra};
+ if(!Object.hasOwn(extra,'prepared'))r.prepared={
+  at,session:'prepared-browser-session',realm:r.realm,pack:r.pack,
+  bankSlot:r.bankSlot,dest:r.dest,splitSlot:r.splitSlot,
+  sourcePrint:r.sourcePrint};
+ if(!Object.hasOwn(extra,'dispatches'))r.dispatches=[];
+ return r;
 }
+const step=(r,phase,session='old-session',at=r.at)=>({
+ phase,session,at,realm:r.realm,pack:r.pack,bankSlot:r.bankSlot,
+ dest:r.dest,splitSlot:r.splitSlot,sourcePrint:r.sourcePrint});
+const dispatched=(r,phases)=>({
+ ...r,dispatches:phases.map((p,i)=>step(r,p,
+  i===0?'original-session':'restart-session'))});
 function evidence(r,{source={...material},dest=null,split=null,
  map='bank',packPresent=true,bankMap='bank'}={}){
  const inventory=blank(),pack=blank();inventory[0]=dest;
@@ -67,6 +80,7 @@ function fixture(saved=null,{persist=true,perform=true}={}){
   G:{items:{beewing:{s:9999,type:'material'}},
    bank_packs:{items0:['bank',0,0]}},realm:()=>realm,
   read:key=>store.get(key)??null,
+  call:()=>true,
   write:(key,value)=>{if(!canWrite)return false;store.set(key,value);return true;}};
  const economy={safe:i=>!!i&&!i.l&&!i.b,
   travel:()=>true,note:s=>notes.push(s),count:i=>
@@ -89,16 +103,22 @@ test('W03 partial recovery emits only the next observed valid physical action',(
  assert.equal(f.bot.bank.recover(),true);
  assert.equal(f.calls.at(-1).kind,'bank.partial.retrieve');
  assert.equal(f.calls.at(-1).options.guard(),true);
+ assert.equal(f.calls.at(-1).options.call(),true);
+ assert.equal(f.store.get('albot:bank-partial:M').dispatches.length,1);
  f.pack[7]=null;f.inventory[0]={...material};
  assert.equal(f.calls.at(-1).options.observe(),true);
  f.bot.bank.recover();
  assert.equal(f.calls.at(-1).kind,'bank.partial.split');
  assert.equal(f.calls.at(-1).options.guard(),true);
+ assert.equal(f.calls.at(-1).options.call(),true);
+ assert.equal(f.store.get('albot:bank-partial:M').dispatches.length,2);
  f.inventory[0]={name:'beewing',q:31};
  f.inventory[1]={name:'beewing',q:100};
  f.bot.bank.recover();
  assert.equal(f.calls.at(-1).kind,'bank.partial.return');
  assert.equal(f.calls.at(-1).options.guard(),true);
+ assert.equal(f.calls.at(-1).options.call(),true);
+ assert.equal(f.store.get('albot:bank-partial:M').dispatches.length,3);
  f.inventory[0]=null;f.pack[7]={name:'beewing',q:31};
  assert.equal(f.calls.at(-1).options.observe(),true);
  f.bot.bank.recover();
@@ -130,7 +150,8 @@ test('W03 unresolved bank map does not attempt even a reversible repeat',()=>{
  assert.equal(f.bot.bank.pending,true);
 });
 test('W03 failed returned-phase checkpoint clearing blocks rather than claims success',()=>{
- const r=checkpoint({at:Date.now()}),f=fixture(r);
+ const base=checkpoint({at:Date.now()});
+ const r=dispatched(base,['original','withdrawn','split']),f=fixture(r);
  f.pack[7]={name:'beewing',q:31};f.inventory[1]={name:'beewing',q:100};
  f.stopWrites();
  f.bot.bank.recover();
@@ -144,4 +165,90 @@ test('W03 late bank slot drift cancels previously planned next step',()=>{
  const first=f.calls.at(-1).options;
  f.pack[7]={name:'beewing',q:130};
  assert.equal(first.guard(),false);
+});
+
+test('W03 stage proofs require ordered three-call sequence, not an unverified phase',()=>{
+ const r=checkpoint();
+ assert.equal(partialDispatchDecision(r,'original').allowed,true);
+ assert.equal(partialDispatchDecision(r,'withdrawn').reason,'unproven-previous-dispatch');
+ const afterRetrieve=dispatched(r,['original']);
+ assert.equal(partialDispatchDecision(afterRetrieve,'original').reason,
+  'dispatched-step-outcome-unknown');
+ assert.equal(partialDispatchDecision(afterRetrieve,'withdrawn').allowed,true);
+ const afterSplit=dispatched(r,['original','withdrawn']);
+ assert.equal(partialDispatchDecision(afterSplit,'withdrawn').allowed,false);
+ assert.equal(partialDispatchDecision(afterSplit,'split').allowed,true);
+ const all=dispatched(r,['original','withdrawn','split']);
+ assert.equal(partialDispatchDecision(all,'returned').allowed,true);
+ assert.equal(partialDispatchDecision(all,'split').allowed,false);
+});
+test('W03 legacy v2 journal cannot implicitly authorize any partial bank API',()=>{
+ const old=checkpoint({at:Date.now(),prepared:undefined,dispatches:undefined});
+ const f=fixture(old);
+ assert.equal(f.bot.inventoryBlocked,false);
+ assert.equal(f.bot.bank.recover(),true);
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.bot.bank.pending,true);
+ assert.equal(f.calls.length,0);
+ assert.equal(f.bot.bank.recoveryStatus().partial.dispatchReason,
+  'legacy-partial-without-dispatch-chain');
+ assert.equal(f.store.get('albot:bank-partial:M'),old);
+});
+test('W03 uncertain retrieve dispatch with unchanged bank source is never repeated',()=>{
+ const r=checkpoint({at:Date.now()}),f=fixture(dispatched(r,['original']));
+ assert.equal(f.bot.bank.recover(),true);
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.calls.length,0);
+ assert.equal(f.bot.bank.pending,true);
+});
+test('W03 split and return requests are not repeated while outcome is uncertain',()=>{
+ for(const phases of [['original','withdrawn'],['original','withdrawn','split']]){
+  const r=checkpoint({at:Date.now()}),f=fixture(dispatched(r,phases));
+  f.pack[7]=null;f.inventory[0]=phases.length===2?{...material}:
+   {name:'beewing',q:31};
+  if(phases.length===3)f.inventory[1]={name:'beewing',q:100};
+  assert.equal(f.bot.bank.recover(),true);
+  // A split that was sent but has not changed either physical slot
+  // cannot be sent a second time, even after a new runtime session.
+  if(phases.length===2){
+   assert.equal(f.bot.inventoryBlocked,true);
+   assert.equal(f.calls.length,0);
+  }else{
+   assert.equal(f.bot.inventoryBlocked,true);
+   assert.equal(f.calls.length,0);
+  }
+ }
+});
+test('W03 reject API dispatch when its new durable write fails',()=>{
+ const r=checkpoint({at:Date.now()}),f=fixture(r);
+ assert.equal(f.bot.bank.recover(),true);
+ const call=f.calls.at(-1).options.call;
+ f.stopWrites();
+ assert.throws(()=>call(),/Dispatch-Beleg/);
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(f.store.get('albot:bank-partial:M'),r);
+});
+test('W03 persisted first step can advance in a different browser session',()=>{
+ const r=checkpoint({at:Date.now()}),f=fixture(dispatched(r,['original']));
+ f.pack[7]=null;f.inventory[0]={...material};
+ assert.equal(f.bot.bank.recover(),true);
+ assert.equal(f.calls.at(-1).kind,'bank.partial.split');
+ assert.equal(f.calls.at(-1).options.call(),true);
+ const saved=f.store.get('albot:bank-partial:M');
+ assert.equal(saved.dispatches.length,2);
+ assert.equal(saved.dispatches[0].session,'old-session');
+ assert.equal(saved.dispatches[1].session,'new');
+});
+test('W03 invalid or reordered dispatch history is not admissible',()=>{
+ const r=checkpoint();
+ for(const d of [
+  [step(r,'withdrawn')], [step(r,'original'),step(r,'original')],
+  [step(r,'original',{bad:true})], // malformed session
+  [step(r,'original','',now)], [step(r,'original','s',now-1)],
+  [step(r,'original','s',now+3000)],
+  [step(r,'original'),step(r,'withdrawn','s',now-1)]
+ ]){
+  const invalid=checkpoint({dispatches:d});
+  assert.equal(validateBankPartialRecord(invalid,{owner,realm,now}).valid,false);
+ }
 });

@@ -447,7 +447,7 @@ export function createBank(bot){
   if(dest<0||!admitted(p.c.bank?.[pack]?.[slot]))return false;
   const record={item:{...item},pack,slot,dest,before,bankBefore,
    quantity:q,gold:p.c.gold,sourcePrint:fp,
-   expectedSaleGold:e.value(item)*q,reason};
+   expectedSaleGold:e.value(item)*q,reason,explicitOnly};
   if(!p.write(reclaimKey,record))return false;
   reclaiming=record;
   return e.perform('bank.reclaim',{guard:()=>admitted(p.c.bank?.[pack]?.[slot]),
@@ -583,8 +583,18 @@ export function createBank(bot){
      fingerprint(p.c.bank?.[r.pack]?.[r.slot])===r.sourcePrint&&!p.c.items[r.dest]){
      if(p.write(reclaimKey,null))reclaiming=null;return true;
   }
-  const item=p.c.items[r.dest],rule=item?eligibleBankSale(item)?.r:null;
-  if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&rule?.action==='sell'&&!!eligibleBankSale(item)&&e.spare(r.dest,rule)>=r.quantity){e.npcSell(r.dest,{...rule,batch:r.quantity},{onConfirmed:()=>{
+  const item=p.c.items[r.dest],sale=item?eligibleBankSale(item):null,
+   source=r.explicitOnly?item?e.explicit(item):null:null,
+   authorized=!!sale&&(!r.explicitOnly||
+    source?.action==='sell'&&source.enabled&&sale.r===source),
+   rule=authorized?sale.r:null;
+  // The W04 preventive rule is durable provenance, NOT permission to fall
+  // back to generated emergency-sales after the explicit rule is revoked.
+  // The economy dispatcher also rechecks this source at its final guard.
+  if(count===r.before+r.quantity&&identity(item)===identity(r.item)&&
+     rule?.action==='sell'&&e.spare(r.dest,rule)>=r.quantity){
+   e.npcSell(r.dest,{...rule,batch:r.quantity,
+    ...(r.explicitOnly?{_bankExplicitSource:source}:{})},{onConfirmed:()=>{
    const next={...r,saleConfirmed:true};if(!p.write(reclaimKey,next))return false;
    reclaiming=next;return true;
   }});return true;}

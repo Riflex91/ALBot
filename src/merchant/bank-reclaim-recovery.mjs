@@ -33,6 +33,19 @@ export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}
  // withdrawal from the original physical source slot, not cached bank arrays.
  // Old v2 records without this optional receipt remain readable, but cannot
  // authorize a new offsite NPC sale until the bank source is observed again.
+ // A dispatched bank request is an uncertainty boundary. Persist the
+ // provenance BEFORE calling bank_retrieve, never infer 'not sent' from an
+ // unchanged bank snapshot after a timeout or browser restart.
+ if(record.dispatch!==undefined){
+  const d=record.dispatch;
+  if(!d||typeof d!=='object'||Array.isArray(d)||
+     typeof d.session!=='string'||!d.session||
+     !safe(d.at)||d.at<record.at||d.at>now+2000||
+     d.kind!=='bank.reclaim'||d.realm!==record.realm||
+     d.pack!==record.pack||d.slot!==record.slot||
+     d.dest!==record.dest||d.sourcePrint!==record.sourcePrint)
+   return reject('invalid-durable-dispatch-receipt');
+ }
  if(record.withdrawal!==undefined){
   const w=record.withdrawal;
   if(!w||typeof w!=='object'||Array.isArray(w)||
@@ -92,7 +105,11 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
   empty=!target;
  if(!record.saleConfirmed&&original&&empty&&
     count===record.before&&bankCount===record.bankBefore)
-  return {phase:'unchanged',reason:'exact-addressed-before-image',confirmed:false};
+  return record.dispatch?
+   {phase:'dispatched-unchanged',
+    reason:'bank-request-already-dispatched-but-no-effect-confirmed',
+    confirmed:false}:
+   {phase:'unchanged',reason:'exact-addressed-before-image',confirmed:false};
  if(!record.saleConfirmed&&withdrawn&&
     count===record.before+record.quantity&&
     bankCount===record.bankBefore-record.quantity)

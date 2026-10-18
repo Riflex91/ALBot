@@ -5,10 +5,16 @@ import {createBank} from '../src/merchant/bank.mjs';
 
 const wing={name:'beewing',q:131},ore={name:'ore',q:10};
 const blank=()=>Array(42).fill(null);
-const partial=()=>({version:2,owner:'M',realm:'EU:I',at:Date.now(),
- pack:'items0',bankSlot:7,dest:0,splitSlot:1,
- item:{...wing},sourcePrint:fingerprint(wing),
- total:131,take:100,before:0,bankBefore:131});
+const partial=()=>{
+ const at=Date.now();
+ return {version:2,owner:'M',realm:'EU:I',at,
+  pack:'items0',bankSlot:7,dest:0,splitSlot:1,
+  item:{...wing},sourcePrint:fingerprint(wing),
+  total:131,take:100,before:0,bankBefore:131,
+  prepared:{at,session:'collision-test',realm:'EU:I',
+   pack:'items0',bankSlot:7,dest:0,splitSlot:1,
+   sourcePrint:fingerprint(wing)},dispatches:[]};
+};
 const reclaim=()=>{
  const at=Date.now();
  return {version:2,owner:'M',realm:'EU:I',at,

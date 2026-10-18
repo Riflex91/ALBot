@@ -75,7 +75,7 @@ test('bootstrap rejects non-HTTPS resources or unsafe personal boundaries',()=>{
    'globalThis.ALBotConfig={};\n/* ALBot 0 */'),/boundary/);
 });
 test('bootstrap supports legitimate user prefix extracted from code',()=>{
- const current='// ALBot candidate\n'+'globalThis.ALBotConfig={x:7};\n'+runtime;
- assert.equal(personalPrefix(current),'// ALBot candidate\n'+
-  'globalThis.ALBotConfig={x:7};\n');
+ const config='// ALBot candidate\n'+'globalThis.ALBotConfig='+
+  JSON.stringify({x:7,notes:'x'.repeat(120)})+';\n';
+ assert.equal(personalPrefix(config+runtime),config);
 });

@@ -22,7 +22,12 @@ export function statTailoringCandidate(bot){
   const profile=target.character===me.name?
    bot.gear?.snapshot?.():bot.gear?.profile?.(target.character);
   if(!member||!profile?.complete||!profile.slots||
-     profile.class!==member.class||
+     profile.class!==member.class||profile.realm!==p.realm()||
+     !Number.isSafeInteger(profile.at)||profile.at>Date.now()||
+     Date.now()-profile.at>60000||
+     (profile.slots[target.slot]?.name===target.item&&
+      (profile.slots[target.slot]?.level??0)>=target.level&&
+      profile.slots[target.slot]?.stat_type===target.statType)||
      !Number.isSafeInteger(profile.level)||profile.level<1||
      !gearCompatible(p.G,profile,{name:target.item,level:target.level},target.slot))
    continue;
@@ -133,11 +138,9 @@ export function createStatTailoring(bot){
     riskVariant:identity(plan.item),before:plan.item.level??0},timeout:45000
   });
  }
- return {tick,status:()=>({mode:'explicit-gear-targets-only',enabled:cfg.production?.statTailoring===true,
-  pendingPreview:!!preview,minimum:Math.max(cfg.production?.minChance??1,.65),
-  candidate:statTailoringCandidate(bot)?{
-   item:statTailoringCandidate(bot).item.name,
-   target:statTailoringCandidate(bot).target.character,
-   requiredScrolls:statTailoringCandidate(bot).needed}:null}),
-  close(){preview=null;}};
+ return {tick,status:()=>{const candidate=statTailoringCandidate(bot);
+  return {mode:'explicit-gear-targets-only',enabled:cfg.production?.statTailoring===true,
+   pendingPreview:!!preview,minimum:Math.max(cfg.production?.minChance??1,.65),
+   candidate:candidate?{item:candidate.item.name,target:candidate.target.character,
+    requiredScrolls:candidate.needed}:null};},close(){preview=null;}};
 }

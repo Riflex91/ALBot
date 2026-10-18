@@ -1,3 +1,4 @@
+import {reviveDeathKey} from './revival-claims.mjs';
 import {controlledBurstPlan} from './controlled-burst.mjs';
 import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {nativeSkillCooldown} from '../core/skill-wakeups.mjs';
@@ -234,10 +235,13 @@ export function createSkills(bot){
      argsTarget=burstTargets;target=bot.entity(burstTargets[0][0]);
     }
     const consume=s.consume,prior=consume?bot.count(consume):0;
+    const reviveKey=id==='revive'?reviveDeathKey(bot,target):null;
+    if(id==='revive'&&(!target?.rip||target.hp<target.max_hp||bot.revivals?.canCast(target,reviveKey)===false))return false;
     if(s.hostile&&target&&target.type!=='monster')return false;
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
     const guard=()=>ready(id,target,reserve)&&
+      (id!=='revive'||(()=>{const live=bot.entity(target?.name??target?.id);return !!live&&live.rip&&live.hp>=live.max_hp&&reviveDeathKey(bot,live)===reviveKey&&bot.revivals?.canCast(live,reviveKey)!==false;})())&&
       (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
     if(!guard()){
       const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
@@ -251,7 +255,8 @@ export function createSkills(bot){
     let dispatchedIntent=null;
     const accepted=exec.run('skill:'+id,['mana',s.share==='attack'||id==='heal'?'attack':'skill',...(consume?['inventory']:[])],guard,()=>{
       count(id,'started');
-      if(consume)bot.beginValue({kind:'consume',item:consume,before:prior});
+      if(id==='revive'&&bot.revivals?.claim(bot.entity(target.name??target.id),reviveKey)===false)throw Error('Revive-Todesbindung konnte nicht gespeichert werden');
+      if(consume)bot.beginValue({kind:'consume',item:consume,before:prior,...(id==='revive'?{target:target.name,deathKey:reviveKey}:{} )});
       const invoked=id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
       // Only AFTER a real game API invocation, record shadow reservations.
       // Returning a promise from the skill is not equivalent to a hit.

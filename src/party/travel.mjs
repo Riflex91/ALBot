@@ -84,7 +84,8 @@ export function createTeamTravel(bot){
   const peers=Object.fromEntries(names.filter(n=>n!==me.name)
     .map(n=>[n,bot.transport?.fresh?.(n)??null]));
   return teamRealmRendezvous({farmers:names,localName:me.name,
-    localRealm:p.realm(),peers,homeRealm,
+    localRealm:p.realm(),peers,
+    homeRealm:home.phase==='escaped'&&p.realm()!==homeRealm?'':homeRealm,
     fixedLeader:cfg.party.leader??''});
  }
 
@@ -116,11 +117,11 @@ export function createTeamTravel(bot){
  const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
  const realmAllowed=realm=>nonPvpRealm(realm)&&!cfg.farming.pvp&&admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm);
  const hopLifecycle=createHopLifecycle(bot,{destinationNormal,safe});
- function requestHop(realm){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
+ function requestHop(realm,{pressureEscape=false}={}){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
-  hop={id:bot.session+':hop:'+Date.now(),realm,names,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
-  bot.event?.('server.hop.plan',{id:hop.id,from:p.realm(),to:realm,members:names.join(','),until:hop.until});
-  for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm},hop.id);return true;
+  hop={id:bot.session+':hop:'+Date.now(),realm,names,pressureEscape,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
+  bot.event?.('server.hop.plan',{id:hop.id,from:p.realm(),to:realm,members:names.join(','),pressureEscape,until:hop.until});
+  for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm,pressureEscape},hop.id);return true;
  }
  function applyHop(){
   if(!hop||hopLifecycle.blocked||!safe()||!destinationNormal(hop.realm))return false;
@@ -136,6 +137,10 @@ export function createTeamTravel(bot){
 
  function receive(from,m){
   if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()&&!hopLifecycle.blocked){
+   if(m.data?.pressureEscape===true&&p.realm()===homeRealm&&
+      !saveHome({...home,realm:homeRealm,phase:'escaped',
+       retryAt:Date.now()+Math.max(600000,w.homeRetryMs??600000),
+       escapeTo:m.data.realm,prior:homeRealm,enteredAt:0}))return;
    hop={id:m.id,realm:m.data.realm,names:[],ready:new Set(),until:Date.now()+15000};bot.movement.stop();
    bot.event?.('server.hop.planReceived',{id:m.id,from:p.realm(),to:hop.realm,leader:from});
    bot.transport.send(from,'hopAck',{},m.id);
@@ -182,18 +187,46 @@ export function createTeamTravel(bot){
     if(saveHome({...home,phase:'settled',settledAt:now,enteredAt:home.enteredAt}))
      bot.event?.('server.homeSettled',{realm:homeRealm,pressure});
    }else if(decision.state==='crowded'){
-    // An independent pressure fallback would split the team immediately:
-    // every character must hold the same user-chosen home, including after
-    // offline/restart. No pressure-based escape while home is explicit.
+    // Only a fresh, sampled spawn assessment can displace explicit home.
+    const evidence=bot.teamPlan?.status()?.pressureEvidence;
+    const credible=evidence?.reason==='verified-spawn-observations'&&
+      Number.isFinite(evidence.measuredAt)&&now>=evidence.measuredAt&&
+      now-evidence.measuredAt<=120000&&
+      evidence.spawns?.some(s=>s.evidenceSeconds>=90&&
+        s.pressureRatio>=w.homePressureThreshold);
+    const servers=registry(),current=servers.find(s=>s.realm===homeRealm);
+    const available=credible&&Number.isFinite(current?.players)?
+      servers.filter(s=>Number.isFinite(s.players)&&
+       s.players<current.players*.85&&realmAllowed(s.realm)):[];
+    const alternative=available.length?
+      chooseHomeFallback(available,stateRealm,homeRealm,home.prior,
+       realm=>realmAllowed(realm)):null;
+    const reason=!credible?'spawn-pressure-evidence-missing-or-stale':
+      !Number.isFinite(current?.players)?'home-population-unverified':
+      !alternative?'no-approved-lower-population-realm':
+      !safe()?'actor-not-safe-for-hop':'team-hop-not-ready';
+    if(alternative&&history.filter(at=>now-at<3600000).length<3&&
+       requestHop(alternative,{pressureEscape:true})){
+      const retryAt=now+retryMs;
+      if(!saveHome({...home,phase:'escaped',escapeTo:alternative,
+         enteredAt:0,prior:homeRealm,retryAt,escapedAt:now})){
+       for(const n of hop?.names??[])if(n!==me.name)
+        bot.transport.send(n,'hopCancel',{},hop.id);
+       hop=null;return true;
+      }
+      bot.event?.('server.homeEscapePlanned',{from:homeRealm,to:alternative,
+       pressure,evidence,returnAfter:retryAt});
+      return true;
+    }
     if(now-lastHopDiagnostic>=60000){
      lastHopDiagnostic=now;
-     bot.event?.('server.homeCrowdedHeld',{realm:homeRealm,pressure,
-      reason:'explicit-home-reunion-priority'});
+     bot.event?.('server.homeEscapeDeferred',{realm:homeRealm,pressure,
+      reason,credible,alternative});
     }
    }
-   // Home travel owns pressure-based server selection; do not race autoHop.
    return true;
   }
+  if(home.phase==='escaped'&&now<home.retryAt)return true;
   if(now<home.retryAt||!safe()||hop||!realmAllowed(homeRealm))return false;
   // Always reserve enough hourly hop budget for a possible immediate escape
   // from a blocked home spawn. Three hops per hour remains the hard ceiling.

@@ -71,3 +71,5 @@ jobs:
 # Verify fixed farmer tick and bank diagnostics
 
 # Retest with canonical item fingerprint
+
+# Verify immediately reconciled rollback test

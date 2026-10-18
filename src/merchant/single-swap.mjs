@@ -9,10 +9,10 @@ const G09_EXACT=v=>({
  name:v?.name,level:v?.level??0,stat_type:v?.stat_type??'',
  p:v?.p??'',title:v?.title??'',acc:v?.acc??'',data:v?.data
 });
-const G09_SAFE_SINGLE=(item,meta,e)=>!!item&&
+const G09_SAFE_SINGLE=(item,meta,e,listing=false)=>!!item&&
  e?.safe?.(item)===true&&!!meta&&!meta.s&&(item.q??1)===1&&
  !item.acl&&!item.v&&!item.giveaway&&!item.bound&&
- !item.data&&!item.acc&&!item.rid&&!item.src;
+ !item.data&&!item.acc&&(!item.rid||listing)&&!item.src;
 
 export function singleSwapOpportunity(bot,slot){
  const {p,cfg,me}=bot,e=bot.economy,item=p.c.items?.[slot];
@@ -70,7 +70,7 @@ export function singleSwapOpportunity(bot,slot){
    if(!G09_SLOT.test(tradeSlot)||!listing||!listing.want||
       typeof listing.rid!=='string'||!listing.rid||
       listing.b||listing.giveaway||listing.v||listing.l||listing.acl||
-      !G09_SAFE_SINGLE(listing,wantedDef,e)||
+      !G09_SAFE_SINGLE(listing,wantedDef,e,true)||
       identity(G09_EXACT(listing))!==identity(wanted)||
       listing.want.name!==item.name||
       (listing.want.level??0)!==(item.level??0)||

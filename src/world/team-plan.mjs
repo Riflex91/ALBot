@@ -154,6 +154,12 @@ import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHu
 // A pending, unobservable or unsafe monsterhunt may not starve the shared
 // farming plan. Only the verified quest monster earns quest priority.
 // Existing safely ranked farm targets remain available as temporary work.
+// Objective labels may change while farmers are already at the same monster
+// spawn. That is not evidence that a new location is better.
+export function shouldHoldOrdinaryLocation(current,next,selectedKind,shellRefill=false){
+ return !shellRefill&&selectedKind==='farm'&&
+  ['farm','hunt'].includes(current?.kind)&&current.target===next?.target;
+}
 export function selectHuntArea(ranking,hunt){
  const ordinary=ranking?.[0]??null;
  if(!hunt)return {area:ordinary,kind:'farm',deferred:null};
@@ -390,8 +396,7 @@ export function createTeamPlan(bot){
   // A hunt -> ordinary-farm transition does not imply travel to a different
   // spawn of the SAME monster. Keep the physical location's hold time even
   // when the plan kind and reason change.
-  const holdOrdinary=!shellRefill&&selected.kind==='farm'&&
-   ['farm','hunt'].includes(current?.kind)&&current.target===next?.target;
+  const holdOrdinary=shouldHoldOrdinaryLocation(current,next,selected.kind,shellRefill);
   switchAdvice=null;
   // Monsterhunt priority must not erase *location* hysteresis. A switch
   // between two osnake spawns is still an ordinary travel decision, not a

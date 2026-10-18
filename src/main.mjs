@@ -350,6 +350,7 @@ export function install(root){
     acknowledgeAccountGoldLoss:()=>bot.lossGuard?.reset()??false,
     restoreLearning:()=>bot.cloud.restore(),
     bossCatalog:()=>bot.bosses?.catalog()??[],
+    explainInventorySlot:slot=>bot.intelligence?.explainInventorySlot?.(slot)??{version:1,mode:'read-only',executable:false,state:'unavailable',reason:'economic-intelligence-not-enabled'},
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,

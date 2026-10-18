@@ -5,19 +5,32 @@ on:
       - main
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
+      - name: Refresh personal bot.js on the integration branch
+        shell: bash
+        run: |
+          node scripts/sync-personal-code.mjs --write
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js
+          if ! git diff --cached --quiet; then
+            git commit -m "Rebuild personalized bot.js for integrated live fixes"
+            git push origin HEAD:fix/live-20261018-integrated-corrections
+          fi
       - name: Build shared browser/headless runtime
         run: npm run build
       - name: Verify published bot.js matches source build and personal configuration

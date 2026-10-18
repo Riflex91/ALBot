@@ -31,3 +31,42 @@ jobs:
           git add -- bot.js
           git commit -m "build(W03): synchronize addressed partial bank recovery"
           git push origin HEAD:codex/w00-w01-readonly-disposition-20261018
+
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --check
+      - run: npm test
+      - run: npm run build:editor
+      - shell: bash
+        run: |
+          node --check dist/albot.js
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const code=fs.readFileSync('dist/albot.js');
+          const m=JSON.parse(fs.readFileSync('dist/manifest.json','utf8'));
+          const h=crypto.createHash('sha256').update(code).digest('hex');
+          if(code.length>1048576||m.bytes!==code.length||m.sha256!==h)throw new Error('Bundle or manifest integrity failed');
+          console.log(JSON.stringify({bytes:code.length,sha256:h,version:m.version}));
+          EOF
+  windows-verification:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - shell: pwsh
+        run: ./scripts/VERIFY-U01-U07.ps1

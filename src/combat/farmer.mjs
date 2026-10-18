@@ -273,14 +273,14 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
     const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
       bot.transport?.fresh?.(name)).filter(Boolean);
-    const focus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
-    const danger=focus??threat;
-    if(focus&&focus.id!==threat?.id){
-      const key=focus.id+':'+focus.target;
+    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
+    const danger=rescueFocus??threat;
+    if(rescueFocus&&rescueFocus.id!==threat?.id){
+      const key=rescueFocus.id+':'+rescueFocus.target;
       if(lastEmergencyFocus.key!==key||now-lastEmergencyFocus.at>=12000){
        lastEmergencyFocus={key,at:now};
-       bot.event?.('combat.emergencyFocus',{selected:focus.id,
-        victim:focus.target,ownThreat:threat?.id??null,
+       bot.event?.('combat.emergencyFocus',{selected:rescueFocus.id,
+        victim:rescueFocus.target,ownThreat:threat?.id??null,
         source:'fresh-lowest-hp-teammate'});
       }
     }

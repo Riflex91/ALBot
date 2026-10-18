@@ -160,7 +160,7 @@ export function createEconomy(bot){
   if(cfg.merchant.budgetMode!=='account-loss'&&!goalBudget(cost,loss,details.item)){note('Produktionsziel: Gesamtbudget ausgeschöpft');return false;}
   if(!riskAllowed(kind,rule,details,loss)){note('Autonome Mutation: 24h-Risikolimit für Itemvariante ausgeschöpft');return false;}
   const prints=slots.map(s=>[s,fingerprint(p.c.items[s])]);
-  const valid=()=>bot.running&&!closed&&!townActive()&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&(!rule?._capacitySale||slots.length===1&&!!bot.storage?.lowQualityRule?.(p.c.items[slots[0]]))&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
+  const valid=()=>bot.running&&!closed&&!townActive()&&!p.c.rip&&!bot.journal&&!bot.inventoryBlocked&&!bot.logistics.reserved&&(kind.startsWith('bank.')?bot.recovery?.bankDispatchAllowed?.(kind)!==false:true)&&(!rule?._capacitySale||slots.length===1&&!!bot.storage?.lowQualityRule?.(p.c.items[slots[0]]))&&prints.every(([s,f])=>fingerprint(p.c.items[s])===f&&safe(p.c.items[s]))&&budget(cost,loss,rule)&&
     (kind!=='bank.expand'||bankExpansionAvailable(cost))&&
     riskAllowed(kind,rule,details,loss)&&guard();
   return exec.run(kind,['inventory','gold','economy'],valid,()=>{

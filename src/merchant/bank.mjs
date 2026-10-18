@@ -97,7 +97,7 @@ export function createBank(bot){
   single=value;return true;
  }
  function saveStore(value){
-  if(value&&(pending||reclaiming||single||storing)){
+  if(value&&(pending||reclaiming||single||storing||swapping)){
    bot.inventoryBlocked=true;e.note('Bankeinlagerung: konkurrierendes Journal');
    return false;
   }
@@ -643,30 +643,57 @@ export function createBank(bot){
  // then reduces the stacks. Never place into an occupied bank slot: the
  // server may SWAP instead of merging.
  function consolidateAcross(){
-  if(!cfg.merchant.bank||!cfg.merchant.consolidate||!p.c.bank||
-     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
-     pending||reclaiming||single||storing||swapping||bot.exec.busy('inventory'))return false;
-  const rows=packs().filter(([pack])=>packMap(pack)===p.c.map);
-  const dest=p.c.items.findIndex(x=>!x);if(dest<0||!rows.length)return false;
-  const sourceItems=rows.flatMap(([pack,items])=>items.map((item,slot)=>({pack,slot,item}))
-    .filter(r=>simple(r.item)));
-  for(const source of sourceItems){
-   const q=source.item.q??1,max=stackMax(source.item);
-   const carried=p.c.items.some(i=>simple(i)&&identity(i)===identity(source.item)&&
-     (i.q??1)+q<=max);
-   // Bank-only cross-pack candidates have no *carried* merge partner.
-   // Retrieving them only causes the storage task to put them back unchanged.
-   // An eventual two-retrieval cross-pack merge needs its own durable journal.
-   if(!carried)continue;
-   const fp=fingerprint(source.item),item={...source.item};
-   return e.perform('bank.merge.retrieve',{guard:()=>!!p.c.bank&&
-     !p.c.items[dest]&&fingerprint(p.c.bank?.[source.pack]?.[source.slot])===fp,
-    call:()=>p.call('bank_retrieve',source.pack,source.slot,dest),
-    observe:()=>!p.c.bank?.[source.pack]?.[source.slot]&&
-      identity(p.c.items[dest])===identity(item)&&
-      (p.c.items[dest]?.q??1)===q,
-    details:{item:item.name,pack:source.pack,bankSlot:source.slot,
-      inventorySlot:dest,quantity:q,reason:'cross-pack-merge'}});
+  if(pending||reclaiming||single||storing||swapping||!cfg.merchant.bank||
+     !cfg.merchant.consolidate||!p.c.bank||bot.journal||
+     bot.inventoryBlocked||bot.logistics?.reserved||
+     bot.exec?.busy?.('inventory'))return false;
+  const dest=p.c.items.findIndex(x=>!x);
+  if(dest<0)return false;
+  for(const [pack,items] of packs()){
+   if(packMap(pack)!==p.c.map)continue;
+   for(let slot=0;slot<items.length;slot++){
+    const item=items[slot],q=item?.q??1,max=stackMax(item);
+    if(!simple(item)||!p.c.items.some(i=>simple(i)&&
+       identity(i)===identity(item)&&(i.q??1)+q<=max))continue;
+    const at=Date.now(),sourcePrint=fingerprint(item),
+     before=variantCount(p.c.items,item),bankBefore=variantCount(items,item),
+     record={version:1,owner:me.name,realm:p.realm(),at,pack,slot,dest,
+      item:{...item},sourcePrint,quantity:q,before,bankBefore,
+      prepared:{kind:'bank.retrieve',session:bot.session,at,realm:p.realm(),
+       pack,slot,dest,sourcePrint}};
+    if(!validateBankSingleRecord(record,{owner:me.name,realm:p.realm()}).valid||
+       !saveSingle(record))return false;
+    const guard=()=>single===record&&
+     singleEvidence(record).phase==='prepared-unchanged'&&
+     cfg.merchant.bank===true&&cfg.merchant.consolidate===true&&
+     p.c.items.some(i=>simple(i)&&identity(i)===identity(item)&&
+      (i.q??1)+q<=stackMax(i));
+    const accepted=e.perform('bank.merge.retrieve',{guard,
+     call:()=>{
+      if(!guard()){
+       bot.inventoryBlocked=true;
+       throw Error('Bankmerge: Quellzustand verändert');
+      }
+      const next={...record,dispatch:{kind:'bank.retrieve',
+       session:bot.session,at:Date.now(),realm:record.realm,
+       pack,slot,dest,sourcePrint}};
+      if(!validateBankSingleRecord(next,{owner:me.name,realm:p.realm()}).valid||
+         p.write(singleKey,next)!==true){
+       bot.inventoryBlocked=true;
+       throw Error('Bankmerge: Dispatchbeleg fehlt');
+      }
+      single=next;
+      return p.call('bank_retrieve',pack,slot,dest);
+     },
+     observe:()=>!!single&&singleEvidence(single).phase==='withdrawn',
+     onConfirmed:()=>!!single&&singleEvidence(single).phase==='withdrawn'&&
+      saveSingle(null),
+     details:{item:item.name,pack,bankSlot:slot,inventorySlot:dest,
+      quantity:q,reason:'cross-pack-merge'}});
+    if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')&&guard())
+     saveSingle(null);
+    return accepted;
+   }
   }
   return false;
  }

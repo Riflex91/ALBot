@@ -196,8 +196,8 @@ export function createStrategy(bot){
   const squadPlan=bot.teamPlan?.heartbeat?.()??
    bot.transport?.fresh?.(bot.leader)?.farmPlan;
   const peer=n=>bot.transport?.fresh?.(n);
-  const fighting=bot.monsters().some(m=>m?.hp>0&&!m.dead&&
-   bot.teamNames?.includes?.(m.target)===true)||bot.farmers.some(n=>n!==me.name&&peer(n)?.threats>0);
+  const fighting=(bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
+   bot.teamNames?.includes?.(m.target)===true)||(bot.farmers??[]).some(n=>n!==me.name&&peer(n)?.threats>0);
   if(!questVisit&&cfg.party.enabled&&(fighting||
     squadMarchStillInTransit(p.c,bot.farmers,squadPlan,peer)&&
     !squadReadyForQuestVisit(p.c,bot.farmers,peer,{realm:p.realm()}))){

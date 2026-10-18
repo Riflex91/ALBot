@@ -137,7 +137,9 @@ test('W03 single transfer off-map requires bank re-observation, not phantom stoc
 test('W03 single transfer blocks overlapping bank retrieve and partial journal',()=>{
  const f=fixture();
  f.bot.bank.retrieve(item,f.rule,10);
+ f.events[0].params.call();
  assert.equal(f.bot.bank.retrieve(item,f.rule,10),true,'only recovery, no new queue');
  assert.equal(f.events.length,1);
  assert.equal(f.bot.bank.singlePending,true);
+ assert.equal(f.bot.inventoryBlocked,true,'uncertain dispatch must quarantine');
 });

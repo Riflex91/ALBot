@@ -20,7 +20,7 @@ export function publicCallCost(name,args=[]){
   bank_deposit:1,bank_withdraw:1,send_item:1,send_gold:1,
   respawn:1,stop:1,town:1,change_target:.5,interact:1,
   activate:1,shift:1,cave_enter:1,cave_info:1,cave_reply:1,cave_exit:1,
-  trade_buy:1,trade_sell:1,trade:1,trade_offer:1,trade_swap:1,
+  take_mail_item:1,trade_buy:1,trade_sell:1,trade:1,trade_offer:1,trade_swap:1,
   send_party_invite:1,send_party_request:1,accept_party_invite:1,accept_party_request:1,
   open_stand:1,close_stand:1,start_character:1,stop_character:1};
  if(name==='send_cm'){

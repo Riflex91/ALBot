@@ -157,3 +157,5 @@ Object.assign(FULL_DESCRIPTOR.schema.properties.world.properties,{
  respectHopPenalties:bool('Optionale Serverwechsel mit unbelegtem Sickness-/Fatigue-Verlust zurückstellen',true),
  travelBlink:bool('Mage-Blink nur auf direkt begehbaren sicheren Reiseabschnitten',false)
 });
+
+FULL_DESCRIPTOR.schema.properties.world.properties.rewardMail=bool('Eigene Systembelohnungen über verfügbaren authentifizierten Browser-Mailreader abholen',true);

@@ -38,7 +38,8 @@ test('W01: distinct variant stock cannot satisfy a reservation or justify sale',
 test('W01: locked items, useful operating supplies and uncertain quantities remain distinguishable',()=>{
  const locked=explain([{name:'ore',q:2,l:'locked'}],{explicit:sell});
  assert.equal(locked.state,'protected');
- assert.equal(locked.slotRemovalUpperBound,2);
+ assert.equal(locked.slotRemovalUpperBound,0);
+ assert.equal(locked.physicalSlotEffect.potentialFreedSlots,0);
  const potion=explain([{name:'potion',q:8}]);
  assert.equal(potion.state,'purpose-protected');
  assert.equal(potion.purpose.automaticProtection,true);

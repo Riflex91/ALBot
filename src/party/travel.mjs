@@ -35,6 +35,12 @@ export function serverRegistrySignature(raw){
   Number.isFinite(s.at)?s.at:null
  ]:null));
 }
+// A temporary congestion escape may delay return, never suppress the
+// persisted home contract after the retry deadline expires.
+export function reunionHomeRealm(homeRealm,home,localRealm,now=Date.now()){
+ return home?.phase==='escaped'&&now<(home.retryAt??0)&&localRealm!==homeRealm?
+  '':homeRealm;
+}
 // Recover an account team which was already started on different servers.
 // Votes come only from all selected FARMERS, not the merchant (which might
 // be deliberately stationed away). A missing or stale farmer abstains from
@@ -88,7 +94,7 @@ export function createTeamTravel(bot){
     // An authorized crowd escape lasts only until its persisted retry deadline.
     // Afterwards even a sole Farmer must rejoin the configured home realm;
     // requestHop() cannot do so if the Merchant is already on that realm.
-    homeRealm:home.phase==='escaped'&&Date.now()<home.retryAt&&p.realm()!==homeRealm?'':homeRealm,
+    homeRealm:reunionHomeRealm(homeRealm,home,p.realm()),
     fixedLeader:cfg.party.leader??''});
  }
 

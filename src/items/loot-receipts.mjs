@@ -45,7 +45,8 @@ export function ownChestShare(row,name,G){
   if(!Number.isSafeInteger(items.get(key))||items.size>32)return null;
  }
  if(!Number.isSafeInteger(row.gold)||row.gold<0||
-    !Number.isSafeInteger(row.gold))return null;
+    row.gold>Number.MAX_SAFE_INTEGER||
+    !items.size&&row.gold===0)return null;
  return {items,gold:row.gold,opener:row.opener===name?'self':'party',
   id:row.id};
 }

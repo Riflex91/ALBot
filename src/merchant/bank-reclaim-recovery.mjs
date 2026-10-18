@@ -33,6 +33,19 @@ export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}
  // withdrawal from the original physical source slot, not cached bank arrays.
  // Old v2 records without this optional receipt remain readable, but cannot
  // authorize a new offsite NPC sale until the bank source is observed again.
+ // New V2 intents carry a durable, session-bound PREPARED state from
+ // before the queue was even admitted. Older V2 records lack this field:
+ // absence of a dispatch receipt in those records is NOT proof of no API call.
+ if(record.prepared!==undefined){
+  const p=record.prepared;
+  if(!p||typeof p!=='object'||Array.isArray(p)||
+     typeof p.session!=='string'||!p.session||
+     !safe(p.at)||p.at<record.at||p.at>now+2000||
+     p.kind!=='bank.reclaim'||p.realm!==record.realm||
+     p.pack!==record.pack||p.slot!==record.slot||
+     p.dest!==record.dest||p.sourcePrint!==record.sourcePrint)
+   return reject('invalid-durable-preparation-receipt');
+ }
  // A dispatched bank request is an uncertainty boundary. Persist the
  // provenance BEFORE calling bank_retrieve, never infer 'not sent' from an
  // unchanged bank snapshot after a timeout or browser restart.
@@ -109,7 +122,11 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
    {phase:'dispatched-unchanged',
     reason:'bank-request-already-dispatched-but-no-effect-confirmed',
     confirmed:false}:
-   {phase:'unchanged',reason:'exact-addressed-before-image',confirmed:false};
+   !record.prepared?
+   {phase:'legacy-unchanged-uncertain',
+    reason:'old-v2-journal-without-proof-of-not-dispatched',confirmed:false}:
+   {phase:'unchanged',reason:'prepared-and-exact-before-image-not-dispatched',
+    confirmed:false};
  if(!record.saleConfirmed&&withdrawn&&
     count===record.before+record.quantity&&
     bankCount===record.bankBefore-record.quantity)

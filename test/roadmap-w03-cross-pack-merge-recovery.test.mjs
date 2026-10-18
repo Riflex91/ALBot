@@ -13,7 +13,9 @@ function fixture(saved=null,{write=true,enqueue=true}={}){
   realm:()=>realm,read:k=>db.get(k)??null,
   write:(k,v)=>{if(!write)return false;db.set(k,v);return true;},
   call:(...args)=>{calls.push(args);return true;}};
- const e={safe:i=>!!i&&!i.l&&!i.b,travel:()=>true,
+ const e={safe:i=>!!i&&!i.l&&!i.b,
+  count:i=>inv.reduce((n,x)=>n+(x?.name===i?.name?(x.q??1):0),0),
+  travel:()=>true,
   note:s=>notes.push(s),explicit:()=>null,
   perform:(kind,params)=>{jobs.push({kind,params});return enqueue;}};
  const bot={p,economy:e,me:{name:'M'},session:'session-2',running:true,

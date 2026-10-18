@@ -28,10 +28,13 @@ export function followerCombatRendezvous(follower,leader,{
     !samePlace(follower,leader)||![follower?.x,follower?.y,leader.x,leader.y].every(Number.isFinite))
   return {move:false,reason:'not-rendezvous-eligible'};
  const d=distance(follower,leader);
- const radius=Math.min(40,Math.max(20,Math.floor(followDistance/3)));
+ const radius=Math.min(30,Math.max(20,Math.floor(followDistance/5)));
  // Keep the actual assembly target tighter than the old 120..140 range,
  // otherwise the two followers can remain idle throughout a leader pull.
- const trigger=Math.min(85,Math.max(55,followDistance*.5));
+ // A 55–85 unit stale-focus deadzone made otherwise healthy followers
+ // stand watching the Leader attack outside their own visible entity list.
+ // Rally tightly, then let the ordinary verified target gates take over.
+ const trigger=Math.min(60,Math.max(35,followDistance*.3));
  return {move:d>trigger,reason:d>trigger?'leader-in-combat-out-of-reach':'already-near-leader',
   radius,distance:d};
 }

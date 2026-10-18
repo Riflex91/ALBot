@@ -78,7 +78,7 @@ export const DESCRIPTOR = {
     }),
     world:obj('Welt, Bosse & Entwicklung',{
       bosses:flag('Bosse'),events:flag('Events'),quests:flag('Quests'),anniversary:flag('Saisonbelohnungen'),allowedBosses:ids('Erlaubte Boss-IDs'),allowedEvents:ids('Erlaubte Event-IDs'),excludedMaps:ids('Gesperrte Karten'),
-      risk:choice('Risikoprofil',{conservative:'Vorsichtig',balanced:'Ausgewogen',aggressive:'Aggressiv'}),serverHop:flag('Serverwechsel'),allowedRealms:ids('Erlaubte Realms, z. B. EUII'),hopCooldownMs:int('Serverwechsel-Cooldown (ms)',300000,60000,86400000),
+      risk:choice('Risikoprofil',{conservative:'Vorsichtig',balanced:'Ausgewogen',assertive:'Offensiv (kontrolliertes Risiko)',aggressive:'Aggressiv'}),serverHop:flag('Serverwechsel'),allowedRealms:ids('Erlaubte Realms, z. B. EUII'),hopCooldownMs:int('Serverwechsel-Cooldown (ms)',300000,60000,86400000),
       homeRealm:text('Heimserver (optional, z. B. EUII)',''),
       homeRetryMs:int('Heimserver frühestens erneut testen nach (ms)',600000,600000,86400000),
       homeCheckMs:int('Heimspawn mindestens beobachten (ms)',90000,60000,3600000),

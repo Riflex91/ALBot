@@ -3,7 +3,7 @@ import {outgoingDamageEstimate} from '../combat/damage-model.mjs';
 import {estimateCombatTimeline} from '../combat/combat-time.mjs';
 // Conservative planning estimate: unknown healing, kiting and critical hits are not guaranteed.
 export function assessCombat(monster,members,mode='balanced',aggro=1,options={}){
- const limits={conservative:{hit:.12,seconds:12,exposure:.35},balanced:{hit:.25,seconds:25,exposure:.55},aggressive:{hit:.4,seconds:45,exposure:.75}}[mode]??{hit:.12,seconds:12,exposure:.35};
+ const limits={conservative:{hit:.12,seconds:12,exposure:.35},balanced:{hit:.25,seconds:25,exposure:.55},assertive:{hit:.32,seconds:35,exposure:.65},aggressive:{hit:.4,seconds:45,exposure:.75}}[mode]??{hit:.12,seconds:12,exposure:.35};
  const alive=members.filter(c=>!c.rip&&c.hp>0&&c.max_hp>0&&c.attack>0&&c.frequency>0);
  if(!monster||!(monster.hp>0)||!Number.isFinite(monster.attack)||!(monster.frequency>0)||!alive.length)return {safe:false,reason:'Kampfwerte fehlen'};
  const unsupported=Object.keys(monster.abilities??{}).filter(k=>!['self_healing','heal'].includes(k));

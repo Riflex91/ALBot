@@ -143,7 +143,7 @@ export function createEconomy(bot){
  // Charge the maximum exposure BEFORE dispatch. A reload or ambiguous result cannot reset a budget.
  function charge(cost,loss,r,kind,details){
   if(!budget(cost,loss,r)||!riskAllowed(kind,r,details,loss))return false;
-  const irreversible=['upgrade','compound','craft','exchange','dismantle'].includes(kind);
+  const irreversible=['upgrade','compound','destat','craft','exchange','dismantle'].includes(kind);
   const next={...ledger,goals:{...ledger.goals},spent:ledger.spent+cost,loss:ledger.loss+loss,
    productionExposure:exposure()+(irreversible?cost+loss:loss),supplySpent:(ledger.supplySpent??0)+(!irreversible?cost:0)};
   if(cfg.merchant.budgetMode!=='account-loss'&&riskApplies(kind,r)){

@@ -1666,6 +1666,7 @@
                 "marketBuy",
                 "upgrade",
                 "compound",
+                "destat",
                 "exchange",
                 "craft",
                 "farm"
@@ -1684,6 +1685,7 @@
                 "marketBuy": "Markt kaufen",
                 "upgrade": "Upgrade",
                 "compound": "Compound",
+                "destat": "De-Statting (nur genaue Überschussregel)",
                 "exchange": "Exchange",
                 "craft": "Craft",
                 "farm": "Gezielt farmen"

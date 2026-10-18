@@ -1,5 +1,7 @@
 import {fingerprint,identity} from '../core/policy.mjs';
 import {gearCompatible} from './gear.mjs';
+import {variantCount,surplusQuantity} from '../core/policy.mjs';
+import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 
 // Verified at source: a pscroll is consumed by the EXISTING upgrade handler.
 // The server consumes [1,10,100,1000,9999,...] scrolls at current item
@@ -66,6 +68,66 @@ export function statTailoringCandidate(bot){
     grade,needed,loss:price*needed+gearValue,
     sourcePrint:fingerprint(item),scrollPrint:fingerprint(scroll)};
   }
+ }
+ return null;
+}
+// G12: only an exact Merchant item rule opts in to de-statting. Unlike the
+// live pscroll upgrade it returns grade-dependent scrolls from the NPC and
+// spends gold. No destat rule is inferred from equipment goals or stock age.
+export function destatCandidate(bot){
+ const {p,cfg,me}=bot,e=bot.economy;
+ if(me?.role!=='merchant'||!bot.running||cfg.production?.enabled!==true||
+    !Array.isArray(cfg.items)||!Array.isArray(p.c?.items)||
+    !p.G?.items||p.has?.('destat')!==true)return null;
+ const ref=p.G.maps?.desertland?.ref?.scrollsmith;
+ if(!Number.isFinite(ref?.x)||!Number.isFinite(ref?.y))return null;
+ const d={x:ref.x,y:ref.y,map:'desertland'};
+ for(let slot=0;slot<p.c.items.length;slot++){
+  const item=p.c.items[slot],rule=item&&e.explicit?.(item,'production');
+  if(!item||!e.safe?.(item)||!rule||rule.action!=='destat'||
+     rule.enabled!==true||rule.role!=='merchant'||
+     rule.character!==me.name||rule.statType!==item.stat_type||
+     !item.stat_type||!N01_STAT_TYPES.has(item.stat_type)||
+     rule.minLevel!==(item.level??0)||rule.maxLevel!==(item.level??0)||
+     !Number.isSafeInteger(rule.keep)||rule.keep<1||
+     !Number.isSafeInteger(rule.teamReserve)||rule.teamReserve<0||
+     !Number.isSafeInteger(rule.maxActions)||rule.maxActions<1||rule.maxActions>20||
+     !Number.isSafeInteger(rule.batch)||rule.batch<1||
+     cfg.production.gearTargets?.some(g=>g.enabled&&g.item===item.name&&
+       g.level===(item.level??0))||
+     !p.G.items[item.name]||!p.G.items[item.name].stat)continue;
+  const held=variantCount(p.c.items,item),
+   reserved=bot.production?.reservedQuantity?.(item);
+  if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||
+     surplusQuantity(held,reserved,rule.keep,rule.teamReserve)<1)
+   continue;
+  let grade;
+  try{grade=p.call('item_grade',{name:item.name,level:0});}
+  catch{continue;}
+  if(!Number.isSafeInteger(grade)||grade<0||
+     grade>=N01_SCROLL_QUANTITIES.length)continue;
+  const needed=N01_SCROLL_QUANTITIES[grade],
+   scrollName=item.stat_type==='mp_cost'?'mpcostscroll':item.stat_type+'scroll',
+   scrollMeta=p.G.items[scrollName];
+  if(!scrollMeta||!Number.isFinite(scrollMeta.g)||scrollMeta.g<=0)
+   continue;
+  const cost=needed*scrollMeta.g*10;
+  if(!Number.isSafeInteger(cost)||cost<=0||
+     !Number.isSafeInteger(p.c.gold)||p.c.gold<cost||
+     !Number.isFinite(rule.goldBudget)||cost>rule.goldBudget)continue;
+  const output={name:scrollName,level:0},
+   room=capacityAfterConsumption(p.c.items,[],output,scrollMeta,
+    {inventorySize:p.c.isize});
+  if(!room||room.units<needed)continue;
+  const beforeValue=e.value?.(item),afterValue=e.value?.({
+   ...item,stat_type:undefined});
+  if(!Number.isFinite(beforeValue)||!Number.isFinite(afterValue)||
+     beforeValue<0||afterValue<0)continue;
+  const loss=Math.max(0,beforeValue-afterValue);
+  if(!Number.isSafeInteger(loss)||loss>rule.lossBudget)continue;
+  return {slot,item:{...item},rule,grade,needed,cost,loss,scrollName,
+   scrollMeta,output,d,held,scrollBefore:variantCount(p.c.items,output),
+   sourcePrint:fingerprint(item)};
  }
  return null;
 }
@@ -137,7 +199,50 @@ export function createStatTailoring(bot){
     riskVariant:identity(plan.item),before:plan.item.level??0},timeout:45000
   });
  }
- return {tick,status:()=>{const candidate=statTailoringCandidate(bot);
+ function destatTick(){
+  if(me.role!=='merchant'||bot.journal||bot.inventoryBlocked||
+     bot.exec?.busy?.('economy'))return false;
+  const plan=destatCandidate(bot);
+  if(!plan||!bot.economy.npcTravel?.(plan.d,'De-Statting'))return false;
+  const policy=JSON.stringify([cfg.items,cfg.production?.gearTargets,
+   cfg.production?.enabled,p.G.version,p.G.items[plan.item.name],
+   p.G.items[plan.scrollName]]);
+  const ready=()=>{
+   if(!bot.running||bot.journal||bot.inventoryBlocked||
+      bot.bank?.pending||bot.logistics?.reserved||p.c.rip||
+      !bot.economy.npcAt?.(plan.d)||
+      policy!==JSON.stringify([cfg.items,cfg.production?.gearTargets,
+       cfg.production?.enabled,p.G.version,p.G.items[plan.item.name],
+       p.G.items[plan.scrollName]]))return false;
+   const fresh=destatCandidate(bot);
+   return !!fresh&&fresh.slot===plan.slot&&fresh.rule===plan.rule&&
+    fresh.sourcePrint===plan.sourcePrint&&fresh.scrollName===plan.scrollName&&
+    fresh.needed===plan.needed&&fresh.cost===plan.cost&&
+    fresh.loss===plan.loss&&fresh.scrollBefore===plan.scrollBefore;
+  };
+  let response=null,beforeGold=null;
+  const expected={...plan.item,stat_type:undefined};
+  return bot.economy.perform('destat',{
+   slots:[plan.slot],cost:plan.cost,loss:plan.loss,rule:plan.rule,
+   guard:ready,
+   call:()=>{
+    beforeGold=p.c.gold;
+    return Promise.resolve(p.call('destat',plan.slot))
+     .then(result=>{response=result;return result;});
+   },
+   observe:()=>response?.num===plan.slot&&
+    response.scroll===plan.scrollName&&response.quantity===plan.needed&&
+    response.cost===plan.cost&&response.failed!==true&&
+    response.success!==false&&p.c.gold===beforeGold-plan.cost&&
+    fingerprint(p.c.items[plan.slot])===fingerprint(expected)&&
+    variantCount(p.c.items,plan.item)===plan.held-1&&
+    variantCount(p.c.items,plan.output)===plan.scrollBefore+plan.needed,
+   details:{item:plan.item.name,variant:identity(plan.item),
+    scroll:plan.scrollName,quantity:plan.needed,fee:plan.cost,
+    riskVariant:identity(plan.item),before:plan.held},timeout:45000
+  });
+ }
+ return {tick,destatTick,status:()=>{const candidate=statTailoringCandidate(bot);
   return {mode:'explicit-gear-targets-only',enabled:!!candidate,
    pendingPreview:!!preview,minimum:Math.max(cfg.production?.minChance??1,.65),
    candidate:candidate?{item:candidate.item.name,target:candidate.target.character,

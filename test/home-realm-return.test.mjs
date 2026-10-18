@@ -17,7 +17,7 @@ test('fallback never uses the same crowded home realm or a disallowed/PVP realm'
  assert.equal(chooseHomeFallback(servers,'EUII','EUII','USIV',r=>r!=='PVP'),'USIV');
  assert.equal(chooseHomeFallback(servers,'EUII','EUII','PVP',r=>r!=='PVP'),'USII');
 });
-test('explicit EUII returns from USIV without CM and holds home even under high pressure',()=>{
+test('explicit EUII returns from USIV and refuses an escape without verified crowd evidence',()=>{
  const original=Date.now;let clock=1000000;Date.now=()=>clock;
  try{
   let realm='USIV',pressure=.1;const calls=[],events=[];
@@ -56,10 +56,10 @@ test('explicit EUII returns from USIV without CM and holds home even under high 
   pressure=.85;clock+=95000;sync();atHome.tick();
   assert.equal(atHome.status().hop,null);
   assert.equal(atHome.status().home.phase,'checking');
-  assert.equal(calls.length,1,'pressure cannot cause a second hop away from home');
-  assert.equal(events.some(e=>e.name==='server.homeCrowdedHeld'),true);
+  assert.equal(calls.length,1,'unverified pressure cannot cause a second hop away from home');
+  assert.equal(events.some(e=>e.name==='server.homeEscapeDeferred'),true);
   clock+=900000;sync();atHome.tick();
-  assert.equal(calls.length,1,'autoHop also cannot split the home team');
+  assert.equal(calls.length,1,'unverified pressure still cannot split the home team');
   atHome.close();
  }finally{Date.now=original;}
 });
@@ -106,5 +106,50 @@ test('server hop is aborted if the official destination becomes PvP before commi
   travel.tick();await Promise.resolve();await Promise.resolve();
   assert.deepEqual(changes,[],'not even a previously planned hop may enter PvP');
   assert.equal(travel.requestHop('EUIIPVP'),false);
+ }finally{Date.now=original;}
+});
+
+test('fresh measured crowded home triggers a coordinated non-PvP escape and defers home return',async()=>{
+ const original=Date.now;let clock=1000000;Date.now=()=>clock;
+ try{
+  let realm='EUII';const calls=[],events=[],storage=new Map();
+  const root={ALBotServerRegistry:[]};const sync=()=>root.ALBotServerRegistry=[
+   {realm:'EUII',online:true,mode:'NORMAL',players:42,at:clock},
+   {realm:'USIV',online:true,mode:'NORMAL',players:34,at:clock},
+   {realm:'USV',online:true,mode:'PVP',players:1,at:clock}
+  ];sync();
+  const cfg={general:{testLogging:true},farming:{pvp:false},
+   party:{enabled:true,merchant:''},world:{serverHop:true,
+    allowedRealms:['EUII','USIV','USV'],homeRealm:'EUII',
+    homeRetryMs:600000,homeCheckMs:90000,homePressureThreshold:.65,
+    hopCooldownMs:60000,autoHop:true,magiport:false}};
+  let pressure=.75;
+  const bot={me:{name:'Leader'},leader:'Leader',farmers:['Leader'],teamNames:['Leader'],
+   cfg,running:true,session:'live',journal:null,inventoryBlocked:false,
+   bank:{pending:false},logistics:{reserved:false},p:{
+    root,parent:{socket:{connected:true}},
+    c:{name:'Leader',rip:false,q:{},ctype:'ranger'},
+    realm:()=>realm,read:k=>storage.get(k)??null,
+    write:(k,v)=>{storage.set(k,structuredClone(v));return true;},
+    call:(...args)=>{calls.push(args);return Promise.resolve(true);}
+   },monsters:()=>[],movement:{stop(){}},
+   exec:{pending:new Map(),run:(k,l,guard,fn)=>guard()&&fn()},
+   transport:{fresh:()=>null,send:()=>Promise.resolve(true)},
+   teamPlan:{status:()=>({pressure,pressureEvidence:{
+    reason:'verified-spawn-observations',measuredAt:clock-1000,
+    spawns:[{key:'main:bee:15',pressureRatio:.75,evidenceSeconds:95}]
+   }})},event:(name,data)=>events.push({name,data}),report(){}};
+  const travel=createTeamTravel(bot);
+  travel.tick();clock+=95000;sync();travel.tick();
+  assert.equal(travel.status().hop.realm,'USIV');
+  assert.equal(travel.status().home.phase,'escaped');
+  assert.ok(events.some(e=>e.name==='server.homeEscapePlanned'));
+  travel.tick();await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(calls[0],['change_server','US','IV']);
+  realm='USIV';clock+=2000;sync();travel.tick();
+  assert.equal(travel.status().home.phase,'escaped');
+  assert.equal(travel.status().reunion.target,'USIV');
+  assert.equal(calls.length,1,'no immediate home-reunion bounce');
+  travel.close();
  }finally{Date.now=original;}
 });

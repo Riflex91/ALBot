@@ -76,6 +76,34 @@ test('bank confirms both sides and does not consume a protected or changed slot'
  assert.equal(bot.bank.store(0,rule),true);await Promise.resolve();bot.exec.poll();assert.equal(bot.journal,null);assert.equal(c.bank.items0[0].q,10);
  c.items[0]={name:'hpot0',q:10,l:'l'};assert.equal(bot.bank.store(0,rule),false);
 });
+test('W03 whole-bank retrieval executes with real economy dispatcher and clears exact durable journal',async()=>{
+ const {bot,c,rule,data}=fixture();
+ c.bank.items0[7]={name:'hpot0',q:5};
+ let attempts=0;
+ bot.p.call=(name,pack,slot,dest)=>{
+  assert.equal(name,'bank_retrieve');
+  assert.deepEqual([pack,slot,dest],['items0',7,1]);
+  attempts++;
+  c.items[dest]=c.bank[pack][slot];
+  c.bank[pack][slot]=null;
+  return Promise.resolve();
+ };
+ const retrieveRule={...rule,action:'retrieve',pack:'items0',
+  batch:10,maxCount:100};
+ assert.equal(bot.bank.retrieve({name:'hpot0',q:5},retrieveRule,5),true);
+ assert.equal(bot.bank.singlePending,true);
+ assert.equal(data.get('albot:bank-single:M').dispatch,undefined);
+ await Promise.resolve();
+ bot.exec.poll();
+ assert.equal(attempts,1);
+ assert.ok(data.get('albot:bank-single:M').dispatch,
+  'journal is written before actual server API');
+ assert.equal(bot.journal,null);
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(bot.bank.pending,false);
+ assert.equal(data.get('albot:bank-single:M'),null);
+ assert.equal(bot.inventoryBlocked,false);
+});
 test('empty bank pack exposes 42 slots but an occupied stack is never used as bank_store target',async()=>{
  const {bot,c,rule}=fixture();c.bank.items0=[];assert.equal(bot.bank.capacity()[0].free,42);
  c.bank.items0=Array.from({length:42},()=>({name:'protected',l:true}));c.bank.items0[7]={name:'hpot0',q:50};

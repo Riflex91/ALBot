@@ -11,7 +11,7 @@ function fixture({offerQuantity=8}={}){
    name:'raremat',level:0,q:offerQuantity,rid:'RID-001',price:10}}};
  const calls=[],jobs=[];
  let held=0,authorized=true;
- const p={c,entities:{S:seller},read:()=>null,write:()=>true,call:
+ const p={c,G:{items:{raremat:{type:'material',s:9999}}},entities:{S:seller},read:()=>null,write:()=>true,call:
   (name,who,slot,quantity)=>{
    calls.push({name,who,slot,quantity});
    c.items[0]={name:'raremat',level:0,q:quantity};
@@ -116,4 +116,21 @@ test('W06 true offer quantity and renewed seller RID remain dispatch authority',
  assert.equal(f.jobs[0].job.details.quantity,1);
  f.seller.slots.trade2.rid='another';
  assert.equal(f.jobs[0].job.guard(),false);
+});
+
+test('W06 exact physical return capacity is required despite a misleading free-slot counter',()=>{
+ const f=fixture();
+ f.p.G.items.raremat.s=2;
+ f.c.isize=10;
+ for(let n=0;n<10;n++)f.c.items[n]={name:'filler'+n};
+ f.c.items[0]={name:'raremat',level:0,q:1};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(3)),false,
+  'only one remaining stack unit; free() hint must not authorize three');
+ assert.equal(f.jobs.length,0);
+ f.c.items[9]=null;
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(3)),true,
+  'one real free two-unit slot and one-unit stack headroom can fit three');
+ assert.equal(f.jobs.length,1);
+ f.c.items[9]={name:'new-filler'};
+ assert.equal(f.jobs[0].job.guard(),false,'capacity loss invalidates dispatch');
 });

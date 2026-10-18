@@ -10,7 +10,12 @@ export function createTestReport(p,version){
     const safe={};for(const [k,v] of Object.entries(data)){if(/password|token|auth|cookie/i.test(k))continue;safe[k]=typeof v==='number'||typeof v==='boolean'||v===null?v:(k==='timelineShadow'||k==='damageShadow')&&v&&typeof v==='object'?clean(JSON.stringify(v)):clean(v);}
     const entry={seq:++sequence,time:new Date().toISOString(),type,...safe};events.push(entry);if(type==='error'){incidents.push(entry);if(incidents.length>24)incidents.shift();}if(events.length>(continuous?2048:256)){events.shift();dropped++;}
   }
-  const filename=extension=>'test-'+String(p.c?.name??'unknown').replace(/[^A-Za-z0-9_-]/g,'_')+'-'+started.replace(/[:.]/g,'-')+'-part'+String(part).padStart(3,'0')+'.'+extension;
+  const filename=extension=>{
+    const name=String(p.c?.name??'unknown').replace(/[^A-Za-z0-9_-]/g,'_');
+    if(directory&&extension==='jsonl')
+      return 'albot-live-'+name+'-part'+String(part).padStart(3,'0')+'.jsonl';
+    return 'test-'+name+'-'+started.replace(/[:.]/g,'-')+'-part'+String(part).padStart(3,'0')+'.'+extension;
+  };
   function document(){const c=p.c;return {format:'albot-test-report',formatVersion:1,test:'Live A',version,started,exported:new Date().toISOString(),continuousLog:continuous,logFilename:filename('jsonl'),logDirectory:directory?.name??null,logCapabilities:capabilities(),environment:p.headless?'headless':'browser',character:c?.name??null,gameVersion:p.G?.version??null,realm:p.realm(),storageError:clean(p.storageError),lastWriteError,counts:{...counts},actionStats:JSON.parse(JSON.stringify(actionStats)),dropped,...provider(),incidents:[...incidents],events:[...events]};}
   function text(){const data=document();let result=JSON.stringify(data,null,2);while(new TextEncoder().encode(result).length>900*1024&&data.events.length){data.events.splice(0,Math.min(32,data.events.length));data.exportTrimmed=true;result=JSON.stringify(data,null,2);}return result;}
   function save(){
@@ -29,12 +34,12 @@ export function createTestReport(p,version){
     const gap=first>savedSequence+1?{type:'log.gap',from:savedSequence+1,to:first-1,reason:'Ereignisse vor Ordnerfreigabe oder während Schreibfehler nur begrenzt im RAM'}:null;
     let lines=[fileBytes===0?header:null,gap,...delta,snapshot].filter(Boolean).map(x=>JSON.stringify(x)).join('\n')+'\n';
     if(fileBytes+new TextEncoder().encode(lines).length>16*1024*1024){part++;fileBytes=0;lines=JSON.stringify(header)+'\n'+lines;}
-    const handle=await directory.getFileHandle(filename('jsonl'),{create:true}),file=await handle.getFile(),stream=await handle.createWritable({keepExistingData:true});try{await stream.seek(file.size);await stream.write(lines);await stream.close();}catch(e){await stream.abort?.();throw e;}
+    const handle=await directory.getFileHandle(filename('jsonl'),{create:true}),file=await handle.getFile(),stream=await handle.createWritable({keepExistingData:fileBytes>0});try{if(fileBytes>0)await stream.seek(file.size);await stream.write(lines);await stream.close();}catch(e){await stream.abort?.();throw e;}
     fileBytes=file.size+new TextEncoder().encode(lines).length;savedSequence=delta.at(-1)?.seq??savedSequence;lastWriteError='';
    }})().catch(e=>{lastWriteError=clean(e.message);p.log('Testdatei: '+lastWriteError);}).finally(()=>{writeBusy=false;});return writing;}
   async function chooseDirectory(){if(p.headless)return save();const win=pickerWindow();if(!win){p.log('Dieser Browser-Spielkontext erlaubt keine Ordnerauswahl. Testlog speichern verwenden; Speicherort in den Browser-Downloads einstellen.');return false;}try{directory=await win.showDirectoryPicker({id:'albot-testlogs',mode:'readwrite',startIn:'desktop'});event('log.directory',{name:directory.name});await queueWrite();return directory.name;}catch(e){lastWriteError=clean(e.message);p.log('Ordnerauswahl fehlgeschlagen: '+lastWriteError+'. Testlog speichern verwenden.');return false;}}
   return {event,text,document,setProvider:f=>provider=f,
-    configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,
+    configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,getDirectory:()=>directory,
     error(where,e){event('error',{where,name:e?.name,message:e?.message??e?.reason??e,stack:e?.stack});},
     sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,task:state.task,
       farmArea:state.farmArea,farmContext:state.farmContext,

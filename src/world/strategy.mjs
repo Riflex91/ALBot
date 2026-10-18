@@ -36,6 +36,19 @@ export function farmRiskHp(base,live){
 export function questIdentity(q){
  return JSON.stringify(q?{id:q.id??null,c:q.c??null,sn:q.sn??null}:null);
 }
+// Independent world errands must not steal one Farmer's movement while
+// the other selected Farmers are still following the shared spawn route.
+export function squadMarchStillInTransit(self,names,plan,lookup,{
+ assemblyDistance=140}={}){
+ if(!plan?.id||!Array.isArray(names)||!names.includes(self?.name))return false;
+ if(!samePlace(self,plan)||distance(self,plan)>assemblyDistance)return true;
+ return names.some(name=>{
+  if(name===self.name)return false;
+  const member=lookup(name);
+  return !member?.running||member.rip||member.realm!==plan.realm||
+    !samePlace(member,plan)||distance(member,plan)>assemblyDistance;
+ });
+}
 export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null,questVisit=null,nextQuest=0;
  const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();
@@ -131,6 +144,14 @@ export function createStrategy(bot){
    if(questIdentity(p.c.s?.monsterhunt)!==questVisit.before&&questVisit.phase==='observing'){bot.event('quest.confirmed',{quest:'monsterhunt',reason:'Aktueller Queststatus hat sich geändert'});questVisit=null;nextQuest=Date.now()+5000;plannedAt=0;return false;}
    if(Date.now()>questVisit.until){const phase=questVisit.phase;questVisit=null;nextQuest=Date.now()+60000;bot.event('quest.timeout',{phase});if(phase==='observing')bot.pause('Monsterhunt ungeklärt: Queststatus prüfen');return true;}
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
+  }
+  const squadPlan=bot.teamPlan?.heartbeat?.()??
+    bot.transport?.fresh?.(bot.leader)?.farmPlan;
+  if(cfg.party.enabled&&squadMarchStillInTransit(p.c,bot.farmers,
+    squadPlan,n=>bot.transport?.fresh?.(n))){
+   bot.event?.('quest.deferredSquadTravel',{plan:squadPlan.id,
+    reason:'All selected Farmers finish their shared route first'});
+   return false;
   }
   if(bot.teamPlan?.materialActive())return false;
   const turn=bot.teamPlan?.orderedHunt?.();

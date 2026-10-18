@@ -85,6 +85,33 @@ export function assessFarmMarch(character,peers,{realm,now=Date.now(),
  }
  return {ready:true,reason:'cohesive-march',next:destination,gap:farthest};
 }
+// A teammate already traversing the SAME verified plan must not immobilize
+// the Leader merely because a portal placed them on a different map.
+// Compact march intents are carried even when large heartbeats shed farmPlan.
+export function assessLiveSquadMarch(character,peers,{realm,plan,
+ now=Date.now(),maxGap=300,hpFloor=.6}={}){
+ if(!character||!plan?.id||!Array.isArray(peers))return {ready:false,reason:'invalid-plan'};
+ for(const peer of peers){
+  if(!peer?.running||peer.rip||peer.realm!==realm||
+     !Number.isFinite(peer.received)||peer.received>now||
+     now-peer.received>4000||!Number.isFinite(peer.hp)||
+     !Number.isFinite(peer.max_hp)||peer.max_hp<=0)
+   return {ready:false,reason:'teammate-unverified',peer:peer?.name??null};
+  if(peer.hp/peer.max_hp<hpFloor)return {ready:false,
+   reason:'teammate-needs-heal',peer:peer.name,hpRatio:peer.hp/peer.max_hp};
+  const close=samePlace(character,peer)&&distance(character,peer)<=maxGap;
+  const progress=peer.march?.plan===plan.id&&
+    peer.march?.realm===realm&&peer.march?.moving===true&&
+    peer.questVisit!==true;
+  const reached=samePlace(peer,plan)&&distance(peer,plan)<=85&&
+    peer.march?.plan===plan.id;
+  if(!close&&!progress&&!reached)return {ready:false,
+    reason:'teammate-not-on-shared-route',peer:peer.name,
+    gap:samePlace(character,peer)?distance(character,peer):null,
+    observedMap:peer.map??null};
+ }
+ return {ready:true,reason:'team-traversing-shared-route'};
+}
 // A projected geometric hop is NOT a navigable game route. A blocked
 // straight line must be routed through native smart_move to the real spawn.
 // If that route was already rejected, try a small locally verified detour
@@ -424,8 +451,8 @@ export function createTeamPlan(bot){
    // A single native route is smoother and safer than restarting movement
    // after every 85 units. The squad follows the SAME final spawn target.
    // Only *actual* separation/serious injury interrupts the live path.
-   const march=assessFarmMarch(p.c,peers,{realm:p.realm(),
-    maxGap:300,hpFloor:.6});
+   const march=assessLiveSquadMarch(p.c,peers,{realm:p.realm(),
+    plan:current,maxGap:300,hpFloor:.6});
    if(!march.ready){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
     bot.reason='Gruppenmarsch pausiert (echte Trennung/Gefahr): '+march.reason+' / '+(march.peer??'Team');

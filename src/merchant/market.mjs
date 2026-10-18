@@ -1,4 +1,5 @@
 import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
+import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const marketProbes=new Map(),noOffers=new Map(),MARKET_REPROBE_MS=120000;
@@ -59,9 +60,16 @@ export function createMarket(bot){
     const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!variant(offer,item)||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
     const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before,finite?scope.quantity:Infinity)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
     if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
+    const fits=()=>{
+     if(!finite)return true;
+     const room=capacityAfterConsumption(p.c.items,[],item,
+      p.G?.items?.[item.name],{inventorySize:p.c.isize});
+     return !!room&&room.units>=q;
+    };
+    if(!fits())continue;
     noOffers.delete(identity(item));
     let response=null,dispatchGold=null;
-    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity)&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
+    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity)&&fits()&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
     observe:()=>finite?
      !!response&&typeof response==='object'&&!response.failed&&
       response.success!==false&&Number.isSafeInteger(dispatchGold)&&

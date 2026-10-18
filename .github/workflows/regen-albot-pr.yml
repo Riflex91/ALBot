@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/regen-albot-pr.yml
       - src/production/production.mjs
+      - scripts/pool-runtime-strings.mjs
       - test/roadmap-w07-operating-gear.test.mjs
 permissions:
   contents: write

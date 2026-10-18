@@ -109,11 +109,11 @@ export function createBank(bot){
  }
  function saveSwap(value){
   if(value&&(pending||reclaiming||single||storing||swapping)){
-   bot.inventoryBlocked=true;e.note('Bank-Swap: widersprechendes Journal');
+   bot.inventoryBlocked=true;e.note('Swap: Journal-Konflikt');
    return false;
   }
   if(p.write(swapKey,value)!==true){
-   bot.inventoryBlocked=true;e.note('Bank-Swap: Journal nicht gespeichert');
+   bot.inventoryBlocked=true;e.note('Swap: Speichern fehlgeschlagen');
    return false;
   }
   swapping=value;return true;
@@ -125,7 +125,7 @@ export function createBank(bot){
  function recoverSwap(){
   if(!swapping)return false;
   if(pending||reclaiming||single||storing){
-   bot.inventoryBlocked=true;e.note('Bankkonflikt: parallele Journale');
+   bot.inventoryBlocked=true;e.note('Bankkonflikt: Swap-Journal');
    return true;
   }
   if(bot.journal||bot.exec?.busy?.('inventory')||
@@ -137,7 +137,7 @@ export function createBank(bot){
    return true;
   }
   bot.inventoryBlocked=true;
-  e.note('Bank-Swap: Versand ungeklärt ('+phase+')');
+  e.note('Swap: unbestätigt ('+phase+')');
   return true;
  }
  function storeEvidence(r){
@@ -606,25 +606,27 @@ export function createBank(bot){
     prepared:{kind,session:bot.session,at,realm,pack,a,b,fa,fb}};
    if(!validateBankSwapRecord(record,{owner:me.name,realm:p.realm()}).valid||
       !saveSwap(record))return false;
-   const guard=()=>swapping===record&&
-    swapEvidence(record).phase==='prepared-unchanged'&&
-    cfg.merchant.bank===true&&cfg.merchant.consolidate===true&&
-    simple(p.c.bank?.[pack]?.[a])&&simple(p.c.bank?.[pack]?.[b])&&
-    (p.c.bank?.[pack]?.[a]?.q??1)+(p.c.bank?.[pack]?.[b]?.q??1)<=
-      stackMax(p.c.bank?.[pack]?.[a]);
+   const guard=()=>{
+    const row=p.c.bank?.[pack];
+    return swapping===record&&
+     swapEvidence(record).phase==='prepared-unchanged'&&
+     cfg.merchant.bank===true&&cfg.merchant.consolidate===true&&
+     simple(row?.[a])&&simple(row?.[b])&&
+     (row[a].q??1)+(row[b].q??1)<=stackMax(row[a]);
+   };
    const done=()=>!!swapping&&['merged-a','merged-b'].includes(swapEvidence(swapping).phase);
    const accepted=e.perform(kind,{guard,
     call:()=>{
      if(!guard()){
       bot.inventoryBlocked=true;
-      throw Error('Bank-Swap: Quelle vor Dispatch unklar');
+      throw Error('Swap: Quelle verändert');
      }
      const next={...record,dispatch:{kind,session:bot.session,
       at:Date.now(),realm,pack,a,b,fa,fb}};
      if(!validateBankSwapRecord(next,{owner:me.name,realm:p.realm()}).valid||
         p.write(swapKey,next)!==true){
       bot.inventoryBlocked=true;
-      throw Error('Bank-Swap: Dispatchbeleg nicht gespeichert');
+      throw Error('Swap: Dispatchbeleg fehlt');
      }
      swapping=next;return p.call('bank_swap',pack,a,b);
     },

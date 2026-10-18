@@ -25,7 +25,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          test "$(git rev-parse origin/main)" = "559064ec504ea824881805965fe0ba072c97fc20" || { echo "Main advanced, stop and retest"; exit 1; }
+          test "$(git rev-parse origin/main)" = "c9f79de659e3c1848abf3b256ee269567e777624" || { echo "Main advanced, stop and retest"; exit 1; }
           git merge --no-commit --no-ff -X ours origin/main
           node scripts/pr157-integration-temp.mjs
           git diff --check -- src/ bot.js scripts/build.mjs test/ editor/
@@ -58,11 +58,15 @@ jobs:
         run: |
           npm run sign:release
           npm run verify:release
+      - name: Verify signed release against new main bootstrap contract
+        run: |
+          node scripts/pr157-bootstrap-contract-temp.mjs
+          node scripts/verify-bootstrap-contract.mjs
       - name: Commit verified merge, remove temporary integrations and push with lease
         shell: bash
         run: |
           set -euo pipefail
-          git rm -- scripts/pr157-integration-temp.mjs .github/workflows/pr157-integration-temp.yml .github/workflows/pr157-finalize-temp.yml
+          git rm -- scripts/pr157-integration-temp.mjs scripts/pr157-bootstrap-contract-temp.mjs .github/workflows/pr157-integration-temp.yml .github/workflows/pr157-finalize-temp.yml
           git add -A
           git diff --cached --check -- src/ bot.js scripts/ test/ editor/ dist/
           git diff --cached --stat

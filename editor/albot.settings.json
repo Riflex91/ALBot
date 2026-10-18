@@ -125,6 +125,13 @@
             "title": "Eigene Charaktere und Rollen beim Start automatisch erkennen",
             "default": false,
             "description": "Namenloses Profil: Accountliste und aktueller Realm; Charakterstarts erfolgen nur mit bewusst aktivierter Levelausgleichsrotation, belegten Levelwerten und sicheren Lifecycle-APIs. Bei mehreren Merchants ist der alphabetisch erste zustaendig."
+          },
+          "callCostCeiling": {
+            "type": "integer",
+            "title": "Normale Aktionskosten im 4-Sekunden-Fenster (Überlebensreserve separat)",
+            "default": 160,
+            "minimum": 60,
+            "maximum": 170
           }
         },
         "required": [
@@ -2590,6 +2597,13 @@
             "type": "boolean",
             "title": "Begrenzte Strategieanpassungen aus bestätigten Ergebnissen",
             "default": true
+          },
+          "eventGraceMs": {
+            "type": "integer",
+            "title": "Beobachtungslücke bei Events maximal halten (ms)",
+            "default": 2500,
+            "minimum": 0,
+            "maximum": 10000
           }
         },
         "required": [

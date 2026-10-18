@@ -63,6 +63,20 @@ export function squadMarchStillInTransit(self,names,plan,lookup,{
     !samePlace(member,plan)||distance(member,plan)>assemblyDistance;
  });
 }
+// Monsterhunt NPC visits may start during a shared ordinary farm route only
+// when all selected farmers are nearby, alive, and out of combat. Waiting
+// until the destination is reached caused endless quest deferrals in logs.
+export function squadReadyForQuestVisit(self,names,lookup,{realm,maxGap=140}={}){
+ if(!self||!Array.isArray(names)||!names.includes(self.name))return false;
+ return names.every(name=>{
+  const peer=name===self.name?self:lookup(name);
+  return !!peer&&(name===self.name||peer.running===true)&&!peer.rip&&
+   (!realm||name===self.name||peer.realm===realm)&&
+   Number.isFinite(peer.hp)&&Number.isFinite(peer.max_hp)&&peer.max_hp>0&&
+   peer.hp/peer.max_hp>=.6&&!(peer.threats>0)&&
+   samePlace(self,peer)&&distance(self,peer)<=maxGap;
+ });
+}
 export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null,questVisit=null,nextQuest=0;
  const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();
@@ -168,17 +182,6 @@ export function createStrategy(bot){
    if(Date.now()>questVisit.until){const phase=questVisit.phase;questVisit=null;nextQuest=Date.now()+60000;bot.event('quest.timeout',{phase});if(phase==='observing')bot.pause('Monsterhunt ungeklärt: Queststatus prüfen');return true;}
    if(questVisit.phase==='observing'){bot.reason='Monsterhunt-Antwort bestätigen';return true;}
   }
-  const squadPlan=bot.teamPlan?.heartbeat?.()??
-    bot.transport?.fresh?.(bot.leader)?.farmPlan;
-  // Once a quest visit begins, the shared Farm plan is allowed to change.
-  // Requiring that new Farm march to finish would freeze the quest while
-  // strategy.busy simultaneously suppresses combat for up to two minutes.
-  if(!questVisit&&cfg.party.enabled&&squadMarchStillInTransit(p.c,bot.farmers,
-    squadPlan,n=>bot.transport?.fresh?.(n))){
-   bot.event?.('quest.deferredSquadTravel',{plan:squadPlan.id,
-    reason:'All selected Farmers finish their shared route first'});
-   return false;
-  }
   if(bot.teamPlan?.materialActive())return false;
   const turn=bot.teamPlan?.orderedHunt?.();
   if(!w.quests||me.role!=='farmer'||turn?.phase==='blocked'||
@@ -190,6 +193,16 @@ export function createStrategy(bot){
   if(q&&Number.isFinite(q.ms)&&q.ms<=0)return false;
   if(q?.c>0)return false;
   if(Date.now()<nextQuest||!p.has('interact')||!bot.economy)return false;const d=bot.economy.destination('monsterhunter');if(!d)return false;
+  const squadPlan=bot.teamPlan?.heartbeat?.()??
+   bot.transport?.fresh?.(bot.leader)?.farmPlan;
+  const peer=n=>bot.transport?.fresh?.(n);
+  const fighting=bot.monsters().some(m=>m?.hp>0&&!m.dead&&
+   bot.teamNames.includes(m.target))||bot.farmers.some(n=>n!==me.name&&peer(n)?.threats>0);
+  if(!questVisit&&cfg.party.enabled&&(fighting||
+    squadMarchStillInTransit(p.c,bot.farmers,squadPlan,peer)&&
+    !squadReadyForQuestVisit(p.c,bot.farmers,peer,{realm:p.realm()}))){
+   return false;
+  }
   if(!questVisit){questVisit={phase:'travel',before:questIdentity(q),until:Date.now()+120000};bot.target=null;bot.movement.stop();bot.event('quest.visit',{quest:'monsterhunt',reason:'Aktiver Farmer nimmt eigenen Auftrag an oder gibt ihn ab'});}
   if(!bot.economy.at(d,70)){bot.reason='Unterwegs: Monsterhunt';bot.movement.go({...d,radius:60},'quest');return true;}
   const visit=questVisit;

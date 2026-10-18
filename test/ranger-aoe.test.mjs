@@ -96,3 +96,25 @@ test('approved neutral opener respects reduced per-skill target limit',()=>{
  skills.rotation(mobs[0]);
  assert.equal(actions.length,0,'limit two is incompatible with an exact-three cast');
 });
+
+test('three legal engaged enemies trigger 3shot even when stale single-target focus is out of range',()=>{
+ const f=rangerFixture(3,0);
+ const far={id:'distant-focus',type:'monster',mtype:'bee',map:'main',in:'main',
+  x:600,y:0,hp:1200,max_hp:1200,target:'Ranger1'};
+ f.skills.rotation(far);
+ assert.equal(f.actions[0]?.skill,'3shot',
+  'the current single-target focus is NOT an AoE target-range veto');
+ assert.deepEqual(f.actions[0].targets.map(x=>x.id),
+  ['team-0','team-1','team-2']);
+});
+test('out-of-range focus never authorizes a third neutral or another party target',()=>{
+ const two=rangerFixture(2,1,5,{allowNeutral:false});
+ two.skills.rotation({id:'distant',type:'monster',mtype:'bee',map:'main',
+  in:'main',x:500,y:0,hp:1200,target:'Ranger1'});
+ assert.equal(two.actions.length,0);
+ const foreign=rangerFixture(2,0,5,{foreign:1,allowNeutral:false});
+ foreign.skills.rotation({id:'distant',type:'monster',mtype:'bee',map:'main',
+  in:'main',x:500,y:0,hp:1200,target:'Ranger1'});
+ assert.equal(foreign.actions.length,0,
+  'a hostile claimed by strangers must not fill the third AoE slot');
+});

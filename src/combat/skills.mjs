@@ -344,7 +344,7 @@ export function createSkills(bot){
       if(c.ctype==='ranger'){
         const ranks=['3shot','5shot'].flatMap(id=>{
           const def=p.G.skills[id],capacity=id==='3shot'?3:5;
-          if(!def||!ready(id,t,0))return [];
+          if(!def)return [];
           const range=(def.range??c.range)-5;
           const inRange=safe.filter(m=>distance(c,m)<range);
           const engagedHere=inRange.filter(m=>m.target&&bot.teamNames.includes(m.target));
@@ -352,7 +352,12 @@ export function createSkills(bot){
           const targets=maximalSafeAimedTargets(engagedHere,neutralHere,remaining,
             Math.min(capacity,cfg.party.aoeMaxTargets));
           if(id==='3shot'&&targets.length!==3||id==='5shot'&&targets.length<4)return [];
-          const score=aoeDamageScore(c,def,targets,t);
+          // A current focus target may be at the end of a chase while three
+          // already authorized opponents are inside the actual AoE radius.
+          // Check cooldown, class, MP, equipment and range against the
+          // FIRST real multi-shot target, not that unrelated distant focus.
+          if(!ready(id,targets[0],0))return [];
+          const score=aoeDamageScore(c,def,targets,targets[0]);
           // Unknown damage data retains the previously established AoE order;
           // known non-beneficial casts cannot displace a normal attack.
           if(score&&score.gain<=0)return [];
@@ -375,6 +380,8 @@ export function createSkills(bot){
         if(cfg.skills.some(r=>r.enabled&&r.skill===id&&
           (!r.character||r.character===c.name)&&
           (r.class==='auto'||r.class===c.ctype))){
+          // Preserve explicit user rule ordering, condition checks and
+          // minimum MP. use() performs the final, live-target checks.
           if(custom(t))return;
           continue;
         }

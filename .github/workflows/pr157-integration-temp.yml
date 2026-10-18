@@ -1,0 +1,61 @@
+name: PR157 integration Linux Windows dry run
+on:
+  push:
+    branches: [codex/w00-w01-readonly-disposition-20261018]
+    paths: [.github/workflows/pr157-integration-temp.yml]
+permissions:
+  contents: read
+jobs:
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Simulate real merge and apply safety-preserving fixes
+        run: |
+          git config user.name "ALBot integration diagnostics"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff -X ours origin/main
+          node scripts/pr157-integration-temp.mjs
+          git diff --check
+          git diff --cached --check
+      - run: npm ci --ignore-scripts
+      - name: Full offline test suite on merged source
+        run: npm test
+      - name: Build runtime
+        run: npm run build
+      - name: Sync personalized CODE artifact
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Compare personal config to current main
+        run: |
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import {execFileSync} from 'node:child_process';
+            const one=fs.readFileSync('bot.js','utf8');
+            const two=execFileSync('git',['show','origin/main:bot.js'],{encoding:'utf8'});
+            const cfg=s=>s.slice(s.indexOf('globalThis.ALBotConfig='),s.indexOf('/* ALBot ',s.indexOf('globalThis.ALBotConfig=')));
+            if(cfg(one)!==cfg(two))throw Error('PERSONAL_CONFIG_DRIFT');
+            console.log('MAIN_PERSONAL_SETTINGS_PRESERVED');
+          "
+      - name: Build editor and check bootstrap
+        run: |
+          npm run build:editor
+          npm run check:bootstrap:auto
+          git diff --check
+      - name: Verify no publish or push
+        run: echo "READ_ONLY_DRY_RUN_COMPLETE"

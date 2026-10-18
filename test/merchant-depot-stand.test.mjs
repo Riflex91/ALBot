@@ -15,7 +15,7 @@ function fixture({inventory=[],bankStandCount=2,bankPartials=false}={}){
  const bot={
   p:{c,G:{items:{stand0:{stand:true,g:10000},mat:{type:'material',s:100}}},
    read:()=>null,write:()=>true,realm:()=> 'EUII',root:{},parent:{},call:()=>null},
-  me:{name:'Merchant',role:'merchant'},running:true,cfg:{
+  me:{name:'Merchant',role:'merchant'},session:'depot-test-session',running:true,cfg:{
    merchant:{enabled:true,pickup:true,stand:true,bank:true,consolidate:true,minFreeSlots:4,
     taskHoldMs:30000,starvationMs:120000},
    party:{merchant:'Merchant'},items:[],production:{goals:[]}},

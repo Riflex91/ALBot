@@ -21,8 +21,51 @@ export function validateBankPartialRecord(r,{owner,realm,now=Date.now()}={}){
     !Number.isSafeInteger(r.before+r.total)||!integer(r.bankBefore-r.total)||
     r.sourcePrint!==fingerprint(r.item))
   return bad('invalid-quantities-or-source');
+ const phases=['original','withdrawn','split'];
+ if(r.prepared!==undefined){
+  const v=r.prepared;
+  if(!v||typeof v!=='object'||Array.isArray(v)||
+     typeof v.session!=='string'||!v.session||
+     !integer(v.at)||v.at<r.at||v.at>now+2000||
+     v.realm!==r.realm||v.pack!==r.pack||v.bankSlot!==r.bankSlot||
+     v.dest!==r.dest||v.splitSlot!==r.splitSlot||
+     v.sourcePrint!==r.sourcePrint)
+   return bad('invalid-prepared-partial-intent');
+ }
+ if(r.dispatches!==undefined){
+  if(!Array.isArray(r.dispatches)||r.dispatches.length>3||
+     !r.prepared)return bad('invalid-partial-dispatch-history');
+  for(let i=0;i<r.dispatches.length;i++){
+   const v=r.dispatches[i];
+   if(!v||typeof v!=='object'||Array.isArray(v)||
+      v.phase!==phases[i]||typeof v.session!=='string'||!v.session||
+      v.session!==r.prepared.session||
+      !integer(v.at)||v.at<r.at||v.at>now+2000||
+      (i>0&&v.at<r.dispatches[i-1].at)||
+      v.realm!==r.realm||v.pack!==r.pack||
+      v.bankSlot!==r.bankSlot||v.dest!==r.dest||
+      v.splitSlot!==r.splitSlot||v.sourcePrint!==r.sourcePrint)
+    return bad('invalid-partial-dispatch-history');
+  }
+ }
  return {valid:true,reason:null};
 }
+// No phase change is considered an authoritative server receipt by itself.
+// Each step needs a previously persisted, session-bound dispatch proof. A
+// still-current predecessor of an already dispatched step is UNKNOWN, not
+// safely retryable. Legacy records are explicitly quarantined.
+export function partialDispatchDecision(record,phase){
+ const index=['original','withdrawn','split','returned'].indexOf(phase);
+ if(index<0)return {allowed:false,reason:'invalid-physical-phase'};
+ if(!record?.prepared||!Array.isArray(record.dispatches))
+  return {allowed:false,reason:'legacy-partial-without-dispatch-chain'};
+ const n=record.dispatches.length;
+ if(n>index)return {allowed:false,reason:'dispatched-step-outcome-unknown'};
+ if(n<index)return {allowed:false,reason:'unproven-previous-dispatch'};
+ return {allowed:true,reason:index===3?
+  'all-three-dispatches-and-return-observed':'previous-dispatch-observed'};
+}
+
 export function classifyBankPartialRecord(r,{
  owner,realm,now=Date.now(),inventory,bank,map,packMap
 }={}){

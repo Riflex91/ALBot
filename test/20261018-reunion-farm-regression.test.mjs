@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {teamRealmRendezvous,reunionHomeRealm} from '../src/party/travel.mjs';
-import {selectedFarmerAvailable} from '../src/party/account.mjs';
+import {selectedFarmerAvailable,foreignRunningFarmer} from '../src/party/account.mjs';
 import {liveSpawnCompetition,chooseFarmAreaSwitch} from '../src/world/spawn-choice.mjs';
 import {shouldHoldOrdinaryLocation} from '../src/world/team-plan.mjs';
 import {questTravelStalled} from '../src/world/strategy.mjs';
@@ -97,4 +97,29 @@ test('diagnostic helpers never authorize new attack, server or value actions',()
  for(const key of ['attack','change_server','send_gold','trade_buy','approve']){
   assert.equal(Object.hasOwn(choice,key),false);
  }
+});
+
+test('cross-realm Priest cannot be admitted as a live EU2 farm teammate',()=>{
+ assert.equal(foreignRunningFarmer({name:'My_Priest',running:true,
+  realm:'USIV'},'EUII'),true);
+ assert.equal(foreignRunningFarmer({name:'My_Ranger2',running:true,
+  realm:'EUII'},'EUII'),false);
+ assert.equal(foreignRunningFarmer(null,'EUII'),false,
+  'unknown peer is not an affirmative cross-realm claim');
+});
+
+test('healthy observed Bee farm stays put rather than travel to unknown Bee site',()=>{
+ const current={key:'main:bee:14',kind:'farm',target:'bee',started:0};
+ const old={...current,score:100,travelSeconds:0,
+  evidenceSeconds:110,pressureRatio:.1};
+ const next={key:'main:bee:15',target:'bee',score:900,travelSeconds:5,
+  evidenceSeconds:0,occupancyObserved:false};
+ const keep=chooseFarmAreaSwitch({current,currentRank:old,candidate:next,
+  now:90000,holdMs:60000});
+ assert.equal(keep.reason,'current-healthy-destination-unverified');
+ assert.equal(keep.choice.key,current.key);
+ const explored=chooseFarmAreaSwitch({current,currentRank:
+   {...old,pressureRatio:.9},candidate:next,now:90000,holdMs:60000});
+ assert.equal(explored.choice.key,next.key,
+  'a documented starved farm remains free to explore');
 });

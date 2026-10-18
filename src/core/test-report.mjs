@@ -34,7 +34,7 @@ export function createTestReport(p,version){
    }})().catch(e=>{lastWriteError=clean(e.message);p.log('Testdatei: '+lastWriteError);}).finally(()=>{writeBusy=false;});return writing;}
   async function chooseDirectory(){if(p.headless)return save();const win=pickerWindow();if(!win){p.log('Dieser Browser-Spielkontext erlaubt keine Ordnerauswahl. Testlog speichern verwenden; Speicherort in den Browser-Downloads einstellen.');return false;}try{directory=await win.showDirectoryPicker({id:'albot-testlogs',mode:'readwrite',startIn:'desktop'});event('log.directory',{name:directory.name});await queueWrite();return directory.name;}catch(e){lastWriteError=clean(e.message);p.log('Ordnerauswahl fehlgeschlagen: '+lastWriteError+'. Testlog speichern verwenden.');return false;}}
   return {event,text,document,setProvider:f=>provider=f,
-    configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,
+    configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,getDirectory:()=>directory,
     error(where,e){event('error',{where,name:e?.name,message:e?.message??e?.reason??e,stack:e?.stack});},
     sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,task:state.task,
       farmArea:state.farmArea,farmContext:state.farmContext,

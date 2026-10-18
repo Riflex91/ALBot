@@ -636,7 +636,7 @@ export function createBank(bot){
  // preventive, explicitly authorized bank sales. No retained/offsite catalog
  // may be the source of a withdrawal or a subsequent sale.
  function stageBankSale(selected,reason,explicitOnly=false){
-  if(pending||reclaiming||bot.journal||bot.inventoryBlocked||
+  if(pending||reclaiming||single||bot.journal||bot.inventoryBlocked||
      bot.logistics?.reserved||bot.exec?.busy?.('inventory')||bot.free()<1||
      !p.c.bank||me.name!==cfg.party.merchant)return false;
   const {item,pack,slot}=selected,q=item.q??1,
@@ -913,11 +913,12 @@ export function createBank(bot){
  // Read-only evidence view for the operator. It performs no travel, game
  // call, checkpoint write or automatic resolution of contradictory journals.
  function recoveryStatus(){
-  const collision=!!pending&&!!reclaiming,
+  const collision=[pending,reclaiming,single].filter(Boolean).length>1,
    partial=pending?partialEvidence(pending):null,
    reclaim=reclaiming?classifyBankReclaimRecord(reclaiming,{
     owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items,
     bank:p.c?.bank,map:p.c?.map,packMap}):null,
+   singleResult=single?singleEvidence(single):null,
    offsite=reclaiming&&reclaim?.phase==='unobserved'?
     inspectOffsiteBankReclaim(reclaiming,{
      owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items}):null;
@@ -926,12 +927,19 @@ export function createBank(bot){
    (pending&&partial&&partial.phase!=='unobserved'&&
     !partialDispatchDecision(pending,partial.phase).allowed)||
    ['ambiguous','invalid','dispatched-unchanged',
-    'legacy-unchanged-uncertain'].includes(reclaim?.phase);
+    'legacy-unchanged-uncertain'].includes(reclaim?.phase)||
+   ['invalid','ambiguous','dispatched-unchanged',
+    'unproven-withdrawal'].includes(singleResult?.phase);
   return {
    mode:'read-only-no-authorization',executable:false,
    blocked:collision||!!bot.inventoryBlocked||!!bot.journal,
-   conflict:collision?'simultaneous-bank-partial-and-reclaim':null,
+   conflict:collision?'simultaneous-bank-value-journals':null,
    requiresManualReview:!!needsReview,
+   single:single?{
+    phase:collision?'conflict':singleResult.phase,reason:singleResult.reason,
+    pack:single.pack,sourceSlot:single.slot,inventorySlot:single.dest,
+    item:single.item?.name??null,quantity:single.quantity,
+    preparationRecorded:!!single.prepared,dispatchRecorded:!!single.dispatch}:null,
    partial:pending?{
     phase:collision?'conflict':partial.phase,reason:partial.reason,
     pack:pending.pack,sourceSlot:pending.bankSlot,
@@ -968,6 +976,6 @@ export function createBank(bot){
   return consolidateInventory()||consolidate()||consolidateAcross()||reclaim();}
  return {liveEvidence(){return inspectBankEvidence(p.c.bank,{
    owner:me.name,session:bot.session,realm:p.realm(),map:p.c.map,
-   packMap,blocked:!!bot.inventoryBlocked||!!bot.journal||!!pending||!!reclaiming
-  });},capacityEvidence(){packs();return catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Array.isArray(catalog.capacity)?{at:catalog.observedAt,rows:catalog.capacity.map(r=>({...r}))}:null;},goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,preventiveDisposition,preventiveStatus,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,recoveryStatus,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get pending(){return !!(pending||reclaiming);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
+   packMap,blocked:!!bot.inventoryBlocked||!!bot.journal||!!pending||!!reclaiming||!!single
+  });},capacityEvidence(){packs();return catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Array.isArray(catalog.capacity)?{at:catalog.observedAt,rows:catalog.capacity.map(r=>({...r}))}:null;},goldEvidence(){packs();return !bot.journal&&!bot.inventoryBlocked&&!pending&&!reclaiming&&!single&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&catalog.observedAt<=Date.now()&&Date.now()-catalog.observedAt<=120000&&Number.isSafeInteger(catalog.gold)&&catalog.gold>=0?{gold:catalog.gold,at:catalog.observedAt,realm:catalog.realm,owner:me.name}:null;},store,park,retrieve,consolidate,consolidateAcross,consolidateInventory,audit,manageStand,gold,expand,reclaim,preventiveDisposition,preventiveStatus,recoverCapacity,capacity,packs,catalogStock,catalogStatus:()=>({revision:catalog.revision,observedAt:catalog.observedAt,ageMs:catalog.observedAt?Date.now()-catalog.observedAt:null,planningRows:catalogStock().length}),ready,recover,recoveryStatus,stock,pressureStatus:()=>({...pressure}),inspect(){if(!ready())return false;packs();return observed;},get observed(){packs();return observed&&catalog.realm===(p.realm?.()??'')&&catalog.observedAt>0&&Date.now()-catalog.observedAt<=120000;},get reclaiming(){return !!reclaiming;},get singlePending(){return !!single;},get pending(){return !!(pending||reclaiming||single);},status:()=>pending?{item:pending.item?.name,quantity:pending.take,total:pending.total,pack:pending.pack}:null};
 }

@@ -63,3 +63,5 @@ jobs:
 # Repeat integration after resolver anchor correction
 
 # Rerun for already-integrated hunk handling
+
+# Rerun after no-op already-merged escort handling

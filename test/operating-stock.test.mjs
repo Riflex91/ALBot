@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {automaticOperatingStockRule,operatingStockFloor} from '../src/items/operating-stock.mjs';
+import {automaticOperatingStockRule,operatingStockFloor,bankOperatingStockRule} from '../src/items/operating-stock.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
 import {FULL_DESCRIPTOR} from '../src/config/full.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
@@ -46,4 +46,31 @@ test('dispatch recalculates quantity, configuration and reservation instead of t
  bot.production.reservedQuantity=()=>200;assert.equal(bot.economy.spare(0,rule),0);
  bot.production.reservedQuantity=()=>0;bot.cfg.merchant.preventiveStorage=false;
  assert.equal(bot.economy.spare(0,rule),0);
+});
+
+test('bank operating-stock sale only uses a physical carried floor, including after withdrawal',()=>{
+ const bot=fixture(),bankItem={name:'scroll0',q:20};
+ bot.p.c.items[0].q=110;
+ assert.equal(bankOperatingStockRule(bot,bankItem).batch,20);
+ bot.p.c.items[0].q=109;
+ assert.equal(bankOperatingStockRule(bot,bankItem),null);
+ bot.p.c.items.push(bankItem); // Retrieved stack cannot back its OWN reserve.
+ assert.equal(bankOperatingStockRule(bot,bankItem,{carried:true}),null);
+ bot.p.c.items[0].q=110;
+ const rule=bankOperatingStockRule(bot,bankItem,{carried:true});
+ assert.equal(bot.economy.spare(1,rule),20);
+ bot.production.reservedQuantity=()=>11;
+ assert.equal(bot.economy.spare(1,rule),0);
+});
+test('explicit bounded bank rule keeps maximum, reserve and user batch; revocation stops the final sale',()=>{
+ const bot=fixture(),item={name:'scroll0',q:20};
+ const base=defaultsFor(FULL_DESCRIPTOR.schema.properties.items.items);
+ bot.cfg.items=[{...base,item:'scroll0',enabled:true,action:'keep',excessAction:'sell',
+  keep:20,teamReserve:10,maxCount:150,batch:20}];
+ bot.p.c.items[0].q=150;
+ const r=bankOperatingStockRule(bot,item);assert.equal(r.batch,20);
+ bot.p.c.items.push(item);assert.equal(bot.economy.spare(1,r),20);
+ bot.cfg.items[0].excessAction='hold';assert.equal(bot.economy.spare(1,r),0);
+ bot.cfg.items[0].excessAction='sell';bot.cfg.items[0].batch=19;
+ assert.equal(bankOperatingStockRule(bot,item,{carried:true}),null);
 });

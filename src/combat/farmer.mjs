@@ -176,9 +176,9 @@ export function createFarmer(bot){
             rankRecoveryPotion(c,p.G.items[a.i.name].gives,potionWanted))[0]?.slot??-1;
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
-        exec.run('potion',['potion','inventory'],()=>potionChannel().allowed&&!bot.inventoryBlocked&&!bot.logistics.reserved&&
-          potionResource(c)===potionWanted&&
-          fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&
+        exec.run('potion',['potion','inventory'],()=>!p.c.rip&&potionChannel().allowed&&!bot.inventoryBlocked&&!bot.logistics.reserved&&
+          potionResource(p.c)===potionWanted&&
+          fingerprint(p.c.items[slot])===fp&&bot.consumable(p.c.items[slot])&&
           !p.call('is_on_cooldown','use_hp'),()=>{
           for(const channel of potionChannel().interrupt){p.call('stop',channel);bot.event('potion.channelInterrupted',{channel,reason:'survival-before-channel'});}
           bot.event('inventory.intent',{kind:'consume',item:item.name,before,journaled:false});
@@ -188,7 +188,7 @@ export function createFarmer(bot){
             bot.event('potion.consumeConfirmed',{item:item.name,before,after:bot.count(item.name)});
            bot.event('inventory.result',{kind:'consume',result:state,journaled:false,valueActionsBlocked:false});}});
       }else if(resource){
-        exec.run('regen',['potion'],()=>potionChannel().allowed&&!p.call('is_on_cooldown','use_hp'),
+        exec.run('regen',['potion'],()=>!p.c.rip&&p.c[resource]<p.c['max_'+resource]&&potionChannel().allowed&&!p.call('is_on_cooldown','use_hp'),
           ()=>p.call('use_skill','regen_'+resource),{delay:4000});
       }
     }

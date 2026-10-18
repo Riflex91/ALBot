@@ -1,4 +1,4 @@
-import {boundedStockVariantAllowed,localVariantQuantity} from './stock-policy.mjs';
+import {boundedStockVariantAllowed,localVariantQuantity,boundedStockSurplus} from './stock-policy.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 // Finite, replaceable working stock, not a generic liquidation allowlist.
@@ -15,7 +15,7 @@ export function operatingStockFloor(name,cfg,farmers=0){
  if(!Number.isSafeInteger(target)||target<0||target>100000)return null;
  return Math.max(hp?1000:300,target*Math.max(1,farmers));
 }
-export function automaticOperatingStockRule(bot,item){
+function operatingStockBaseRule(bot,item){
  const {cfg,p,me}=bot,e=bot.economy;
  if(me.role!=='merchant'||!cfg.merchant?.enabled||
     cfg.production?.enabled!==true||cfg.production?.autoDisposition!==true||
@@ -28,15 +28,51 @@ export function automaticOperatingStockRule(bot,item){
  if(floor===null||!meta||meta.cash||meta.cash_item||meta.exclusive||meta.rare||
     meta.rarity||meta.quest||meta.event||meta.action||meta.onclick||
     !Number.isFinite(meta.g)||meta.g<=0||!e.npcFor(item.name))return null;
- const held=localVariantQuantity(p.c.items,item),
-  reserved=bot.production?.reservedQuantity?.(item)??0;
- if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||reserved<0||
-    !Number.isSafeInteger(floor+reserved)||held<=floor+reserved)return null;
  const price=e.value(item);if(!Number.isFinite(price)||price<0)return null;
- const excess=held-floor-reserved;
  return {...defaultsFor(ITEM_RULE),name:'Betriebsvorrat '+item.name,
   enabled:true,item:item.name,role:me.role,character:me.name,action:'sell',
   minLevel:0,maxLevel:0,priority:-350,keep:floor,teamReserve:0,
-  batch:Math.min(9999,item.q??1,excess),maxCount:1000000000,minPrice:Math.floor(price),
+  batch:9999,maxCount:1000000000,minPrice:Math.floor(price),
   _autoDisposition:true,_autoOperatingStock:true};
+}
+export function automaticOperatingStockRule(bot,item){
+ const rule=operatingStockBaseRule(bot,item);if(!rule)return null;
+ const held=localVariantQuantity(bot.p.c.items,item),
+  reserved=bot.production?.reservedQuantity?.(item)??0;
+ if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||reserved<0||
+    !Number.isSafeInteger(rule.keep+reserved)||held<=rule.keep+reserved)return null;
+ return {...rule,batch:Math.min(9999,item.q??1,held-rule.keep-reserved)};
+}
+// Whole bank-stack disposition is authorized only when the FULL floor is
+// already physically carried. Retained bank stock is NEVER sale backing.
+// The existing bank reclaim journal still proves the exact withdrawal.
+export function bankOperatingStockRule(bot,item,{carried=false}={}){
+ const {p}=bot,e=bot.economy,meta=p.G.items?.[item?.name],q=item?.q??1;
+ if(bot.me.role!=='merchant'||!e?.safe(item)||
+    !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
+    !Number.isSafeInteger(q)||q<1||q>9999)return null;
+ if(meta.quest||meta.q||meta.e||meta.exchange||meta.event||meta.cash||meta.cash_item||
+    meta.soulbound||meta.compound||meta.upgrade||meta.rare||meta.rarity||meta.action||
+    meta.onclick||meta.offering||meta.throw||meta.ignore||meta.wtype||meta.class||
+    meta.grades||meta.tier)return null;
+ const source=e.explicit(item,'inventory');
+ let rule,floor;
+ const held=localVariantQuantity(p.c.items,item),backing=held-(carried?q:0),
+  reserved=bot.production?.reservedQuantity?.(item)??0;
+ if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||reserved<0)return null;
+ if(source){
+  if(source.enabled!==true||source.action!=='keep'||source.excessAction!=='sell'||
+     !Number.isSafeInteger(source.batch)||source.batch<q)return null;
+  const policy=boundedStockSurplus({held:Math.max(0,backing),reserved,
+   keep:source.keep,teamReserve:source.teamReserve,maximum:source.maxCount});
+  if(!policy.valid)return null;floor=policy.protectedFloor;
+  rule={...source,action:'sell',_boundedSource:source,_autoDisposition:true};
+ }else{
+  rule=operatingStockBaseRule(bot,item);if(!rule)return null;
+  floor=rule.keep+reserved;
+ }
+ const price=e.value(item);
+ if(!Number.isSafeInteger(floor)||backing<floor||!Number.isFinite(price)||
+    price<rule.minPrice||!e.remaining(rule))return null;
+ return {...rule,batch:q,_bankOperatingStock:true,_carriedProtectedFloor:floor};
 }

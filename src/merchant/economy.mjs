@@ -1,4 +1,4 @@
-import {automaticOperatingStockRule} from '../items/operating-stock.mjs';
+import {automaticOperatingStockRule,bankOperatingStockRule} from '../items/operating-stock.mjs';
 import {chooseRule,identity,fingerprint,protectedItem,variantCount,distance,samePlace,surplusQuantity} from '../core/policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 import {boundedExcessSaleRule,boundedStockSurplus,boundedStockVariantAllowed,localVariantQuantity} from '../items/stock-policy.mjs';
@@ -65,6 +65,10 @@ export function createEconomy(bot){
   const reserved=['sell','bank','list','send'].includes(r.action)?
    bot.production?.reservedQuantity?.(i,r.action==='send'?r.recipient:'')??
    (bot.production?.reserved(i)?count(i):0):0;
+  if(r._bankOperatingStock){
+   const current=bankOperatingStockRule(bot,i,{carried:true});
+   return current?Math.min(i.q??1,r.batch,current.batch):0;
+  }
   if(r._autoOperatingStock){
    const current=automaticOperatingStockRule(bot,i);
    if(!current||current.keep!==r.keep||current.minPrice>value(i))return 0;

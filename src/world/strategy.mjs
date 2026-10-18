@@ -166,6 +166,8 @@ export function createStrategy(bot){
   if(rankedG!==p.G||Date.now()-rankedAt>=w.cacheTtlMs){rankedG=p.G;rankedAt=Date.now();ranked=rankFarmTargets(p.G,p.c,explicitTargets(),cfg.farming.mode,rates,w.learning?w.learningWeight:0);}return ranked.filter(id=>safeTarget(id));
  }
  function travel(){
+  if(activity?.observationUnknown){bot.target=null;bot.movement.stop();bot.reason='Aktivität kurz unbeobachtet: neue Reise/Pulls warten auf frische Sichtung';return true;}
+
   if(me.role==='merchant'&&manual?.task==='bank'){bot.bank.ready();return true;}
   if(me.role!=='farmer')return false;if(!activity)return bot.teamPlan?.travel()??false;
   if(full&&cfg.party.enabled&&cfg.party.waitForTeam&&me.name===bot.leader&&(bot.farmers??[]).some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.rip||bot.transport.fresh(n)?.realm!==p.realm()||!samePlace(p.c,bot.transport.fresh(n))||distance(p.c,bot.transport.fresh(n))>cfg.party.followDistance*2))){bot.reason='Warte auf Gruppe vor Aktivitätsreise';if(bot.movement.order?.owner==='world')bot.movement.stop();return true;}

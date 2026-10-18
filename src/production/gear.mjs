@@ -101,7 +101,13 @@ export function createGear(bot){
    try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole,old=profile.slots[rule.slot];const nextStats=p.call('item_properties',item),oldStats=old?p.call('item_properties',old):null;if(!gearSuitability(oldStats,nextStats,role,profile.class,member.merchantMobility).ok)continue;const score=gearScore(nextStats,role,profile.class),previous=oldStats?gearScore(oldStats,role,profile.class):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
   }
  }return result.slice(0,20);}
- function targets(){const result=[...(bot.intelligence?.targets()??[]),...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
+ function targets(){
+  const fairness=g=>{
+   const member=cfg.characters.find(c=>c.name===g.character),profile=g.character===me.name?snapshot():profiles[g.character];
+   return member?gearCatchUpPriority(profile,cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>c.name===me.name?snapshot():profiles[c.name])):0;
+  };
+  const automatic=(bot.intelligence?.targets()??[]).map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
+  const result=[...automatic,...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
   // Prefer a server-compatible, non-protected weapon already in Merchant
   // inventory. A +3 staff held in stock must beat buying/delivering +0.
   // No speculative bank item is counted as a physically available transfer.

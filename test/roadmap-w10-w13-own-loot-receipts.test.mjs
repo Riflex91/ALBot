@@ -225,3 +225,20 @@ test('W13 gear suggestions require current exact variant; variants never create 
  assert.deepEqual(hints[0]?.candidateRecipients,['B']);
  assert.equal(hints[0]?.dispatchAuthorized,false);
 });
+
+test('W13 two simultaneous chest callbacks cannot spend the same physical delta twice',()=>{
+ const f=fixture();f.chests.Y={x:5,y:5,items:1,map:'main',in:'main'};
+ f.receipts.beforeLoot();
+ assert.equal(f.receipts.observeChest(chest([{name:'ring'}],5)),true);
+ assert.equal(f.receipts.observeChest({
+  ...chest([{name:'ring'}],5),id:'Y'}),true);
+ assert.equal(f.receipts.status().pending,2);
+ f.items[1]={name:'ring',level:0};f.setGold(105);
+ f.receipts.sample();f.receipts.sample();
+ const result=f.receipts.status();
+ assert.equal(result.physicalConfirmed,1);
+ assert.equal(result.serverOnly,1);
+ assert.equal(result.pending,0);
+ assert.equal(result.purposeHints[0]?.observedUnits,1);
+ assert.equal(f.events.filter(e=>e[0]==='loot.ownReceipt').length,1);
+});

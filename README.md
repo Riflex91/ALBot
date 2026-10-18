@@ -1,3 +1,15 @@
+## Dauerbetrieb 0.10.11-candidate (18.10.2026)
+
+[Umgesetzte Autonomiemodule, Einstellungen, Prüfungen und ausdrücklich offene Roadmap-Pakete](docs/AUTONOMIE-ABGLEICH-2026-10-18.md). Neu sind unter anderem endliche Betriebsvorräte mit getragener Bankreserve, Aktionskosten-/Condition-Gates, sichere Eventgrace, Revive-Todesbindung und Systembelohnungs-Mail. Persönliche Einstellungen bleiben unverändert. **Der separate signierte V2-Release-Kanal wird durch einen Main-Merge nicht aktualisiert.** Der neue Mainstand ist als persönliche [bot.js](bot.js) verfügbar; neue Spiel-Liveabnahme offen.
+
+---
+
+## Kampf-KI: verifizierte Priest-Heilung und Ranger-Rettung (18.10.2026)
+
+[Implementierung, Schutzgrenzen, Tests und getrennte Release-Freigabe](docs/COMBAT-HEILUNG-2026-10-18.md). Die Änderungen auf `main` ersetzen das signierte Ingame-Release nicht automatisch.
+
+---
+
 # Neuer Auto-Bootstrap: Runtime-Updates ohne erneutes CODE-Einfügen (Draft, 18.10.2026)
 
 Die neue **[dist/albot.bootstrap.auto.js](dist/albot.bootstrap.auto.js)** benutzt einen fest hinterlegten öffentlichen ECDSA-P-256-Schlüssel und das signierte Freigabemanifest **[dist/albot.release.json](dist/albot.release.json)**. Nach einmaliger Installation lädt sie bei jedem CODE-Start automatisch die jeweils **signierte und freigegebene** Runtime und prüft SHA-256 vor der Ausführung. `general.autostart=true` bleibt aktiviert. **Live bestätigt:** Am 18.10.2026 hat der Nutzer den Auto-Bootstrap V2 mit aktiviertem Autostart auf allen vier Charakteren erfolgreich getestet (My_Ranger1, My_Ranger2, My_Priest und My_Merchant). **V2 ist der bevorzugte Startweg** für neue CODE-Slots; Logs und Dauerbetrieb sind nicht unabhängig verifiziert. Die alte erfolgreiche Bootstrap-Datei `dist/albot.bootstrap.js` und `bot.js` bleiben erhalten. Der private Releaseschlüssel wird nicht in Git abgelegt; zur Freigabe späterer Updates braucht der GitHub-Workflow das Secret `ALBOT_RELEASE_SIGNING_KEY_PEM`. [Installation, Key-Setup und Releaseablauf](docs/BOOTSTRAP-AUTO-RELEASE.md).

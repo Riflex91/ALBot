@@ -125,6 +125,13 @@
             "title": "Eigene Charaktere und Rollen beim Start automatisch erkennen",
             "default": false,
             "description": "Namenloses Profil: Accountliste und aktueller Realm; Charakterstarts erfolgen nur mit bewusst aktivierter Levelausgleichsrotation, belegten Levelwerten und sicheren Lifecycle-APIs. Bei mehreren Merchants ist der alphabetisch erste zustaendig."
+          },
+          "callCostCeiling": {
+            "type": "integer",
+            "title": "Normale Aktionskosten im 4-Sekunden-Fenster (Überlebensreserve separat)",
+            "default": 160,
+            "minimum": 60,
+            "maximum": 170
           }
         },
         "required": [
@@ -2589,6 +2596,43 @@
           "adaptiveLearning": {
             "type": "boolean",
             "title": "Begrenzte Strategieanpassungen aus bestätigten Ergebnissen",
+            "default": true
+          },
+          "eventGraceMs": {
+            "type": "integer",
+            "title": "Beobachtungslücke bei Events maximal halten (ms)",
+            "default": 2500,
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "seasonalBuff": {
+            "type": "boolean",
+            "title": "Seasonalen kostenlosen Buff bei sicherem Vorbeikommen holen",
+            "default": true
+          },
+          "boosters": {
+            "type": "boolean",
+            "title": "Bereits aktive eigene Booster passend zum Farmziel umschalten",
+            "default": false
+          },
+          "activateBoosters": {
+            "type": "boolean",
+            "title": "Inaktive eigene Booster aktivieren (beginnt Ablaufzeit)",
+            "default": false
+          },
+          "respectHopPenalties": {
+            "type": "boolean",
+            "title": "Optionale Serverwechsel mit unbelegtem Sickness-/Fatigue-Verlust zurückstellen",
+            "default": true
+          },
+          "travelBlink": {
+            "type": "boolean",
+            "title": "Mage-Blink nur auf direkt begehbaren sicheren Reiseabschnitten",
+            "default": false
+          },
+          "rewardMail": {
+            "type": "boolean",
+            "title": "Eigene Systembelohnungen über verfügbaren authentifizierten Browser-Mailreader abholen",
             "default": true
           }
         },

@@ -1,3 +1,4 @@
+import {travelBlinkEligible,blinkLandingPoint} from '../combat/travel-blink.mjs';
 import {arrived,samePlace,distance,xy} from './policy.mjs';
 export function transientMovementInterruption(error){
  const code=String(error?.reason??error?.message??error??'').toLowerCase();
@@ -34,6 +35,7 @@ export function createMovement(bot){
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
+    if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
     // An asynchronous open_stand may not yet be reflected in character.stand.
     // Never initiate a route while opening/closing the stand is pending.
     if(bot.me?.role==='merchant'&&exec.busy('stand'))return false;
@@ -95,8 +97,10 @@ export function createMovement(bot){
     }
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
-    token.mode=local?'move':'smart_move';
-    const accepted=exec.run('move',['movement'],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand'),()=>p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
+    const blink=local&&travelBlinkEligible(bot,d,owner),landing=blink?blinkLandingPoint(d):null;
+    if(blink)token.dest={...dest,x:landing.x,y:landing.y,radius:Math.max(8,dest.radius)};
+    token.mode=blink?'blink':local?'move':'smart_move';
+    const accepted=exec.run('move',['movement',...(blink?['mana']:[])],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&(!blink||travelBlinkEligible(bot,d,owner)),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
     if(error?.transient==='interrupted'){
      order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,
       reason:'Native smart route was cancelled externally; safe retry'});return;

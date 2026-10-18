@@ -1,3 +1,4 @@
+import {runtimeConditionGate} from '../core/action-admission.mjs';
 import {farmHealer,farmHealing,farmDefense,farmFearFactor} from './composition.mjs';
 import {outgoingDamageEstimate} from '../combat/damage-model.mjs';
 import {estimateCombatTimeline} from '../combat/combat-time.mjs';
@@ -14,7 +15,7 @@ export function assessCombat(monster,members,mode='balanced',aggro=1,options={})
  const healer=farmHealer(alive,options);
  // Preserve the old exclusive healer budget until full heal/attack scheduling
  // is validated. A solo priest continues to attack, never heal simultaneously.
- const damageRows=alive.filter(c=>c!==healer).map(c=>({
+ const damageRows=alive.filter(c=>c!==healer&&runtimeConditionGate(c,options.G,'attack',['attack']).allowed).map(c=>({
   c,estimate:outgoingDamageEstimate(c,monster,{
    fearFactor:farmFearFactor(c,monster,aggro),
    uncertainty:options.outgoingUncertainty??0

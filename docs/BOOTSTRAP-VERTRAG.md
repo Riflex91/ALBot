@@ -17,11 +17,11 @@ Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 | --- | --- |
 | Manifest-URL | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json` |
 | Manifest-Branch | `codex/w00-w01-readonly-disposition-20261018` |
-| Manifest `sequence` | `2` |
+| Manifest `sequence` | `3` |
 | Manifest `version` | `0.10.10-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `693552` |
-| Manifest `sha256` | `05ae744175f359ea8d723d0747a4777b682641cf45f33adc2a06165feedc8f4d` |
+| Manifest `bytes` | `686855` |
+| Manifest `sha256` | `3c47ce5f94987016c6adac867479266932ff921c642d2bfa6fce9bd4d732429d` |
 | Signaturprüfung | ECDSA-P-256 über die dokumentierten Manifestfelder **gültig** |
 | Ingame-Erfolg | Aus CODE/Manifest allein **nicht nachgewiesen** |
 

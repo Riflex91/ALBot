@@ -1,3 +1,4 @@
+import {hopPenaltyDecision} from './travel-economics.mjs';
 import {assessServerHop,assessHomeSpawn,chooseHomeFallback} from '../world/servers.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createHopLifecycle} from './hop-lifecycle.mjs';
@@ -123,10 +124,13 @@ export function createTeamTravel(bot){
  }
  function admission(realm){return destinationNormal(realm)&&
   (cfg.general.testLogging===undefined||assessServerHop(registry().find(s=>s.realm===realm),history,Date.now(),{pvp:false,cooldown:w.hopCooldownMs}).allowed);}
- const safe=()=>bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
+ const safe=()=>bot.lootDeparture?.beforeDeparture(null,'realm-hop')!==false&&bot.running&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.inventoryBlocked&&!bot.logistics.reserved&&!exec.pending.size&&!Object.keys(p.c.q??{}).length&&!bot.monsters().some(m=>m.target===me.name);
  const realmAllowed=realm=>nonPvpRealm(realm)&&!cfg.farming.pvp&&admission(realm)&&w.serverHop&&w.allowedRealms.includes(realm);
  const hopLifecycle=createHopLifecycle(bot,{destinationNormal,safe});
- function requestHop(realm,{pressureEscape=false}={}){if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
+ function requestHop(realm,{pressureEscape=false,automatic=false}={}){
+  const economics=hopPenaltyDecision({character:p.c,from:p.realm(),to:realm,home:p.c.home??homeRealm,automatic:automatic&&w.respectHopPenalties!==false,pressureEscape});
+  if(!economics.allowed){bot.event?.('server.hopCostDeferred',{realm,reason:economics.reason});return false;}
+ if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
   const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
   hop={id:bot.session+':hop:'+Date.now(),realm,names,pressureEscape,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
   bot.event?.('server.hop.plan',{id:hop.id,from:p.realm(),to:realm,members:names.join(','),pressureEscape,until:hop.until});
@@ -317,7 +321,7 @@ export function createTeamTravel(bot){
    const next=canMove?servers.filter(s=>s.realm!==p.realm()&&realmAllowed(s.realm)&&
      Number.isFinite(current?.players)&&Number.isFinite(s.players)&&
      s.players<current.players*.85).sort((a,b)=>a.players-b.players)[0]:null;
-   if(next&&requestHop(next.realm)){
+   if(next&&requestHop(next.realm,{automatic:true})){
     bot.event('server.autoHop',{realm:next.realm,
      reason:'Anhaltender Standortdruck und frischer niedrigerer Serverbesatz'});
     return;

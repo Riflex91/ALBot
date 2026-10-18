@@ -1,3 +1,4 @@
+import {runtimeConditionGate,currentConditionEvidence} from '../core/action-admission.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {damageMultiplier,outgoingDamageEstimate} from '../combat/damage-model.mjs';
 
@@ -6,7 +7,7 @@ export function combatMembers(bot,planned=false){
  const {p,cfg,me}=bot;
  const peers=cfg.party.enabled===false?[]:(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport.fresh(n))
   .filter(h=>h?.running&&!h.rip&&!h.questVisit&&h.realm===p.realm()&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2))
-  .map(h=>({...h,...h.gear?.stats,...h.stats,hp:h.hp,max_hp:h.max_hp}));
+  .map(h=>currentConditionEvidence(bot,{...h,...h.gear?.stats,...h.stats,hp:h.hp,max_hp:h.max_hp}));
  return [{...p.c,capabilities:bot.capabilities?.snapshot()},...peers].filter(c=>c.name!==cfg.party.merchant&&!c.rip&&c.hp>0);
 }
 export function compositionOptions(bot,planned=false){
@@ -15,7 +16,7 @@ export function compositionOptions(bot,planned=false){
 }
 function freshCapability(c,id,options){
  const cap=c.capabilities,age=Date.now()-(cap?.at??0);
- return age>=0&&age<(options.ttl??10000)&&(cap?.sustainable??cap?.ready)?.includes(id)&&!c.s?.stunned&&!c.s?.silenced;
+ return age>=0&&age<(options.ttl??10000)&&(cap?.sustainable??cap?.ready)?.includes(id)&&runtimeConditionGate(c,options.G,'skill:'+id,['mana','skill']).allowed;
 }
 export function farmHealer(members,options={}){
  const skill=options.G?.skills?.heal;if(!options.healing||!skill||members.length<2)return null;
@@ -38,7 +39,7 @@ export function farmHealing(healer,members,seconds,options={}){
  return Math.max(0,casts*amount);
 }
 export function farmThroughput(monster,members,count,options={}){
- const healer=farmHealer(members,options),active=members.filter(c=>c!==healer&&c.attack>0&&c.frequency>0);
+ const healer=farmHealer(members,options),active=members.filter(c=>c!==healer&&c.attack>0&&c.frequency>0&&runtimeConditionGate(c,options.G,'attack',['attack']).allowed);
  // Every member uses its own damage type and armor/resistance piercing.
  // Safety uncertainty is distinct from the official damage multiplier.
  const perMember=c=>outgoingDamageEstimate(c,monster,{

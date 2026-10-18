@@ -13,6 +13,34 @@ export function createPorts(root){
   const directSave=()=>rotationCode!==null&&rotationCode.length>0&&!!find('upload_code');
   return {root,parent,headless,ipc,h,
     has:name=>!!find(name),
+    rewardMailCapability(){
+     let reason='';
+     if(headless)reason='authenticated-mail-reader-unavailable-on-headless-host';
+     else if(!parent.$||typeof parent.$.ajax!=='function'||!find('api_call'))
+      reason='official-authenticated-mail-reader-unavailable';
+     else {try{if(!['https://adventure.land','https://www.adventure.land'].includes(parent.location.origin))
+      reason='mail-reader-origin-not-verified';}catch{reason='mail-reader-origin-unavailable';}}
+     return {supported:!reason,reason:reason||'official-browser-authenticated-api'};
+    },
+    async readRewardMailPage(cursor=null){
+     if(!this.rewardMailCapability().supported)throw Error('Authenticated reward mail reader unavailable');
+     if(cursor!==null&&(typeof cursor!=='string'||!/^\d{1,8}$/.test(cursor)))
+      throw Error('Invalid reward mail cursor');
+     // Same authenticated endpoint/options as official api_call(), but read
+     // infs directly: api_call deletes infs and forwards them to the mail UI.
+     const data=await Promise.resolve(parent.$.ajax({method:'POST',dataType:'json',
+      contentType:'application/json; charset=utf-8',url:'/api/pull_mail',
+      data:JSON.stringify(cursor===null?{}:{cursor}),timeout:15000}));
+     if(!data||data.failed||!Array.isArray(data.infs)||data.infs.length>64)
+      throw Error('Invalid authenticated reward mail response');
+     const page=data.infs.find(row=>row?.type==='mail');
+     if(!page||!Array.isArray(page.mail)||page.mail.length>40)throw Error('Reward mail page unavailable');
+     // Free-form subject/message text is discarded at the port boundary.
+     return {more:page.more===true,cursor:page.cursor??null,mail:page.mail.map(row=>({
+      id:row.id,to:row.to,item:row.item,taken:row.taken,can_take:row.can_take,
+      subject_message:{phrase:row.subject_message?.phrase}
+     }))};
+    },
     characterSwitchCapability(name){
      let reason='';
      if(headless)reason='headless-host';

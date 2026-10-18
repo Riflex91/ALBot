@@ -184,3 +184,56 @@ test('W04 final economy guard cancels queued NPC sale after rule revocation',()=
  cfg.items=[];
  assert.equal(economy.spare(0,staged),0);
 });
+
+function operatingBankFixture(){
+ const f=fixture({item:{name:'scroll0',q:20},explicit:false});
+ const {bot,inv,bankPack}=f;
+ bot.me.role='merchant';bot.farmers=['A','B','C'];
+ bot.cfg.merchant.enabled=true;bot.cfg.production.enabled=true;
+ bot.cfg.production.autoDisposition=true;
+ bot.p.G.items.scroll0={type:'uscroll',g:1000,s:9999};
+ bot.economy.npcFor=()=>({map:'main',x:0,y:0});
+ inv[1]={name:'scroll0',q:100};
+ bot.p.call=(name,pack,slot,dest)=>{
+  assert.equal(name,'bank_retrieve');inv[dest]=bankPack[slot];bankPack[slot]=null;
+  return Promise.resolve({success:true});
+ };
+ return f;
+}
+test('W04 regular bank scan stages NPC-replaceable excess only against a carried reserve',()=>{
+ const {bot,calls,inv}=operatingBankFixture();
+ bot.bank.preventiveDisposition();
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.reclaim');
+ assert.equal(calls[0].params.guard(),true);
+ inv[1].q=99;
+ assert.equal(calls[0].params.guard(),false,'late reserve drift blocks withdrawal');
+});
+test('W04 staged operating stock keeps the physical floor through withdrawal and NPC continuation',async()=>{
+ const {bot,calls,sales,inv}=operatingBankFixture();
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ await calls[0].params.call();
+ assert.equal(inv[0].q,20);assert.equal(inv[1].q,100);
+ assert.equal(bot.bank.recoverCapacity(),true);
+ assert.equal(sales.length,1);assert.equal(sales[0].rule._bankOperatingStock,true);
+ assert.equal(sales[0].rule.keep,100);
+});
+test('W04 new reservation after withdrawal rolls back instead of selling against cached bank copies',async()=>{
+ const {bot,calls,sales,inv}=operatingBankFixture();
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ await calls[0].params.call();bot.production={reservedQuantity:()=>1,reserved:()=>true};
+ bot.bank.recoverCapacity();
+ assert.equal(sales.length,0);
+ assert.equal(calls.at(-1).kind,'bank.store');
+ assert.equal(calls.at(-1).params.guard(),true);
+});
+
+test('W04 unexplained reserve-stock drift after withdrawal remains quarantined instead of guessing a rollback',async()=>{
+ const {bot,calls,sales,inv}=operatingBankFixture();
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ await calls[0].params.call();inv[1].q=99;
+ bot.bank.recoverCapacity();
+ assert.equal(sales.length,0);assert.equal(calls.length,1);
+ assert.equal(bot.bank.pending,true);
+ assert.equal(bot.bank.recoveryStatus().requiresManualReview,true);
+});

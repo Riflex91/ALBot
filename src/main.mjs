@@ -1,3 +1,9 @@
+import {createRewardMail} from './items/reward-mail.mjs';
+import {createRevivalClaims} from './combat/revival-claims.mjs';
+import {createWorldOpportunities} from './world/opportunities.mjs';
+import {createLootDeparture} from './items/loot-departure.mjs';
+import {createActionAdmission} from './core/action-admission.mjs';
+import {beginCombatLife} from './combat/recovery-policy.mjs';
 import {automaticSupplyReceiver,onlineSupplyFarmers,discoverAccountRoster} from './items/potion-supply.mjs';
 import {createAdaptive} from './world/adaptive.mjs';
 import {createBosses,bossProfile} from './combat/bosses.mjs';
@@ -229,13 +235,15 @@ export function install(root){
    bot.potionReceipts=createPotionReceipts({session:bot.session,realm:p.realm(),now});
   bot.impactIntents=createImpactIntents({name:me.name,session:bot.session,realm:p.realm(),now});
   bot.learning=createLearning(bot);bot.cloud=createCloudSync(bot);
-  const exec=new Executor({retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
-  bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
+  bot.admission=createActionAdmission(bot);
+  const publicCall=p.call.bind(p);p.call=(name,...args)=>{bot.admission.record(name,args);return publicCall(name,...args);};
+  const exec=new Executor({admit:(key,resources)=>bot.admission.allow(key,resources),retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
+  bot.revivals=createRevivalClaims(bot);bot.lootDeparture=createLootDeparture(bot);bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.merchant=createMerchant(bot);bot.supplyForecast=createSupplyForecast(bot);bot.accountStock=createAccountStockLedger(bot);bot.services=createServices(bot);bot.objectives=createObjectives(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
   if(cfg.world){bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
-  if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.combatAssessment=createCombatAssessment(bot);bot.elixirs=createElixirs(bot);bot.seashells=createSeashellCycle(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);}
+  if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.combatAssessment=createCombatAssessment(bot);bot.elixirs=createElixirs(bot);bot.seashells=createSeashellCycle(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);bot.opportunities=createWorldOpportunities(bot);bot.rewards=createRewardMail(bot);}
   const cleanup=[];
   const game=root.game??p.parent.game;if((bot.observations||bot.impactIntents)&&typeof game?.on==='function'&&typeof game?.remove==='function')for(const [event,handler] of [['hit',d=>{bot.observations?.hit(d);bot.impactIntents?.observe(d);bot.threats?.hit(d);bot.combatAssessment?.hit(d);bot.bosses?.hit(d);}],['death',d=>{bot.observations?.death(d);bot.threats?.death(d);}],['trade',d=>bot.marketDemand?.sale(d)]].filter(([event])=>event!=='trade'||bot.marketDemand)){const id=game.on(event,handler);cleanup.push(()=>game.remove(id));}
   if(bot.services&&typeof p.c.on==='function'&&(typeof p.c.remove==='function'||typeof p.c.off==='function')){const events=p.c,handler=data=>bot.services.observeMerrit(data),id=events.on('merrit',handler);cleanup.push(()=>typeof events.remove==='function'?events.remove(id):events.off('merrit',handler));}
@@ -262,7 +270,7 @@ export function install(root){
     exec.run('party.request',['party'],()=>bot.running&&!p.c.party&&bot.account?.active()!==false&&!!bot.transport.fresh(target)?.running,()=>p.call('send_party_request',target),{delay:30000});
   }
   function publish(){try{const text=(bot.running?'ALBot ':'PAUSE ')+bot.reason.slice(0,50);if(text!==lastPublished){lastPublished=text;p.call('set_message',text);}}catch{}panel?.render();}
-  function halt(reason){bot.cloud.close();bot.learning.flush(true);bot.impactIntents?.close();bot.combatAssessment?.close();bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.supplyForecast?.close();bot.skillWakeups?.close();bot.potionReceipts?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.bosses?.close();bot.adaptive?.flush(true);bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.objectives?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason}); /* Export only on explicit user command. */}
+  function halt(reason){bot.lootDeparture?.reset();bot.cloud.close();bot.learning.flush(true);bot.impactIntents?.close();bot.combatAssessment?.close();bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.market?.close();bot.merchant?.close();bot.supplyForecast?.close();bot.skillWakeups?.close();bot.potionReceipts?.close();bot.rewards?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.bosses?.close();bot.adaptive?.flush(true);bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.objectives?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason}); /* Export only on explicit user command. */}
   bot.pause=(reason='Pause')=>halt(reason);
   const warningTimes=new Map();let retryAfter=0;function runtimeWarning(where,e){bot.reason='Hinweis: '+(e?.message??e);retryAfter=now()+3000;const key=where+':'+bot.reason;if(now()-(warningTimes.get(key)??0)>30000){if(warningTimes.size>=64)warningTimes.clear();warningTimes.set(key,now());report.error(where,e);report.event('runtime.warning',{where,reason:bot.reason,continued:true,retryMs:3000,valueActionsBlocked:bot.inventoryBlocked});bot.report(bot.reason);}}
   function tick(gen){if(disposed||!bot.running||gen!==generation)return;const tickStarted=now();try{
@@ -271,6 +279,7 @@ export function install(root){
     // exact, pinned source/destination evidence can release the value lock.
     if(bot.inventoryBlocked&&(['bank.store','gather.fishing','gather.mining','exchange','gold.send','gold.receive'].includes(bot.journal?.kind)))bot.recovery?.reconcile();
     if(now()<retryAfter)return;
+    beginCombatLife(bot);bot.revivals.observe();
     bot.decisionEpoch=(bot.decisionEpoch??0)+1;exec.poll();if(bot.priority)exec.beginFrame();bot.movement.poll();bot.threats?.sample();bot.observations?.sample();
     if(!bot.running)return;
     bot.lossGuard?.sample();if(bot.lossGuard?.blocked){bot.transport.heartbeat();bot.pause('Accountgold: mindestens 85 % Verlust innerhalb des Prüfzeitfensters; manuelle Freigabe erforderlich');return;}
@@ -283,6 +292,7 @@ export function install(root){
     const economyDue=now()-lastEconomy>=cfg.general.economyTickMs;if(economyDue)lastEconomy=now();const transferDue=now()-lastTransfer>=(cfg.general.transferIntervalMs??cfg.general.economyTickMs);if(transferDue)lastTransfer=now();bot.gold?.poll(transferDue);bot.logistics.poll(transferDue);
     if(!bot.running)return;
     bot.allocation?.tick();bot.adaptive?.tick();if(economyDue)bot.metrics.measure('economy.supplyForecast',()=>bot.supplyForecast?.tick());if(economyDue)bot.metrics.measure('objectives',()=>bot.objectives?.tick());bot.metrics.measure('team-plan',()=>bot.teamPlan?.tick());bot.metrics.measure('encounter',()=>bot.encounter?.tick());bot.metrics.measure('bosses',()=>bot.bosses?.tick());bot.adaptive?.flush();bot.content?.flush();bot.learning.flush();if(economyDue)bot.cloud.tick();if(economyDue){bot.metrics.measure('economy.strategy',()=>{bot.strategy?.plan();bot.strategy?.sample();});}
+    if(economyDue)bot.rewards?.tick();
     const merchantDue=merchantActionDue({
       now:now(),last:lastMerchant,normalDue:economyDue,
       merchant:me.role==='merchant',
@@ -295,9 +305,9 @@ export function install(root){
     if(bot.priority){bot.priority.run([
      {id:'recovery',kind:'emergency',exclusive:true,run:()=>bot.farmer.safety()},
      {id:'elixir',kind:'safety',guard:()=>economyDue&&!bot.recovering,run:()=>bot.elixirs.tick()},
-     {id:'world',kind:bot.teamPlan.materialActive()?'background':'normal',priority:20,exclusive:true,guard:()=>economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name),run:()=>bot.strategy.anniversary()||bot.strategy.quest()},
+     {id:'world',kind:bot.teamPlan.materialActive()?'background':'normal',priority:20,exclusive:true,guard:()=>economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name),run:()=>bot.opportunities?.tick()||bot.strategy.anniversary()||bot.strategy.quest()},
      {id:'combat',kind:'normal',priority:10,run:()=>{bot.metrics.measure('farmer',()=>bot.farmer.tick());return !!bot.target||bot.recovering;}},
-     {id:'merchant',kind:'normal',guard:()=>merchantDue&&!bot.recovering&&!bot.strategy.busy,run:()=>{lastMerchant=now();const before=exec.pending.size;bot.metrics.measure('merchant',()=>bot.merchant.tick());return exec.pending.size>before;}},
+     {id:'merchant',kind:'normal',guard:()=>merchantDue&&!bot.recovering&&!bot.strategy.busy,run:()=>{lastMerchant=now();if(bot.opportunities?.tick())return true;const before=exec.pending.size;bot.metrics.measure('merchant',()=>bot.merchant.tick());return exec.pending.size>before;}},
      {id:'aura',kind:'safety',run:()=>bot.aura.tick()}
     ]);}else{
     const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
@@ -355,7 +365,7 @@ export function install(root){
     requestTask:(task,ttl)=>bot.strategy?.requestTask(task,ttl)??false,
     requestSupply:(item,quantity)=>bot.behavior?.requestSupply(item,quantity)??false,
     requestServerHop:realm=>bot.teamTravel?.requestHop(realm)??false,
-    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,actionAdmission:bot.admission.status(),lootDeparture:bot.lootDeparture.status(),revivals:bot.revivals.status(),rewardMail:bot.rewards?.status()??null,combatLife:bot.combatLife??null,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

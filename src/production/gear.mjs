@@ -1,3 +1,4 @@
+import {gearCatchUpPriority} from './gear-fairness.mjs';
 import {identity} from '../core/policy.mjs';
 export function gearScore(stats,role,ctype=''){
  const weights=role==='tank'?{hp:.01,armor:1,resistance:1,vit:2,vitality:2}:role==='healer'?{attack:2,int:3,mp:.02,frequency:100,armor:.3,resistance:.3,hp:.004,speed:.2}:role==='economy'?{gold:10,luck:10,speed:2,mp:.01,armor:.1,resistance:.1,hp:.002}:{attack:2,apiercing:.3,rpiercing:.3,str:1,dex:1,int:1,frequency:100,crit:2,armor:.2,resistance:.2,hp:.002,mp:.001,speed:.2};
@@ -100,7 +101,13 @@ export function createGear(bot){
    try{const role=member.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member.gearRole,old=profile.slots[rule.slot];const nextStats=p.call('item_properties',item),oldStats=old?p.call('item_properties',old):null;if(!gearSuitability(oldStats,nextStats,role,profile.class,member.merchantMobility).ok)continue;const score=gearScore(nextStats,role,profile.class),previous=oldStats?gearScore(oldStats,role,profile.class):0;if(score>previous*(1+cfg.production.minImprovement))result.push({character:name,item:item.name,level:item.level??0,slot:rule.slot,score,previous,offline:!bot.transport.fresh(name)&&name!==me.name});}catch{}
   }
  }return result.slice(0,20);}
- function targets(){const result=[...(bot.intelligence?.targets()??[]),...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
+ function targets(){
+  const fairness=g=>{
+   const member=cfg.characters.find(c=>c.name===g.character),profile=g.character===me.name?snapshot():profiles[g.character];
+   return member?gearCatchUpPriority(profile,cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>c.name===me.name?snapshot():profiles[c.name])):0;
+  };
+  const automatic=(bot.intelligence?.targets()??[]).map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
+  const result=[...automatic,...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
   // Prefer a server-compatible, non-protected weapon already in Merchant
   // inventory. A +3 staff held in stock must beat buying/delivering +0.
   // No speculative bank item is counted as a physically available transfer.
@@ -176,7 +183,7 @@ export function createGear(bot){
     priority,urgentVacancy:true});
   }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
-   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)});
+   result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)+gearCatchUpPriority(profile,cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>c.name===me.name?snapshot():profiles[c.name]))});
   }}return result;
  }
  function goals(){if(!cfg.production.gear)return [];return targets().flatMap(g=>{

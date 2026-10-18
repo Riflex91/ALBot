@@ -1,12 +1,12 @@
 // Bounded resource owners, no queued closures carrying obsolete inventory slots.
 export class Executor {
-  constructor({now,active,limit,onError,onEvent=()=>{},retryDelay=()=>3000}){Object.assign(this,{now,active,limit,onError,onEvent,retryDelay});this.pending=new Map();this.generation=0;this.cooldowns=new Map();this.frame=null;this.waiting=new Map();}
+  constructor({now,active,limit,onError,onEvent=()=>{},retryDelay=()=>3000,admit=()=>true}){Object.assign(this,{now,active,limit,onError,onEvent,retryDelay,admit});this.pending=new Map();this.generation=0;this.cooldowns=new Map();this.frame=null;this.waiting=new Map();}
   busy(resource){return [...this.pending.values()].some(p=>p.resources.includes(resource));}
   run(key,resources,guard,invoke,options={}){if(this.frame){if(!this.active()||this.frame.some(j=>j.key===key)||this.pending.has(key)||(this.cooldowns.get(key)||0)>this.now()||!guard())return false;if(!this.waiting.has(key))this.waiting.set(key,this.now());this.frame.push({key,resources,guard,invoke,options});return true;}return this.dispatch(key,resources,guard,invoke,options);}
   beginFrame(){this.frame=[];}
   flush(){const jobs=this.frame??[];this.frame=null;const rank=j=>j.options.priority??(/respawn|potion|regen/.test(j.key)?1000:/send|gold|partial|reclaim/.test(j.key)?800:/heal|reflection|revive|energize/.test(j.key)?700:/attack|skill|target/.test(j.key)?500:/town|move/.test(j.key)?400:/giveaway|merrit/.test(j.key)?10:200);jobs.sort((a,b)=>rank(b)-rank(a)||(this.waiting.get(a.key)??0)-(this.waiting.get(b.key)??0));for(const j of jobs){this.onEvent('action.selection',{key:j.key,priority:rank(j),reason:'Aktuelle Voraussetzungen, Wichtigkeit und Wartealter; Ressourcen nur einmal vergeben'});if(this.dispatch(j.key,j.resources,j.guard,j.invoke,{...j.options,queuedAt:this.waiting.get(j.key)??this.now()}))this.waiting.delete(j.key);else if(!j.options.value)j.options.onSettle?.('superseded');}for(const key of this.waiting.keys())if(!jobs.some(j=>j.key===key))this.waiting.delete(key);}
   dispatch(key,resources,guard,invoke,{timeout=8000,delay=250,observe=null,value=false,waitForObservation=false,onSettle=()=>{},queuedAt=null}={}){
-    if(!this.active()||this.pending.size>=this.limit||this.pending.has(key)||(this.cooldowns.get(key)||0)>this.now()||resources.some(r=>this.busy(r))||!guard())return false;
+    if(!this.active()||this.pending.size>=this.limit||this.pending.has(key)||(this.cooldowns.get(key)||0)>this.now()||resources.some(r=>this.busy(r))||!guard()||!this.admit(key,resources))return false;
     const startedAt=this.now(),queueMs=Number.isFinite(queuedAt)?
       Math.max(0,Math.min(600000,startedAt-queuedAt)):0;
     const p={key,resources,generation:this.generation,startedAt,

@@ -1,3 +1,4 @@
+import {automaticOperatingStockRule} from '../items/operating-stock.mjs';
 import {identity,variantCount,surplusQuantity,protectedItem} from '../core/policy.mjs';
 import {isAchievementCarrier} from '../items/achievement-utility.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
@@ -273,6 +274,8 @@ function mutationEconomics(i,{heldOverride=null}={}){
    // A goal only protects its exact-variant allocation; other held copies
    // remain available for normal economic decision making.
    if(!surplusQuantity(variantCount(p.c.items??[],i),bot.production?.reservedQuantity?.(i)??0))return null;
+  const operating=automaticOperatingStockRule(bot,i);
+  if(operating){noteDisposition(i,operating,{reason:'Endlicher NPC-ersetzbarer Betriebsvorrat mit voller Teamreserve'});return operating;}
   const purposes=itemPurposes(p.G,i);
   if(purposes.protected)return null;
   // Equipment ingredients must pass the recipe check BEFORE equipment

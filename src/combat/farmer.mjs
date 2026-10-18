@@ -1,3 +1,5 @@
+import {boundedInterceptPoint} from './intercept.mjs';
+import {potionChannelPolicy,rankRecoveryPotion} from './recovery-policy.mjs';
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
 import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
@@ -82,7 +84,7 @@ export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
 }
-export function combatApproach(character,target,range,canMove){const a=xy(character),b=xy(target),d=distance(character,target),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
+export function combatApproach(character,target,range,canMove){const a=xy(character),lead=boundedInterceptPoint(character,target,{range}),b=lead&&canMove(lead.x,lead.y)?lead:xy(target),d=Math.hypot(a.x-b.x,a.y-b.y),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
 export function recoveryHpThreshold(rest,hpBelow,resumeAbove,preparing,pullHp){
@@ -163,20 +165,22 @@ export function createFarmer(bot){
     const resource=c.hp/c.max_hp<hpTrigger?'hp':
       c.mp/c.max_mp<(preparing?(cfg.farming.pullMp??cfg.farming.mpBelow):cfg.farming.mpBelow)?'mp':null;
     const potionWanted=cfg.farming.potions?potionResource(c):null;
-    if((resource||potionWanted)&&!p.call('is_on_cooldown','use_hp')){
+    const potionChannel=()=>potionChannelPolicy(p.c,{threatened:bot.monsters().some(m=>m.target===c.name&&m.hp>0&&!m.dead)});
+    if((resource||potionWanted)&&potionChannel().allowed&&!p.call('is_on_cooldown','use_hp')){
       let slot=-1;
       if(potionWanted&&!bot.inventoryBlocked&&!bot.bank?.pending&&!bot.logistics.reserved)
         slot=c.items.map((i,slot)=>({i,slot,restore:p.G.items[i?.name]?.gives?.find(g=>g[0]===potionWanted)?.[1]??0}))
           .filter(r=>r.i&&!protectedItem(r.i)&&p.G.items[r.i.name]?.type==='pot'&&
             r.restore>0&&bot.consumable(r.i))
-          .sort((a,b)=>Math.abs(a.restore-(c['max_'+potionWanted]-c[potionWanted]))-
-            Math.abs(b.restore-(c['max_'+potionWanted]-c[potionWanted])))[0]?.slot??-1;
+          .sort((a,b)=>rankRecoveryPotion(c,p.G.items[b.i.name].gives,potionWanted)-
+            rankRecoveryPotion(c,p.G.items[a.i.name].gives,potionWanted))[0]?.slot??-1;
       if(slot>=0){
         const item=c.items[slot],fp=fingerprint(item),before=bot.count(item.name);
-        exec.run('potion',['potion','inventory'],()=>!bot.inventoryBlocked&&!bot.logistics.reserved&&
-          potionResource(c)===potionWanted&&
-          fingerprint(c.items[slot])===fp&&bot.consumable(c.items[slot])&&
+        exec.run('potion',['potion','inventory'],()=>!p.c.rip&&potionChannel().allowed&&!bot.inventoryBlocked&&!bot.logistics.reserved&&
+          potionResource(p.c)===potionWanted&&
+          fingerprint(p.c.items[slot])===fp&&bot.consumable(p.c.items[slot])&&
           !p.call('is_on_cooldown','use_hp'),()=>{
+          for(const channel of potionChannel().interrupt){p.call('stop',channel);bot.event('potion.channelInterrupted',{channel,reason:'survival-before-channel'});}
           bot.event('inventory.intent',{kind:'consume',item:item.name,before,journaled:false});
           return p.call('equip',slot);
         },{delay:2000,value:true,observe:()=>bot.count(item.name)<before,
@@ -184,7 +188,7 @@ export function createFarmer(bot){
             bot.event('potion.consumeConfirmed',{item:item.name,before,after:bot.count(item.name)});
            bot.event('inventory.result',{kind:'consume',result:state,journaled:false,valueActionsBlocked:false});}});
       }else if(resource){
-        exec.run('regen',['potion'],()=>!p.call('is_on_cooldown','use_hp'),
+        exec.run('regen',['potion'],()=>!p.c.rip&&p.c[resource]<p.c['max_'+resource]&&potionChannel().allowed&&!p.call('is_on_cooldown','use_hp'),
           ()=>p.call('use_skill','regen_'+resource),{delay:4000});
       }
     }

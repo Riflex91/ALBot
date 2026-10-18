@@ -215,3 +215,14 @@ test('actionable finished gear is routed before speculative bank cleanup',()=>{
  assert.equal(deliveries,1,'an allocated gear handoff should be prioritized');
  assert.deepEqual(f.calls,[],'no speculative bank or sale transfer');
 });
+
+test('confirmed exchange affinity defers bank-gold and speculative market detours only with spare slots',async()=>{
+ const {retainExchangeWorksite}=await import('../src/merchant/controller.mjs');
+ const base={now:100000,confirmedAt:50000,free:12,reserve:8,sourceRemaining:true};
+ assert.equal(retainExchangeWorksite(base),true);
+ assert.equal(retainExchangeWorksite({...base,free:9}),false);
+ assert.equal(retainExchangeWorksite({...base,sourceRemaining:false}),false);
+ assert.equal(retainExchangeWorksite({...base,urgent:true}),false);
+ assert.equal(retainExchangeWorksite({...base,now:150000}),false);
+ assert.equal(retainExchangeWorksite({...base,confirmedAt:0}),false);
+});

@@ -1,0 +1,32 @@
+name: Temporary squad march personal bundle synchronization
+on:
+  push:
+    branches:
+      - fix/squad-march-continuity-20261018
+    paths:
+      - .github/workflows/temporary-squad-march-bundle.yml
+permissions:
+  contents: write
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/squad-march-continuity-20261018
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - name: Commit generated personal bot only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js
+          git diff --cached --exit-code && exit 0
+          git commit -m "chore: regenerate personal bot bundle for coordinated march"
+          git push origin HEAD:fix/squad-march-continuity-20261018

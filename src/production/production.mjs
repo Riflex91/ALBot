@@ -579,11 +579,17 @@ export function createProduction(bot){
   });
   for(const g of ordered){
    const wait=waiting.get(goalKey(g));
-   // New visible offers supersede earlier no-offer waits without waiting for
-   // unrelated inventory or gold fingerprints to change.
+   // A visible ask is not an authorized material offer until its exact
+   // acquisition rule still permits the current price and finite quantity.
+   const waitingItem=wait?.step?.kind==='marketBuy'?
+    {name:wait.step.item,level:wait.step.level,
+     ...(wait.step.item===g.item?g.variant:{})}:null;
+   const waitingRule=waitingItem?e.rules(waitingItem,'acquisition'):null;
+   const wakeForOffer=!!waitingItem&&!!waitingRule&&
+    e.remaining(waitingRule)&&
+    bot.market?.hasVisibleBuyOffer?.(waitingItem,{strict:true,rule:waitingRule});
    if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step)&&
-      !(wait.step?.kind==='marketBuy'&&bot.market?.hasVisibleBuyOffer?.({name:wait.step.item,level:wait.step.level,
-       ...(wait.step.item===g.item?g.variant:{})},{strict:true})))continue;
+      !wakeForOffer)continue;
    if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient

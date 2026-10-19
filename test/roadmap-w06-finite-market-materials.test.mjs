@@ -275,3 +275,39 @@ test('W06 explicit standalone market buys preserve original market encounter ord
  assert.equal(f.jobs[0].job.details.tradeSlot,'trade2');
  assert.equal(f.jobs[0].job.details.unitPrice,60);
 });
+
+test('W06 only an affordable live offer may interrupt a finite material no-offer wait',()=>{
+ const f=fixture();
+ const scope={strict:true,rule:f.rule};
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),true);
+ f.seller.slots.trade2.price=150;
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),true,
+  'matching material alone remains read-only evidence, not purchase authority');
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),false,
+  'price above the actual maximum must not wake blocked production');
+ f.seller.slots.trade2.price=100;
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),true,
+  'a newly affordable listing may trigger a fresh guarded attempt');
+});
+test('W06 exhausted target, batch, or disabled purchase rule never wakes finite procurement',()=>{
+ const f=fixture(),scope={strict:true,rule:f.rule};
+ for(const mutate of [
+  g=>g.setHeld(20),
+  g=>{g.rule.batch=0;},
+  g=>{g.rule.targetCount=0;},
+  g=>{g.rule.action='sell';},
+  g=>{g.rule.enabled=false;}
+ ]){
+  const g=fixture();mutate(g);
+  assert.equal(g.market.hasVisibleBuyOffer(g.item,
+   {strict:true,rule:g.rule}),false);
+ }
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),true);
+});
+test('W06 explicit market discovery remains independent of finite-production price ceiling',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=150;
+ assert.equal(f.market.hasVisibleBuyOffer(f.item),true);
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),true);
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true,rule:f.rule}),false);
+});

@@ -43,3 +43,9 @@ Für **endliche Produktions-Marktkäufe** priorisiert der Merchant unter gleichz
 Die Preisrangfolge erteilt keine Transaktionsberechtigung: Zielmengen, `admit()`, aktuelle Regel-/Preisgrenzen, physische Kapazität, live `rid`, Goldrisiko und erneute Dispatch-Verifikation gelten unverändert. Bei gleicher Preisangabe bleibt die beobachtete stabile Reihenfolge. Eigenständig konfigurierte freie `marketBuy`-Regeln behalten ausdrücklich ihre bestehende Markt-Suchreihenfolge.
 
 Der Schritt fügt weder neue Materialquellen noch eine globale Preissuche hinzu. Er arbeitet nur mit den aktuell tatsächlich sichtbaren lokalen Verkäuferständen. Liveabnahme und neue signierte Runtime-Veröffentlichung bleiben separat.
+
+## Folgeinkrement 19.10.2026 – autorisierter Wiederanlauf statt bloßer Sichtbarkeit
+
+Ein sichtbarer Stand mit korrekter Itemvariante allein darf eine bereits gedrosselte Produktions-Marktsuche nicht wieder und wieder starten. `hasVisibleBuyOffer(..., {strict:true, rule})` prüft für solche Wiederanläufe zusätzlich, ob die **aktuelle** Erwerbsregel weiterhin `marketBuy` erlaubt, aktiviert ist, eine positive endliche Menge innerhalb von `batch`, `targetCount` und `maxCount` offen hat und der beobachtete Angebotspreis die geltende aktuelle Preisobergrenze nicht übersteigt.
+
+Die Produktionswarteschleife liest dafür die aktuelle, weiterhin zulässige Akquisitionsregel neu und respektiert ihre vorhandene Max-Aktionssperre. Überteuerte oder nicht mehr benötigte Sichtangebote bleiben unverbindliche Marktdiagnostik, nicht ein neuer Versuch mit Gold- oder Reiseausgaben. Sobald ein passendes gültiges Angebot erscheint, läuft die bisherige vollständige Wert- und Dispatch-Prüfung erneut. Dies betrifft nur den endlichen Produktions-Wakeup; freie, explizite Marktkäufe behalten ihren bisherigen Sichtbarkeitsmodus. Kein Release, keine neuen Kaufrechte.

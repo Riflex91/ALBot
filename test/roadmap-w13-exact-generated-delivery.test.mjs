@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exactAutoDeliveryVariant} from '../src/production/production.mjs';
+import {exactAutoDeliveryVariant,productionGoalMatchesItem} from '../src/production/production.mjs';
 import {chooseRule,identity} from '../src/core/policy.mjs';
 
 const base={name:'token',level:1,stat_type:'dex',p:'ancient',
@@ -77,5 +77,28 @@ test('W13 malformed exact variant proof never yields a generated send authority'
  for(const bad of [null,NaN,42,'not-an-identity']){
   assert.equal(chooseRule([rule({_autoExactVariant:bad})],
    base,context),null);
+ }
+});
+
+test('W13 same complete variant identity is used for stock availability and delivery credit',()=>{
+ assert.equal(productionGoalMatchesItem(base,goal),true);
+ for(const mutate of [
+  i=>{i.acc='wrong';},
+  i=>{i.rid='other';},
+  i=>{i.data.seed++;},
+  i=>{i.level++;},
+  i=>{i.l=true;}
+ ]){
+  const alternate=structuredClone(base);mutate(alternate);
+  assert.equal(productionGoalMatchesItem(alternate,goal),false);
+ }
+ assert.equal(productionGoalMatchesItem(base,{...goal,variant:null}),true);
+ assert.equal(productionGoalMatchesItem(base,{...goal,variant:{}}),false,
+  'an exact empty physical variant is not a wildcard for opaque properties');
+});
+test('W13 malformed variant goals fail closed even in delivery accounting',()=>{
+ const cyclic={};cyclic.self=cyclic;
+ for(const variant of [[],1,'text',{data:1n},{data:cyclic}]){
+  assert.equal(productionGoalMatchesItem(base,{...goal,variant}),false);
  }
 });

@@ -24,7 +24,7 @@ function fixture(){
   me:{name:'R',role:'farmer'},farmers:['R'],teamNames:['R'],running:true,
   count:()=>4,canConsumeImplicit:()=>true,
   beginValue(){},endValue(){},event:(name,details)=>events.push({name,details}),
-  entity:id=>id===target.id?target:null,allowed:()=>true,
+  entity:id=>id===target.id?target:null,monsters:()=>[target],allowed:()=>true,
   strategy:{heartbeat:()=>activity},bosses:{profile:id=>id==='greenjr'?
    {id,supported:true}:null},
   teamPlan:{roles:()=>({})},exec:{run:(_key,_locks,guard,call)=>{

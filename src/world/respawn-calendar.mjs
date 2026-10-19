@@ -21,7 +21,7 @@ function validRow(r,realm,now){
 export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  const {p,me}=bot,key='albot:respawn-calendar:v1:'+me.name;
  const hits=new Map(),rows=new Map(),issuedScoutHops=new Set();
- let activeScoutHop=null;
+ let activeScoutHop=null,lastScoutHop=null;
  let persisted=true,realm=p.realm(),session=bot.session,lastSample=0;
  const saved=p.read?.(key);
  if(saved?.version===1&&saved.owner===me.name&&saved.realm===realm&&
@@ -40,7 +40,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   // even when the same character remains on the same server and map.
   if(current!==realm||currentSession!==session){
    realm=current;session=currentSession;rows.clear();hits.clear();
-   issuedScoutHops.clear();activeScoutHop=null;
+   issuedScoutHops.clear();activeScoutHop=null;lastScoutHop=null;
    lastSample=0;persisted=false;
   }
   for(const [id,row] of rows){
@@ -205,7 +205,9 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    issuedScoutHops.add(key);
    if(issuedScoutHops.size>64)
     issuedScoutHops.delete(issuedScoutHops.values().next().value);
-   activeScoutHop={...result.witness,at:time,session};
+   activeScoutHop={...result.witness,at:time,session,point:result.point};
+   lastScoutHop={state:'in-flight',id:row.id,monster:row.monster,
+    map:row.map,at:time,endedAt:null,executable:false};
    bot.event?.('respawn.localScoutHop',{monster:row.monster,
     id:row.id,map:row.map,reason:result.reason,
     radius:result.point.radius,authority:'approved-current-farm-only'});
@@ -214,8 +216,28 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   return false;
  }
  function guardScoutMovement(){
-  if(bot.movement?.order?.owner!=='scout'){
-   activeScoutHop=null;return;
+  const order=bot.movement?.order;
+  const finish=state=>{
+   if(!activeScoutHop)return;
+   lastScoutHop={...lastScoutHop,state,endedAt:now()};
+   bot.event?.('respawn.localScoutOutcome',{id:activeScoutHop.id,
+    state,authority:'physical-local-observation-only'});
+   activeScoutHop=null;
+  };
+  if(order?.owner!=='scout'){
+   if(activeScoutHop){
+    const a=activeScoutHop,plan=bot.teamPlan?.heartbeat?.(),r=rows.get(a.id),
+     where=location(realm,p.c),point=a.point;
+    const arrived=!order&&bot.running&&a.session===session&&
+     a.realm===realm&&now()-a.at<=12000&&
+     plan?.id===a.planId&&bot.teamPlan?.valid?.(plan)===true&&
+     r?.killedAt===a.killedAt&&r.scoutState==='observing'&&
+     now()<r.scoutUntil&&same(where,point)&&!p.c.rip&&
+     Number.isFinite(p.c.x)&&Number.isFinite(p.c.y)&&
+     Math.hypot(p.c.x-point.x,p.c.y-point.y)<=12;
+    finish(arrived?'local-arrival-observed':'outcome-unverified');
+   }
+   return;
   }
   const a=activeScoutHop,plan=bot.teamPlan?.heartbeat?.(),r=rows.get(a?.id);
   const invalid=!bot.running||!a||a.session!==session||
@@ -236,8 +258,9 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    now()>=r.scoutUntil||r.scoutNegatives>=SCOUT_MAX_NEGATIVES||
    !same(location(realm,p.c),r);
   if(invalid){
+   const timedOut=!!a&&now()-a.at>12000;
    bot.movement.stop?.();
-   activeScoutHop=null;
+   finish(timedOut?'timeout-aborted':'safety-aborted');
   }
  }
  function status(){
@@ -247,6 +270,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    predictionAuthorized:false,realm,owner:me.name,
    session:cleanName(session)?session:null,
    persistence:persisted?'best-effort':'unconfirmed',
+   localScoutHop:lastScoutHop?{...lastScoutHop}:null,
    rows:[...rows.values()].filter(r=>same(r,where)).slice(-MAX_ROWS)
     .map(r=>({id:r.id,monster:r.monster,map:r.map,in:r.in,
      x:r.x,y:r.y,lastSeenAt:r.lastSeenAt,killedAt:r.killedAt,
@@ -261,5 +285,6 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
       authority:'local-visibility-only',executable:false}}))};
  }
  return {sample,hit,death,status,scout,guardScoutMovement,
-  close(){hits.clear();issuedScoutHops.clear();activeScoutHop=null;}};
+  close(){hits.clear();issuedScoutHops.clear();
+   activeScoutHop=null;lastScoutHop=null;}};
 }

@@ -56,8 +56,11 @@ test('one market purchase funds only after actual offer price and commitments',(
  assert.equal(f.market.fundingTick(),true);
  assert.equal(f.c.map,'main');
  assert.equal(f.market.fundingTick(),false);
- assert.equal(f.market.fundingPending(),false);
+ assert.equal(f.market.fundingPending(),true,
+  'pinned purchase quote must survive the bank-to-market return');
  assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.market.fundingPending(),false,
+  'durable funding checkpoint retires only at authorized purchase handoff');
  assert.equal(f.trades[0]?.kind,'market.buy');
  assert.equal(f.trades[0].job.cost,100);
  assert.equal(f.trades[0].job.guard(),true);
@@ -104,4 +107,89 @@ test('W03 validated bank-gold plan incorporates purchase floor without releasing
  assert.equal(bankGoldTransferPlan({wallet:150,bankGold:1000,
   slots:{trade1:{b:true,price:NaN}},goldTarget:200,goldReserve:100,
   purchaseMinimum:500}),null,'malformed trade bids can never justify a withdrawal');
+});
+
+function fundedAtOrigin(){
+ const f=fixture();
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.market.fundingTick(),true);
+ assert.equal(f.market.fundingTick(),true);
+ assert.equal(f.c.map,'main');
+ return f;
+}
+test('W03 exact market seller, trade slot, RID, price and quantity survive bank return',()=>{
+ const f=fundedAtOrigin();
+ const checkpoint=f.stored.get('albot:market-funding:v1:M');
+ assert.equal(checkpoint.sellerId,'seller');
+ assert.equal(checkpoint.slot,'trade2');
+ assert.equal(checkpoint.rid,'RID');
+ assert.equal(checkpoint.quantity,1);
+ assert.equal(checkpoint.unitPrice,100);
+ assert.equal(f.market.fundingTick(),false);
+ assert.equal(f.market.fundingPending(),true);
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.trades.length,1);
+ assert.equal(f.trades[0].job.details.rid,'RID');
+ assert.equal(f.trades[0].job.guard(),true);
+ assert.equal(f.market.fundingPending(),false);
+ assert.equal(f.stored.get('albot:market-funding:v1:M'),null);
+});
+test('W03 every post-trip quote drift cancels funded purchase without trade',()=>{
+ const changes=[
+  f=>{f.seller.slots.trade2.rid='RID-NEW';},
+  f=>{f.seller.slots.trade2.price=105;},
+  f=>{f.seller.slots.trade2.q=0;},
+  f=>{f.seller.slots.trade2.q=1.25;},
+  f=>{f.seller.slots.trade2={name:'different',level:0,price:100,q:1,rid:'RID'};},
+  f=>{f.seller.slots.trade2=null;},
+  f=>{f.seller.stand=false;},
+  f=>{f.seller.x=1000;},
+  f=>{f.seller.id='new-seller';}
+ ];
+ for(const change of changes){
+  const f=fundedAtOrigin();
+  change(f);
+  assert.equal(f.market.fundingTick(),false);
+  assert.equal(f.market.fundingPending(),false);
+  assert.equal(f.trades.length,0,'no trade on invalid original funded quote');
+  assert.equal(f.events.some(e=>e.type==='market.fundingBlocked'),true);
+ }
+});
+test('W03 cheaper unrelated live offer cannot consume the pinned funding',()=>{
+ const f=fundedAtOrigin();
+ f.bot.p.entities.cheaper={name:'Cheaper',id:'cheaper',type:'character',
+  stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:{
+   name:'poison',level:0,price:1,q:1,rid:'OTHER'}}};
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.trades.length,1);
+ assert.equal(f.trades[0].job.details.seller,'Seller');
+ assert.equal(f.trades[0].job.details.unitPrice,100);
+});
+test('W03 quote checkpoint remains binding across restart at the market',()=>{
+ const f=fundedAtOrigin();
+ f.bot.market=createMarket(f.bot);
+ assert.equal(f.bot.market.fundingPending(),true);
+ assert.equal(f.bot.market.fundingTick(),false);
+ assert.equal(f.bot.market.buy(f.item,f.rule),true);
+ assert.equal(f.trades[0].job.details.rid,'RID');
+ assert.equal(f.bot.market.fundingPending(),false);
+});
+test('W03 failed checkpoint retirement never grants permission for trade dispatch',()=>{
+ const f=fundedAtOrigin(),saved=f.bot.p.write;
+ f.bot.p.write=(key,value)=>value===null?false:saved(key,value);
+ assert.equal(f.market.buy(f.item,f.rule),false);
+ assert.equal(f.market.fundingPending(),true);
+ assert.deepEqual(f.trades,[]);
+});
+test('W03 pre-migration market financing cannot withdraw without seller evidence',()=>{
+ const f=fixture();
+ const key='albot:market-funding:v1:M';
+ f.stored.set(key,{source:'market',item:{name:'poison',level:0},
+  realm:'EU',required:500,cost:100,quantity:1,unitPrice:100,
+  at:Date.now(),ruleStamp:'old',commitments:300});
+ f.bot.market=createMarket(f.bot);
+ assert.equal(f.bot.market.fundingMinimumGold(),0);
+ assert.equal(f.bot.market.fundingTick(),false);
+ assert.deepEqual(f.trades,[]);
+ assert.equal(f.bot.market.fundingPending(),false);
 });

@@ -5,7 +5,7 @@ import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} 
 import {estimateRoutes} from './costs.mjs';
 import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {planMaterialQuotas,materialQuotaCap} from './material-quotas.mjs';
-import {identity,fingerprint,variantCount} from '../core/policy.mjs';
+import {identity,fingerprint,variantCount,verifiedExactGoalIdentity} from '../core/policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
@@ -16,32 +16,17 @@ import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMa
 // The editable rule schema deliberately exposes only stat/p/title; acc, rid
 // and data cannot be expressed there and must never be silently widened.
 export function exactAutoDeliveryVariant(goal){
- if(!goal?.variant||typeof goal.variant!=='object'||
-    Array.isArray(goal.variant)||typeof goal.item!=='string'||
-    !goal.item||!Number.isSafeInteger(goal.level)||goal.level<0)return null;
- try{
-  if(Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
-     Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
-    return null;
-  const key=identity({...goal.variant,name:goal.item,level:goal.level});
-  return typeof key==='string'&&key.length<=512?key:null;
- }catch{return null;}
+ return verifiedExactGoalIdentity(goal);
 }
 // Shared exact-variant semantics across availability, outbound receipts,
 // gross reservations and the generated send rule's item identity.
 export function productionGoalMatchesItem(item,goal){
  if(!item)return false;
  if(!goal||goal.variant===null||goal.variant===undefined)return true;
- if(typeof goal.variant!=='object'||Array.isArray(goal.variant)||
-    typeof goal.item!=='string'||!goal.item||
-    !Number.isSafeInteger(goal.level)||goal.level<0||
-    item.name!==goal.item||(item.level??0)!==goal.level||
-    Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
-    Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
-   return false;
- try{return identity(item)===identity({
-  ...goal.variant,name:goal.item,level:goal.level
- });}catch{return false;}
+ const expected=verifiedExactGoalIdentity(goal);
+ if(!expected||item.name!==goal.item||
+    (item.level??0)!==goal.level)return false;
+ try{return identity(item)===expected;}catch{return false;}
 }
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.

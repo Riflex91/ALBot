@@ -121,6 +121,8 @@ export function bossReadiness(G,id,live,members,{maxSeconds=300,planned=false,me
  return {safe:true,profile,phase:live?.s?.rimeshell?'BREAK_SHELL':'ENGAGE',seconds,incoming,dps,hps,tank:tank.name,healer:healers[0]?.name??null,
   damageShadow,reason:'Bossprofil, Gruppe und Ressourcen geprüft'};
 }
+export const shouldDeferBossReadiness=result=>!!result&&!result.safe&&
+ ['WAIT','ASSEMBLE'].includes(result.phase);
 export function createBosses(bot){
  const {p,cfg}=bot;let active=null,damage=0,healing=0,since=Date.now(),phase='IDLE',reason='',definition='',heals=[];
  const lastReadinessNote=new Map();
@@ -148,7 +150,7 @@ export function createBosses(bot){
   const stamp=knowledgeFingerprint([p.G.monsters[id],bot.farmers.map(n=>semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))]);
   if(active!==id||stamp!==definition){active=id;definition=stamp;since=Date.now();damage=healing=0;}
   const live=bot.monsters().find(m=>m.mtype===id),r=evaluate(id,live,!live);phase=r?.phase??'IDLE';reason=r?.reason??'';
-  if(live&&r&&!r.safe&&['WAIT','ASSEMBLE'].includes(phase)){
+  if(live&&shouldDeferBossReadiness(r)){
    // A travelling or regrouping squad is not evidence of a failed boss fight.
    // Do not add this species to the death/failure quarantine while assembling.
    bot.target=null;bot.reason=reason;

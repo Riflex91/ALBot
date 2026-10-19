@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 5,
+      "sequence": 6,
       "version": "0.10.11-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 730252,
-      "sha256": "1866ae29d86c0e9d60476e07cbfea9b9252346784eb74545232a25427ca15220"
+      "bytes": 743053,
+      "sha256": "63bc95b3649744152abf1b4e2dfbcb2627a3e2a89d38a028d2686ded1e0ac5a2"
     },
     "observedLoadedUrl": null,
-    "note": "Signiertes Release sequence=5, 0.10.11-candidate, am 19.10.2026 nach gruenen Linux-/Windows-Pruefungen und PR #191 mit bestehendem Signierworkflow 39231422549 veroeffentlicht. Manifest-Signatur und Runtime-Hash geprueft, persoenliche Konfiguration unveraendert. Installierter V2-Loader unveraendert. Kein beobachteter Ingame-Ladevorgang mit sequence=5."
+    "note": "Signiertes Release sequence=6, Version 0.10.11-candidate, am 19.10.2026 aus dem per Linux-/Windows-CI bestätigten main-Commit 58a52a6efac5bdce12493b1b85503e382b7545f8 (PR #214 inklusive) über den bestehenden GitHub-Schlüssel signiert und auf dem unveränderten V2-Releasekanal publiziert. GitHub-Signierworkflow 39287371764: 1658/1658 Tests, deterministische Runtime-Bytegleichheit, Signatur und SHA256 geprüft. Ingame-Loader/ALBotConfig unverändert; ein tatsächlich erfolgter Spiel-Reload mit sequence 6 ist noch nicht beobachtet."
   }
 }

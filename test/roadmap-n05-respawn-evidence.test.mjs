@@ -10,7 +10,7 @@ function fixture(saved=null){
  const p={c:{map:'main',in:'main',x:0,y:0},realm:()=>realm,
   read:k=>store.get(k)??null,
   write:(k,v)=>{if(!persist)return false;store.set(k,structuredClone(v));return true;}};
- const bot={p,me:{name:'M'},running:true,monsters:()=>mobs,
+ const bot={p,me:{name:'M'},session:'M-session-1',running:true,monsters:()=>mobs,
   entity:id=>mobs.find(m=>m.id===id)};
  const calendar=createRespawnCalendar(bot,{now:()=>at});
  return {bot,calendar,mobs,store,now:()=>at,advance:ms=>{at+=ms;},
@@ -166,4 +166,39 @@ test('N05 local scout evidence cannot be generated from remote instances or abse
  f.bot.p.c.x=1200;
  f.advance(2000);f.calendar.sample();
  assert.equal(f.calendar.status().rows[0].scout.negativeObservations,0);
+});
+ 
+test('N05 an old hit cannot authorize a kill after character-session restart',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:20});
+ f.bot.session='M-session-2';
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),false);
+ assert.equal(f.calendar.status().rows.length,0);
+ assert.equal(f.calendar.status().session,'M-session-2');
+ f.calendar.sample();
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),false);
+ f.calendar.hit({actor:'M',target:'e1',damage:20});
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),true,
+  'fresh hit and sighting in the new session remain actionable as observation');
+});
+test('N05 active local post-kill scout is invalidated on session drift',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:20});
+ f.calendar.death({actor:'M',id:'e1'});
+ assert.equal(f.calendar.status().rows[0].scout.state,'observing');
+ f.bot.session='M-session-2';
+ assert.equal(f.calendar.status().rows.length,0);
+ f.bot.session='M-session-1';
+ assert.equal(f.calendar.status().rows.length,0,
+  'return to old session must not resurrect stale scouting authority');
+});
+test('N05 missing or invalid own session cannot generate fresh sightings or credit',()=>{
+ for(const invalid of [null,undefined,'',42]){
+  const f=fixture();f.bot.session=invalid;
+  f.calendar.sample();
+  assert.equal(f.calendar.status().rows.length,0);
+  f.calendar.hit({actor:'M',target:'e1',damage:20});
+  assert.equal(f.calendar.death({actor:'M',id:'e1'}),false);
+  assert.equal(f.calendar.status().predictionAuthorized,false);
+ }
 });

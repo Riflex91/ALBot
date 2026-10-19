@@ -1,5 +1,5 @@
 import {potionTarget,onlineSupplyFarmers} from './potion-supply.mjs';
-import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
+import {protectedItem,identity,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {inspectReceiveSenderSession} from './transfer-reconciliation.mjs';

@@ -67,11 +67,21 @@ export function createGear(bot){
  }
  function refresh(){
   if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
-   if(!data||typeof data.class!=='string'||!Number.isFinite(data.level)||!data.slots||typeof data.slots!=='object')continue;
+   // The heartbeat may be fresh while its embedded gear snapshot is
+   // outdated or belongs to another realm. Do not refresh the timestamp
+   // of old gear merely because a peer sent another heartbeat.
+   const peerRealm=name===me.name?p.realm():peer?.realm;
+   const evidenceAt=data?.at;
+   if(!data||typeof data.class!=='string'||!Number.isFinite(data.level)||
+      !data.slots||typeof data.slots!=='object'||
+      typeof peerRealm!=='string'||peerRealm!==p.realm()||
+      data.realm!==peerRealm||!Number.isSafeInteger(evidenceAt)||
+      evidenceAt<=0||evidenceAt>Date.now()||
+      Date.now()-evidenceAt>604800000)continue;
    const complete=gearSlots.every(slot=>Object.hasOwn(data.slots,slot));
    const slots=Object.fromEntries(gearSlots.map(slot=>[slot,null]));
    for(const [slot,i] of Object.entries(data.slots).slice(0,20))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level,stat_type:typeof i.stat_type==='string'?i.stat_type:'',p:typeof i.p==='string'?i.p:'',title:typeof i.title==='string'?i.title:'',l:!!i.l,b:!!i.b};
-   profiles[name]={class:data.class,level:data.level,slots,complete,session:peer?.session??bot.session,realm:peer?.realm??p.realm(),stats:Object.fromEntries(Object.entries(data.stats??{}).filter(([k,v])=>["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].includes(k)&&Number.isFinite(v)&&Math.abs(v)<1e9)),at:Date.now()};
+   profiles[name]={class:data.class,level:data.level,slots,complete,session:peer?.session??bot.session,realm:peerRealm,stats:Object.fromEntries(Object.entries(data.stats??{}).filter(([k,v])=>["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].includes(k)&&Number.isFinite(v)&&Math.abs(v)<1e9)),at:evidenceAt};
   }
   profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&Date.now()-x.at<7*86400000).slice(0,20));
   if(cfg.production.offlineProfiles&&Date.now()-lastSave>60000){lastSave=Date.now();p.write(key,profiles);}
@@ -119,7 +129,7 @@ export function createGear(bot){
    const last=Math.max(0,...receipts.filter(r=>r.recipient===g.character&&
     r.state==='equipped'&&Number.isSafeInteger(r.settled)&&
     r.settled>0).map(r=>r.settled));
-   return Math.min(75,gearCatchUpPriority(profile,sameRole)+
+   return Math.min(75,gearCatchUpPriority(profile,sameRole,{now:Date.now()})+
     crossRoleGearPriority(profile,cohort,{
      role:classify(member,profile),slot:g.slot,
      lastImprovedAt:last||null}));

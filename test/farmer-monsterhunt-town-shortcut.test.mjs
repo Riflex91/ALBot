@@ -122,3 +122,31 @@ test('threat interrupt cancels a pending monsterhunt Town channel as well as wal
  assert.equal(stops.length,2,'queued Town must be stopped on new aggro');
  assert.ok(events.some(x=>x[0]==='quest.interrupted'));
 });
+
+
+test('Priest Monsterhunt quest travel cannot be hijacked by ordinary follower movement',()=>{
+ const previous=Date.now;Date.now=()=>40000;
+ try{
+  const f=fixture();f.bot.strategy={busy:true};
+  for(const owner of ['follow','farm','world','cohesion','quest-escort','economy','logistics']){
+   assert.equal(f.movement.go(npc,owner),false,owner);
+   assert.equal(f.movement.order,null,owner);
+  }
+  assert.equal(f.calls.length,0,'no follower travel or Town call before quest');
+  f.movement.go(npc,'quest');
+  assert.equal(f.calls.filter(x=>x.name==='town').length,1,'quest retains Town shortcut');
+  assert.equal(f.movement.go(npc,'follow'),false,'follow cannot queue during Town');
+  assert.equal(f.calls.filter(x=>x.name==='town').length,1,'no duplicate Town');
+  f.movement.stop();
+  const foot=fixture({x:180,spawns:[]});foot.bot.strategy={busy:true};
+  foot.movement.go({...npc,x:320,y:0},'quest');
+  assert.equal(foot.movement.order?.owner,'quest','last leg remains quest-owned');
+  assert.equal(foot.movement.go(npc,'follow'),false);
+  assert.equal(foot.movement.order?.owner,'quest','follow does not supersede quest');
+  foot.movement.stop();
+  foot.bot.strategy.busy=false;
+  foot.movement.go(npc,'follow');
+  assert.equal(foot.movement.order?.owner,'follow','follow resumes after quest clears');
+  foot.movement.stop();
+ }finally{Date.now=previous;}
+});

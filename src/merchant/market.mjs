@@ -50,6 +50,9 @@ export function createMarket(bot){
     /^trade([1-9]|1[0-6])$/.test(slot)&&offer?.rid&&
     !offer.b&&!offer.giveaway&&!offer.buy&&
     Number.isFinite(offer.price)&&offer.price>0&&
+    (!strict||(Number.isSafeInteger(offer.price)&&
+     Number.isSafeInteger(offer.q??1)&&(offer.q??1)>0&&
+     typeof offer.rid==='string'&&offer.rid.length>0))&&
     (strict?materialVariant(offer,item):variant(offer,item))));
  }
  function offerWaitMs(item){
@@ -66,8 +69,17 @@ export function createMarket(bot){
    if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
    for(const [slot,offer] of Object.entries(player.slots??{})){
     const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!(finite?materialVariant(offer,item):variant(offer,item))||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
+    // Production purchases cannot round malformed seller quantities or
+    // risk a fractional / non-safe total gold debit. Free explicit market
+    // rules retain their previous selection contract.
+    if(finite&&(!Number.isSafeInteger(offer.q??1)||(offer.q??1)<1||
+      !Number.isSafeInteger(offer.price)||offer.price<1||
+      typeof offer.rid!=='string'||!offer.rid))continue;
     const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before,finite?scope.quantity:Infinity)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
-    if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
+    if(!Number.isSafeInteger(q)||q<=0||
+      finite&&(!Number.isSafeInteger(before)||before<0||
+       !Number.isSafeInteger(cost)||cost<1)||
+      bot.free()<=cfg.merchant.minFreeSlots)continue;
     const fits=()=>{
      if(!finite)return true;
      const room=capacityAfterConsumption(p.c.items,[],item,
@@ -77,7 +89,10 @@ export function createMarket(bot){
     if(!fits())continue;
     noOffers.delete(identity(item));
     let response=null,dispatchGold=null;
-    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity)&&fits()&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&(finite?materialVariant(current,item):variant(current,item))&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
+    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity&&
+      e.count(item)===before&&Number.isSafeInteger(current?.q??1)&&
+      (current?.q??1)>0&&Number.isSafeInteger(current?.price))&&
+      fits()&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&(finite?materialVariant(current,item):variant(current,item))&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
     observe:()=>finite?
      !!response&&typeof response==='object'&&!response.failed&&
       response.success!==false&&Number.isSafeInteger(dispatchGold)&&

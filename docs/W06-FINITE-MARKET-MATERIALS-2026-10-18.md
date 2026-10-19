@@ -27,3 +27,11 @@ Volle Materialbeschaffung über direkte ungebundene Warenangebote, Warenlieferun
 - Derselbe Variantenvertrag gilt sowohl bei der Suche nach einem aktuell verfügbaren Verkäufer, bei der Annahme des Marktangebots als auch erneut beim verzögerten Dispatch. Listing-`rid` bleibt eine separate unveränderliche Angebots-ID und wird wie bisher unmittelbar vor dem Serveraufruf geprüft; sie wird nicht mit der Identität der Materialvariante verwechselt.
 - **Explizit konfigurierte freie Markt-Buy-Regeln bleiben unverändert**; es werden weder neue Materialarten oder Handelsrechte erteilt noch Preis- und Goldgrenzen gelockert.
 - Nicht vorhandene Live-Angebote erzeugen weiterhin weder einen Kauf noch eine automatische Erfolgsquittung. Accountweite Belohnungen, Spieler-Barter und physischer Liveabnahmebedarf bleiben offen.
+
+## Folgeinkrement vom 19.10.2026 – Mengen- und Dispatch-Integrität
+
+Endliche Produktions-Marktkäufe dürfen ungültige Verkäufermengen nicht mehr per `Math.floor` in eine scheinbar gültige Kaufmenge umdeuten. Angebotseinheiten und Goldstückpreis müssen positive sichere Ganzzahlen sein; auch der gesamte Goldbetrag muss eine positive sichere Ganzzahl ergeben. Ungültige Angebote zählen nicht als frische Produktionsangebote, die ein früheres No-Offer-Wartefenster aufheben könnten.
+
+Der geplante **Ausgangsbestand der exakten Variante** muss beim verzögerten `trade_buy`-Dispatch weiterhin unverändert sein. So kann ein parallel eingetroffenes Materialstück nicht dazu führen, dass der ursprünglich eingefrorene Post-Buy-Bestandsbeleg später einem anderen Vorgang zugeschrieben wird. Angebotsmenge und Preis werden am Dispatch erneut auf Ganzzahlintegrität geprüft. Bei Drift: kein Kauf, kein künstlicher Erfolg, vorhandenes Wertjournal unverändert.
+
+Die zusätzlichen Einschränkungen gelten nur für bereits autorisierte **endliche Produktions-Marktkäufe**. Eigenständig explizit konfigurierte Marktregeln werden durch dieses Paket nicht erweitert oder rückwirkend verschärft. Keine Freigabe neuer Materialarten, Quellen, Budgets oder Handelskategorien; signierter Release-Kanal bleibt separat.

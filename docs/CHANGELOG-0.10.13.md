@@ -63,3 +63,8 @@ Im Spiel noch zu prüfen: zehn Minuten gemeinsame Reise einschließlich Portal,
 gesunder Priest mit Gruppen-Aggro, echte Reiseblockade mit anschließendem
 Weiterreisen, Rat in einem Gebäude sowie Merchant-Lieferung und echte Mutation.
 Offlineprüfungen ersetzen diese Liveabnahme nicht.
+
+
+## Nachträgliches signiertes Bootstrap-V2-Release – Sequence 10 (19.10.2026)
+
+Nach den erfolgreich getesteten PRs #238 (exakte G09-Tauschprüfung) und #239 (belegte W06-Materialquellen) wurde die Runtime aus [main-Commit `2f55d8a907f3ae90cab6d301188d481a1f815121`](https://github.com/Riflex91/ALBot/commit/2f55d8a907f3ae90cab6d301188d481a1f815121) über den bereits installierten Release-Branch neu gebaut und als **sequence 10** ECDSA-P-256-signiert veröffentlicht. [GitHub-Actions-Lauf 39317203696](https://github.com/Riflex91/ALBot/actions/runs/39317203696): 1.769/1.769 Tests grün, unveränderte persönliche `ALBotConfig`, Signaturprüfung und SHA-256-Verifikation erfolgreich. **762149 Bytes**, SHA-256 `d73796591d7964a525ac3725bc91f6d11d07bcabd6c48acb76d766231d6f9def`, identisch mit dem `main`-Runtime-Build. Das Release ersetzt die vorherige sequence 9 ohne Änderung des vorhandenen Ingame-Loaders, des öffentlichen Schlüssels oder der Manifest-/Runtime-URLs. Nach dem nächsten CODE-Neustart kann der Loader sequence 10 beziehen. **Ingame-Liveabnahme von sequence 10 ist noch nicht belegt.**

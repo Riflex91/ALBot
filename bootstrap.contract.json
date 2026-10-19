@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 9,
+      "sequence": 10,
       "version": "0.10.13-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 760242,
-      "sha256": "e7c4183cb912d567462fb288fe401374311659bad6cbf96982454bf6a2dacf7e"
+      "bytes": 762149,
+      "sha256": "d73796591d7964a525ac3725bc91f6d11d07bcabd6c48acb76d766231d6f9def"
     },
     "observedLoadedUrl": null,
-    "note": "Signiertes Release sequence=9, 0.10.13-candidate, aus main-Commit c7902b0c1c2693be807e09b56ab891b7508da18b (PR #236), 19.10.2026. Linux-/Windows-CI 39313454586 und Signierworkflow 39313699242: 1753/1753 Offline-Tests, persönliche ALBotConfig unverändert, Runtime bytegleich zu main, ECDSA-P-256-Signatur und SHA-256 e7c4183cb912d567462fb288fe401374311659bad6cbf96982454bf6a2dacf7e (760242 Bytes) geprüft. Ingame-Loader, Schlüssel und Kanal unverändert; tatsächlicher Spielstart mit Sequence 9 nicht beobachtet."
+    "note": "Signiertes Release sequence=10, 0.10.13-candidate, aus CI-geprüftem main-Commit 2f55d8a907f3ae90cab6d301188d481a1f815121 nach PR #238/#239; GitHub-Actions-Signierworkflow 39317203696 am 19.10.2026 mit 1769/1769 Offline-Tests, persönlicher ALBotConfig unverändert, ECDSA-P-256-Signatur und SHA-256 d73796591d7964a525ac3725bc91f6d11d07bcabd6c48acb76d766231d6f9def (762149 Bytes) geprüft. Die Runtime ist bytegleich zum main-Build. Öffentlicher Schlüssel, Loader und Release-URLs unverändert. Ingame-Livebestätigung für Sequence 10 steht aus."
   }
 }

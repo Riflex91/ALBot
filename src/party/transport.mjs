@@ -44,7 +44,7 @@ export function compactCombatSupport(c,G,capabilities,potionReady=false){
    restore:Number.isFinite(restore)&&restore>0&&restore<=100000?
     restore:0};
  };
- return {healReady:!!(allowed&&capabilities?.ready?.includes('heal')&&
+ return {aoe:(capabilities?.sustainable??[]).filter(id=>['3shot','5shot'].includes(id)&&G?.skills?.[id]&&runtimeConditionGate(c,G,'skill:'+id,['mana','skill']).allowed).map(id=>({id,capacity:id==='3shot'?3:5})),healReady:!!(allowed&&capabilities?.ready?.includes('heal')&&
     runtimeConditionGate(c,G,'skill:heal',['mana','attack']).allowed),
    healSustainable:!!(allowed&&capabilities?.sustainable?.includes('heal')&&
     runtimeConditionGate(c,G,'skill:heal',['mana','skill']).allowed),

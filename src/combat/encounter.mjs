@@ -1,7 +1,7 @@
 import {neutralPullReadiness} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {distance} from '../core/policy.mjs';
-import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
 // Promote one new concurrent pull only after the previous size has a
 // completed, failure-free episode. Unlike an XP-only gate, a successful
 // size-two encounter can progress to size three even when both sizes have
@@ -31,36 +31,38 @@ export function verifiedAdaptiveCapacity(profiles,context,max,healthy,enabled=tr
 // targets permit a bounded 3shot test even when the persisted learning key
 // changed because of gear, roster or context. A known failed 3-target episode
 // still vetoes the attempt. No boss/event/foreign or unknown-risk pull.
-export function safeThreeShotOpportunity({healthy,max,failed,planned,visible,safe,teamNames=[]}){
- return !!(healthy&&max>=3&&!failed&&planned&&
+export function safeThreeShotOpportunity({healthy,max,failed,planned,visible,safe,teamNames=[],minTargets=3}){
+ return !!(healthy&&max>=minTargets&&[2,3].includes(minTargets)&&!failed&&planned&&
   (visible??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
    m.type==='monster'&&m.mtype===planned&&(!m.target||teamNames.includes(m.target))&&safe(m))
-   .filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).length>=3);
+   .filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).length>=minTargets);
 }
 export function createEncounter(bot){
- const key='albot:pull:'+bot.me.name;let profiles=bot.p.read(key)??{},active=null,phase='RECOVER',capacity=1,context='',lastSave=0;
- function members(){return bot.farmers.map(n=>n===bot.me.name?{name:n,running:bot.running,hp:bot.p.c.hp,max_hp:bot.p.c.max_hp,mp:bot.p.c.mp,max_mp:bot.p.c.max_mp,gear:bot.gear?.snapshot(),capabilities:bot.capabilities?.snapshot()}:bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip);}
+ const key='albot:pull:'+bot.me.name;let profiles=bot.p.read(key)??{},active=null,phase='RECOVER',capacity=1,context='',lastSave=0;const gearEvidence=new Map();
+ function members(){return bot.farmers.map(n=>n===bot.me.name?{name:n,running:bot.running,hp:bot.p.c.hp,max_hp:bot.p.c.max_hp,mp:bot.p.c.mp,max_mp:bot.p.c.max_mp,class:bot.p.c.ctype,level:bot.p.c.level,gear:bot.gear?.snapshot(),capabilities:bot.capabilities?.snapshot()}:bot.transport.fresh(n)).filter(h=>h?.running&&!h.rip);}
  function complete(failed){if(!active)return;const row=profiles[active.key]??{samples:0,seconds:0,xp:0,failures:0};row.samples++;row.seconds+=(Date.now()-active.at)/1000;row.xp+=Math.max(0,(bot.p.c.xp??0)-active.xp);row.failures+=failed?1:0;bot.adaptive?.episode({target:active.target,contextKey:active.adaptiveContext,seconds:(Date.now()-active.at)/1000,reward:Math.max(0,(bot.p.c.xp??0)-active.xp),failed});row.at=Date.now();profiles[active.key]=row;active=null;profiles=Object.fromEntries(Object.entries(profiles).sort((a,b)=>b[1].at-a[1].at).slice(0,96));if(Date.now()-lastSave>30000){lastSave=Date.now();bot.p.write(key,profiles);}}
  function tick(){const detachment=assessQuestDetachment(bot),ms=members(),target=bot.strategy?.heartbeat?.()?.target??bot.teamPlan?.target(),mobs=bot.monsters().filter(m=>bot.teamNames.includes(m.target)),healthy=!detachment&&ms.length===bot.farmers.length&&ms.every(h=>h.hp/h.max_hp>=(bot.cfg.farming.pullHp??.8)&&h.mp/Math.max(1,h.max_mp)>=(bot.cfg.farming.pullMp??.5));
-  context=knowledgeFingerprint([ms.map(h=>[h.name,h.gear?.slots,h.gear?.stats]),target,bot.p.G.monsters?.[target]]);
-  const aoe=ms.flatMap(h=>h.capabilities?.aoe??[]),max=(bot.me?.role==='farmer'||bot.cfg.party.aoe)&&aoe.length?Math.min(bot.cfg.farming.maxAggro,bot.cfg.party.aoeMaxTargets,Math.max(...aoe.map(s=>s.capacity))):1;
+  context=knowledgeFingerprint([ms.map(h=>{const gear=semanticGear(h.gear);if(gear?.[3]?.length)gearEvidence.set(h.name,gear[3]);return [h.name,h.class??h.gear?.class,h.level??h.gear?.level,gearEvidence.get(h.name)??null];}),target,bot.p.G.monsters?.[target]]);
+  const aoe=ms.flatMap(h=>h.capabilities?.sustainable? h.capabilities.sustainable.filter(id=>['3shot','5shot'].includes(id)).map(id=>({id,capacity:id==='3shot'?3:5})).concat((h.capabilities.aoe??[]).filter(x=>!['3shot','5shot'].includes(x.id))):h.combatSupport?.aoe??h.capabilities?.aoe??[]),max=(bot.me?.role==='farmer'||bot.cfg.party.aoe)&&aoe.length?Math.min(bot.cfg.farming.maxAggro,bot.cfg.party.aoeMaxTargets,Math.max(...aoe.map(s=>s.capacity))):1;
   capacity=detachment?1:verifiedAdaptiveCapacity(profiles,context,max,healthy,
    bot.cfg.farming.adaptivePull!==false);
-  const noThreeFailure=!(profiles[context+':3']?.failures>0);
-  // An encounter at zero current aggro can safely start with a verified
-  // 3shot only if THREE ordinary, same-spawn targets pass every local filter.
-  // This avoids repeating the perpetual size-two cold start from live logs.
+  for(const probe of bot.cfg.world?.risk==='aggressive'?[2,3]:[3]){
+  const noThreeFailure=!Array.from({length:probe},(_,i)=>profiles[context+':'+(i+1)]).some(row=>row?.failures>0);
+  // Probe only independently verified same-spawn targets. Aggressive mode
+  // can build a beneficial two-target cast while the third is out of range.
+  // Neither cooldown telemetry nor a new learning key grants a risky pull.
   if(!detachment&&bot.me.name===bot.leader&&bot.me.role==='farmer'&&
-    safeThreeShotOpportunity({healthy,max,failed:!noThreeFailure,
+    safeThreeShotOpportunity({healthy,max,minTargets:probe,failed:!noThreeFailure,
       planned:target,visible:bot.monsters(),teamNames:bot.teamNames,safe:m=>
        !bot.recovering&&bot.teamPlan?.wantsCombat?.()!==false&&
        !bot.p.parent?.is_pvp&&!bot.p.G.maps?.[m.map]?.pvp&&
-       m.map===bot.p.c.map&&m.in===(bot.p.c.in??bot.p.c.map)&&
+       m.map===bot.p.c.map&&(m.in??m.map)===(bot.p.c.in??bot.p.c.map)&&
        distance(bot.p.c,m)<(bot.p.G.skills?.['3shot']?.range??bot.p.c.range)-5&&
        bot.strategy?.safeTarget?.(m.mtype,m,true)===true&&
        bot.threats?.permitted?.(m)!==false&&
        bot.navigation?.permitted?.(m)!==false}))
-    capacity=Math.max(3,capacity);
+    capacity=Math.max(probe,capacity);
+  }
   if(bot.recovering||bot.p.c.rip||active&&ms.length!==bot.farmers.length||ms.some(h=>h.hp/h.max_hp<(bot.cfg.farming.restBelow??.3)||h.mp/Math.max(1,h.max_mp)<.15)){phase=mobs.length?'ABORT':'RECOVER';if(active)complete(true);}else if(!mobs.length){if(active)complete(false);phase=healthy?'BUILD':'RECOVER';}else if(!healthy)phase='HOLD';else if(mobs.length<capacity)phase='BUILD';else phase=mobs.every(m=>m.hp<(bot.p.c.attack??1)*2)?'FINISH':'BURN';
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={target,adaptiveContext:bot.adaptive?.context(),key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0};
  }

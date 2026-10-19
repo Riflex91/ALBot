@@ -1,3 +1,7 @@
+# Release-Regel und Rotation ab 19.10.2026
+
+Jede neu signierte Bootstrap-Runtime erhöht die Minor-Version um genau eins (+0.1), Patch wird 0: 0.10.13 -> 0.11.0 -> 0.12.0. `scripts/sign-release.mjs` prüft dies gegen das vorherige gültig signierte Manifest. Laufende Veröffentlichung: 0.11.0-candidate. Die persönliche Rotationshaltezeit bleibt 1800000 ms (30 Minuten); bestehende Level-/Gear-Auswahl unverändert lassen. Nur bei fälligem Ausgleich neue Pulls pausieren, laufende Kämpfe beenden und sichere Farmerzustände vor dem bestehenden Browser-Wechsel abwarten.
+
 # Autonomie 0.10.11-candidate: tatsächlicher Umfang (18.10.2026)
 
 Aktueller Auftrag autorisiert Implementierung und automatischen Merge nach Main. [Implementierungs-/Restmatrix](docs/AUTONOMIE-ABGLEICH-2026-10-18.md) und PR #167 beachten. Endliche Betriebsvorräte, physisch gedeckte Bankdisposition, Kosten-/Condition-Gates, Eventgrace, Abreiseloot, persistente Revive-Todesbindung, Gear-Aufholpriorität, Mehrziel-CBurst und Browser-Systembelohnungs-Mail sind ergänzt. Keine pauschale Vollständigkeit behaupten: vollständige Crypt/Cave-Runs, Tailoring/De-Statting, Temporal-Loadouts, allgemeiner Tauschmarkt und weitere in der Matrix genannte Folgen sind offen. Neue Booleans/Defaults ergänzen alte Profile nur zur Laufzeit; persönliche JSON-Einstellungen nicht überschreiben. Ungeklärte physische Bankdrift ist keine bloße neue Reservation und darf nicht automatisch quittiert werden.

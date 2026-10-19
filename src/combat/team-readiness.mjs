@@ -42,6 +42,7 @@ export function followerCombatRendezvous(follower,leader,{
 }
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;
+ if(bot.account?.rotationPending?.())return {ready:false,reason:'account-rotation-draining'};
  if(!runtimeConditionGate(p.c,p.G,'attack',['attack']).allowed)return {ready:false,reason:'actor-condition-blocked'};
  if(cfg.party?.enabled===false||cfg.party?.waitForTeam!==true)
   return {ready:true,reason:'no-team-hold'};

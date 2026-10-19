@@ -194,9 +194,9 @@ export function createSkills(bot){
        maximumSafeTargets:candidates.length,skillCapacity:limit};
     };
     const selected=multi?candidates.slice(0,limit):[];
-    // Deliberately do NOT fire a 2-target 3shot. Keep ordinary attacks
-    // available while waiting for three real, separately approved entities.
-    if(id==='3shot'&&(limit<3||selected.length!==3)){
+    // A two-target 3shot is useful when its verified effective damage exceeds
+    // the basic attack. Never pad the cast with an unauthorized third mob.
+    if(id==='3shot'&&(limit<2||selected.length<2||selected.length===2&&(!(s.damage_multiplier>0)||!(aoeDamageScore(p.c,s,selected,selected[0])?.gain>0)))){
       count(id,'targetBlocked');
       if(Date.now()-(lastShotShortfall.get(id)??0)>15000){
        lastShotShortfall.set(id,Date.now());
@@ -386,7 +386,7 @@ export function createSkills(bot){
           const neutralHere=inRange.filter(m=>!m.target).sort((a,b)=>distance(c,a)-distance(c,b));
           const targets=maximalSafeAimedTargets(engagedHere,neutralHere,remaining,
             Math.min(capacity,cfg.party.aoeMaxTargets));
-          if(id==='3shot'&&targets.length!==3||id==='5shot'&&targets.length<4)return [];
+          if(id==='3shot'&&targets.length<2||id==='5shot'&&targets.length<4)return [];
           // A current focus target may be at the end of a chase while three
           // already authorized opponents are inside the actual AoE radius.
           // Check cooldown, class, MP, equipment and range against the
@@ -395,7 +395,7 @@ export function createSkills(bot){
           const score=aoeDamageScore(c,def,targets,targets[0]);
           // Unknown damage data retains the previously established AoE order;
           // known non-beneficial casts cannot displace a normal attack.
-          if(score&&score.gain<=0)return [];
+          if(score&&score.gain<=0||targets.length===2&&(!(def.damage_multiplier>0)||!(score?.gain>0)))return [];
           return [{id,damage:score?.effectiveDamage??null}];
         });
         const fallbackOrder={ '5shot':0,'3shot':1 };
@@ -404,8 +404,8 @@ export function createSkills(bot){
           fallbackOrder[a.id]-fallbackOrder[b.id]);
         ids=ranks.map(r=>r.id);
         // Keep the existing 3shot shortfall diagnostic even when the damage
-        // planner finds no legal three-target cast. use() will never dispatch
-        // here: its exact-three guard reports what prevented the third slot.
+        // planner finds no beneficial approved multi-target cast. use() reports
+        // the missing targets or unverified damage without adding a bystander.
         if(!ids.length&&safeCount<3&&p.G.skills['3shot'])
           use('3shot',t,0,600);
       }

@@ -466,7 +466,8 @@ export function createTeamPlan(bot){
   const aoeAvailable=(bot.farmers??[]).some(name=>{
    const cap=name===me.name?bot.capabilities?.snapshot?.():
      bot.transport?.fresh?.(name)?.capabilities;
-   return (cap?.aoe?.length??0)>0;
+   return (cap?.sustainable??[]).some(id=>['3shot','5shot','cleave','stomp','fanofknives','cburst'].includes(id))||
+    (cap?.aoe?.length??0)>0||(name!==me.name&&(bot.transport?.fresh?.(name)?.combatSupport?.aoe?.length??0)>0);
   });
   let hunt=orderedHunt();
   const types=[...new Set([...candidates(),...(hunt?.phase==='combat'&&p.G.monsters?.[hunt.monster]?[hunt.monster]:[])])].filter(allowed),locations=spawnLocations(p.G,types,cfg.world.excludedMaps,cfg.farming.pvp),teamDps=Math.max(1,combat.reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0));

@@ -2,6 +2,23 @@ import {identity,fingerprint} from './policy.mjs';
 import {inspectItemTransferEvidence,inspectPairedItemTransfer,inspectReceiveSenderSession} from '../items/transfer-reconciliation.mjs';
 import {exchangeDrops} from '../production/materials.mjs';
 import {bankOwnershipConflict} from './bank-ownership.mjs';
+// A legacy purchase can lack variant/RID metadata. Never guess its success.
+// An aged, completely unchanged wallet and slot-by-slot inventory proves a
+// no-effect observation; retain the original journal before releasing it.
+export function unchangedPurchaseJournal(bot,now=Date.now()){
+ const j=bot.journal,c=bot.p?.c,s=j?.evidence;
+ return !!(bot.inventoryBlocked&&['buy','market.buy','ponty.buy'].includes(j?.kind)&&
+  Number.isFinite(j.at)&&now-j.at>=120000&&now>=j.at&&
+  Number.isSafeInteger(j.cost)&&j.cost>=0&&j.loss===0&&
+  Number.isSafeInteger(j.quantity)&&j.quantity>0&&typeof j.item==='string'&&
+  s?.realm===bot.p.realm()&&Number.isSafeInteger(s.gold)&&s.gold>=0&&c?.gold===s.gold&&
+  Array.isArray(s.inventory)&&Array.isArray(c.items)&&c.items.length>0&&
+  s.inventory.length===c.items.length&&(!Number.isInteger(c.isize)||c.items.length===c.isize)&&
+  !bot.exec?.pending?.size&&!bot.logistics?.reserved&&!bot.gold?.reserved&&
+  !Object.values(c.q??{}).some(Boolean)&&!c.items.some(i=>i?.name==='placeholder')&&
+  bot.checkpoint?.durable===true&&
+  Array.from(s.inventory).every((value,n)=>value===(c.items[n]?fingerprint(c.items[n]):null)));
+}
 // A gathering skill may time out without producing an item. Only a complete,
  // untouched, durable before-image can release that uncertainty automatically.
  // Never replay the skill or infer a missing reward from its cooldown.
@@ -175,7 +192,7 @@ export function inspectGoldRecovery(bot){
    sender.before,receiver.before,realm])};
 }
 export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null,exchangeSample=null,exchangeStatus=null,goldSample=null,goldStatus=null;
- let bankGoldSample=null,bankGoldStatus=null,lastBankGoldEvent=0;
+ let purchaseSample=null,bankGoldSample=null,bankGoldStatus=null,lastBankGoldEvent=0;
  const goldAckKey='albot:gold:'+me.name+':recovery-receipt';
  function itemStatus(){
   const j=bot.journal;
@@ -493,6 +510,19 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return true;
  }
  function reconcile(){const j=bot.journal;if(!j)return false;
+  if(unchangedPurchaseJournal(bot)){
+   const proof=JSON.stringify([j.at,j.evidence,p.c.gold,p.c.items.map(i=>i?fingerprint(i):null)]);
+   if(purchaseSample?.proof!==proof){purchaseSample={proof,at:Date.now()};return false;}
+   if(Date.now()-purchaseSample.at<2000)return false;
+   const key='albot:purchase-recovery:'+me.name,old=p.read(key)??[];
+   if(!Array.isArray(old)||!p.write(key,[...old.slice(-15),{journal:j,at:Date.now(),
+     outcome:'unchanged-inventory-and-gold',replayed:false}])||!bot.checkpoint.clear(j))return false;
+   bot.journal=null;bot.inventoryBlocked=false;
+   bot.event?.('recovery.purchaseNoEffect',{kind:j.kind,item:j.item,
+    reason:'Vollständiger Bestand und Gold unverändert; Journal archiviert, keine Wiederholung, Budget nicht erstattet'});
+   return true;
+  }
+  purchaseSample=null;
   if(j.kind==='bank.gold')return reconcileBankGold(j);
    if(['gold.send','gold.receive'].includes(j.kind))return reconcileGold();
   if(j.kind==='exchange')return reconcileExchange();
@@ -501,7 +531,7 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
    bot.endValue('confirmed');
    if(!bot.journal){bot.event?.('recovery.gatherUnchanged',{kind:j.kind,reason:'Gathering beendet; vollständiger Bestand und Gold nach Wartefrist unverändert, keine Wiederholung'});return true;}
    return false;
-  }if(j.kind==='bank.store')return reconcileBankStore(j);if(checked===j.at)return false;checked=j.at;const snap=j.evidence;if(!snap||!Array.isArray(snap.inventory)||typeof j.variant!=='string'||j.kind==='send'||j.kind.startsWith('gold.')||j.kind.startsWith('bank.')||p.realm()!==snap.realm)return false;
+  }if(j.kind==='bank.store')return reconcileBankStore(j);const observation=JSON.stringify([j.at,p.c.gold,p.c.items,p.c.slots?.elixir]);if(checked===observation)return false;checked=observation;const snap=j.evidence;if(!snap||!Array.isArray(snap.inventory)||typeof j.variant!=='string'||j.kind==='send'||j.kind.startsWith('gold.')||j.kind.startsWith('bank.')||p.realm()!==snap.realm)return false;
   // Only a complete pinned before/expected snapshot admits automatic confirmation.
   const before=new Map(),after=new Map();for(const fp of snap.inventory)if(fp){const n=fp.lastIndexOf(':'),id=fp.slice(0,n),q=Number(fp.slice(n+1));if(!Number.isSafeInteger(q)||q<1)return false;before.set(id,(before.get(id)??0)+q);}for(const i of p.c.items??[])if(i){const id=identity(i);after.set(id,(after.get(id)??0)+(i.q??1));}const delta=(after.get(j.variant)??0)-(before.get(j.variant)??0),othersUnchanged=[...new Set([...before.keys(),...after.keys()])].every(id=>id===j.variant||(before.get(id)??0)===(after.get(id)??0));if(!othersUnchanged)return false;let confirmed=false;
   if(j.kind==='elixir.equip')confirmed=delta===-1&&p.c.slots?.elixir?.name===j.item;

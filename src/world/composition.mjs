@@ -16,7 +16,9 @@ export function compositionOptions(bot,planned=false){
 }
 function freshCapability(c,id,options){
  const cap=c.capabilities,age=Date.now()-(cap?.at??0);
- if(!cap&&id==='heal'&&c.combatSupport?.healSustainable===true&&
+ const compact=id==='heal'?c.combatSupport?.healSustainable===true:
+  ['3shot','5shot'].includes(id)&&c.combatSupport?.aoe?.some?.(s=>s.id===id);
+ if(!cap&&compact&&
     Number.isFinite(c.received)&&Date.now()-c.received>=0&&Date.now()-c.received<Math.min(4000,options.ttl??10000))
   return runtimeConditionGate(c,options.G,'skill:heal',['mana','skill']).allowed;
  return age>=0&&age<(options.ttl??10000)&&(cap?.sustainable??cap?.ready)?.includes(id)&&runtimeConditionGate(c,options.G,'skill:'+id,['mana','skill']).allowed;

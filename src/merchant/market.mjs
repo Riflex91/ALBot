@@ -12,9 +12,35 @@ export function createMarket(bot){
  const validFunding=()=>!!funding&&funding.realm===p.realm()&&
   Number.isSafeInteger(funding.required)&&funding.required>0&&
   Number.isSafeInteger(funding.cost)&&funding.cost>0&&
+  Number.isSafeInteger(funding.quantity)&&funding.quantity>0&&
+  Number.isFinite(funding.unitPrice)&&funding.unitPrice>0&&
+  ['market','ponty'].includes(funding.source)&&
+  (funding.source!=='market'||(
+   typeof funding.sellerId==='string'&&!!funding.sellerId&&
+   typeof funding.slot==='string'&&/^trade([1-9]|1[0-6])$/.test(funding.slot)&&
+   typeof funding.rid==='string'&&!!funding.rid&&
+   Number.isSafeInteger(funding.unitPrice)&&
+   funding.unitPrice*funding.quantity===funding.cost))&&
   Number.isFinite(funding.at)&&Date.now()-funding.at>=0&&
   Date.now()-funding.at<FUNDING_TTL_MS;
  const fundingMinimumGold=()=>validFunding()?funding.required:0;
+ // One persisted bank trip is tied to exactly one visible seller+slot+RID.
+ // No remote/off-map seller snapshot can prove that the offer still exists.
+ function liveFundedOffer(row){
+  if(!row||row.source!=='market'||!row.sellerId)return null;
+  const player=bot.entity?.(row.sellerId);
+  if(!player||player.id!==row.sellerId||player.type!=='character'||
+     !player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)
+   return null;
+  const offer=player.slots?.[row.slot];
+  if(!offer||offer.rid!==row.rid||offer.price!==row.unitPrice||
+     !Number.isSafeInteger(offer.price)||offer.price<1||
+     !Number.isSafeInteger(offer.q??1)||(offer.q??1)<row.quantity||
+     offer.b||offer.buy||offer.giveaway||
+     !(row.finite?materialVariant(offer,row.item):variant(offer,row.item)))
+   return null;
+  return {player,offer};
+ }
  function clearFunding(reason='',detail={}){
   if(!funding)return true;
   const prior=funding;
@@ -22,10 +48,10 @@ export function createMarket(bot){
   funding=null;
   if(reason){
    if(prior.offerKey)deniedFunding.set(prior.offerKey,Date.now()+MARKET_REPROBE_MS);
-   bot.event?.('market.fundingBlocked',{reason,item:prior.item.name,cost:prior.cost,
+   bot.event?.('market.fundingBlocked',{reason,item:prior.item?.name??null,cost:prior.cost,
     requiredGold:prior.required,carriedGold:p.c.gold,
     committedGold:e.committedGold(),bankGold:p.c.bank?.gold??null,...detail});
-   e.note('Marktfinanzierung '+prior.item.name+': '+reason);
+   e.note('Marktfinanzierung '+(prior.item?.name??'unbekannt')+': '+reason);
   }else if(prior.source==='ponty'){lastScan=0;secondhand=[];}
   return true;
  }
@@ -43,7 +69,16 @@ export function createMarket(bot){
    clearFunding('Kaufbudget oder Produktionsziel nicht mehr freigegeben');return false;
   }
   if(p.c.gold>=funding.required){
-   if(e.at(funding.origin,35)){clearFunding();return false;}
+   if(e.at(funding.origin,35)){
+    if(funding.source==='market'){
+     if(!liveFundedOffer(funding)){
+      clearFunding('Gebundenes Marktangebot nicht mehr live bestätigt');return false;
+     }
+     // Keep a durable quote until the exact next buy() handoff.
+     return false;
+    }
+    clearFunding();return false;
+   }
    e.travel(funding.origin,'Rückkehr zum geprüften Markt',35);
    return bot.movement?.order?.owner==='economy';
   }
@@ -62,7 +97,8 @@ export function createMarket(bot){
   // Delegate to existing guarded bank.gold journal/receipt path.
   return bot.bank.gold();
  }
- function requestFunding({item,rule,cost,quantity,unitPrice,offerKey,source,finite}){
+ function requestFunding({item,rule,cost,quantity,unitPrice,offerKey,source,
+  finite,sellerId=null,slot=null,rid=null}){
   if(funding)return fundingTick();
   const commitments=e.committedGold();
   const base=Math.max(cfg.merchant.goldTarget??0,cfg.merchant.goldReserve??0,bot.me.goldReserve??0);
@@ -71,6 +107,13 @@ export function createMarket(bot){
   const required=Math.max(base+commitments,cost+commitments+reserve);
   if(!cfg.merchant.bank||!cfg.merchant.bankGold||!Number.isSafeInteger(required)||
      !Number.isSafeInteger(cost)||cost<1||
+     !Number.isSafeInteger(quantity)||quantity<1||
+     (source==='market'&&(
+      typeof sellerId!=='string'||!sellerId||
+      typeof rid!=='string'||!rid||
+      !/^trade([1-9]|1[0-6])$/.test(slot)||
+      !Number.isSafeInteger(unitPrice)||unitPrice<1||
+      cost!==unitPrice*quantity))||
      !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
      (deniedFunding.get(offerKey)??0)>Date.now()){
    e.note('Marktkauf '+item.name+': Gold fehlt; Bankfinanzierung nicht verfügbar');return false;
@@ -81,7 +124,8 @@ export function createMarket(bot){
   const next={item:{name:item.name,level:item.level??0,stat_type:item.stat_type,
      p:item.p,title:item.title,acc:item.acc,data:item.data},
     source,finite,goal:finite?bot.production?.activeGoal?.name??null:null,
-    ruleStamp:ruleStamp(rule),cost,quantity,unitPrice,offerKey,required,
+    ruleStamp:ruleStamp(rule),cost,quantity,unitPrice,offerKey,
+    sellerId,slot,rid,required,
     commitments,realm:p.realm(),at:Date.now(),
     origin:{map:p.c.map,in:p.c.in??p.c.map,x:p.c.x,y:p.c.y}};
   if(!p.write(fundingKey,next)){
@@ -162,7 +206,12 @@ export function createMarket(bot){
   return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());
  }
  function buy(item,r,scope=null){
-  if(funding)return fundingTick();
+  const pinned=funding?.source==='market'&&validFunding()&&
+   p.c.gold>=funding.required&&e.at(funding.origin,35)?funding:null;
+  if(funding&&!pinned)return fundingTick();
+  if(pinned&&(!variant(item,pinned.item)||
+    ruleStamp(r)!==pinned.ruleStamp||
+    (scope!==null)!==pinned.finite))return false;
   // Production-market procurement is tied to one live finite plan step.
   // Ordinary explicitly configured market-buy tasks retain their behavior.
   const finite=scope!==null;
@@ -187,6 +236,8 @@ export function createMarket(bot){
    entries.sort((a,b)=>priceRank(a)-priceRank(b));
   }
   for(const {player,slot,offer} of entries){
+   if(pinned&&(player?.id!==pinned.sellerId||slot!==pinned.slot||
+      offer?.rid!==pinned.rid||offer?.price!==pinned.unitPrice))continue;
    if(!player||player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
     const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!(finite?materialVariant(offer,item):variant(offer,item))||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
     // Production purchases cannot round malformed seller quantities or
@@ -197,6 +248,8 @@ export function createMarket(bot){
       typeof offer.rid!=='string'||!offer.rid))continue;
     const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before,finite?scope.quantity:Infinity)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
     if(!Number.isSafeInteger(q)||q<=0||
+      pinned&&(q!==pinned.quantity||cost!==pinned.cost||
+       !liveFundedOffer(pinned))||
       finite&&(!Number.isSafeInteger(before)||before<0||
        !Number.isSafeInteger(cost)||cost<1)||
       bot.free()<=cfg.merchant.minFreeSlots)continue;
@@ -212,9 +265,12 @@ export function createMarket(bot){
     if(e.budget?.(cost,0,r)===false){
      if((deniedFunding.get(offerKey)??0)>Date.now())continue;
      return requestFunding({item,rule:r,cost,quantity:q,unitPrice,offerKey,
-      source:'market',finite});
+      source:'market',finite,sellerId:player.id??null,slot,rid});
     }
     noOffers.delete(identity(item));
+    // The value executor remains the sole purchase journal. Refuse trade if
+    // the funding checkpoint cannot be durably retired before the handoff.
+    if(pinned&&!clearFunding())return false;
     let response=null,dispatchGold=null;
     return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity&&
       e.count(item)===before&&Number.isSafeInteger(current?.q??1)&&
@@ -229,6 +285,7 @@ export function createMarket(bot){
      unitPrice,seller:player.name??player.id,tradeSlot:slot,rid,
      source:finite?'finite-production-plan':'explicit-market-rule'}});
   }
+  if(pinned){clearFunding('Gebundenes Marktangebot nicht mehr kaufbar');return false;}
   // A search for missing live player offers is not an admitted purchase.
   // The first trip is allowed; subsequent bank->market journeys are bounded
   // per item. New valid live offers are checked before this cooldown.

@@ -858,7 +858,7 @@ export function createMerchant(bot){
   if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
   // A delivery of already finished, allocated gear can release a physical
   // slot without selling protected production stock.
-  if((capacityRecovery||bot.storage?.active)&&bot.free()>(cfg.merchant.minFreeSlots??4)&&
+  if(bot.free()>(cfg.merchant.minFreeSlots??4)&&
     bot.logistics?.actionableGearDelivery?.()){
    bot.logistics.travel?.();
    if(bot.movement.order?.owner==='logistics'||bot.logistics?.handoffActive||
@@ -1054,6 +1054,7 @@ export function createMerchant(bot){
    }
    if(bot.movement.order?.owner==='economy'&&tasks.status().task&&tasks.status().task!==job.id)bot.movement.stop();
    if(job.id!=='services'&&bot.services?.active){bot.services.interrupt();if(bot.services.restore())return;}
+   const previousReason=bot.reason;
    const accepted=job.run();
    if(bot.movement.order?.owner==='economy'&&
      (job.id==='production'||['upgrade','compound','exchange'].includes(job.r?.action))){
@@ -1061,7 +1062,7 @@ export function createMerchant(bot){
      {kind:job.r.action,item:job.r.item,level:job.r.minLevel};
     rememberProductionRoute(step,job.id==='production'?null:job.r);
    }
-   if(accepted||bot.movement.order?.owner==='economy'||bot.movement?.townActive){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, aktuelle Reisezeit, Arbeitsmenge und Wartealter; Logistik/Sicherheit haben Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason||'Voraussetzungen fehlen',retryMs:30000});}
+   if(accepted||bot.movement.order?.owner==='economy'||bot.movement?.townActive){if(job.id!=='services'&&bot.services?.waiting)bot.services.interrupt();const changed=tasks.status().task!==job.id;tasks.selected(job.id);if(changed)bot.event?.("merchant.selected",{task:job.id,rule:job.r?.name??"Ziel-/Hintergrundauftrag",priority:job.priority,reason:"Regelpriorität, aktuelle Reisezeit, Arbeitsmenge und Wartealter; Logistik/Sicherheit haben Vorrang"});return;}if(!bot.journal&&!exec.pending.size){tasks.defer(job.id);bot.event?.('merchant.deferred',{task:job.id,rule:job.r?.name,reason:bot.reason&&bot.reason!==previousReason?bot.reason:'Auftrag '+job.id+': Voraussetzungen fehlen',retryMs:30000});}
   }
   if(me.role!=='merchant')return;
   const pos=cfg.merchant.position;if(pos.enabled)e.travel({...pos,in:pos.map},'Standplatz',20);

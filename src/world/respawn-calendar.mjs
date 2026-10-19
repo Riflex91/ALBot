@@ -194,6 +194,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   expire();
   const time=now();
   if(!scoutContextSafe(plan)||bot.movement?.order||
+     bot.movement?.nativeBusy?.()!==false||
      !bot.movement?.local)return false;
   const options=[...rows.values()].filter(row=>row.monster===plan.target)
    .sort((a,b)=>b.killedAt-a.killedAt).slice(0,4);
@@ -215,6 +216,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
     expire();
     const current=bot.teamPlan?.heartbeat?.(),live=rows.get(lease.id);
     if(session!==lease.ownerSession||realm!==lease.realm||
+       bot.movement?.nativeBusy?.()!==false||
        !current||current.id!==lease.planId||
        !scoutContextSafe(current)||!live||
        live.killedAt!==lease.killedAt)return false;

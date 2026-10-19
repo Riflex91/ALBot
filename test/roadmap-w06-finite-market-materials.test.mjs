@@ -232,3 +232,46 @@ test('W06 explicit standalone market buy retains legacy offer-quantity behavior'
  assert.equal(f.jobs[0].job.details.quantity,1);
  assert.equal(f.jobs[0].job.guard(),true);
 });
+
+test('W06 finite purchase chooses cheapest authorized visible seller, not entity order',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=70;
+ f.p.entities.T={id:'T',name:'Second',type:'character',stand:true,
+  map:'main',in:'main',x:90,y:0,
+  slots:{trade9:{name:'raremat',level:0,q:4,rid:'CHEAP-01',price:5}}};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ const job=f.jobs[0].job;
+ assert.equal(job.cost,10);
+ assert.equal(job.details.seller,'Second');
+ assert.equal(job.details.tradeSlot,'trade9');
+ assert.equal(job.guard(),true);
+});
+test('W06 finite purchase sorts asks within same visible merchant stand',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=40;
+ f.seller.slots.trade3={name:'raremat',level:0,q:3,
+  rid:'LOW-02',price:4};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ assert.equal(f.jobs[0].job.details.tradeSlot,'trade3');
+ assert.equal(f.jobs[0].job.details.unitPrice,4);
+ assert.equal(f.jobs[0].job.cost,8);
+});
+test('W06 cheaper mismatched or unsafe material listing never outranks valid offer',()=>{
+ const f=fixture();
+ f.seller.slots.trade3={name:'raremat',level:0,q:3,
+  rid:'UNRELATED',price:1,acc:'foreign'};
+ f.seller.slots.trade4={name:'raremat',level:0,q:1.5,
+  rid:'INVALID-Q',price:2};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ assert.equal(f.jobs[0].job.details.tradeSlot,'trade2');
+ assert.equal(f.jobs[0].job.cost,20);
+});
+test('W06 explicit standalone market buys preserve original market encounter order',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=60;
+ f.seller.slots.trade3={name:'raremat',level:0,q:4,
+  rid:'LOW-01',price:5};
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.jobs[0].job.details.tradeSlot,'trade2');
+ assert.equal(f.jobs[0].job.details.unitPrice,60);
+});

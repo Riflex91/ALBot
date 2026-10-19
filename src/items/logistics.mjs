@@ -1,5 +1,5 @@
 import {potionTarget,onlineSupplyFarmers} from './potion-supply.mjs';
-import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
+import {protectedItem,identity,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {inspectReceiveSenderSession} from './transfer-reconciliation.mjs';
@@ -37,6 +37,41 @@ export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity,in
  // shared planner also checks exact compatible-stack headroom.
  const limit=Number.isFinite(maxNewSlots)?Math.max(0,Math.min(1,Math.floor(maxNewSlots))):1;
  return capacityAfterConsumption(items,[],item,meta,{maxNewSlots:limit,inventorySize})?.units??0;
+}
+// A confirmed physical loot receipt can only change offer ORDER. It does
+// not create recipient authorization, a send rule, a quantity or a reserve.
+// The normal two-party inventory journal remains the sole transfer path.
+export function receiptBackedPickupOrder(items,hints,{role,merchant,pickup}={}){
+ const slots=Array.isArray(items)?items.map((_,index)=>index):[];
+ if(role!=='farmer'||pickup!==true||typeof merchant!=='string'||
+    !merchant||!Array.isArray(hints)||hints.length>16)return slots;
+ const credits=new Map();
+ for(const row of hints){
+  if(row?.evidence!=='own-physical-receipt-confirmed'||
+     row.state!=='read-only-demand-match'||
+     row.dispatchAuthorized!==false||
+     typeof row.variantIdentity!=='string'||!row.variantIdentity||
+     row.variantIdentity.length>512||
+     !Number.isSafeInteger(row.observedUnits)||row.observedUnits<1||
+     !Number.isSafeInteger(row.currentUnits)||row.currentUnits<1||
+     !Number.isSafeInteger(row.uncommittedEstimate)||
+     row.uncommittedEstimate<1)continue;
+  // Duplicate status rows may not increase the available priority credit.
+  const cap=Math.min(row.observedUnits,row.currentUnits,
+   row.uncommittedEstimate);
+  credits.set(row.variantIdentity,Math.max(credits.get(row.variantIdentity)??0,cap));
+ }
+ const preferred=new Set();
+ for(const slot of slots){
+  const item=items[slot];
+  if(protectedItem(item))continue;
+  const key=identity(item),credit=credits.get(key)??0;
+  const units=item?.q??1;
+  if(credit<1||!Number.isSafeInteger(units)||units<1)continue;
+  preferred.add(slot);
+  credits.set(key,Math.max(0,credit-units));
+ }
+ return slots.sort((a,b)=>Number(preferred.has(b))-Number(preferred.has(a)));
 }
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
@@ -286,7 +321,17 @@ export function createLogistics(bot){
     if(bot.supplyOnly||bot.checkpoint?.durable===false||bot.gold?.reserved||!allowOffer||incoming||bot.bank?.pending||bot.journal||exec.busy('inventory')||bot.inventoryBlocked||!bot.running)return;
     if(me.role==='merchant'&&bot.services?.active){travel();return;}
     if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.supply))return;
-    outer:for(let slot=0;slot<p.c.items.length;slot++){
+    // Priority is a diagnostic hint only. All existing sendRule,
+    // availableTransfer, authenticated-peer, gear-accept and value-journal
+    // checks below are mandatory after ordering, without exceptions.
+    let hints=[];
+    if(me.role==='farmer'&&cfg.merchant.pickup===true){
+     try{hints=bot.lootReceipts?.status?.()?.purposeHints??[];}
+     catch{hints=[];}
+    }
+    const candidates=receiptBackedPickupOrder(p.c.items,hints,{
+     role:me.role,merchant:cfg.party?.merchant,pickup:cfg.merchant.pickup});
+    outer:for(const slot of candidates){
       const item=p.c.items[slot];if(!item||protectedItem(item))continue;
       for(const to of sendRecipients(item)){
         const r=sendRule(item,to);if(!r)continue;

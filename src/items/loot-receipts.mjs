@@ -102,7 +102,7 @@ export function lootPurposeEvidence({proofs=[],inventory=[],reserve=()=>null,
   let reserved;
   try{reserved=reserve(item);}catch{reserved=null;}
   const proven=Number.isSafeInteger(reserved)&&reserved>=0;
-  out.push({...short,observedUnits:Math.min(entry.receiptUnits,held),
+  out.push({...short,variantIdentity:entry.variant,observedUnits:Math.min(entry.receiptUnits,held),
    currentUnits:held,protectedUnits,
    grossReservedUnits:proven?reserved:null,
    uncommittedEstimate:proven?

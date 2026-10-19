@@ -38,3 +38,19 @@ Dieses Paket bleibt vollständig passiv: kein Scout-Reisen, keine neuen Monsterf
 Die lokale N05-Abwesenheitsprobe darf nicht aus einer **abgeschnittenen** Monsterliste konstruiert werden. Der Kalender verarbeitet höchstens 128 Monster pro Tick. Wenn die gelieferte Liste länger ist, dürfen einzelne daraus direkt beobachtete positive Sichtungen weiterhin übernommen werden, es werden aber **keinerlei negative** Beobachtungen aus dem unvollständigen Ausschnitt abgeleitet. Dasselbe gilt bei fehlender oder formal ungültiger Monsterliste. Bei einer später wieder vollständig gelieferten Liste können neue lokale Negativproben normal fortgesetzt werden, sofern die bereits vorhandenen Zeit-, Session-, Realm- und Beobachtungsgrenzen noch gelten.
 
 Auch eine vollständige lokale Liste ist ausschließlich begrenzte Sichtbarkeitsinformation, keine serverbestätigte Monsterabwesenheit, kein Respawntimer und keine Reise- oder Kampferlaubnis. Ingame-Release und persönliche Einstellungen bleiben unangetastet.
+
+## Aktive Teilstufe: einmaliger lokaler Solo-Scout-Hopp (19.10.2026)
+
+Die bisher passive N05-Beobachtung darf erstmals **genau eine kurze lokale Bewegung** versuchen, **aber nur innerhalb eines bereits von TeamPlan unabhängig genehmigten gewöhnlichen Farmspawns**. Der vorhandene TeamPlan-Movement-Einstieg ruft diese Option erst auf, nachdem der Farmer die reguläre Farmankermitte bereits erreicht hat. Es entsteht kein zweiter Pathfinder.
+
+Verbindliche Bedingungen:
+
+- **Nur Solo-Farmer und eigener Leader** (`party.enabled=false`, keine zusätzlichen gelisteten Farmer); gemeinsame Märsche werden nicht durch eigenständige Scoutbewegung überholt.
+- Ein aktueller `farm`-Plan ohne Material-/Hunt-/Elixir-Sonderauftrag muss von `teamPlan.valid`, `teamPlan.allowed` und `strategy.permittedMap` weiterhin ausdrücklich bestätigt sein. Kein PvP, keine Instanzänderung, kein neuer Monster-Typ oder neuer Spawn.
+- Der tatsächlich lokal selbst getötete Monsterbeleg muss **innerhalb der vergangenen fünf Minuten** mindestens eine **frische** negative Sichtung aus einer vollständigen Monsterliste aufweisen; maximal zwölf negative Proben. Ein altes persistiertes Killereignis darf keinen neuen Hopp auslösen.
+- Nur eine bekannte Monsterkoordinate **mit mindestens zehn Einheiten Innenabstand in den genehmigten Spawn-Grenzen** ist zulässig. Die Figur bleibt höchstens 65 Einheiten vom genehmigten Farmanker entfernt; Scoutpunkt höchstens 70 Einheiten. Der Hopp selbst darf nur **45 bis 95 Einheiten** betragen; `can_move_to` muss am echten aktuellen Ort Erfolg melden.
+- Keine offene Value-Transaktion, Inventar-/Logistik-Reservation, andere Bewegung, Quest/Reiseaktivität, Kampfaggro oder aktive Combat-Notlage; mindestens 90 % lokale Gesundheit. Bei unsicherem Kontext wird kein Hopp gestartet.
+- Jeder eigene Killbeleg kann **höchstens einen Hopp** auslösen, ohne automatische Wiederholung. Währenddessen prüfen die bereits laufenden N05-Samples die Freigabe bei jedem Tick erneut; bei Session-/Realm-/Zielplanwechsel, neuem Kampf, niedriger HP oder nach zwölf Sekunden wird die eigene `scout`-Bewegung gestoppt.
+- `respawn.localScoutHop` dokumentiert einen Bewegungsversuch. **Die Bewegung ist weder ein bewiesener Respawn noch ein garantierter Reiseerfolg.** N05 bleibt ohne eigenständige Kampf- oder Respawn-Zeitfreigabe.
+
+Die weiter oben dokumentierte Aussage »keine autonomen Scout-Reisen« bleibt für **kartenübergreifende, gruppengeführte oder spekulative Scout-Ziele** weiterhin gültig. Dieses Inkrement fügt lediglich einen lokal genehmigten Solo-Hopp hinzu. Signierter Ingame-Release, persönliche Einstellungen und Live-Abnahme bleiben getrennt.

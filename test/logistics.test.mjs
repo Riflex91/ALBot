@@ -398,3 +398,48 @@ test('W13 receipt cannot bypass existing sendRule or gross reservation',()=>{
  assert.equal(g.B.p.c.items.some(i=>i?.name==='ordinary'),true);
  assert.equal(g.A.p.c.items[1].name,'gem0');
 });
+
+function gearPriorityPair(explicit=false){
+ const {A,B}=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ A.p.c.items[0]={name:'staff',level:0};
+ A.p.G={items:{staff:{type:'weapon',wtype:'staff'}}};
+ A.cfg.production={...(A.cfg.production??{}),gear:true};A.cfg.merchant.enabled=true;A.cfg.merchant.supply=true;
+ const makeRule=recipient=>({...r,enabled:true,item:'staff',
+  role:'merchant',action:'send',recipient,keep:0,teamReserve:0,
+  minLevel:0,maxLevel:0,batch:1});
+ const rules=[makeRule('B'),makeRule('C')];
+ A.cfg.items=explicit?rules:[];
+ A.production={effectiveRules:()=>[...A.cfg.items,...(explicit?[]:rules)],
+  reservedQuantity:()=>0,matchesOutput:()=>true,canRecordDelivery:()=>true};
+ A.gear={goals:()=>[
+  {enabled:true,item:'staff',level:0,recipient:'B',gearSlot:'mainhand',priority:10},
+  {enabled:true,item:'staff',level:0,recipient:'C',gearSlot:'mainhand',priority:1000,urgentStarter:true}]};
+ A.allocation={status:()=>[],offer:(item,to)=>({
+  goal:to,slot:'mainhand',expected:'empty',expires:Date.now()+10000})};
+ const regular=A.transport.fresh;
+ A.transport.fresh=name=>name==='C'?{running:true,rip:false,
+  realm:'EUII',map:'main',in:'main',x:0,y:0,session:'C',items:[],free:42}:
+  regular(name);
+ A.entity=name=>name==='C'?{name:'C',map:'main',in:'main',x:0,y:0}:
+  name==='B'?B.p.c:null;
+ const outbound=[];A.transport.send=(to,type,data,id)=>{
+  outbound.push({to,type,data,id});return Promise.resolve(true);
+ };
+ return {A,B,outbound};
+}
+test('W13 Merchant existing gear handoff offers scarce weapon to live higher-priority recipient',()=>{
+ const f=gearPriorityPair();
+ f.A.logistics.poll();
+ assert.equal(f.outbound.length,1);
+ assert.equal(f.outbound[0].type,'offer');
+ assert.equal(f.outbound[0].to,'C');
+ assert.equal(f.outbound[0].data.item.name,'staff');
+ assert.equal(f.outbound[0].data.gear.goal,'C');
+});
+test('W13 explicit sender configuration retains original ordering despite automatic gear urgency',()=>{
+ const f=gearPriorityPair(true);
+ f.A.logistics.poll();
+ assert.equal(f.outbound.length,1);
+ assert.equal(f.outbound[0].to,'B',
+  'explicit send rules are never silently reordered by computed priorities');
+});

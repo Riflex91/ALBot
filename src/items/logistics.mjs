@@ -73,6 +73,44 @@ export function receiptBackedPickupOrder(items,hints,{role,merchant,pickup}={}){
  }
  return slots.sort((a,b)=>Number(preferred.has(b))-Number(preferred.has(a)));
 }
+// W13: prefer an already authorized gear recipient whose CURRENT, live
+// target is most urgent. This is order-only: no send rule, extra copy,
+// recipient, equipment promise or inventory authority is ever created.
+export function orderedGearRecipients(recipients,item,{role='',gearEnabled=false,
+ explicitRules=[],goals=[],peers={},realm='',allocations=[]}={}){
+ if(!Array.isArray(recipients)||recipients.length<2||recipients.length>32||
+    role!=='merchant'||gearEnabled!==true||!item||
+    !Array.isArray(explicitRules)||!Array.isArray(goals)||
+    !Array.isArray(allocations)||goals.length>256||
+    allocations.length>256)return recipients;
+ // User-defined keep/send actions retain their configured precedence.
+ if(explicitRules.some(r=>r?.enabled&&r.item===item.name&&
+    (r.action==='keep'||r.action==='send')))return recipients;
+ const wanted=new Set(recipients);
+ const priority=new Map();
+ const unique=new Set();
+ for(const goal of goals){
+  if(goal?.enabled===false||goal?.item!==item.name||
+     goal.level!==(item.level??0)||!wanted.has(goal.recipient)||
+     typeof goal.recipient!=='string'||!goal.gearSlot||
+     !Number.isFinite(goal.priority))continue;
+  // Never prefer an incompatible stat/title/property variant.
+  if(goal.variant&&identity({...item,...goal.variant})!==identity(item))continue;
+  const peer=peers[goal.recipient];
+  if(!peer?.running||peer.rip||peer.realm!==realm||
+     typeof peer.session!=='string'||!peer.session)continue;
+  const claim=allocations.some(r=>r?.recipient===goal.recipient&&
+    r.variant===identity(item)&&
+    (r.state==='unresolved'||r.state==='reserved'));
+  if(claim)continue; // no priority credit from an unconfirmed promise
+  const score=Math.min(100000,Math.max(-100000,goal.priority));
+  priority.set(goal.recipient,Math.max(priority.get(goal.recipient)??-Infinity,score));
+ }
+ if(!priority.size)return recipients;
+ return recipients.map((name,index)=>({name,index,score:priority.get(name)}))
+  .sort((a,b)=>(b.score??-Infinity)-(a.score??-Infinity)||a.index-b.index)
+  .map(x=>x.name);
+}
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
@@ -121,11 +159,19 @@ export function createLogistics(bot){
   };
   const sendRecipients=item=>{
     const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-    return configured.length?configured:(item?.name==='tracker'&&me.role==='merchant'?
+    if(configured.length){
+     if(me.role!=='merchant'||configured.length<2)return configured;
+     const peers=Object.fromEntries(configured.map(name=>[name,transport.fresh(name)]));
+     return orderedGearRecipients(configured,item,{
+      role:me.role,gearEnabled:cfg.production?.gear===true,
+      explicitRules:cfg.items,goals:bot.gear?.goals?.()??[],
+      peers,realm:p.realm(),allocations:bot.allocation?.status?.()??[]});
+    }
+    return item?.name==='tracker'&&me.role==='merchant'?
       (bot.farmers??[]).filter(name=>!!trackerRule(item,name)):
       (autoLootRule(item)?[cfg.party.merchant]:
       (isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)&&
-        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?refillFarmers().map(x=>x.name):[])));
+        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?refillFarmers().map(x=>x.name):[]));
   };
   const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??trackerRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};

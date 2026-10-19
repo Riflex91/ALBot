@@ -13,10 +13,31 @@ const G09_SAFE_SINGLE=(item,meta,e,listing=false)=>!!item&&
  e?.safe?.(item)===true&&!!meta&&!meta.s&&(item.q??1)===1&&
  !item.acl&&!item.v&&!item.giveaway&&!item.bound&&
  !item.data&&!item.acc&&(!item.rid||listing)&&!item.src;
+// Only server-advertised want attributes we can compare to the actual
+// physical payment are admitted. Opaque selectors cannot widen a swap.
+const G09_WANT_FIELDS=new Set(['name','level','q','stat_type','p','title']);
+export function exactSwapPaymentWant(want,item){
+ if(!want||typeof want!=='object'||Array.isArray(want)||
+    !item||typeof item.name!=='string'||!item.name||
+    Object.keys(want).some(k=>!G09_WANT_FIELDS.has(k)))return false;
+ return want.name===item.name&&(want.level??0)===(item.level??0)&&
+  (want.q??1)===1&&(want.stat_type??'')===(item.stat_type??'')&&
+  (want.p??'')===(item.p??'')&&
+  (want.title??'')===(item.title??'');
+}
+const swapCount=(items,item)=>{
+ try{
+  const n=variantCount(items,item);
+  return Number.isSafeInteger(n)&&n>=0?n:null;
+ }catch{return null;}
+};
 
 export function singleSwapOpportunity(bot,slot){
  const {p,cfg,me}=bot,e=bot.economy,item=p.c.items?.[slot];
- if(me.role!=='merchant'||!cfg.merchant?.enabled||
+ const realm=p.realm?.(),session=bot.session;
+ if(typeof realm!=='string'||!realm||
+    typeof session!=='string'||!session||
+    me.role!=='merchant'||!cfg.merchant?.enabled||
     !bot.running||bot.inventoryBlocked||bot.journal||
     !p.has?.('trade_swap')||!Array.isArray(cfg.items)||
     !p.G?.items||!Number.isSafeInteger(slot)||slot<0||
@@ -47,8 +68,8 @@ export function singleSwapOpportunity(bot,slot){
  if(!wantedDef||wantedDef.s||wanted.name===item.name&&
     identity(wanted)===identity(item)||
     e.count?.(wanted)>=r.wantTargetCount)return null;
- const paymentBefore=variantCount(p.c.items,item),
-  receiveBefore=variantCount(p.c.items,wanted);
+ const paymentBefore=swapCount(p.c.items,item),
+  receiveBefore=swapCount(p.c.items,wanted);
  if(!Number.isSafeInteger(paymentBefore)||paymentBefore<2||
     !Number.isSafeInteger(receiveBefore)||receiveBefore<0)return null;
  const room=capacityAfterConsumption(p.c.items,[{slot,quantity:1}],
@@ -59,11 +80,16 @@ export function singleSwapOpportunity(bot,slot){
     !Number.isFinite(receiveValue)||receiveValue<0)return null;
  const loss=Math.max(0,payValue-receiveValue);
  if(!Number.isSafeInteger(loss)||loss>r.lossBudget)return null;
+ // Never trade against another known party/account character. The server
+ // does not award Merchant XP for trades with one's own characters, and
+ // an own listing is not independent public supply.
+ const accountNames=new Set([me.name,...(bot.farmers??[]),
+  ...(bot.teamNames??[])]);
  const seen=new Set();
  for(const player of Object.values(p.entities??{})){
   const id=player?.id??player?.name;
   if(!id||seen.has(id)||player?.type!=='character'||
-     !player.stand||player.name===me.name||!player.name||
+     !player.stand||accountNames.has(player.name)||!player.name||
      !samePlace(p.c,player)||distance(p.c,player)>300)continue;
   seen.add(id);
   for(const [tradeSlot,listing] of Object.entries(player.slots??{})){
@@ -72,14 +98,11 @@ export function singleSwapOpportunity(bot,slot){
       listing.b||listing.giveaway||listing.v||listing.l||listing.acl||
       !G09_SAFE_SINGLE(listing,wantedDef,e,true)||
       identity(G09_EXACT(listing))!==identity(wanted)||
-      listing.want.name!==item.name||
-      (listing.want.level??0)!==(item.level??0)||
-      (listing.want.p??'')!==(item.p??'')||
-      (listing.want.q??1)!==1)continue;
+      !exactSwapPaymentWant(listing.want,item))continue;
    return {slot,item:{...item},itemPrint:fingerprint(item),
     tradeSlot,listingPrint:fingerprint(listing),rid:listing.rid,
     sellerId:id,seller:player.name,wanted,loss,
-    paymentBefore,receiveBefore,rule:r};
+    paymentBefore,receiveBefore,rule:r,realm,session};
   }
  }
  return null;
@@ -90,8 +113,14 @@ export function createSingleSwap(bot){
   const candidate=singleSwapOpportunity(bot,slot);
   if(!candidate||candidate.rule!==rule)return false;
   const at=Date.now();
-  const live=()=>{const seller=bot.entity?.(candidate.sellerId);
+  const live=()=>{
+   if(bot.session!==candidate.session||p.realm?.()!==candidate.realm)
+    return null;
+   const seller=bot.entity?.(candidate.sellerId);
    return seller?.type==='character'&&seller.stand&&
+    seller.name===candidate.seller&&
+    !new Set([bot.me.name,...(bot.farmers??[]),
+     ...(bot.teamNames??[])]).has(seller.name)&&
     samePlace(p.c,seller)&&distance(p.c,seller)<=300&&
     seller.slots?.[candidate.tradeSlot]?.rid===candidate.rid&&
     fingerprint(seller.slots[candidate.tradeSlot])===candidate.listingPrint?
@@ -101,6 +130,7 @@ export function createSingleSwap(bot){
    const next=singleSwapOpportunity(bot,slot);
    return !!next&&next.rule===rule&&
     next.sellerId===candidate.sellerId&&next.rid===candidate.rid&&
+    next.session===candidate.session&&next.realm===candidate.realm&&
     next.tradeSlot===candidate.tradeSlot&&
     next.itemPrint===candidate.itemPrint&&
     next.listingPrint===candidate.listingPrint&&
@@ -112,15 +142,22 @@ export function createSingleSwap(bot){
   return bot.economy.perform('market.swap',{
    slots:[slot],loss:candidate.loss,rule,
    guard:admitted,
-   call:()=>Promise.resolve(p.call('trade_swap',live(),
-     candidate.tradeSlot,slot)).then(result=>{receipt=result;return result;}),
+   call:()=>{
+    // Economy arbitration may defer the effect beyond the first guard.
+    // Recheck every admission before touching the real trade_swap API.
+    if(!admitted())return Promise.reject(Error('swap-proof-expired-before-call'));
+    const seller=live();
+    if(!seller)return Promise.reject(Error('swap-seller-lost-before-call'));
+    return Promise.resolve(p.call('trade_swap',seller,
+     candidate.tradeSlot,slot)).then(result=>{receipt=result;return result;});
+   },
    observe:()=>{
     const num=receipt?.num,received=p.c.items?.[num];
     return receipt?.success!==false&&!receipt?.failed&&
      Number.isSafeInteger(num)&&num>=0&&
      fingerprint(received)===fingerprint(candidate.wanted)&&
-     variantCount(p.c.items,candidate.item)===candidate.paymentBefore-1&&
-     variantCount(p.c.items,candidate.wanted)===candidate.receiveBefore+1;
+     swapCount(p.c.items,candidate.item)===candidate.paymentBefore-1&&
+     swapCount(p.c.items,candidate.wanted)===candidate.receiveBefore+1;
    },
    details:{item:candidate.item.name,variant:identity(candidate.item),
     quantity:1,expectedItem:candidate.wanted.name,

@@ -175,6 +175,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   // item,received,slot,snum}. It has no RID. The RID must already have
   // been observed and durably tied to this merchant's own stand slot.
   if(!posted||!accurateRecord()||!hasOutgoingBaseline()||
+     typeof bot.session!=='string'||!bot.session||
      saved.state!=='listing-confirmed-post-trade-unverified'||
      data?.type!=='swap'||data.event!==true||
      data.seller!==me.name||typeof data.buyer!=='string'||
@@ -186,11 +187,19 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      identity(data.received)!==saved.incoming)return false;
   // The seller's actual inventory refresh may follow the event.
   swapEvidence={at:now(),buyer:data.buyer,snum:data.snum,
-   rid:saved.rid,offerSlot:saved.offerSlot};
+   rid:saved.rid,offerSlot:saved.offerSlot,
+   ownerSession:bot.session,realm:p.realm()};
   return true;
  }
  function sample(){
   if(!swapEvidence||now()-swapEvidence.at>30000){
+   swapEvidence=null;return false;
+  }
+  // A volatile UI event from an old bot session or another server realm
+  // cannot authorize a new session's physical inventory snapshot. Discard
+  // the old evidence rather than reviving it if the session changes back.
+  if(!swapEvidence.ownerSession||swapEvidence.ownerSession!==bot.session||
+     swapEvidence.realm!==p.realm()){
    swapEvidence=null;return false;
   }
   if(!accurateRecord()||!hasOutgoingBaseline()||

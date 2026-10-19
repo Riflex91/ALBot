@@ -245,6 +245,13 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    a.realm!==realm||now()-a.at>12000||
    !plan||plan.id!==a.planId||
    bot.teamPlan?.valid?.(plan)!==true||
+   bot.teamPlan?.allowed?.(plan?.target)!==true||
+   bot.strategy?.permittedMap?.(plan?.map)!==true||
+   p.G?.maps?.[plan?.map]?.pvp===true||
+   order.mode!=='move'||!a?.point||!order.dest||
+   order.dest.map!==a.point.map||order.dest.in!==a.point.in||
+   !Number.isFinite(order.dest.x)||!Number.isFinite(order.dest.y)||
+   Math.hypot(order.dest.x-a.point.x,order.dest.y-a.point.y)>.1||
    bot.me?.role!=='farmer'||bot.me.name!==bot.leader||
    bot.cfg?.party?.enabled!==false||
    (bot.farmers?.length??1)>1||

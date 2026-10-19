@@ -148,3 +148,41 @@ test('W13 a new 64th pending reservation drops only completed history',()=>{
  assert.equal(f.allocation.recoveryStatus().outstandingCount,64);
  assert.equal(f.allocation.reserve({...f.job(),id:'newer'}),false);
 });
+
+test('W13 sender must not confirm equip against a different session, realm or dead recipient',()=>{
+ const changes=[
+  f=>{f.peer.session='new-session';},
+  f=>{f.peer.realm='USI';},
+  f=>{f.peer.running=false;},
+  f=>{f.peer.rip=true;},
+  f=>{f.bot.p.realm=()=> 'USI';},
+ ];
+ for(const mutate of changes){
+  const f=fixture([row('confirmed','delivered')]);
+  f.peer.gear.slots.mainhand={...variant};
+  mutate(f);
+  f.allocation.tick();
+  assert.equal(f.allocation.status()[0].state,'delivered');
+  assert.equal(f.store.get('albot:gear:Merchant:allocations')[0].state,'delivered');
+ }
+ for(const field of ['recipientSession','realm']){
+  const incomplete=row('confirmed','delivered');
+  delete incomplete[field];
+  const f=fixture([incomplete]);
+  f.peer.gear.slots.mainhand={...variant};
+  f.allocation.tick();
+  assert.equal(f.allocation.status()[0].state,'delivered');
+ }
+});
+test('W13 verified original recipient session and realm can record equipped only after storage succeeds',()=>{
+ const f=fixture([row('confirmed','delivered')]);
+ f.peer.gear.slots.mainhand={...variant};
+ f.setWrites(false);
+ f.allocation.tick();
+ assert.equal(f.allocation.status()[0].state,'delivered');
+ assert.equal(f.store.get('albot:gear:Merchant:allocations')[0].state,'delivered');
+ f.setWrites(true);
+ f.allocation.tick();
+ assert.equal(f.allocation.status()[0].state,'equipped');
+ assert.equal(f.store.get('albot:gear:Merchant:allocations')[0].state,'equipped');
+});

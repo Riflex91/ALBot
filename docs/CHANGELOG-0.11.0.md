@@ -76,8 +76,8 @@ Neue Regressionen stehen in `test/20261019-aggressive-aoe-recovery.test.mjs`:
 Legacy-Ponty-Recovery einschließlich Speicher-/Drift-Negativfällen und später
 exakter Kaufbeobachtung, Zweiziel-AoE ohne Fremdziel/Pullumgehung, stabiler
 Kapazitätskontext, fälliger Browserwechsel trotz Merchant-Journal sowie
-Pullpause und Fehlschlagsveto. Vollständige Offline-CI und signierter Kanal
-werden vor Veröffentlichung geprüft; tatsächlicher Spielbetrieb bleibt eine
+Pullpause und Fehlschlagsveto. Linux-/Windows-CI 39318809167 und Signierworkflow 39319057251: 1781/1781 Tests grün.
+Sequence 11 / 0.11.0-candidate, 765836 Bytes, SHA-256 `75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31`, ECDSA-P-256 und Bytegleichheit zu Main verifiziert; tatsächlicher Spielbetrieb bleibt eine
 separate Liveabnahme. Insbesondere kein pauschales Versprechen, dass jeder
 unbekannte Inventar-/Wertzustand automatisch auflösbar ist.
 

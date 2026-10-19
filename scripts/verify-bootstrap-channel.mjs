@@ -20,7 +20,13 @@ assert.ok(manifestUrl.startsWith(allowedBranchPrefix), 'Manifest-Branch ist nich
 
 async function fetchBytes(url, limit) {
   assert.ok(url.startsWith(allowedPrefix), 'Unbekannte GitHub-Quelle: ' + url);
-  const res = await fetch(url, {method: 'GET', signal: AbortSignal.timeout(15000), headers: {'cache-control': 'no-cache'}});
+  // Raw GitHub's CDN may return a valid but previous signed release while the
+  // branch has already advanced. Use a fresh cache key for this CI observation
+  // without changing the manifest/runtime URLs embedded in signed metadata.
+  const observedUrl = new URL(url);
+  observedUrl.searchParams.set('albot_verify_at', String(Date.now()) + '-' +
+    Math.random().toString(36).slice(2));
+  const res = await fetch(observedUrl, {method: 'GET', signal: AbortSignal.timeout(15000), headers: {'cache-control': 'no-cache'}});
   assert.ok(res.ok, url + ' -> HTTP ' + res.status);
   const data = Buffer.from(await res.arrayBuffer());
   assert.ok(data.length >= 1 && data.length <= limit, 'Unerwartete Download-Groesse: ' + url);

@@ -42,3 +42,11 @@ Die Arbeit ist ein **Laufzeit- und Planungsschutz**, keine abgeschlossene
 kontoübergreifende W10/W13-Lootmission. Vollständige
 Empfängerallokation, Lieferkettenrecovery und Ingame-Liveabnahme bleiben
 offen. Der signierte Release wird nicht automatisch aktualisiert.
+
+## Versionsintegration
+
+Diese W13-Änderung wurde nach dem parallel gemergten PR #226
+auf den aktuellen `main`-Versionsstand `0.10.12-candidate`
+übernommen. Die generierten Entwicklungsartefakte werden aus der
+kombinierten Source regeneriert, nicht mit veralteten 0.10.11-Dateien
+überschrieben. Der separate signierte Release wird nicht verändert.

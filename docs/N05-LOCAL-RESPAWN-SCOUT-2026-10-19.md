@@ -86,3 +86,11 @@ Die Bot-Aktionsausführung kann eine Bewegung zunächst nur in einem Frame vorme
 Jeder Scout-Bewegungsauftrag führt jetzt eine flüchtige, an Session, Realm, genehmigte Plan-ID, konkrete Monster-ID, Kill-Zeitstempel und exakten Zielpunkt gebundene Dispatch-Freigabe mit sich. Der Executor prüft diese Freigabe unmittelbar beim tatsächlichen Ausführen erneut: aktuelle Solo- und Team-/Kampfsicherheit, gültiger Farmplan, Map-/Monsterfreigabe, HP und Auftragssperren, weiterhin frische negative Sichtung, genehmigte Spawn-Innenfläche und unveränderte reale Geometrie. Gleichzeitig wird der letzte `can_move_to`-Nachweis erneut eingeholt. Fehlt eine Bedingung, gibt es **keinen** nativen `move`-Aufruf.
 
 Direkte `go(..., 'scout')`- oder `local(..., 'scout')`-Aufrufe ohne eine solche aktive Freigabefunktion bleiben gesperrt. Das allgemeine Bewegungsverhalten von Farm-, Quest- und Merchant-Aktionen bleibt unverändert. Ein vorgemerkter, später widerrufener Scout-Hopp bleibt **ohne automatische Wiederholung**. Der Status unterscheidet weiterhin angeforderte/ungeklärte Bewegung von physisch belegter Ankunft; daraus entsteht kein Respawnbeweis.
+
+## Konfliktschutz mit nativ bereits laufenden Bewegungen
+
+ALBot kann eine native Bewegung oder eine noch laufende Smart-Move-Suche auch dann vorfinden, wenn der interne Bewegungsauftrag (`movement.order`) leer ist. Der enge lokale N05-Solo-Hopp darf eine solche fremde bzw. noch nicht zuordenbare Bewegung **nicht überlagern**. Deshalb liest `movement.nativeBusy()` sowohl `character.moving` als auch die Statusinformationen von `root.smart` und `parent.smart` (`moving`/`searching`).
+
+Scout-Planung wird bei nativer Aktivität gesperrt. Die unmittelbar vor dem **echten** `move`-Aufruf geprüfte Frame-Freigabe führt denselben Check nochmals aus: Beginnt zwischen Vormerkung und Ausführung eine externe Bewegung oder Smart-Route-Suche, wird **kein Scout-`move`** gesendet. Alle üblichen Farm-/Quest-/Merchant-Routen behalten ihre bisherige Bewegungsarbitrierung. Die neue Schranke erlaubt weder weiteres Scoutsuchen, neue Monster noch einen Replay-Versuch nach abgebrochener Genehmigung.
+
+Diese Regressionstests sind Offline-Nachweise, keine Ingame-Beobachtung. Signierter Bootstrap und persönliche Konfiguration bleiben unverändert.

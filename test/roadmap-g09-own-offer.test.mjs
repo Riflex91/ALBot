@@ -187,7 +187,7 @@ test('G09 mismatched seller/slot/item/recipient or non-server UI cannot close an
   e=>{e.snum=100;},e=>{e.buyer='';}
  ]){
   const f=fixture();f.maker.post(0,f.rule);
-  await f.pending.call();f.pending.onConfirmed();
+  await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
   const event=structuredClone(valid);change(event);
   assert.equal(f.maker.observeSwap(event),false);
   f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -197,7 +197,7 @@ test('G09 mismatched seller/slot/item/recipient or non-server UI cannot close an
 });
 test('G09 matching goods without official UI receipt cannot confirm a vanished listing',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
  assert.equal(f.maker.sample(),false);
  assert.equal(f.maker.status().receipt,null);
@@ -212,7 +212,7 @@ test('G09 matching goods without official UI receipt cannot confirm a vanished l
 });
 test('G09 failed settlement checkpoint preserves unknown instead of claiming completion',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2});
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -222,7 +222,7 @@ test('G09 failed settlement checkpoint preserves unknown instead of claiming com
 });
 test('G09 only paused operator may clear EXACT verified receipt marker',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  const event={type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
  f.maker.observeSwap(event);f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -266,7 +266,7 @@ test('G09 own barter intent persists outgoing baseline before server-side postin
 });
 test('G09 returned outgoing item blocks inferred swap settlement despite exact incoming receipt',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  const evt={type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
  assert.equal(f.maker.observeSwap(evt),true);
@@ -282,7 +282,7 @@ test('G09 returned outgoing item blocks inferred swap settlement despite exact i
 });
 test('G09 missing outgoing copy blocks a false swap receipt',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2}),true);
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -293,7 +293,7 @@ test('G09 missing outgoing copy blocks a false swap receipt',async()=>{
 });
 test('G09 old saved listing without outgoing physical baseline stays unknown after matching swap UI',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  const legacy=structuredClone(f.writes.get('albot:trade-offer:v1:M'));
  delete legacy.outgoingBefore;
  const older=fixture(legacy);
@@ -308,7 +308,7 @@ test('G09 old saved listing without outgoing physical baseline stays unknown aft
 
 test('G09 previously verified swap receipt remains manually acknowledgeable without new baseline field',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2}),true);
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -321,4 +321,66 @@ test('G09 previously verified swap receipt remains manually acknowledgeable with
  old.bot.running=false;
  assert.equal(old.maker.acknowledgeVerified('R001'),true,
   'new extra evidence requirement must not strand previously completed records');
+});
+
+test('G09 verified stand RID cannot change between observation and durable posting',async()=>{
+ const f=fixture();
+ assert.equal(f.maker.post(0,f.rule),true);
+ await f.pending.call();
+ assert.equal(f.pending.observe(),true);
+ const original=f.slots.trade3;
+ f.slots.trade3={...original,rid:'REPLACED-RID'};
+ assert.equal(f.pending.observe(),false);
+ assert.equal(f.pending.onConfirmed(),false);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M')?.state,
+  'dispatch-intent-unverified');
+ assert.equal(f.maker.post(1,f.rule),false,'unknown trade outcome never authorizes repost');
+});
+test('G09 positive server result, verified physical listing and observer are all required',async()=>{
+ const f=fixture();
+ assert.equal(f.maker.post(0,f.rule),true);
+ await f.pending.call();
+ assert.equal(f.pending.onConfirmed(),false,'onConfirmed cannot bypass read-only observation');
+ assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M')?.rid,'R001');
+});
+test('G09 own offer cannot confirm a mutated requested receiving variant',async()=>{
+ for(const mutate of [
+  want=>{want.p='special';},
+  want=>{want.title='modified';},
+  want=>{want.stat_type='int';},
+  want=>{want.q=2;}
+ ]){
+  const f=fixture();f.maker.post(0,f.rule);
+  await f.pending.call();
+  mutate(f.slots.trade3.want);
+  assert.equal(f.pending.observe(),false);
+  assert.equal(f.pending.onConfirmed(),false);
+  assert.equal(f.writes.get('albot:trade-offer:v1:M').state,
+   'dispatch-intent-unverified');
+ }
+});
+test('G09 no official promise result means physical listing alone cannot confirm',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ f.p.call=(name,...args)=>{
+  assert.equal(name,'trade_offer');
+  f.slots.trade3={name:'sword',level:0,rid:'R001',want:{name:'wand'}};
+  f.inventory[0]=null;
+  return Promise.resolve(undefined);
+ };
+ await f.pending.call();
+ assert.equal(f.pending.observe(),false);
+ assert.equal(f.pending.onConfirmed(),false);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M').state,
+  'dispatch-intent-unverified');
+});
+test('G09 failed durable listing checkpoint cannot be treated as confirmed',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();
+ assert.equal(f.pending.observe(),true);
+ f.p.write=()=>false;
+ assert.equal(f.pending.onConfirmed(),false);
+ assert.equal(f.maker.status().state,'dispatch-intent-unverified');
+ assert.equal(f.maker.post(1,f.rule),false);
 });

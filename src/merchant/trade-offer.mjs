@@ -86,11 +86,18 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   if(!p.write?.(key,intent))throw Error('Barter intent persistence failed');
   saved=intent;posted=true;
  }
- function record(plan){
+ function record(plan,observedRid){
   const listing=p.c.slots?.[plan.offerSlot];
+  // Never persist a different trade RID merely because the slot was reused
+  // between the observer's positive sample and onConfirmed().
   if(saved?.state!=='dispatch-intent-unverified'||
-     !listing||typeof listing.rid!=='string'||!listing.rid)return false;
-  const confirmed={...saved,rid:listing.rid,at:now(),
+     typeof observedRid!=='string'||!observedRid||
+     listing?.rid!==observedRid||
+     saved.outgoing!==identity(plan.item)||
+     saved.incoming!==identity(plan.wanted)||
+     saved.outgoingBefore!==plan.before||
+     saved.receiveBefore!==plan.receiveBefore)return false;
+  const confirmed={...saved,rid:observedRid,at:now(),
    state:'listing-confirmed-post-trade-unverified'};
   if(!p.write?.(key,confirmed))return false;
   saved=confirmed;return true;
@@ -109,7 +116,36 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
     next.itemPrint===plan.itemPrint&&next.payValue===plan.payValue&&
     next.before===plan.before&&next.receiveBefore===plan.receiveBefore;
   };
-  let response=null;
+  let response=null,observedRid=null;
+  const postedRid=()=>{
+   const listing=p.c.slots?.[plan.offerSlot];
+   // A fulfilled server promise is necessary but never sufficient.
+   // Physical source depletion and this exact own stand entry are required.
+   if(!response||typeof response!=='object'||response.failed||
+      response.success===false||
+      saved?.state!=='dispatch-intent-unverified'||
+      saved.outgoing!==identity(plan.item)||
+      saved.incoming!==identity(plan.wanted)||
+      saved.receiveBefore!==plan.receiveBefore||
+      saved.outgoingBefore!==plan.before||
+      !listing||typeof listing.rid!=='string'||!listing.rid||
+      listing.name!==plan.item.name||
+      (listing.level??0)!==(plan.item.level??0)||
+      (listing.stat_type??'')!==(plan.item.stat_type??'')||
+      (listing.p??'')!==(plan.item.p??'')||
+      (listing.title??'')!==(plan.item.title??'')||
+      (listing.acc??'')!==(plan.item.acc??'')||
+      JSON.stringify(listing.data)!==JSON.stringify(plan.item.data)||
+      (listing.q??1)!==1||listing.b||listing.giveaway||
+      listing.want?.name!==plan.wanted.name||
+      (listing.want.level??0)!==0||
+      (listing.want.q??1)!==1||
+      (listing.want.p??'')!==''||
+      (listing.want.stat_type??'')!==''||
+      (listing.want.title??'')!==''||
+      variantCount(p.c.items,plan.item)!==plan.before-1)return null;
+   return listing.rid;
+  };
   return bot.economy.perform('market.tradeOffer',{
    slots:[slot],loss:plan.payValue,rule,
    guard:ready,
@@ -119,21 +155,15 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      plan.request,1)).then(x=>{response=x;return x;});
    },
    observe:()=>{
-    const listing=p.c.slots?.[plan.offerSlot];
-    return response?.success!==false&&!response?.failed&&
-     !!listing&&typeof listing.rid==='string'&&!!listing.rid&&
-     listing.name===plan.item.name&&
-     (listing.level??0)===(plan.item.level??0)&&
-     (listing.stat_type??'')===(plan.item.stat_type??'')&&
-     (listing.p??'')===(plan.item.p??'')&&
-     (listing.title??'')===(plan.item.title??'')&&
-     (listing.q??1)===1&&!listing.b&&!listing.giveaway&&
-     listing.want?.name===plan.wanted.name&&
-     (listing.want.level??0)===0&&
-     (listing.want.q??1)===1&&
-     variantCount(p.c.items,plan.item)===plan.before-1;
+    const rid=postedRid();
+    if(!rid||observedRid&&rid!==observedRid)return false;
+    observedRid=rid;
+    return true;
    },
-   onConfirmed:()=>record(plan),
+   onConfirmed:()=>{
+    const rid=postedRid();
+    return !!observedRid&&rid===observedRid&&record(plan,observedRid);
+   },
    details:{item:plan.item.name,variant:identity(plan.item),
     quantity:1,before:plan.before,wanted:identity(plan.wanted),
     offerSlot:plan.offerSlot,riskVariant:identity(plan.item)},

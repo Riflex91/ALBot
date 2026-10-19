@@ -170,6 +170,17 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
    timeout:30000
   });
  }
+ // The server UI swap event carries no listing RID. An observed
+ // replacement or mutation of the known stand entry contradicts its proof,
+ // even if that replacement disappears before physical inventory settles.
+ function matchingRecordedListing(listing){
+  if(!listing)return true; // server may already have removed this entry
+  return listing.rid===saved?.rid&&
+   identity({...listing,rid:undefined})===saved.outgoing&&
+   identity(listing.want)===saved.incoming&&
+   (listing.q??1)===1&&(listing.want?.q??1)===1&&
+   !listing.b&&!listing.giveaway;
+ }
  function observeSwap(data){
   // Official server emits UI {type:'swap',event:true,seller,buyer,
   // item,received,slot,snum}. It has no RID. The RID must already have
@@ -184,7 +195,8 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      !Number.isSafeInteger(data.snum)||data.snum<0||
      data.snum>=p.c.isize||
      identity(data.item)!==saved.outgoing||
-     identity(data.received)!==saved.incoming)return false;
+     identity(data.received)!==saved.incoming||
+     !matchingRecordedListing(p.c.slots?.[saved.offerSlot]))return false;
   // The seller's actual inventory refresh may follow the event.
   swapEvidence={at:now(),buyer:data.buyer,snum:data.snum,
    rid:saved.rid,offerSlot:saved.offerSlot,
@@ -200,6 +212,11 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   // the old evidence rather than reviving it if the session changes back.
   if(!swapEvidence.ownerSession||swapEvidence.ownerSession!==bot.session||
      swapEvidence.realm!==p.realm()){
+   swapEvidence=null;return false;
+  }
+  // Invalidate the volatile UI proof on the FIRST observed stand drift.
+  // A later empty slot is not enough to make that old event valid again.
+  if(!matchingRecordedListing(p.c.slots?.[swapEvidence.offerSlot])){
    swapEvidence=null;return false;
   }
   if(!accurateRecord()||!hasOutgoingBaseline()||

@@ -1,0 +1,36 @@
+name: Temporary W13 receiving-claim artifact sync
+on:
+  push:
+    branches:
+      - codex/w13-durable-receiver-gear-admission-20261019
+    paths:
+      - docs/W13-DURABLE-RECEIVER-GEAR-2026-10-19.md
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/w13-durable-receiver-gear-admission-20261019
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - name: Commit generated comparison artifacts on development branch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bot.js dist/albot.js dist/albot.runtime.js dist/albot.bootstrap.auto.js dist/albot.package.json dist/albot.settings.json dist/manifest.json profiles/full-solo.json profiles/full-team.json editor/Bot-Werkstatt.html editor/albot.settings.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(W13): regenerate receiver admission runtime and editor'
+            git push origin HEAD:codex/w13-durable-receiver-gear-admission-20261019
+          fi

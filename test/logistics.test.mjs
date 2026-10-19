@@ -403,7 +403,7 @@ function gearPriorityPair(explicit=false){
  const {A,B}=pair(),r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
  A.p.c.items[0]={name:'staff',level:0};
  A.p.G={items:{staff:{type:'weapon',wtype:'staff'}}};
- A.cfg.production.gear=true;A.cfg.merchant.enabled=true;A.cfg.merchant.supply=true;
+ A.cfg.production={...(A.cfg.production??{}),gear:true};A.cfg.merchant.enabled=true;A.cfg.merchant.supply=true;
  const makeRule=recipient=>({...r,enabled:true,item:'staff',
   role:'merchant',action:'send',recipient,keep:0,teamReserve:0,
   minLevel:0,maxLevel:0,batch:1});

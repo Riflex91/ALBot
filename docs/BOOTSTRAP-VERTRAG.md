@@ -11,10 +11,10 @@ Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Signiertes Release-Artefakt (sequence 12, Stand 19.10.2026)
+## Signiertes Release-Artefakt (sequence 13, Stand 19.10.2026)
 
 Die Manifest-Quelle auf dem **unveränderten** Release-Branch wurde durch den
-separaten [GitHub-Signierworkflow 39322831707](https://github.com/Riflex91/ALBot/actions/runs/39322831707)
+separaten [GitHub-Signierworkflow 39323499278](https://github.com/Riflex91/ALBot/actions/runs/39323499278)
 auf folgende Werte aktualisiert. Dieser G04-Dokumentationsabgleich ist **kein**
 neuer Signier- oder Publishauftrag. Main und signierter Kanal sind getrennt;
 die offiziellen Linux-/Windows-Jobs kontrollieren die ECDSA-P-256-Signatur,
@@ -24,10 +24,10 @@ eigenständiger Spiel-Livebeleg vor.
 | Feld | Beobachteter Wert |
 | --- | --- |
 | Manifest `sequence` | `12` |
-| Manifest `version` | `0.12.0-candidate` |
+| Manifest `version` | `0.13.0-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `766823` |
-| Manifest `sha256` | `fd0b947f2f42fcf9eacb5b06613e8e16c973dfd4cc0c5e0520f640c52761ecf3` |
+| Manifest `bytes` | `766793` |
+| Manifest `sha256` | `c6af298c7f87773175c81e7f9cbd790ee83a29b0bf3e9098fd96fa8d7063084f` |
 | Signatur-/Hashabnahme | Über `scripts/verify-bootstrap-channel.mjs` im offiziellen CI-Job |
 | Ingame-Liveabnahme | Weiterhin offen |
 

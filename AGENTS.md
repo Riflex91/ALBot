@@ -1,3 +1,7 @@
+# AKTUELLER SIGNIERTER RELEASE (19.10.2026)
+
+PR #246 ist nach bestandener Linux-/Windows-CI in `main` (39a2616) gemergt. Der vorhandene Bootstrap-V2-Kanal hat die korrigierte Priest-Monsterhunt-Runtime `0.14.0-candidate` als **Sequence 14** über GitHub Actions [39324359244](https://github.com/Riflex91/ALBot/actions/runs/39324359244) mit erfolgreicher ECDSA-P-256-/SHA-256-/Bytezahl-Prüfung veröffentlicht. `765913` Runtime-Bytes und SHA-256 `3ed5c6a0277c14aefe0847b940f256fc2230566fa4ba53063bb4da499502f91a`, main-/Release-Blob byteidentisch. Keine Änderung an öffentlichem Schlüssel, URL, Loader oder persönlicher Konfiguration. Spiel-Liveabnahme offen. Die untenstehenden älteren "aktuellen" Sequenzangaben sind historische Momentaufnahmen; es gilt Sequence 14.
+
 # Release-Regel und Rotation ab 19.10.2026
 
 Jede neu signierte Bootstrap-Runtime erhöht die Minor-Version um genau eins (+0.1), Patch wird 0: 0.10.13 -> 0.11.0 -> 0.12.0. `scripts/sign-release.mjs` prüft dies gegen das vorherige gültig signierte Manifest. Veröffentlicht und kryptografisch verifiziert: 0.11.0-candidate / Sequence 11. Die persönliche Rotationshaltezeit bleibt 1800000 ms (30 Minuten); bestehende Level-/Gear-Auswahl unverändert lassen. Nur bei fälligem Ausgleich neue Pulls pausieren, laufende Kämpfe beenden und sichere Farmerzustände vor dem bestehenden Browser-Wechsel abwarten.

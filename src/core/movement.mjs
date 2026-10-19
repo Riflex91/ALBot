@@ -33,6 +33,11 @@ export function createMovement(bot){
   function go(d,owner){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
+    // A local N05 scout is a direct step, never general smart navigation.
+    // Even an unexpected direct call cannot widen its map or travel budget.
+    if(owner==='scout'&&(!samePlace(p.c,d)||
+       !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
+       distance(p.c,d)>95||distance(p.c,d)<1))return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
     if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
@@ -97,7 +102,11 @@ export function createMovement(bot){
     }
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
-    const blink=local&&travelBlinkEligible(bot,d,owner),landing=blink?blinkLandingPoint(d):null;
+    // Geometry can change between scout admission and actual movement.
+    // A failed last local check must NEVER turn a scout hop into smart_move.
+    if(owner==='scout'&&!local){order=null;return false;}
+    const blink=owner!=='scout'&&local&&travelBlinkEligible(bot,d,owner),
+     landing=blink?blinkLandingPoint(d):null;
     if(blink)token.dest={...dest,x:landing.x,y:landing.y,radius:Math.max(8,dest.radius)};
     token.mode=blink?'blink':local?'move':'smart_move';
     const accepted=exec.run('move',['movement',...(blink?['mana']:[])],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&(!blink||travelBlinkEligible(bot,d,owner)),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
@@ -128,7 +137,18 @@ export function createMovement(bot){
     }
   }
   return {go,poll,stop,failedRecently,get townActive(){return townQueued||!!p.c.c?.town||exec.pending.has('travel.town');},get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
-    local(x,y,owner){if(order&&order.owner!==owner)return false;if(!p.call('can_move_to',x,y))return false;return go({map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);},
+    local(x,y,owner){
+      if(order&&order.owner!==owner)return false;
+      if(!p.call('can_move_to',x,y))return false;
+      const prior=order,accepted=go({
+        map:p.c.map,in:p.c.in??p.c.map,x,y,radius:8},owner);
+      // Generic go() historically returns false even on accepted travel.
+      // N05 MUST verify it actually owns a native route before consuming
+      // the one-use scout proof or reporting a dispatched movement.
+      return owner==='scout'?
+        order!==prior&&order?.owner==='scout'&&order.mode==='move'&&
+        order.dest.x===x&&order.dest.y===y:accepted;
+    },
     farmLocation(type){const candidates=[];for(const [map,data] of Object.entries(p.G.maps)){if(data.ignore||data.instance||data.pvp)continue;for(const pack of data.monsters??[]){if(pack.type!==type)continue;const ranges=pack.boundaries??(pack.boundary?[[map,...pack.boundary]]:[]);for(const [m,x1,y1,x2,y2] of ranges)candidates.push({map:m,in:m,x:(x1+x2)/2,y:(y1+y2)/2,radius:45});}}return candidates.sort((a,b)=>(a.map===p.c.map?-100000:0)+distance(p.c,a)-((b.map===p.c.map?-100000:0)+distance(p.c,b)))[0];}
   };
 }

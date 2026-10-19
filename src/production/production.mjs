@@ -15,19 +15,44 @@ import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMa
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
 export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
- const grouped=new Map(),allocated=new Map();
+ // A generic target can use any physical variant. It must share the gross
+ // item/level capacity with exact targets rather than creating a second
+ // virtual copy under another variant key.
+ const grouped=new Map(),totalUsed=new Map(),genericUsed=new Map(),
+  exactUsed=new Map();
+ const verified=n=>n===Infinity||Number.isSafeInteger(n)&&n>=0;
  for(const g of goals){
-  if(!g.recipient||g.recipient===sender)continue;
-  const remaining=Math.max(0,g.quantity-(delivered(g)??0));if(!remaining)continue;
-  const stockKey=JSON.stringify([g.item,g.level,g.variant??null]);
-  const capacity=Math.max(0,available(g));
-  const transferable=Math.min(remaining,Math.max(0,capacity-(allocated.get(stockKey)??0)));
-  if(!transferable)continue;
-  allocated.set(stockKey,(allocated.get(stockKey)??0)+transferable);
-  const key=JSON.stringify([g.recipient,g.item,g.level,g.variant??null]);
+  if(!g?.recipient||g.recipient===sender||
+     !Number.isSafeInteger(g.quantity)||g.quantity<1)continue;
+  const settled=delivered(g)??0;
+  if(!Number.isSafeInteger(settled)||settled<0)continue;
+  const remaining=Math.max(0,g.quantity-settled);
+  if(!remaining)continue;
+  const groupKey=JSON.stringify([g.item,g.level]);
+  const exact=g.variant!==null&&g.variant!==undefined;
+  const variantKey=exact?identity({name:g.item,level:g.level,...g.variant}):null;
+  const capacity=available(g);
+  const gross=exact?available({...g,variant:null}):capacity;
+  if(!verified(capacity)||!verified(gross)||capacity>gross)continue;
+  const already=totalUsed.get(groupKey)??0;
+  let free=gross-already;
+  if(exact)free=Math.min(free,
+   capacity-(exactUsed.get(variantKey)??0)-
+    (genericUsed.get(groupKey)??0));
+  const transferable=Math.min(remaining,Math.max(0,free));
+  if(!Number.isSafeInteger(transferable)||transferable<1||
+     !Number.isSafeInteger(already+transferable))continue;
+  totalUsed.set(groupKey,already+transferable);
+  if(exact)exactUsed.set(variantKey,
+   (exactUsed.get(variantKey)??0)+transferable);
+  else genericUsed.set(groupKey,
+   (genericUsed.get(groupKey)??0)+transferable);
+  const key=JSON.stringify([g.recipient,g.item,g.level,variantKey]);
   const prior=grouped.get(key);
-  if(prior)prior.quantity+=transferable;
-  else grouped.set(key,{...g,quantity:transferable});
+  if(prior){
+   if(!Number.isSafeInteger(prior.quantity+transferable))continue;
+   prior.quantity+=transferable;
+  }else grouped.set(key,{...g,quantity:transferable});
  }
  return [...grouped.values()];
 }

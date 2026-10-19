@@ -83,7 +83,8 @@ export function createGearAllocation(bot){
  const outstanding=valid.filter(r=>['reserved','unresolved'].includes(r.state));
  if(outstanding.length>64)unsafeHistory=true;
  const completed=valid.filter(r=>!['reserved','unresolved'].includes(r.state));
- let rows=[...outstanding,...completed.slice(-Math.max(0,64-outstanding.length))];
+ const completedSpace=Math.max(0,64-outstanding.length);
+ let rows=[...outstanding,...(completedSpace?completed.slice(-completedSpace):[])];
  function save(next){if(unsafeHistory||!bot.p.write(key,next))return false;rows=next;return true;}
  function goalFor(item,to,slot=null){return bot.gear?.goals()?.find(g=>g.recipient===to&&g.item===item.name&&g.level===(item.level??0)&&(!slot||g.gearSlot===slot));}
  function reserve(j){
@@ -108,8 +109,10 @@ export function createGearAllocation(bot){
   const kept=rows.filter(r=>['reserved','unresolved'].includes(r.state));
   // Completed history is disposable. Open claims are not.
   if(kept.length>=64)return false;
-  const history=rows.filter(r=>!['reserved','unresolved'].includes(r.state)&&
-   r.at>Date.now()-86400000).slice(-(63-kept.length));
+  const historySpace=63-kept.length;
+  const history=historySpace>0?rows.filter(r=>
+   !['reserved','unresolved'].includes(r.state)&&
+   r.at>Date.now()-86400000).slice(-historySpace):[];
   const next=[...kept,...history];
   next.push({id:j.id,recipient:j.to,recipientSession:j.session,slot:j.slot,fingerprint:j.fingerprint,variant:identity(live),quantity:j.quantity,gearSlot:goal.gearSlot,expected:j.gear?.expected,realm:bot.p.realm(),at:Date.now(),state:'reserved'});return save(next);
  }

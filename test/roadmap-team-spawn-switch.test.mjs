@@ -8,8 +8,8 @@ const member=(name,klass,ready=[],other={})=>({
  hp:800,max_hp:1000,mp:450,max_mp:500,
  capabilities:{at:now-100,ready,sustainable:ready},...other
 });
-const old={key:'main:goo:0',score:100,travelSeconds:4};
-const next={key:'cave:goo:1',score:130,travelSeconds:120};
+const old={key:'main:goo:0',score:100,travelSeconds:4,observedAt:now-1000};
+const next={key:'cave:goo:1',score:130,travelSeconds:120,observedAt:now-1000};
 const current={...old,kind:'farm',started:now-80000};
 
 test('role owner requires fresh capability with actual ready skill',()=>{

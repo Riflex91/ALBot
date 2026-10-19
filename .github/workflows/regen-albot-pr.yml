@@ -7,6 +7,7 @@ on:
       - .github/workflows/regen-albot-pr.yml
       - src/items/logistics.mjs
       - test/roadmap-w13-live-gear-recipient-priority.test.mjs
+      - test/logistics.test.mjs
 permissions:
   contents: write
 jobs:

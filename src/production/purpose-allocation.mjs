@@ -1,5 +1,5 @@
 import {findRecipe,recipeIngredients} from './recipes.mjs';
-import {identity} from '../core/policy.mjs';
+import {identity,verifiedExactGoalIdentity} from '../core/policy.mjs';
 // A shared finite demand ledger. Different goals consume disjoint stock;
 // matching recipes sum their ingredients rather than taking a maximum.
 export function purposeReservations({G,goals,stock,delivered=()=>0,exclude=null,recipient='',recipientItem=null}){
@@ -13,17 +13,9 @@ export function purposeReservations({G,goals,stock,delivered=()=>0,exclude=null,
  // reserved. A malformed goal is not an unrestricted ("generic") goal.
  function exactVariant(name,level,variant){
   if(variant===null||variant===undefined)return null;
-  if(!variant||typeof variant!=='object'||Array.isArray(variant)||
-     Object.hasOwn(variant,'name')&&variant.name!==name||
-     Object.hasOwn(variant,'level')&&variant.level!==level)
-   throw Error('invalid-purpose-variant');
-  const serialized=JSON.stringify(variant);
-  if(typeof serialized!=='string'||serialized.length>2048)
-   throw Error('invalid-purpose-variant');
-  const canonical=identity({...variant,name,level});
-  if(typeof canonical!=='string'||!canonical||canonical.length>512)
-   throw Error('invalid-purpose-variant');
-  return canonical;
+  const validated=verifiedExactGoalIdentity({item:name,level,variant});
+  if(!validated)throw Error('invalid-purpose-variant');
+  return validated;
  }
  function need(name,level,quantity,variant,path=[]){
   if(!Number.isSafeInteger(quantity)||quantity<0||++nodes>256||path.length>8)

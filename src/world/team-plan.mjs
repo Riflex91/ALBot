@@ -394,9 +394,14 @@ export function createTeamPlan(bot){
   return roles;
  }
  function tick(){if(cfg.general.testLogging===undefined||me.role!=='farmer')return;
-    // Freeze leader plan selection and follower adoption during hostile team
-    // emergencies. Keep the prior plan for diagnostics, not for fresh pulls.
-    if(bot.combatAssessment?.emergency?.().active)return;
+    // An active emergency must block new pulls, not strand the squad without
+    // a shared destination. Keep an already verified plan stable, but when
+    // none exists allow the leader to select a safe spawn and followers to
+    // adopt it. The farmer/encounter emergency gates still prevent pulls.
+    if(bot.combatAssessment?.emergency?.().active&&valid(current)){
+      current.expires=Date.now()+cfg.general.messageTtlMs*2;
+      return;
+    }
   // Receipt is based on the actual merchant heartbeat and validated monster
   // source, rather than merely assuming send_cm reached every farmer.
   const incomingOrder=materialRequests().find(x=>x.objective&&x.item&&x.monster&&

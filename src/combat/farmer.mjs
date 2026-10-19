@@ -41,6 +41,60 @@ export function safeEmergencyRallyPoint(character,victim,monster,attackRange=0){
     character.y+vy*projection-monster.y)<safe+15)return null;
  return {map:character.map,in:character.in??character.map,x,y,radius:55};
 }
+// A bounded non-combat step toward a fresh team anchor.  Never use stale
+// positions, cross instances, walk through an attacking monster or trade
+// more than a tiny amount of hostile clearance for squad cohesion.
+export function safeSquadConvergenceStep(character,anchor,monsters=[],canMove=()=>false,{
+  now=Date.now(),realm=null,minimumGap=160
+}={}){
+ if(!character||!anchor||character.name===anchor.name||
+    !anchor.running||anchor.rip||!samePlace(character,anchor)||
+    realm!==null&&anchor.realm!==realm||
+    !Number.isFinite(anchor.received)||anchor.received>now||
+    now-anchor.received>4000||
+    ![character.x,character.y,anchor.x,anchor.y].every(Number.isFinite))
+   return null;
+ const from=xy(character),to=xy(anchor),gap=distance(character,anchor);
+ if(![from.x,from.y,to.x,to.y].every(Number.isFinite)||
+    gap<=minimumGap)return null;
+ const heading=Math.atan2(to.y-from.y,to.x-from.x);
+ const active=(monsters??[]).filter(m=>m&&m.hp>0&&!m.dead&&
+   samePlace(character,m)&&Number.isFinite(xy(m).x)&&Number.isFinite(xy(m).y));
+ let best=null;
+ for(const step of [80,55,35]){
+  for(const offset of [0,-Math.PI/6,Math.PI/6,-Math.PI/3,Math.PI/3]){
+   const x=from.x+Math.cos(heading+offset)*step;
+   const y=from.y+Math.sin(heading+offset)*step;
+   const nextGap=Math.hypot(to.x-x,to.y-y);
+   if(nextGap>gap-12||!canMove(x,y))continue;
+   const unsafe=active.some(m=>{
+    const hostile=xy(m);
+    const before=distance(character,m),after=Math.hypot(x-hostile.x,y-hostile.y);
+    const clearance=Math.max(85,(Number.isFinite(m.range)?m.range:30)+50);
+    // A current self-attacker must never be rewarded for driving us
+    // deeper into its attack zone.
+    if(m.target===character.name&&after<before-6)return true;
+    if(after<Math.min(clearance,before-5))return true;
+    // A direct movement segment cannot cut through a previously safe
+    // hostile radius even if both endpoints are outside it.
+    if(before>=clearance){
+     const dx=x-character.x,dy=y-character.y;
+     const fraction=Math.max(0,Math.min(1,
+      ((hostile.x-from.x)*dx+(hostile.y-from.y)*dy)/
+      Math.max(1,dx*dx+dy*dy)));
+     if(Math.hypot(from.x+fraction*dx-hostile.x,
+       from.y+fraction*dy-hostile.y)<clearance)return true;
+    }
+    return false;
+   });
+   if(unsafe)continue;
+   if(!best||nextGap<best.gap)best={map:character.map,
+    in:character.in??character.map,x,y,radius:8,gap:nextGap,
+    anchor:anchor.name};
+  }
+ }
+ return best;
+}
 export function chooseEmergencyFocus(monsters,members=[]){
  const health=new Map((members??[]).filter(m=>m&&typeof m.name==='string'&&
   Number.isFinite(m.hp)&&Number.isFinite(m.max_hp)&&m.max_hp>0)
@@ -212,7 +266,52 @@ export function createFarmer(bot){
     if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>e?.target===c.name&&e.hp>0&&!e.dead).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
+  function emergencyConvergence(threat=null){
+    if(!cfg.party.enabled||!cfg.party.waitForTeam||
+       (bot.farmers??[]).length<2)return false;
+    const c=p.c,now=Date.now(),peers=(bot.farmers??[])
+      .filter(name=>name!==c.name).map(name=>bot.transport?.fresh?.(name))
+      .filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&
+        samePlace(c,h)&&Number.isFinite(h.received)&&
+        h.received<=now&&now-h.received<=4000);
+    // Rangers converge on the verified Priest.  The Priest converges on
+    // the leader.  No independently selected monster/escape location.
+    const priest=peers.find(h=>h.class==='priest');
+    const leader=peers.find(h=>h.name===bot.leader);
+    const anchor=priest??leader??peers.sort((a,b)=>
+      a.name.localeCompare(b.name))[0];
+    if(!anchor)return false;
+    const existing=bot.movement.order;
+    if(existing?.owner==='regroup'){
+      if(distance(c,anchor)>Math.max(100,cfg.party.followDistance*.7)){
+        bot.reason='Notfall-Sammeln bei '+anchor.name;return true;
+      }
+      bot.movement.stop();
+    }
+    if(!threat&&!bot.combatAssessment?.emergency?.().active)return false;
+    const hostile=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
+      (m.target&&bot.teamNames.includes(m.target)||
+       isNaturallyAggressive(p.G,m)));
+    const point=safeSquadConvergenceStep(c,anchor,hostile,
+      (x,y)=>p.call('can_move_to',x,y),{
+       now,realm:p.realm(),
+       minimumGap:Math.max(120,Math.min(160,cfg.party.followDistance??160))
+      });
+    if(!point)return false;
+    if(existing&&!['kite','follow','farm','combat','cohesion','world'].includes(
+       existing.owner))return false;
+    if(existing)bot.movement.stop();
+    bot.movement.go(point,'regroup');
+    if(bot.movement.order?.owner!=='regroup')return false;
+    bot.target=null;bot.reason='Notfall-Sammeln bei '+anchor.name;
+    bot.event?.('party.emergencyConvergence',{
+      anchor:anchor.name,gap:Math.round(distance(c,anchor)),
+      map:c.map,x:point.x,y:point.y,threat:threat?.id??null
+    });
+    return true;
+  }
   function retreat(t){if(!isNaturallyAggressive(p.G,t)&&t?.target!==p.c.name)return false;const c=p.c,from=xy(c);
+    if(emergencyConvergence(t))return true;
     // If the aggressive enemy has driven the patient out of the Priest's
     // reach, try a physically safe convergence step before fleeing farther.
     const healer=(bot.farmers??[]).filter(n=>n!==c.name)
@@ -519,13 +618,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       }
       bot.target=null;bot.reason='Gefährliche Aggro: '+(assessment?.reason??'unverified');
       bot.recovering=true;bot.strategy?.interruptQuest?.();
-      if(threat)retreat(threat);
+      if(threat){if(!emergencyConvergence(threat))retreat(threat);}
+      else if(emergencyConvergence(danger))return;
       else if(['farm','combat','follow','kite'].includes(bot.movement.order?.owner))
         bot.movement.stop();
       bot.skills.rotation(null);
       return;
     }
     if(emergency?.active){
+      if(emergencyConvergence())return;
       bot.target=null;bot.reason='Gruppe retten: keine neuen Farm-Pulls';
       if(['farm','combat'].includes(bot.movement.order?.owner))bot.movement.stop();
       bot.skills.rotation(null);

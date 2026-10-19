@@ -98,7 +98,32 @@ export function createStrategy(bot){
   cfg.party?.aoeMaxTargets,liveEngaged);
  return assessCombat({...base,...live,hp},members(planned),w.risk,aggro,
   {...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
- function safeTarget(id,live,quiet=false,planned=false){if(activity?.observationUnknown&&id===activity.target&&!live?.target)return false;if(!full)return true;if(failed[id]>Date.now())return false;const result=risk(id,live,planned);if(result.timelineShadow&&Date.now()-(lastRisk.get('shadow:sample')??0)>30000){lastRisk.set('shadow:sample',Date.now());const s=result.timelineShadow;bot.event('combat.timelineShadow',{monster:id,safe:result.safe,legacySeconds:result.seconds??null,projectedSeconds:s.projectedSeconds,deltaSeconds:s.deltaSeconds,lowerBoundDps:s.lowerBoundDps,expectedDps:s.expectedDps,expectedCritScenarioDps:s.expectedCritScenarioDps,healerDuty:s.healerDuty,healerManaLimited:s.healerManaLimited,healerProjectedHeals:s.healerProjectedHeals,healerCastSlots:s.healerCastSlots,healerAttackSlots:s.healerAttackSlots,attackIntervalsMs:JSON.stringify(s.attackIntervalsMs),authority:s.authority});}if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
+ function logSafetyGate(id,result,planned,quiet){
+  // Normal farm ranking probes hundreds of species; limit diagnostics to
+  // named boss targets, active encounters and failed selections.
+  if(!bot.bosses?.profile?.(id)&&!failed[id]&&activity?.target!==id)return;
+  const key='gate:'+id+':'+(result.reason??'unknown');const at=Date.now();
+  if(at-(lastRisk.get(key)??0)<30000)return;
+  lastRisk.set(key,at);if(lastRisk.size>128)lastRisk.clear();
+  bot.event?.('strategy.safetyGate',{target:id,safe:false,
+   reason:result.reason??'unverified',phase:result.phase??null,
+   planned:!!planned,probe:quiet?'ranking':'combat',
+   retryAfter:result.retryAfter??null,seconds:result.seconds??null,
+   dps:result.dps??result.outgoing??null,
+   incoming:result.incoming??null,healer:result.healer??null,
+   members:(bot.farmers??[]).map(n=>({name:n,ready:n===me.name||!!bot.transport.fresh(n)?.running}))});
+ }
+ function safeTarget(id,live,quiet=false,planned=false){
+  if(activity?.observationUnknown&&id===activity.target&&!live?.target)return false;
+  if(!full)return true;
+  // A death quarantine is different from a combat-readiness rejection.
+  // Log both, including planned/spawn checks that used to be completely silent.
+  if(failed[id]>Date.now()){
+   logSafetyGate(id,{safe:false,reason:'failed-target-quarantine',retryAfter:failed[id]},planned,quiet);
+   return false;
+  }
+  const result=risk(id,live,planned);
+  if(!result.safe)logSafetyGate(id,result,planned,quiet);if(result.timelineShadow&&Date.now()-(lastRisk.get('shadow:sample')??0)>30000){lastRisk.set('shadow:sample',Date.now());const s=result.timelineShadow;bot.event('combat.timelineShadow',{monster:id,safe:result.safe,legacySeconds:result.seconds??null,projectedSeconds:s.projectedSeconds,deltaSeconds:s.deltaSeconds,lowerBoundDps:s.lowerBoundDps,expectedDps:s.expectedDps,expectedCritScenarioDps:s.expectedCritScenarioDps,healerDuty:s.healerDuty,healerManaLimited:s.healerManaLimited,healerProjectedHeals:s.healerProjectedHeals,healerCastSlots:s.healerCastSlots,healerAttackSlots:s.healerAttackSlots,attackIntervalsMs:JSON.stringify(s.attackIntervalsMs),authority:s.authority});}if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
  function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm
   // spawn on followers: only the failed farm target itself invalidates it.

@@ -1,0 +1,43 @@
+name: Temporary combat integration artifact regeneration
+on:
+  push:
+    branches:
+      - fix/combat-support-regroup-20261019
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Verify current independent signed channel
+        run: node scripts/verify-bootstrap-channel.mjs
+      - name: Rebuild runtime and preserve personal configuration
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run check:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+      - name: Test full browser/headless behavior and regressions
+        run: npm test
+      - name: Commit only generated artifacts
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json profiles/full-solo.json profiles/full-team.json editor/Bot-Werkstatt.html editor/albot.settings.json editor/example-profile.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build(combat): synchronize verified v0.15 runtime and editor"
+            git push origin HEAD:fix/combat-support-regroup-20261019
+          fi

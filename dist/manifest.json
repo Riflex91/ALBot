@@ -1,8 +1,8 @@
 {
   "version": "0.10.11-candidate",
   "schemaId": "albot.full/v1",
-  "bytes": 739126,
-  "sha256": "4bdf60db4b8674bde5be49624c51513b7c5c545e813f8aa07c32af27bcc374e5",
+  "bytes": 739550,
+  "sha256": "09c23e1677234797ffbda667c51b72abf4b60526363054d2f56bf13a8089efb5",
   "liveTest": "pending",
-  "runtimeBytes": 731061
+  "runtimeBytes": 731485
 }

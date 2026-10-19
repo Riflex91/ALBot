@@ -32,3 +32,9 @@ Ein nach einem bestätigten Kill **immer noch als lebendig gerenderter** Eintrag
 Auch nach dem Neustart gespeicherte historische Kills behalten diesen Schutz; eine danach lokal beobachtete negative Sichtung erlaubt später eine neue gewöhnliche Lebendsichtung, jedoch **keine neu gestartete Scout-Lease** und keine behauptete Respawnzeit. Die Beobachtung des Fehlens darf bei unbekannten oder nicht endlichen Charakterkoordinaten weder als positiv noch als negativ gewertet werden.
 
 Dieses Paket bleibt vollständig passiv: kein Scout-Reisen, keine neuen Monsterfreigaben, keine Kampf- oder Respawn-Prognose und keine Änderung an der separat signierten Ingame-Runtime.
+
+## Folgeinkrement – negative Sichtungsbelege nur aus vollständig gelesenen lokalen Snapshots
+
+Die lokale N05-Abwesenheitsprobe darf nicht aus einer **abgeschnittenen** Monsterliste konstruiert werden. Der Kalender verarbeitet höchstens 128 Monster pro Tick. Wenn die gelieferte Liste länger ist, dürfen einzelne daraus direkt beobachtete positive Sichtungen weiterhin übernommen werden, es werden aber **keinerlei negative** Beobachtungen aus dem unvollständigen Ausschnitt abgeleitet. Dasselbe gilt bei fehlender oder formal ungültiger Monsterliste. Bei einer später wieder vollständig gelieferten Liste können neue lokale Negativproben normal fortgesetzt werden, sofern die bereits vorhandenen Zeit-, Session-, Realm- und Beobachtungsgrenzen noch gelten.
+
+Auch eine vollständige lokale Liste ist ausschließlich begrenzte Sichtbarkeitsinformation, keine serverbestätigte Monsterabwesenheit, kein Respawntimer und keine Reise- oder Kampferlaubnis. Ingame-Release und persönliche Einstellungen bleiben unangetastet.

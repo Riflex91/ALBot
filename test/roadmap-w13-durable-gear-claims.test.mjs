@@ -7,7 +7,8 @@ function fixture({initial=[],inventory=null}={}){
  const writes=new Map(),events=[];
  const item={name:'staff',level:3,stat_type:'int'};
  const items=inventory??[{...item}];
- const peer={session:'r1',gear:{slots:{mainhand:null}}};
+ const peer={name:'Priest',running:true,rip:false,realm:'EUI',
+  session:'r1',gear:{slots:{mainhand:null}}};
  const goal={name:'Starter Priest',recipient:'Priest',item:'staff',
   level:3,gearSlot:'mainhand',priority:1000,enabled:true};
  let goals=[goal],realm='EUI',persist=true;
@@ -125,4 +126,50 @@ test('W13 completed gear transfer releases live physical claim without erasing i
  assert.equal(f.allocation.status()[0].state,'delivered');
  assert.equal(f.allocation.offer(f.item,'Priest')?.slot,'mainhand',
   'a second genuinely available copy is not permanently blocked by a delivered record');
+});
+
+test('W13 gear offer requires verified live and addressed receiver in same realm',()=>{
+ for(const change of [
+  p=>{p.name='Other';},
+  p=>{p.running=false;},
+  p=>{p.rip=true;},
+  p=>{p.realm='USV';},
+  p=>{p.realm=null;},
+  p=>{p.session='';},
+  p=>{delete p.name;}
+ ]){
+  const f=fixture();change(f.peer);
+  assert.equal(f.allocation.offer(f.item,'Priest'),false);
+  assert.equal(f.allocation.reserve(f.job()),false);
+ }
+});
+
+test('W13 prepared gear reservations cannot dispatch after recipient loss or realm travel',()=>{
+ for(const change of [
+  p=>{p.running=false;},
+  p=>{p.rip=true;},
+  p=>{p.realm='USV';},
+  p=>{p.name='Unknown';},
+  p=>{p.session='restarted';}
+ ]){
+  const f=fixture(),j=f.job();
+  assert.equal(f.allocation.reserve(j),true);
+  assert.equal(f.allocation.guard(j),true);
+  change(f.peer);
+  assert.equal(f.allocation.guard(j),false);
+  assert.equal(f.allocation.reserve(j),false,
+   'a stored reservation is never executable on stale recipient evidence');
+  assert.equal(f.allocation.status()[0].state,'reserved',
+   'the durable claim must not be silently cleared or resent');
+ }
+});
+
+test('W13 a previously reserved gear claim cannot be reused in another realm',()=>{
+ const f=fixture(),j=f.job();
+ assert.equal(f.allocation.reserve(j),true);
+ f.setRealm('USV');
+ f.peer.realm='USV';
+ assert.equal(f.allocation.guard(j),false);
+ assert.equal(f.allocation.reserve(j),false);
+ assert.equal(f.allocation.status()[0].state,'reserved');
 });

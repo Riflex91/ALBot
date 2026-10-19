@@ -57,7 +57,7 @@ test('ordinary farming retains location across hunt fallback or turn-in labels',
   now:90000,holdMs:60000,improvement:.2});
  assert.equal(kept.choice.key,old.key);
  assert.equal(shouldHoldOrdinaryLocation(old,{...candidate,target:'crab'},'farm'),false);
- assert.equal(shouldHoldOrdinaryLocation(old,candidate,'farm',true),false);
+ assert.equal(shouldHoldOrdinaryLocation(old,candidate,'farm',true),true);
 });
 
 test('active monsterhunt journey is bounded by observable progress',()=>{

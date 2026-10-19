@@ -117,7 +117,7 @@ export function stalledSquadRoutePeer(peers,plan,observed,now=Date.now(),stallMs
  return null;
 }
 export function assessLiveSquadMarch(character,peers,{realm,plan,
- now=Date.now(),maxGap=300,hpFloor=.6}={}){
+ now=Date.now(),maxGap=300,hpFloor=.6,crossMapSince=new Map(),portalGraceMs=12000,mapDistance=null}={}){
  if(!character||!plan?.id||!Array.isArray(peers))return {ready:false,reason:'invalid-plan'};
  for(const peer of peers){
   if(!peer?.running||peer.rip||peer.realm!==realm||
@@ -125,7 +125,8 @@ export function assessLiveSquadMarch(character,peers,{realm,plan,
      now-peer.received>4000||!Number.isFinite(peer.hp)||
      !Number.isFinite(peer.max_hp)||peer.max_hp<=0)
    return {ready:false,reason:'teammate-unverified',peer:peer?.name??null};
-  if(peer.threats>0)return {ready:false,reason:'teammate-in-combat',peer:peer.name};
+  if(peer.travelBlock?.plan===plan.id&&now-peer.travelBlock.at>=0&&
+     now-peer.travelBlock.at<=6000)return {ready:false,reason:'teammate-transit-blocked',peer:peer.name};
   if(peer.questVisit===true)return {ready:false,reason:'teammate-on-quest-visit',peer:peer.name};
   if(peer.hp/peer.max_hp<hpFloor)return {ready:false,
    reason:'teammate-needs-heal',peer:peer.name,hpRatio:peer.hp/peer.max_hp};
@@ -136,7 +137,22 @@ export function assessLiveSquadMarch(character,peers,{realm,plan,
   // Physical arrival at the *verified* destination is sufficient even if
   // optional plan telemetry was dropped from this peer's heartbeat.
   const reached=samePlace(peer,plan)&&distance(peer,plan)<=85;
-  if(!close&&!progress&&!reached)return {ready:false,
+  const aheadOnMap=samePlace(character,peer)&&samePlace(character,plan)&&
+   distance(peer,plan)+60<distance(character,plan)&&
+   peer.march?.plan===plan.id&&peer.march?.realm===realm;
+  const aheadAcrossPortal=!samePlace(character,peer)&&typeof mapDistance==='function'&&
+   Number.isFinite(mapDistance(peer.map))&&mapDistance(peer.map)<mapDistance(character.map)&&
+   peer.march?.plan===plan.id&&peer.march?.realm===realm;
+  if(samePlace(character,peer)){
+   crossMapSince.delete(peer.name);
+   if(!close&&!aheadOnMap)return {ready:false,reason:'teammate-behind',peer:peer.name,gap:distance(character,peer)};
+  }else{
+   const key=plan.id+':'+character.map+':'+(character.in??character.map)+':'+peer.map+':'+(peer.in??peer.map);
+   let checkpoint=crossMapSince.get(peer.name);
+   if(checkpoint?.key!==key){checkpoint={key,at:now};crossMapSince.set(peer.name,checkpoint);}
+   if(!reached&&!aheadAcrossPortal&&now-checkpoint.at>=portalGraceMs)return {ready:false,reason:'teammate-portal-checkpoint',peer:peer.name};
+  }
+  if(!close&&!progress&&!reached&&!aheadAcrossPortal&&!aheadOnMap)return {ready:false,
     reason:'teammate-not-on-shared-route',peer:peer.name,
     gap:samePlace(character,peer)?distance(character,peer):null,
     observedMap:peer.map??null};
@@ -205,11 +221,11 @@ import {huntForFarmer,advanceHuntCycle,skipHuntWithoutSpawn,advancePastSkippedHu
 // Ordinary plans must not alternate between bee/main and minimush/halloween
 // while the party has not even reached the chosen spawn. A hunt->farm label
 // change at the SAME species also retains existing location hysteresis.
-// True active hunts, urgent shell refills, material orders and unsafe plans
-// continue through their existing higher-priority decision paths.
+// Active hunts and unsafe plans keep their existing priority paths. Ordinary
+// material demand, including shell refill, respects the same location hold.
 export function shouldHoldOrdinaryLocation(current,next,selectedKind,shellRefill=false){
- return !shellRefill&&['farm','achievement'].includes(selectedKind)&&!!next&&
-  (current?.kind==='farm'||current?.kind==='hunt'&&
+ return ['farm','achievement'].includes(selectedKind)&&!!next&&
+  (['farm','material','elixir'].includes(current?.kind)||current?.kind==='hunt'&&
    current.target===next.target);
 }
 // Keep a verified ordinary farm trip until the actual destination is reached,
@@ -288,6 +304,7 @@ export function balancedFarmUtility(xp,gold){
  return Math.pow(Math.max(1,xp),.65)*Math.pow(Math.max(1,gold),.35);
 }
 export function createTeamPlan(bot){
+ const crossMapSince=new Map();
  const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0},routeBlockedAt=0,routeProgress=new Map();let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
@@ -410,6 +427,13 @@ export function createTeamPlan(bot){
    current=null;
   }
   return;}
+  // A new leader adopts the already verified physical destination. Rebinding
+  // identity must not erase arrival time or restart an aligned native route.
+  if(current&&current.leader!==bot.leader){
+   const adopted={...current,leader:bot.leader};
+   if(valid(adopted)){current={...adopted,id:me.name+':handoff:'+Date.now()};
+    bot.event?.('plan.leaderHandoff',{id:current.id,key:current.key});}
+  }
   // A quest collection/turn-in is an individual errand. Keep the existing
   // farm anchor stable throughout the visit, even if travel score, team DPS
   // or the provisional hunt rotation changes while a member is absent.
@@ -530,7 +554,7 @@ export function createTeamPlan(bot){
     scope:'same-monsterhunt'};
    next=choice.choice;
   }
-  if(holdOrdinary&&old&&valid(current)&&!selectedRequest){
+  if(holdOrdinary&&old&&valid(current)){
    const choice=chooseCommittedFarmArea({
     current,candidate:next,currentRank:old,character:p.c,now:Date.now(),
     holdMs:cfg.farming.planHoldMs??60000,
@@ -590,6 +614,10 @@ export function createTeamPlan(bot){
    return false;
   }
   if(bot.movement.order?.owner==='scout')return true;
+  // Combat near the reached spawn owns local positioning; do not repeatedly
+  // send a kiting/chasing farmer back through a building to the anchor.
+  if(Number.isFinite(current.arrivedAt)&&samePlace(p.c,current)&&
+     distance(p.c,current)<=220&&squadCombatEngaged(bot.monsters(),bot.teamNames))return false;
   if(samePlace(p.c,current)&&distance(p.c,current)<=65){
    // Only after reaching an independently verified, already approved
    // ordinary farm plan may a SOLO farmer make one short local N05 hop.
@@ -605,7 +633,8 @@ export function createTeamPlan(bot){
    // after every 85 units. The squad follows the SAME final spawn target.
    // Only *actual* separation/serious injury interrupts the live path.
    const march=assessLiveSquadMarch(p.c,peers,{realm:p.realm(),
-    plan:current,maxGap:300,hpFloor:.6});
+    plan:current,maxGap:Math.min(300,Math.max(100,cfg.party.followDistance??180)),hpFloor:.6,crossMapSince,
+    mapDistance:map=>mapHops(graph,map,current.map)});
    const stuck=stalledSquadRoutePeer(peers,current,routeProgress);
    if(stuck&&march.ready){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();

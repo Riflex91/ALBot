@@ -95,11 +95,26 @@ export function createServices(bot){
   if(Date.now()-since>(meta.settle_ms??120000)+60000){probe=Date.now()+60000;since=0;anchor=null;baseline=null;return false;}
   e.note('Merrit: Warte auf beobachtete Belohnung');return true;
  }
+ function castBuff(choices,reason){
+  for(const skill of choices){const s=p.G.skills?.[skill];
+   const ready=()=>bot.running&&cfg.merchant.massBuffs&&!bot.journal&&!bot.inventoryBlocked&&
+    !!s&&!p.c.s?.[s.condition??skill]&&p.c.level>=(s.level??0)&&
+    p.c.mp-(s.mp??0)>=p.c.max_mp*.3&&!p.call('is_on_cooldown',skill);
+   if(ready()&&exec.run('service:'+skill,['skill','mana'],ready,()=>p.call('use_skill',skill),{delay:10000})){
+    bot.event?.('service.buff',{skill,reason});return true;
+   }
+  }return false;
+ }
+ function productionBuff(kind){
+  if(!cfg.production.enabled||!cfg.merchant.massBuffs||p.c.moving||bot.movement?.order||
+     !['upgrade','compound','craft','exchange'].includes(kind))return false;
+  return castBuff(kind==='exchange'?['massexchangepp','massexchange']:['massproductionpp','massproduction'],'Ausführbarer Produktionsschritt: '+kind);
+ }
  function tick(){
   if(record&&!sliceStarted)sliceStarted=Date.now();if(record&&Date.now()-sliceStarted>=(cfg.merchant.serviceSliceMs??30000)){interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();nextGather=Date.now()+cfg.general.economyTickMs;return restore();}
-  if(cfg.merchant.massBuffs){const producing=cfg.production.enabled,exchange=bot.production?.status().steps?.[0]?.kind==='exchange',threatened=bot.monsters().some(m=>m.target===p.c.name);
-   const choices=[...(threatened?['mcourage']:[]),...(bot.target?['mfrenzy']:[]),...(producing?(exchange?['massexchangepp','massexchange']:['massproductionpp','massproduction']):[])];
-   for(const skill of choices){const s=p.G.skills?.[skill];if(s&&!p.c.s?.[s.condition??skill]&&p.c.level>=(s.level??0)&&p.c.mp-(s.mp??0)>=p.c.max_mp*.3&&!p.call('is_on_cooldown',skill)&&exec.run('service:'+skill,['skill','mana'],()=>bot.running,()=>p.call('use_skill',skill),{delay:10000})){bot.event?.('service.buff',{skill,reason:threatened?'Eigener Gefahrenzustand':'Aktuelle Produktionsart',exchange});return true;}}
+  if(cfg.merchant.massBuffs){
+   const threatened=bot.monsters().some(m=>m.target===p.c.name);
+   if(castBuff([...(threatened?['mcourage']:[]),...(bot.target?['mfrenzy']:[])],threatened?'Eigener Gefahrenzustand':'Aktueller Kampf'))return true;
   }
   if(record&&(!kind||Date.now()<nextGather||(!cfg.merchant.fishing&&!cfg.merchant.mining)))return restore();
   const requested=bot.strategy?.status().manual?.task;
@@ -110,5 +125,5 @@ export function createServices(bot){
   for(const activity of ordered)if(gather(activity))return true;return restore();
  }
  function interrupt(){kind=null;approaching=null;anchor=null;since=0;baseline=null;merritGift=null;sliceStarted=0;}
- return {tick,restore,merrit,observeMerrit,get active(){return !!record;},get approaching(){return !!approaching;},get waiting(){return !!anchor||baseline!==null;},status:()=>({gathering:kind,approaching:approaching?{...approaching}:null,restorePending:!!record,merritWaiting:!!anchor||baseline!==null,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt};
+ return {tick,productionBuff,restore,merrit,observeMerrit,get active(){return !!record;},get approaching(){return !!approaching;},get waiting(){return !!anchor||baseline!==null;},status:()=>({gathering:kind,approaching:approaching?{...approaching}:null,restorePending:!!record,merritWaiting:!!anchor||baseline!==null,merritCooldownUntil:merritUntil,merritReward:lastReward}),interrupt};
 }

@@ -3,6 +3,7 @@ import {createHash,createPublicKey,sign,verify} from 'node:crypto';
 import {VERSION} from '../src/version.mjs';
 import {DEFAULT_RUNTIME_URL} from './bootstrap-support.mjs';
 import {releaseMessage} from './auto-bootstrap-support.mjs';
+import {nextMinorReleaseVersion} from './release-version-policy.mjs';
 
 const root=new URL('../',import.meta.url);
 const read=path=>readFile(new URL(path,root),'utf8');
@@ -35,6 +36,8 @@ if(process.argv.includes('--check')){
  const privateKey=process.env.ALBOT_RELEASE_SIGNING_KEY_PEM;
  if(!privateKey)throw Error('Missing ALBOT_RELEASE_SIGNING_KEY_PEM secret; do not store private keys in Git');
  if(existing&&!valid(existing))throw Error('Existing release manifest signature invalid');
+ if(existing&&VERSION!==nextMinorReleaseVersion(existing.version))
+  throw Error('New signed runtime must advance by +0.1: expected '+nextMinorReleaseVersion(existing.version)+', got '+VERSION);
  const seq=(existing?.sequence??0)+1;
  const next={format:'albot-release-v1',sequence:seq,version:VERSION,
   runtimeUrl:DEFAULT_RUNTIME_URL,bytes:size,sha256};

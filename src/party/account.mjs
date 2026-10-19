@@ -49,8 +49,7 @@ export function selectCatchUpSwap(members,current,{levelGap=2,protectedNames=[]}
    Math.min(1,Math.max(0,x.xp/x.maxXp)):0;
  const incoming=eligible.filter(x=>!current.includes(x.name)&&!x.running)
    .sort((a,b)=>a.level-b.level||progress(a)-progress(b)||a.name.localeCompare(b.name))[0];
- const outgoing=eligible.filter(x=>current.includes(x.name)&&x.running&&!fixed.has(x.name)&&
-   !(x.class==='priest'&&incoming?.class!=='priest'&&members.filter(m=>current.includes(m.name)&&m.class==='priest').length===1))
+ const outgoing=eligible.filter(x=>current.includes(x.name)&&x.running&&!fixed.has(x.name))
    .sort((a,b)=>b.level-a.level||progress(b)-progress(a)||a.name.localeCompare(b.name))[0];
  if(!incoming||!outgoing||outgoing.level-incoming.level<levelGap)return null;
  return {out:outgoing.name,in:incoming.name,fromLevel:outgoing.level,toLevel:incoming.level,

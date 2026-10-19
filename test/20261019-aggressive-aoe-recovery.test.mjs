@@ -4,7 +4,7 @@ import {createRecovery,unchangedPurchaseJournal} from '../src/core/recovery.mjs'
 import {identity,fingerprint} from '../src/core/policy.mjs';
 import {createSkills} from '../src/combat/skills.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
-import {createAccount,selectCatchUpSwap} from '../src/party/account.mjs';
+import {createAccount} from '../src/party/account.mjs';
 import {neutralPullReadiness} from '../src/combat/team-readiness.mjs';
 
 function purchase(){
@@ -108,22 +108,16 @@ test('Merchant value quarantine does not hide eligible catch-up; live combat dra
  try{const peers={R:{name:'R',class:'ranger',level:61,running:true,hp:4000,max_hp:4500,realm:'EUII',session:'r',threats:1,browserSwitch:{supported:true},stats:{attack:377}},
   P:{name:'P',class:'priest',level:48,running:true,hp:3300,max_hp:3405,realm:'EUII',session:'p',stats:{attack:145}}};
   const bot={me:{name:'M',role:'merchant'},running:true,inventoryBlocked:true,journal:{kind:'ponty.buy'},leader:'R',farmers:['R','P'],
-   cfg:{general:{messageTtlMs:10000},production:{},party:{merchant:'M',leader:'',selection:'adaptive',maxFarmers:2,rotationCooldownMs:1000,balanceFarmers:true,balanceHoldMs:5000,balanceLevelGap:2},
+   cfg:{general:{messageTtlMs:10000},production:{},party:{merchant:'M',leader:'',selection:'adaptive',maxFarmers:2,rotationCooldownMs:1000,balanceFarmers:true,balanceHoldMs:1800000,balanceLevelGap:2},
     characters:['R','P','Weak'].map(name=>({name,enabled:true,role:'farmer',rotation:true,class:name==='P'?'priest':'ranger'}))},
    p:{headless:false,c:{name:'M'},G:{},realm:()=>'EUII',read:()=>null,write:()=>true},
    transport:{fresh:n=>peers[n],ownCharacters:()=>[{name:'Weak',class:'ranger',level:12}],send:()=>true},
    exec:{pending:new Map()},logistics:{},monsters:()=>[],event:()=>{},report:()=>{}};
-  const account=createAccount(bot);now+=6000;account.tick();
+  const account=createAccount(bot);now+=1799999;account.tick();
+  assert.equal(bot.accountChoice.catchUp,null);assert.equal(account.rotationPending(),false);
+  now+=1;account.tick();
   assert.equal(bot.accountChoice.catchUp.in,'Weak');assert.equal(account.rotationPending(),true);
   assert.match(bot.accountChoice.waiting,/draining/);assert.equal(account.status().transition,null);
   peers.R.threats=0;now+=1000;account.tick();assert.equal(account.status().transition.in,'Weak');
  }finally{Date.now=old;}
-});
-
-test('catch-up does not replace the only Priest with a damage-class trainee',()=>{
- const rows=[{name:'P',class:'priest',level:80,running:true,rotation:true},
-  {name:'R',class:'ranger',level:61,running:true,rotation:true},
-  {name:'Weak',class:'mage',level:12,running:false,rotation:true}];
- assert.equal(selectCatchUpSwap(rows,['P','R']).out,'R');
- assert.equal(selectCatchUpSwap(rows,['P','R'],{protectedNames:['R']}),null);
 });

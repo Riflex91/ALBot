@@ -313,12 +313,12 @@ export function install(root){
     if(bot.priority){bot.priority.run([
      {id:'recovery',kind:'emergency',exclusive:true,run:()=>bot.farmer.safety()},
      {id:'elixir',kind:'safety',guard:()=>economyDue&&!bot.recovering,run:()=>bot.elixirs.tick()},
-     {id:'world',kind:bot.teamPlan.materialActive()?'background':'normal',priority:20,exclusive:true,guard:()=>economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name),run:()=>bot.opportunities?.tick()||bot.strategy.anniversary()||bot.strategy.quest()},
+     {id:'world',kind:bot.teamPlan.materialActive()?'background':'normal',priority:20,exclusive:true,guard:()=>economyDue&&!bot.account?.rotationPending?.()&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name),run:()=>bot.opportunities?.tick()||bot.strategy.anniversary()||bot.strategy.quest()},
      {id:'combat',kind:'normal',priority:10,run:()=>{bot.metrics.measure('farmer',()=>bot.farmer.tick());return !!bot.target||bot.recovering;}},
      {id:'merchant',kind:'normal',guard:()=>merchantDue&&!bot.recovering&&!bot.strategy.busy,run:()=>{lastMerchant=now();if(bot.opportunities?.tick())return true;const before=exec.pending.size;bot.metrics.measure('merchant',()=>bot.merchant.tick());return exec.pending.size>before;}},
      {id:'aura',kind:'safety',run:()=>bot.aura.tick()}
     ]);}else{
-    const worldAction=economyDue&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
+    const worldAction=economyDue&&!bot.account?.rotationPending?.()&&me.role==='farmer'&&(bot.account?.active()??true)&&!p.c.rip&&p.c.hp/p.c.max_hp>=cfg.farming.restBelow&&!bot.journal&&!bot.bank?.pending&&!bot.logistics.reserved&&!bot.monsters().some(m=>m.target===me.name)&&(bot.strategy?.anniversary()||bot.strategy?.quest());
     if(!worldAction)bot.metrics.measure('farmer',()=>bot.farmer.tick());if(merchantDue&&bot.running&&!bot.recovering&&!worldAction&&!bot.strategy?.busy){lastMerchant=now();bot.metrics.measure('merchant',()=>bot.merchant?.tick());}bot.aura?.tick();
     }
     if(now()-lastPlanning>=cfg.general.planningTickMs){lastPlanning=now();

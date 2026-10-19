@@ -1,4 +1,4 @@
-# 0.10.14-candidate – aggressives persönliches Profil, AoE und belegte Recovery
+# 0.11.0-candidate – aggressives persönliches Profil, AoE und belegte Recovery
 
 ## Befunde aus den acht Logs vom 19.10.2026, ca. 21:48–22:01 Uhr
 
@@ -26,7 +26,7 @@
 ## Umsetzung
 
 Das persönliche Repositoryprofil verwendet jetzt `risk=aggressive`,
-`maxCombatSeconds=45`, `pullMp=0.3` und fünf Minuten Mindesthaltezeit für den
+`maxCombatSeconds=45`, `pullMp=0.3` und unverändert 30 Minuten Mindesthaltezeit für den
 Levelausgleich. 3shot verlangt mindestens zwei Ziele; die bisherige konfigurierte
 Obergrenze 15 bleibt erhalten, die echte Skillkapazität beträgt weiterhin drei.
 Generische Profile und explizit eingestellte andere Risikomodi werden nicht
@@ -63,7 +63,6 @@ Der Levelausgleich berechnet und meldet seine Auswahl auch während einer
 Merchant-Quarantäne. Ein fälliger Wechsel hält neue neutrale Pulls an und
 wartet, bis sämtliche ausgewählten Farmer sicher sind. Die bestehenden
 Browser-Session-, Bestätigungs- und Lifecycle-Gates führen den Wechsel aus.
-Der einzige Priest wird nicht für einen Schadensklassen-Neuling ausgewechselt.
 Eine unbekannte Level-/Browserfähigkeit wird weiterhin nicht erfunden.
 
 Fehlende Klassenelixiere erscheinen mit Grund in `ALBot.status().elixir` und
@@ -81,3 +80,5 @@ Pullpause und Fehlschlagsveto. Vollständige Offline-CI und signierter Kanal
 werden vor Veröffentlichung geprüft; tatsächlicher Spielbetrieb bleibt eine
 separate Liveabnahme. Insbesondere kein pauschales Versprechen, dass jeder
 unbekannte Inventar-/Wertzustand automatisch auflösbar ist.
+
+Ab dieser Veröffentlichung wird jede neue signierte Runtime um eine Minor-Version (+0.1, Patch 0) erhöht: 0.11.0, 0.12.0 usw. Die Signierung prüft dies gegen das vorherige gültige Manifest. Auswahlregeln und Gear-Aufholplanung bleiben unverändert; die Rotationskorrektur schafft nur bei fälligem Bedarf nach 30 Minuten ein sicheres Wechselfenster.

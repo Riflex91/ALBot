@@ -305,3 +305,20 @@ test('G09 old saved listing without outgoing physical baseline stays unknown aft
  assert.equal(older.maker.status().state,'listing-absent-outcome-unverified');
  assert.equal(older.maker.post(0,older.rule),false);
 });
+
+test('G09 previously verified swap receipt remains manually acknowledgeable without new baseline field',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();f.pending.onConfirmed();
+ assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2}),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),true);
+ const prior=structuredClone(f.writes.get('albot:trade-offer:v1:M'));
+ delete prior.outgoingBefore;
+ const old=fixture(prior);
+ assert.equal(old.maker.status().state,'swap-receipt-verified-no-repost');
+ assert.equal(old.maker.acknowledgeVerified('R001'),false,'running bot never auto-clears');
+ old.bot.running=false;
+ assert.equal(old.maker.acknowledgeVerified('R001'),true,
+  'new extra evidence requirement must not strand previously completed records');
+});

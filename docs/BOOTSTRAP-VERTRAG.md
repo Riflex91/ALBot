@@ -11,23 +11,25 @@ Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Signiertes Release-Artefakt (sequence 10, Stand 19.10.2026)
+## Signiertes Release-Artefakt (sequence 11, Stand 19.10.2026)
 
 | Feld | Festgestellter Wert |
 | --- | --- |
 | Manifest-URL | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json` |
 | Manifest-Branch | `codex/w00-w01-readonly-disposition-20261018` |
-| Manifest `sequence` | `10` |
-| Manifest `version` | `0.10.13-candidate` |
+| Manifest `sequence` | `11` |
+| Manifest `version` | `0.11.0-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `762149` |
-| Manifest `sha256` | `d73796591d7964a525ac3725bc91f6d11d07bcabd6c48acb76d766231d6f9def` |
+| Manifest `bytes` | `765836` |
+| Manifest `sha256` | `75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31` |
 | Signaturprüfung | ECDSA-P-256 über die dokumentierten Manifestfelder **gültig** |
 | Ingame-Erfolg | Aus CODE/Manifest allein **nicht nachgewiesen** |
 
 **Konsequenz:** Der Bootstrap folgt dem dokumentierten signierten Release-Branch und `manifest.runtimeUrl`, nicht automatisch `main/bot.js`. Integrierte Quelle und signierte Runtime wurden in CI gebaut und kryptografisch verifiziert; ein tatsächlicher Spielstart ist ohne Live-Nachweis unbekannt. Das persönliche Ingame-`ALBotConfig` bleibt unabhängig von der Repository-`bot.js`.
 
-**Aktuelle Freigabe: Sequence 10 (19.10.2026), `0.10.13-candidate`.** Die nach [PR #238](https://github.com/Riflex91/ALBot/pull/238) (G09) und [PR #239](https://github.com/Riflex91/ALBot/pull/239) (W06) geprüfte [main-Runtime 2f55d8a](https://github.com/Riflex91/ALBot/commit/2f55d8a907f3ae90cab6d301188d481a1f815121) wurde über den unveränderten signierten V2-Kanal veröffentlicht. [Signierworkflow 39317203696](https://github.com/Riflex91/ALBot/actions/runs/39317203696): 1.769/1.769 Tests bestanden, persönliche ALBotConfig bytegleich, valide ECDSA-P-256-Signatur; SHA-256 `d73796591d7964a525ac3725bc91f6d11d07bcabd6c48acb76d766231d6f9def` und 762149 Runtime-Bytes geprüft. Signierte Runtime bytegleich zu `main/dist/albot.runtime.js`. Der vorhandene Ingame-Loader, Manifest-/Runtime-URLs und öffentliche Schlüssel bleiben unverändert; Sequence 10 wurde nicht im Spiel live beobachtet.
+**Aktuelle Freigabe: Sequence 11 (19.10.2026), `0.11.0-candidate`.** [PR #241](https://github.com/Riflex91/ALBot/pull/241) schafft bei fälligem Ausgleich nach unverändert 30 Minuten ein sicheres Rotationsfenster und erhält die bisherige Auswahl für Level-/Gear-Ausgleich. Enthalten sind die beauftragten AoE-/Merchant-Recovery-Korrekturen. Veröffentlichung aus [main-Commit 4f30819](https://github.com/Riflex91/ALBot/commit/4f30819e7a4ba8d794dc41111888665fdf265ab0). [Signierworkflow 39319057251](https://github.com/Riflex91/ALBot/actions/runs/39319057251): 1.781/1.781 Tests, ECDSA-P-256-Signatur gültig, 765836 Bytes und SHA-256 `75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31` verifiziert; Runtime bytegleich zu Main. Linux-/Windows-CI vor Merge grün. Bestehender Loader, Kanal und Schlüssel unverändert. Künftig erhöht jede neu signierte Runtime die Minor-Version um eins (+0.1), Patch 0; Signierung erzwingt dies. [Änderungen und Liveabnahme](CHANGELOG-0.11.0.md). Spiel-Liveabnahme von Sequence 11 offen.
+
+**Vorherige Freigabe: Sequence 10 (19.10.2026), `0.10.13-candidate`.** Die nach [PR #238](https://github.com/Riflex91/ALBot/pull/238) (G09) und [PR #239](https://github.com/Riflex91/ALBot/pull/239) (W06) geprüfte [main-Runtime 2f55d8a](https://github.com/Riflex91/ALBot/commit/2f55d8a907f3ae90cab6d301188d481a1f815121) wurde über den unveränderten signierten V2-Kanal veröffentlicht. [Signierworkflow 39317203696](https://github.com/Riflex91/ALBot/actions/runs/39317203696): 1.769/1.769 Tests bestanden, persönliche ALBotConfig bytegleich, valide ECDSA-P-256-Signatur; SHA-256 `d73796591d7964a525ac3725bc91f6d11d07bcabd6c48acb76d766231d6f9def` und 762149 Runtime-Bytes geprüft. Signierte Runtime bytegleich zu `main/dist/albot.runtime.js`. Der vorhandene Ingame-Loader, Manifest-/Runtime-URLs und öffentliche Schlüssel bleiben unverändert; Sequence 10 wurde nicht im Spiel live beobachtet.
 
 **Vorherige Freigabe: Sequence 9 (19.10.2026), `0.10.13-candidate`.** [PR #236](https://github.com/Riflex91/ALBot/pull/236) stabilisiert Standortbindung, Gruppenreise, Priest-Verhalten bei Weg-Aggro und Merchant-Arbeit. Veröffentlichung aus [main-Commit c7902b0](https://github.com/Riflex91/ALBot/commit/c7902b0c1c2693be807e09b56ab891b7508da18b) über den bestehenden V2-Kanal. [Signierworkflow 39313699242](https://github.com/Riflex91/ALBot/actions/runs/39313699242): 1.753/1.753 Tests, identische persönliche ALBotConfig, gültige ECDSA-P-256-Signatur und verifizierter SHA-256 der 760242 Runtime-Bytes. Linux-/Windows-CI vor Merge grün; Runtime bytegleich zu Main. Ingame-Loader, Downloadpfad und Schlüsselidentität unverändert. [Änderungen und offene Liveabnahme](CHANGELOG-0.10.13.md). **Sequence 9 wurde noch nicht im Spiel live beobachtet.**
 

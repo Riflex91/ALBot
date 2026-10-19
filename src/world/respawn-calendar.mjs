@@ -1,6 +1,8 @@
 // N05: passive, realm/instance-scoped observed monster calendar.
 // No predictions, travel, targeting, combat credit or game mutations.
 const MAX_ROWS=64,MAX_HITS=128,MAX_AGE_MS=21600000,MAX_HIT_MS=30000;
+// Local scout observation is strictly diagnostic; it cannot request travel.
+const SCOUT_WINDOW_MS=300000,SCOUT_MAX_NEGATIVES=12,SCOUT_RADIUS=650;
 const cleanName=s=>typeof s==='string'&&s.length>0&&s.length<=100;
 const cleanTime=n=>Number.isSafeInteger(n)&&n>0;
 const location=(realm,c)=>cleanName(realm)&&cleanName(c?.map)?
@@ -25,14 +27,22 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   for(const r of saved.rows)if(validRow(r,realm,now()))
    rows.set(r.id,{id:r.id,monster:r.monster,realm,map:r.map,in:r.in,
     x:r.x,y:r.y,lastSeenAt:r.lastSeenAt,killedAt:r.killedAt??null,
-    lastMissingAt:null,missingObservations:0});
+    lastMissingAt:null,missingObservations:0,
+    // Reloaded kill evidence cannot restart or extend an old scout lease.
+    scoutState:r.killedAt?'historical-unverified':null,
+    scoutUntil:null,scoutNegatives:0,resightedAt:null});
  }
  function expire(){
   const time=now(),current=p.realm();
   if(current!==realm){realm=current;rows.clear();hits.clear();
    lastSample=0;persisted=false;}
-  for(const [id,row] of rows)if(time-row.lastSeenAt>MAX_AGE_MS||row.lastSeenAt>time)
-   rows.delete(id);
+  for(const [id,row] of rows){
+   if(time-row.lastSeenAt>MAX_AGE_MS||row.lastSeenAt>time){
+    rows.delete(id);continue;
+   }
+   if(row.scoutState==='observing'&&time>=row.scoutUntil)
+    row.scoutState='window-expired';
+  }
   for(const [id,hit] of hits)if(time-hit.at>MAX_HIT_MS||hit.at>time)
    hits.delete(id);
  }
@@ -55,19 +65,41 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    if(!scope||!same(scope,where)||
       Math.hypot(entity.x-p.c.x,entity.y-p.c.y)>900)continue;
    visible.add(entity.id);
+   const prior=rows.get(entity.id);
+   // This is only a verified live re-sighting of the same ID and species,
+   // never a server-confirmed spawn timer or permission for a new hunt.
+   const reappeared=prior?.killedAt&&prior.monster===entity.mtype&&
+    same(prior,scope)&&prior.scoutState==='observing'&&
+    prior.scoutNegatives>0&&time<=prior.scoutUntil&&
+    prior.scoutNegatives<SCOUT_MAX_NEGATIVES;
+   const recentResighting=reappeared||prior?.scoutState==='live-resighting-observed'&&
+    prior.monster===entity.mtype&&same(prior,scope)&&
+    Number.isSafeInteger(prior.resightedAt)&&time-prior.resightedAt<=SCOUT_WINDOW_MS;
    rows.delete(entity.id);
    rows.set(entity.id,{id:entity.id,monster:entity.mtype,...scope,
     x:entity.x,y:entity.y,lastSeenAt:time,
-    // A fresh live sighting is not a still-dead entity. Never continue
-    // displaying an earlier kill as the current state of a live monster.
-    killedAt:null,
-    lastMissingAt:null,missingObservations:0});
+    killedAt:null,lastMissingAt:null,missingObservations:0,
+    scoutState:recentResighting?'live-resighting-observed':null,
+    scoutUntil:null,scoutNegatives:recentResighting?
+     prior?.scoutNegatives??0:0,
+    resightedAt:reappeared?time:recentResighting?prior.resightedAt:null});
    if(rows.size>MAX_ROWS)rows.delete(rows.keys().next().value);
   }
   for(const [id,row] of rows){
-   if(visible.has(id)||row.killedAt||!same(row,where)||
-      Math.hypot(row.x-p.c.x,row.y-p.c.y)>650)continue;
-   // A missing render is only negative VISIBILITY evidence. Never death.
+   if(visible.has(id)||!same(row,where)||
+      !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
+      Math.hypot(row.x-p.c.x,row.y-p.c.y)>SCOUT_RADIUS)continue;
+   // Negative visibility is not a death or absence proof. A confirmed
+   // local kill permits at most twelve strictly local scout samples.
+   if(row.killedAt){
+    if(row.scoutState==='observing'){
+     row.scoutNegatives=Math.min(SCOUT_MAX_NEGATIVES,row.scoutNegatives+1);
+     row.lastMissingAt=time;
+     if(row.scoutNegatives>=SCOUT_MAX_NEGATIVES)
+      row.scoutState='negative-evidence-limit';
+    }
+    continue;
+   }
    row.lastMissingAt=time;
    row.missingObservations=Math.min(99,row.missingObservations+1);
   }
@@ -93,7 +125,9 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   // kill. This prevents other-character and cross-realm death attribution.
   if(!old||old.monster!==hit.monster||!same(old,hit)||
      time-old.lastSeenAt>MAX_HIT_MS)return false;
-  const row={...old,killedAt:time,lastMissingAt:null,missingObservations:0};
+  const row={...old,killedAt:time,lastMissingAt:null,missingObservations:0,
+   scoutState:'observing',scoutUntil:time+SCOUT_WINDOW_MS,
+   scoutNegatives:0,resightedAt:null};
   rows.delete(id);rows.set(id,row);hits.delete(id);
   const checkpoint={version:1,owner:me.name,realm,at:time,
    rows:[...rows.values()].map(({id,monster,map,in:x,x:posX,y,lastSeenAt,killedAt})=>
@@ -117,7 +151,12 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
      state:r.killedAt?'own-kill-observed':
       r.lastMissingAt?'not-currently-visible':'visible-last-sampled',
      lastMissingAt:r.lastMissingAt,missingObservations:r.missingObservations,
-     ageMs:Math.max(0,time-r.lastSeenAt),respawnAt:null}))};
+     ageMs:Math.max(0,time-r.lastSeenAt),respawnAt:null,
+     scout:{state:r.scoutState??'none',
+      negativeObservations:r.scoutNegatives??0,
+      until:r.scoutState==='observing'?r.scoutUntil:null,
+      resightedAt:r.resightedAt??null,
+      authority:'local-visibility-only',executable:false}}))};
  }
  return {sample,hit,death,status,close(){hits.clear();}};
 }

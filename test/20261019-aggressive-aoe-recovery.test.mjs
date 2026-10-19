@@ -4,7 +4,7 @@ import {createRecovery,unchangedPurchaseJournal} from '../src/core/recovery.mjs'
 import {identity,fingerprint} from '../src/core/policy.mjs';
 import {createSkills} from '../src/combat/skills.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
-import {createAccount} from '../src/party/account.mjs';
+import {createAccount,selectCatchUpSwap} from '../src/party/account.mjs';
 import {neutralPullReadiness} from '../src/combat/team-readiness.mjs';
 
 function purchase(){
@@ -118,4 +118,12 @@ test('Merchant value quarantine does not hide eligible catch-up; live combat dra
   assert.match(bot.accountChoice.waiting,/draining/);assert.equal(account.status().transition,null);
   peers.R.threats=0;now+=1000;account.tick();assert.equal(account.status().transition.in,'Weak');
  }finally{Date.now=old;}
+});
+
+test('catch-up does not replace the only Priest with a damage-class trainee',()=>{
+ const rows=[{name:'P',class:'priest',level:80,running:true,rotation:true},
+  {name:'R',class:'ranger',level:61,running:true,rotation:true},
+  {name:'Weak',class:'mage',level:12,running:false,rotation:true}];
+ assert.equal(selectCatchUpSwap(rows,['P','R']).out,'R');
+ assert.equal(selectCatchUpSwap(rows,['P','R'],{protectedNames:['R']}),null);
 });

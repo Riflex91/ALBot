@@ -63,6 +63,7 @@ Der Levelausgleich berechnet und meldet seine Auswahl auch während einer
 Merchant-Quarantäne. Ein fälliger Wechsel hält neue neutrale Pulls an und
 wartet, bis sämtliche ausgewählten Farmer sicher sind. Die bestehenden
 Browser-Session-, Bestätigungs- und Lifecycle-Gates führen den Wechsel aus.
+Der einzige Priest wird nicht für einen Schadensklassen-Neuling ausgewechselt.
 Eine unbekannte Level-/Browserfähigkeit wird weiterhin nicht erfunden.
 
 Fehlende Klassenelixiere erscheinen mit Grund in `ALBot.status().elixir` und

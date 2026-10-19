@@ -6,7 +6,7 @@ import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
-import {roadAggroTravelDecision,committedFarmTransit} from './transit-defense.mjs';
+import {roadAggroTravelDecision,committedFarmTransit,createTransitBlockObserver,verifiedTransitBlock} from './transit-defense.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
@@ -101,10 +101,16 @@ export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   let lastRoadAggroAt=0;
+  const observeTransitBlock=createTransitBlockObserver();
   const travelPlan=()=>bot.teamPlan?.heartbeat?.()??
     bot.transport?.fresh?.(bot.leader)?.farmPlan;
+  const travelStatus=()=>observeTransitBlock(p.c,bot.movement?.order,
+    travelPlan(),bot.monsters?.()??[]);
+  const blockingMonster=()=>!travelPlan()?null:verifiedTransitBlock(p.c,travelPlan(),bot.monsters?.()??[],
+   [{...p.c,running:bot.running,realm:p.realm(),received:Date.now(),travelBlock:travelStatus()},
+    ...(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n))]);
   const roadTravel=()=>roadAggroTravelDecision(p.c,bot.movement?.order,
-    travelPlan(),bot.monsters?.()??[],bot.teamNames??bot.farmers??[]);
+    travelPlan(),bot.monsters?.()??[],bot.teamNames??bot.farmers??[],!!blockingMonster());
   async function tolerate(key,expected,invoke,onTransient=()=>{}){try{const value=await invoke();if(actionReason(value)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}return value;}catch(e){if(actionReason(e)===expected){onTransient();bot.event?.('action.transient',{key,reason:expected});return {success:true,transient:expected};}throw e;}}
   // Observe real outgoing basic attacks in addition to skill casts. Failed
   // or no-target results invalidate provisional damage immediately.
@@ -351,8 +357,29 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const emergency=bot.combatAssessment?.emergency?.();
     const endangeredPeer=emergency?.critical?.some(h=>
      h?.name!==c.name&&h?.threats>0);
-    if(road?.continueRoute&&!endangeredPeer&&(c.ctype!=='priest'||
-       bot.monsters().some(m=>m?.target===c.name))){
+    const marchLeader=bot.transport?.fresh?.(bot.leader);
+    const marchDestination=cfg.party.enabled&&bot.leader&&me.name!==bot.leader?
+     sharedFarmMarchDestination(c,marchLeader,p.realm()):null;
+    const actualBlock=blockingMonster();
+    // Followers ahead of a waiting leader stop at the leash, rather than
+    // completing the entire cross-map route independently.
+    if(marchDestination&&samePlace(c,marchLeader)&&samePlace(c,marchDestination)&&
+       distance(c,marchLeader)>Math.max(100,cfg.party.followDistance??180)&&
+       distance(c,marchDestination)+60<distance(marchLeader,marchDestination)&&
+       !actualBlock&&!endangeredPeer){
+     if(bot.movement.order?.owner==='follow')bot.movement.stop();
+     bot.target=null;bot.reason='Gruppenreise: auf Leader warten';
+     bot.skills?.rotation?.(null);return;
+    }
+    // A healthy Priest whose route was cancelled by the old range gate must
+    // resume the trusted march, instead of feeding the same gate forever.
+    if(marchDestination&&!bot.movement.order&&!bot.strategy?.busy&&
+       !actualBlock&&!endangeredPeer&&c.hp/c.max_hp>=.6&&
+       bot.monsters().some(m=>m.hp>0&&!m.dead&&(bot.teamNames??[]).includes(m.target))){
+     bot.target=null;bot.movement.go(marchDestination,'follow');
+     bot.skills?.rotation?.(null);return;
+    }
+    if(road?.continueRoute&&!endangeredPeer){
       bot.target=null;
       bot.reason='Gruppenreise trotz Weg-Aggro: Route halten, Tränke und Heiler';
       if(now-lastRoadAggroAt>=10000){lastRoadAggroAt=now;
@@ -376,7 +403,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
       bot.transport?.fresh?.(name)).filter(Boolean);
     const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
-    const danger=rescueFocus??threat;
+    const blocker=blockingMonster();
+    if(blocker&&['farm','follow'].includes(bot.movement.order?.owner))bot.movement.stop();
+    const danger=blocker??rescueFocus??threat;
     if(rescueFocus&&rescueFocus.id!==threat?.id){
       const key=rescueFocus.id+':'+rescueFocus.target;
       if(lastEmergencyFocus.key!==key||now-lastEmergencyFocus.at>=12000){
@@ -414,10 +443,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // Regroup toward the endangered Priest without rushing into an
       // unverified kill. This also escapes the normal "group march paused"
       // standstill. Combat remains forbidden until fresh evidence passes.
-      if(c.ctype==='ranger'&&rescueFocus?.target&&
+      if(['ranger','priest','mage'].includes(c.ctype)&&(blocker??rescueFocus)?.target&&
          (assessment?.reason==='insufficient-time-to-kill'||
           assessment?.reason==='party-not-in-combat-support-range')){
-       const patient=bot.transport?.fresh?.(rescueFocus.target);
+       const patient=bot.transport?.fresh?.((blocker??rescueFocus).target);
        const rally=safeEmergencyRallyPoint(c,patient,danger,
         p.G.monsters?.[danger.mtype]?.range);
        if(rally&&p.call('can_move_to',rally.x,rally.y)){
@@ -670,10 +699,11 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const attack=trackedAttack(target.id);
     exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
   }
-  return {tick,retreat,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
+  return {tick,retreat,travelStatus,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
     // The emergency scheduler executes BEFORE normal farmer.tick. Honor the
     // same verified road-route exception here or its preflight will trigger
     // an orbit/retreat before the main combat loop can preserve the route.
     if(me.role==='farmer'&&roadTravel().continueRoute)return false;
+    if(me.role==='farmer'&&blockingMonster())return false;
     const threat=bot.monsters().find(m=>isOwnAggressiveThreat(p.G,m,p.c.name));if(threat&&(me.role==='merchant'||bot.strategy?.safeTarget?.(threat.mtype,threat)===false)){bot.recovering=true;bot.strategy?.interruptQuest?.();bot.strategy?.failActivity?.('Gefährliche Aggro',threat.mtype);bot.target=null;retreat(threat);bot.skills.rotation(null);return true;}return false;}};
 }

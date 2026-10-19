@@ -1,14 +1,17 @@
 import {samePlace,distance} from '../core/policy.mjs';
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {FULL_SKILLS} from '../config/full.mjs';
 export const ROLE_SKILLS={heal:['heal','partyheal'],aggro:['taunt','agitate'],protect:['reflection','guardians_oath'],energize:['energize'],speed:['rspeed'],mark:['huntersmark']};
 export function createCapabilities(bot){
  let generation=0,last='',cached=null;
  function snapshot(){if(cached&&Date.now()-cached.at<200)return cached;const {p,cfg}=bot,c=p.c,ready=[],present=[],sustainable=[];
   for(const [id,s] of Object.entries(p.G.skills??{})){
+   if(!FULL_SKILLS.includes(id))continue;
    if(s.class&&!s.class.includes(c.ctype)||(s.level??0)>c.level)continue;
    present.push(id);const rules=cfg.skills.filter(r=>r.skill===id&&(!r.character||r.character===c.name)&&(r.class==='auto'||r.class===c.ctype));
    if(rules.length&&!rules.some(r=>r.enabled))continue;
-   if(!rules.length&&bot.skills.ready(id,null,.2,true))sustainable.push(id);
+   const reserve=rules.some(r=>r.enabled)?Math.min(...rules.filter(r=>r.enabled).map(r=>r.minMp)):.2;
+   if(bot.skills.ready(id,null,reserve,true))sustainable.push(id);
    if(bot.skills.ready(id,null,rules.some(r=>r.enabled)?Math.min(...rules.filter(r=>r.enabled).map(r=>r.minMp)):.2))ready.push(id);
   }
   const signature=knowledgeFingerprint([c.ctype,c.level,c.slots,ready]);if(signature!==last){last=signature;generation++;}

@@ -20,3 +20,10 @@ Der Serverhandler `node/server.js` aus `kaansoral/adventureland_mongodb` (festge
 ## Noch offen
 
 Volle Materialbeschaffung über direkte ungebundene Warenangebote, Warenlieferungen von anderen Spielern, gesicherte nicht-reproduzierbare Rezeptnebenwege, accountweite Rewardallokation und echte Live-Game-Quittungen bleiben getrennte W06-/W13-Restpunkte. Das Inkrement ist kein signierter Ingame-Release und wurde offline getestet.
+
+## Folgeinkrement vom 19.10.2026 – physische Materialvariante
+
+- Für **endlich gebundene Produktions-Marktaufträge** muss ein sichtbares Verkaufsangebot nun neben Name, Level, Stat, Eigenschaft und Titel auch die gewünschte Accountbindung (`acc`) und die vollständigen Item-Variantendaten (`data`) erfüllen. Als gesperrt markierte Angebote sind keine Belege für beschaffbare Produktionsmaterialien.
+- Derselbe Variantenvertrag gilt sowohl bei der Suche nach einem aktuell verfügbaren Verkäufer, bei der Annahme des Marktangebots als auch erneut beim verzögerten Dispatch. Listing-`rid` bleibt eine separate unveränderliche Angebots-ID und wird wie bisher unmittelbar vor dem Serveraufruf geprüft; sie wird nicht mit der Identität der Materialvariante verwechselt.
+- **Explizit konfigurierte freie Markt-Buy-Regeln bleiben unverändert**; es werden weder neue Materialarten oder Handelsrechte erteilt noch Preis- und Goldgrenzen gelockert.
+- Nicht vorhandene Live-Angebote erzeugen weiterhin weder einen Kauf noch eine automatische Erfolgsquittung. Accountweite Belohnungen, Spieler-Barter und physischer Liveabnahmebedarf bleiben offen.

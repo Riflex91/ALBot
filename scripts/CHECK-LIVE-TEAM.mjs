@@ -11,14 +11,15 @@ function parse(argv){
   if(a==='--strict')opts.strict=true;
   else if(a==='--require-three-farmers')opts.requiredFarmers=3;
   else if(a==='--require-elixirs')opts.requireElixirs=true;
-  else if(['--out','--merchant','--max-departures','--max-idle-seconds','--min-idle-seconds'].includes(a)){
+  else if(['--out','--merchant','--max-departures','--max-idle-seconds','--min-idle-seconds','--min-overlap-seconds'].includes(a)){
    if(!argv[i+1])throw Error('Missing value for '+a);
    const v=argv[++i];
    if(a==='--out')opts.out=v;
    else if(a==='--merchant')opts.merchant=v;
    else{
     const n=Number(v);if(!Number.isFinite(n)||n<0)throw Error('Invalid bound: '+v);
-    if(a==='--max-departures')opts.maxPursuitDepartures=n;
+    if(a==='--min-overlap-seconds')opts.minOverlapSeconds=n;
+    else if(a==='--max-departures')opts.maxPursuitDepartures=n;
     else if(a==='--max-idle-seconds')opts.maxSampledIdleSeconds=n;
     else opts.minIdleSeconds=n;
    }

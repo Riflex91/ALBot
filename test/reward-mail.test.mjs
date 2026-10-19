@@ -52,7 +52,7 @@ test('restart recovery never retries an unknown claim and requires taken + exact
  const c={name:'A',items:[item],isize:1,gold:100,c:{}},bot={
   me:{name:'A'},cfg:{world:{rewardMail:true}},running:true,inventoryBlocked:true,journal,
   p:{c,G,read:()=>null,write:()=>true,realm:()=>'EUI',has:()=>true,
-   rewardMailCapability:()=>({supported:true}),readRewardMailPage:async()=>({mail:[{...row,taken:true}],more:false}),
+   rewardMailCapability:()=>({supported:true}),readRewardMailPage:async()=>({mail:[{...row,taken:true,can_take:false}],more:false}),
    call:()=>{calls.push('take');}},
   exec:{pending:new Map(),run:(key,resources,guard,invoke)=>{if(guard())invoke();return true;}},
   economy:{perform:()=>{calls.push('perform');return true;}},monsters:()=>[],
@@ -61,4 +61,48 @@ test('restart recovery never retries an unknown claim and requires taken + exact
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(bot.journal,null);assert.equal(bot.inventoryBlocked,false);
  assert.deepEqual(calls,[]);
+});
+
+test('recovered taken mail is attested without re-enabling ordinary mail claims',()=>{
+ const taken={...row,taken:true,can_take:false};
+ const item=rewardMailAttachment(row,'A',G);
+ assert.equal(rewardMailAttachment(taken,'A',G),null);
+ assert.deepEqual(rewardMailAttachment(taken,'A',G,{recoverTaken:true}),item);
+ assert.equal(rewardMailAttachment({...row,can_take:false},'A',G,{recoverTaken:true}),null,
+  'recovery must require the server taken marker');
+ assert.equal(rewardMailAttachment({...taken,to:'B'},'A',G,{recoverTaken:true}),null);
+ assert.equal(rewardMailAttachment({...taken,subject_message:{phrase:'user.mail'}},'A',G,
+  {recoverTaken:true}),null);
+});
+
+test('taken mail recovery refuses a different attachment or contradictory physical balance',async()=>{
+ const attachment=rewardMailAttachment(row,'A',G);
+ const before=[null],badReplies=[
+  {...row,taken:false,can_take:false},
+  {...row,taken:true,can_take:false,
+   item:JSON.stringify({name:'gem',q:2,p:'different'})},
+  {...row,taken:true,can_take:false,to:'Other'},
+  {...row,taken:true,can_take:false,subject_message:{phrase:'user.mail'}}
+ ];
+ for(const mailRow of badReplies){
+  const journal={kind:'mail.claim',mailId:row.id,owner:'A',realm:'EUI',
+   attachment,beforeInventory:before.map(fingerprint),beforeGold:100};
+  const calls=[];
+  const bot={me:{name:'A'},cfg:{world:{rewardMail:true}},running:true,
+   inventoryBlocked:true,journal,
+   p:{c:{name:'A',items:[attachment],isize:1,gold:100,c:{}},
+    G,read:()=>null,write:()=>true,realm:()=>'EUI',has:()=>true,
+    rewardMailCapability:()=>({supported:true}),
+    readRewardMailPage:async()=>({mail:[mailRow],more:false}),
+    call:()=>calls.push('unexpected-take')},
+   exec:{pending:new Map(),run:(key,res,guard,invoke)=>{
+    if(guard())invoke();return true;}},
+   economy:{perform:()=>calls.push('unexpected-value-attempt')},
+   monsters:()=>[],endValue:()=>calls.push('unexpected-confirm')};
+  createRewardMail(bot,{now:()=>1000000}).tick();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(bot.journal,journal,'unproven value outcome stays durable');
+  assert.equal(bot.inventoryBlocked,true);
+  assert.deepEqual(calls,[],'no claim replay or settlement on weak evidence');
+ }
 });

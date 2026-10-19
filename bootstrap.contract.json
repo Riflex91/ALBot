@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 11,
-      "version": "0.11.0-candidate",
+      "sequence": 12,
+      "version": "0.12.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 765836,
-      "sha256": "75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31"
+      "bytes": 766823,
+      "sha256": "fd0b947f2f42fcf9eacb5b06613e8e16c973dfd4cc0c5e0520f640c52761ecf3"
     },
     "observedLoadedUrl": null,
-    "note": "Signiertes Release sequence=11, 0.11.0-candidate, aus main-Commit 4f30819e7a4ba8d794dc41111888665fdf265ab0 / PR #241. Signierworkflow 39319057251 und Linux-/Windows-CI 39318809167: 1781/1781 Offline-Tests; ECDSA-P-256, SHA-256 75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31 und 765836 Runtime-Bytes geprüft, bytegleich zu Main. Benutzerautorisiertes Aggressivprofil, Rotationshaltezeit unverändert 30 Minuten, Auswahlregeln für Level-/Gear-Ausgleich erhalten. Ab jetzt +0.1 Minor je neuer signierter Runtime. Schlüssel/Loader/Kanal unverändert, Spiel-Liveabnahme offen."
+    "note": "Extern im bereits bestehenden signierten Release-Kanal beobachtet am 19.10.2026: sequence 12 / 0.12.0-candidate, 766823 Bytes, SHA-256 fd0b947f2f42fcf9eacb5b06613e8e16c973dfd4cc0c5e0520f640c52761ecf3; signierender Workflow 39322831707 completed/success (außerhalb dieses G04-PR). Dies ist ein nachgeführter Dokumentations-Snapshot, KEINE neue Veröffentlichung und KEIN Beleg für eine Ingame-Liveabnahme. Signatur und Runtime-Bytes sind weiterhin durch scripts/verify-bootstrap-channel.mjs in der offiziellen CI zu verifizieren. Main und Release sind unterschiedliche Entwicklungsstände. Unveränderte URL, Loader und öffentliche Schlüssel."
   }
 }

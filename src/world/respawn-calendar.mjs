@@ -60,7 +60,10 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  function sample(){
   expire();
   if(!bot.running||!cleanName(session))return;
-  const time=now(),where=location(realm,p.c);if(!where)return;
+  const time=now(),where=location(realm,p.c);
+  // Without a real local observer position, neither a sighting nor a
+  // negative line-of-sight sample is admissible evidence.
+  if(!where||!Number.isFinite(p.c.x)||!Number.isFinite(p.c.y))return;
   // Bounded polling; local visible entities are sightings, not global spawns.
   if(time-lastSample<1500)return;
   lastSample=time;const visible=new Set();
@@ -70,6 +73,13 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
       Math.hypot(entity.x-p.c.x,entity.y-p.c.y)>900)continue;
    visible.add(entity.id);
    const prior=rows.get(entity.id);
+   // A just-killed monster can remain rendered as living while the server
+   // refreshes the entities collection. Preserve the recorded death until
+   // this SAME local observer has first sampled its actual absence.
+   // Historical checkpoints also need a new post-kill absence observation.
+   if(prior?.killedAt&&prior.monster===entity.mtype&&same(prior,scope)&&
+      !(Number.isSafeInteger(prior.lastMissingAt)&&
+       prior.lastMissingAt>=prior.killedAt))continue;
    // This is only a verified live re-sighting of the same ID and species,
    // never a server-confirmed spawn timer or permission for a new hunt.
    const reappeared=prior?.killedAt&&prior.monster===entity.mtype&&
@@ -96,9 +106,12 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    // Negative visibility is not a death or absence proof. A confirmed
    // local kill permits at most twelve strictly local scout samples.
    if(row.killedAt){
+    // A local negative observation is needed to distinguish later live
+    // evidence from a stale death render. Historical/expired scout leases
+    // may collect this observation but do not reopen an executable lease.
+    row.lastMissingAt=time;
     if(row.scoutState==='observing'){
      row.scoutNegatives=Math.min(SCOUT_MAX_NEGATIVES,row.scoutNegatives+1);
-     row.lastMissingAt=time;
      if(row.scoutNegatives>=SCOUT_MAX_NEGATIVES)
       row.scoutState='negative-evidence-limit';
     }
@@ -128,7 +141,8 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   const old=rows.get(id);
   // An event without a prior local, real monster sighting cannot certify a
   // kill. This prevents other-character and cross-realm death attribution.
-  if(!old||old.monster!==hit.monster||!same(old,hit)||
+  if(!old||old.killedAt||old.monster!==hit.monster||!same(old,hit)||
+     hit.at>time||old.lastSeenAt>time||
      time-old.lastSeenAt>MAX_HIT_MS)return false;
   const row={...old,killedAt:time,lastMissingAt:null,missingObservations:0,
    scoutState:'observing',scoutUntil:time+SCOUT_WINDOW_MS,

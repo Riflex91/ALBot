@@ -72,8 +72,9 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   saved.realm===p.realm()&&/^trade([1-9]|1[0-6])$/.test(saved.offerSlot)&&
   typeof saved.rid==='string'&&!!saved.rid&&
   typeof saved.outgoing==='string'&&typeof saved.incoming==='string'&&
-  Number.isSafeInteger(saved.receiveBefore)&&saved.receiveBefore>=0&&
-  Number.isSafeInteger(saved.outgoingBefore)&&saved.outgoingBefore>=1;
+  Number.isSafeInteger(saved.receiveBefore)&&saved.receiveBefore>=0;
+ const hasOutgoingBaseline=()=>Number.isSafeInteger(saved?.outgoingBefore)&&
+  saved.outgoingBefore>=1;
  function postIntent(plan){
   const intent={version:1,owner:me.name,realm:plan.realm,
    offerSlot:plan.offerSlot,at:now(),state:'dispatch-intent-unverified',
@@ -143,7 +144,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   // Official server emits UI {type:'swap',event:true,seller,buyer,
   // item,received,slot,snum}. It has no RID. The RID must already have
   // been observed and durably tied to this merchant's own stand slot.
-  if(!posted||!accurateRecord()||
+  if(!posted||!accurateRecord()||!hasOutgoingBaseline()||
      saved.state!=='listing-confirmed-post-trade-unverified'||
      data?.type!=='swap'||data.event!==true||
      data.seller!==me.name||typeof data.buyer!=='string'||
@@ -162,7 +163,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   if(!swapEvidence||now()-swapEvidence.at>30000){
    swapEvidence=null;return false;
   }
-  if(!accurateRecord()||
+  if(!accurateRecord()||!hasOutgoingBaseline()||
      saved.state!=='listing-confirmed-post-trade-unverified'||
      saved.rid!==swapEvidence.rid||
      saved.offerSlot!==swapEvidence.offerSlot||

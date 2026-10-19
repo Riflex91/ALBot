@@ -157,9 +157,10 @@ test('W03 every post-trip quote drift cancels funded purchase without trade',()=
 });
 test('W03 cheaper unrelated live offer cannot consume the pinned funding',()=>{
  const f=fundedAtOrigin();
- f.bot.p.entities.cheaper={name:'Cheaper',id:'cheaper',type:'character',
+ const cheaper={name:'Cheaper',id:'cheaper',type:'character',
   stand:true,map:'main',in:'main',x:10,y:0,slots:{trade1:{
    name:'poison',level:0,price:1,q:1,rid:'OTHER'}}};
+ f.bot.p.entities={cheaper,seller:f.seller};
  assert.equal(f.market.buy(f.item,f.rule),true);
  assert.equal(f.trades.length,1);
  assert.equal(f.trades[0].job.details.seller,'Seller');

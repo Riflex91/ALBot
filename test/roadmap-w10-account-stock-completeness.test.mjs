@@ -57,7 +57,7 @@ test('W10 forged bank complete bit is not enough to prove current-map stock',()=
   b=>{b.packs[0].size=999;}
  ];
  for(const change of changes){
-  const b=structuredClone(valid);change(b);
+  const b={...valid,rows:structuredClone(valid.rows),packs:structuredClone(valid.packs)};change(b);
   assert.equal(verifiedAccountBankView(b,{owner,session,realm,map,now:at,ttlMs:10000}),false);
   const x=account({bank:b,inventory:[]});
   assert.equal(x.complete,false);
@@ -71,7 +71,7 @@ test('W10 cyclic or non-serializable bank variants never enter shadow account qu
  const valid=liveBank(),corrupt={source:'unexpected'};
  corrupt.self=corrupt;
  for(const value of [corrupt,{n:1n}]) {
-  const b=structuredClone(valid);
+  const b={...valid,rows:structuredClone(valid.rows),packs:structuredClone(valid.packs)};
   b.rows[0].item.data=value;
   assert.doesNotThrow(()=>account({bank:b,inventory:[]}));
   const v=account({bank:b,inventory:[]});

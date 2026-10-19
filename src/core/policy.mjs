@@ -11,7 +11,7 @@ export function chooseRule(rules,item,context){
   // authorized for an absent item, regardless of configured item rules.
   if(!item||typeof item!=='object'||typeof item.name!=='string'||!item.name||
      !Array.isArray(rules)||!context||typeof context!=='object')return null;
-  return rules.filter(r=>r&&r.enabled&&r.item===item.name&&(item.level??0)>=r.minLevel&&(item.level??0)<=r.maxLevel&&(r.role==='all'||r.role===context.role)&&['character','map','server','task'].every(k=>!r[k]||r[k]===context[k])&&(!r.statType||r.statType===(item.stat_type??''))&&(!r.property||r.property===(item.p??''))&&(!r.title||r.title===(item.title??''))).sort((a,b)=>ruleRank(b)-ruleRank(a)||b.priority-a.priority)[0]??null;
+  return rules.filter(r=>r&&r.enabled&&r.item===item.name&&(item.level??0)>=r.minLevel&&(item.level??0)<=r.maxLevel&&(r.role==='all'||r.role===context.role)&&['character','map','server','task'].every(k=>!r[k]||r[k]===context[k])&&(!r.statType||r.statType===(item.stat_type??''))&&(!r.property||r.property===(item.p??''))&&(!r.title||r.title===(item.title??''))&&(!r._autoProduction||r.action!=='send'||r._autoExactVariant===undefined||(typeof r._autoExactVariant==='string'&&r._autoExactVariant===identity(item)))).sort((a,b)=>ruleRank(b)-ruleRank(a)||b.priority-a.priority)[0]??null;
 }
 export function variantCount(items,item){return items.reduce((n,i)=>n+(i&&identity(i)===identity(item)?(i.q??1):0),0);}
 // A reservation is gross committed demand, not a deficit. Never subtract

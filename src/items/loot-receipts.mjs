@@ -21,6 +21,11 @@ function w13GearTargetMatches(g,item,variant){
  if(g.variant===null||g.variant===undefined)return true;
  if(typeof g.variant!=='object'||Array.isArray(g.variant))return false;
  try{
+  // identity() intentionally selects only canonical item fields. A cycle
+  // in an otherwise ignored field is still malformed objective data and
+  // must not silently become a valid recipient suggestion.
+  const serialized=JSON.stringify(g.variant);
+  if(typeof serialized!=='string'||serialized.length>2048)return false;
   if(Object.hasOwn(g.variant,'name')&&g.variant.name!==g.item||
      Object.hasOwn(g.variant,'level')&&g.variant.level!==g.level)
    return false;

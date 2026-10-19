@@ -1,0 +1,39 @@
+name: Temporary N05 scout boundary runtime build
+on:
+  push:
+    branches:
+      - codex/n05-scout-boundary-containment-20261019
+    paths:
+      - .github/workflows/regen-albot-pr.yml
+      - src/world/local-scout.mjs
+      - src/world/respawn-calendar.mjs
+      - test/roadmap-n05-approved-local-scout-hop.test.mjs
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.repository == 'Riflex91/ALBot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm test
+      - run: npm run build:editor
+      - name: Commit regenerated runtime preserving personal settings
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json profiles/full-solo.json profiles/full-team.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build: sync N05 boundary-contained scout runtime preserving personal config"
+            git push origin HEAD:codex/n05-scout-boundary-containment-20261019
+          fi

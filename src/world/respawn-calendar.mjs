@@ -1,4 +1,4 @@
-import {approvedLocalScoutHop} from './local-scout.mjs';
+import {approvedLocalScoutHop,insideScoutFarmBoundary} from './local-scout.mjs';
 // N05: passive, realm/instance-scoped observed monster calendar.
 // No predictions, travel, targeting, combat credit or game mutations.
 const MAX_ROWS=64,MAX_HITS=128,MAX_AGE_MS=21600000,MAX_HIT_MS=30000;
@@ -232,8 +232,11 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
      a.realm===realm&&now()-a.at<=12000&&
      plan?.id===a.planId&&bot.teamPlan?.valid?.(plan)===true&&
      r?.killedAt===a.killedAt&&r.scoutState==='observing'&&
-     now()<r.scoutUntil&&where?.map===point?.map&&
-     where?.in===point?.in&&!p.c.rip&&
+     now()<r.scoutUntil&&plan?.map===point?.map&&
+     plan?.in===point?.in&&where?.map===point?.map&&
+     where?.in===point?.in&&
+     insideScoutFarmBoundary(point,plan?.bounds)&&
+     insideScoutFarmBoundary(p.c,plan?.bounds)&&!p.c.rip&&
      Number.isFinite(p.c.x)&&Number.isFinite(p.c.y)&&
      Math.hypot(p.c.x-point.x,p.c.y-point.y)<=12;
     finish(arrived?'local-arrival-observed':'outcome-unverified');
@@ -245,6 +248,8 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    a.realm!==realm||now()-a.at>12000||
    !plan||plan.id!==a.planId||
    bot.teamPlan?.valid?.(plan)!==true||
+   !insideScoutFarmBoundary(p.c,plan?.bounds)||
+   !insideScoutFarmBoundary(a?.point,plan?.bounds)||
    bot.teamPlan?.allowed?.(plan?.target)!==true||
    bot.strategy?.permittedMap?.(plan?.map)!==true||
    p.G?.maps?.[plan?.map]?.pvp===true||

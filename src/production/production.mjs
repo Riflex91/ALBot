@@ -12,6 +12,16 @@ import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,plan
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMarketPlan,firstEligibleProductionSlot} from '../merchant/production-priority.mjs';
+// Transient automatic send rules need an exact physical-variant binding.
+// The editable rule schema deliberately exposes only stat/p/title; acc, rid
+// and data cannot be expressed there and must never be silently widened.
+export function exactAutoDeliveryVariant(goal){
+ if(!goal?.variant||typeof goal.variant!=='object'||
+    Array.isArray(goal.variant)||typeof goal.item!=='string'||
+    !goal.item||!Number.isSafeInteger(goal.level)||goal.level<0)return null;
+ const key=identity({name:goal.item,level:goal.level,...goal.variant});
+ return typeof key==='string'&&key.length<=512?key:null;
+}
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
 export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
@@ -230,7 +240,13 @@ export function createProduction(bot){
   rulesEpoch=bot.decisionEpoch;rulesCache=[];
   const extra=[];
   for(const g of pendingDeliveryRuleNeeds(goals(),g=>deliveries[goalKey(g)]?.quantity??0,bot.me.name,g=>qty(g.item,g.level,g))){
-   extra.push({...generated('send',{name:g.item,level:g.level},g.quantity,g),recipient:g.recipient});
+   // Never emit an unbounded approximate send rule for a goal requiring
+   // physical fields that the editor's plain rule schema cannot match.
+   const exact=g.variant!==null&&g.variant!==undefined;
+   const variantKey=exact?exactAutoDeliveryVariant(g):null;
+   if(exact&&!variantKey)continue;
+   extra.push({...generated('send',{name:g.item,level:g.level},g.quantity,g),
+    ...(exact?{_autoExactVariant:variantKey}:{}),recipient:g.recipient});
   }
   for(const g of goals()){
    if(g.gearSlot&&(!g.recipient||g.recipient===bot.me.name))extra.push({...generated('equip',{name:g.item,level:g.level},g.quantity,g),slot:g.gearSlot});

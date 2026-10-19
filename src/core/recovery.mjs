@@ -96,6 +96,33 @@ export function inspectExchangeRecovery(bot){
    c.gold,c.items.map(x=>x?fingerprint(x):null)])};
 }
 
+// A timed-out bank.gold operation is not proof of a missing deposit/withdrawal.
+// Only a fresh, on-bank authoritative wallet+bank observation can resume work.
+// This verifies current balances, NOT the unknown outcome of the old transfer.
+export function bankGoldRecoverySnapshot(j,c,realm,bankMap='bank',now=Date.now()){
+ const deny=reason=>({eligible:false,reason});
+ if(j?.kind!=='bank.gold'||!Number.isSafeInteger(j.quantity)||j.quantity<=0||
+    !Number.isSafeInteger(j.before)||j.before<0||
+    !Number.isFinite(j.at)||now<j.at||now-j.at<120000||
+    j.cost!==0||j.loss!==0||!Array.isArray(j.slots)||j.slots.length||
+    !j.evidence||j.evidence.realm!==realm||j.evidence.gold!==j.before)
+  return deny('invalid-or-too-new-bank-gold-journal');
+ if(c?.map!==bankMap||!c.bank||!Number.isSafeInteger(c.bank.gold)||
+    c.bank.gold<0||!Number.isSafeInteger(c.gold)||c.gold<0)
+  return deny('authoritative-bank-balance-not-visible');
+ if(!Array.isArray(j.evidence.inventory)||!Array.isArray(c.items)||
+    c.items.length!==j.evidence.inventory.length)
+  return deny('inventory-baseline-unavailable');
+ // bank.gold cannot change inventory; unrelated physical drift invalidates
+ // the old before-image as a complete reconciliation basis.
+ const current=c.items.map(x=>x?fingerprint(x):null);
+ if(current.some((fp,i)=>fp!==j.evidence.inventory[i]))
+  return deny('inventory-changed-since-bank-gold-intent');
+ return {eligible:true,reason:'current-bank-and-wallet-observed',
+  wallet:c.gold,bankGold:c.bank.gold,ageMs:now-j.at,
+  signature:JSON.stringify([j.at,j.quantity,j.before,realm,c.gold,c.bank.gold,current])};
+}
+
 // Recover only a *corroborated* persisted gold handoff. Never send gold again.
 export function goldRecoveryEvidence(j,balance,realm,locked=true){
  if(!locked||!['gold.send','gold.receive'].includes(j?.kind)||
@@ -148,6 +175,7 @@ export function inspectGoldRecovery(bot){
    sender.before,receiver.before,realm])};
 }
 export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null,exchangeSample=null,exchangeStatus=null,goldSample=null,goldStatus=null;
+ let bankGoldSample=null,bankGoldStatus=null,lastBankGoldEvent=0;
  const goldAckKey='albot:gold:'+me.name+':recovery-receipt';
  function itemStatus(){
   const j=bot.journal;
@@ -241,6 +269,56 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
    Number.isFinite(lease.expires)&&lease.expires>Date.now()&&
    bankPeersAllow();
  }
+ // Never replay a timed-out bank deposit/withdrawal. Observe the actual
+ // server-provided bank balance at the bank, archive the unknown old outcome
+ // durably, and only then release unrelated work. A drifting inventory or
+ // disputed bank lease must remain blocked for inspection.
+ function reconcileBankGold(j){
+  const now=Date.now(),bankMap=p.G?.bank_packs?.items0?.[0]??'bank';
+  const blocked=reason=>{
+   bankGoldStatus={eligible:false,reason,ageMs:now-j.at};
+   if(now-lastBankGoldEvent>=30000){lastBankGoldEvent=now;
+    bot.event?.('recovery.bankGoldDeferred',{kind:j.kind,quantity:j.quantity,
+     ageMs:now-j.at,reason,map:p.c.map,bankMap});
+   }
+   bankGoldSample=null;return false;
+  };
+  if(me.role!=='merchant'||!bot.inventoryBlocked||
+     bot.checkpoint?.durable!==true||bot.exec?.pending?.size||
+     bot.bank?.pending||p.c.q?.bank||!bankPeersAllow())
+   return blocked('pending-action-checkpoint-or-bank-ownership');
+  if(!Number.isFinite(j.at)||now-j.at<120000)
+   return blocked('bank-gold-settlement-wait');
+  if(p.c.map!==bankMap){
+   bot.bank?.ready?.('items0',true);
+   return blocked('travel-to-bank-for-authoritative-observation');
+  }
+  const snapshot=bankGoldRecoverySnapshot(j,p.c,p.realm(),bankMap,now);
+  if(!snapshot.eligible)return blocked(snapshot.reason);
+  if(bankGoldSample?.signature!==snapshot.signature){
+   bankGoldSample={signature:snapshot.signature,at:now};
+   bankGoldStatus={eligible:false,reason:'await-second-stable-bank-snapshot',ageMs:snapshot.ageMs};
+   return false;
+  }
+  if(now-bankGoldSample.at<5000)return false;
+  const record={version:1,kind:'bank.gold',status:'unknown-no-replay',
+   originalAt:j.at,at:now,realm:p.realm(),quantity:j.quantity,
+   before:j.before,observedWallet:snapshot.wallet,
+   observedBankGold:snapshot.bankGold,
+   evidenceSignature:snapshot.signature};
+  if(p.write?.('albot:bank-gold-unconfirmed:'+me.name,record)!==true)
+   return blocked('unconfirmed-bank-gold-archive-write-failed');
+  if(bot.checkpoint?.clear?.(j)!==true)
+   return blocked('bank-gold-checkpoint-clear-failed');
+  bot.journal=null;bot.inventoryBlocked=false;
+  bankGoldSample=null;bankGoldStatus={eligible:false,reason:'archived-unknown-no-replay'};
+  bot.production?.invalidate?.();bot.intelligence?.invalidate?.();
+  bot.event?.('recovery.bankGoldResumed',{kind:'bank.gold',quantity:j.quantity,
+   originalAt:j.at,observedWallet:snapshot.wallet,
+   observedBankGold:snapshot.bankGold,originalOutcome:'unknown',replayed:false});
+  return true;
+ }
+
  // Resolve a legacy bank_store that the server executed as a stack swap.
  // Both addressed slots, the complete before-inventory and gold must match.
  // Do not infer success from global item counts or from the bank pack total.
@@ -415,7 +493,8 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   return true;
  }
  function reconcile(){const j=bot.journal;if(!j)return false;
-  if(['gold.send','gold.receive'].includes(j.kind))return reconcileGold();
+  if(j.kind==='bank.gold')return reconcileBankGold(j);
+   if(['gold.send','gold.receive'].includes(j.kind))return reconcileGold();
   if(j.kind==='exchange')return reconcileExchange();
   if(unchangedGatherJournal(bot)){
    bot.inventoryBlocked=false;

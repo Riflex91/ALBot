@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createMarket} from '../src/merchant/market.mjs';
+import {bankGoldTransferPlan} from '../src/merchant/bank.mjs';
 
 function fixture({bankGold=1000,budgetAllowed=true}={}){
  const c={name:'M',map:'main',in:'main',x:0,y:0,gold:150,
@@ -93,4 +94,14 @@ test('changed market authorization cancels a funded bank trip',()=>{
  assert.equal(f.market.fundingTick(),false);
  assert.equal(f.market.fundingPending(),false);
  assert.deepEqual(f.trades,[]);
+});
+
+test('W03 validated bank-gold plan incorporates purchase floor without releasing stand bids',()=>{
+ const slots={trade1:{b:true,price:300,q:1}};
+ assert.deepEqual(bankGoldTransferPlan({wallet:150,bankGold:1000,slots,
+  goldTarget:200,goldReserve:100,purchaseMinimum:500}),
+  {method:'bank_withdraw',quantity:350,target:500,committed:300});
+ assert.equal(bankGoldTransferPlan({wallet:150,bankGold:1000,
+  slots:{trade1:{b:true,price:NaN}},goldTarget:200,goldReserve:100,
+  purchaseMinimum:500}),null,'malformed trade bids can never justify a withdrawal');
 });

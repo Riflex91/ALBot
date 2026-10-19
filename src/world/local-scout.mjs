@@ -8,8 +8,7 @@ export function approvedLocalScoutHop({row,plan,character,realm,now,
     !row||!plan||!character||plan.kind!=='farm'||
     typeof plan.target!=='string'||plan.target!==row.monster||
     plan.objective||!plan.key||!plan.id||
-    plan.realm!==realm||row.realm!==realm||
-    !['main','farm'].includes(plan.kind))return deny('unapproved-scout-context');
+    plan.realm!==realm||row.realm!==realm)return deny('unapproved-scout-context');
  if(!Number.isSafeInteger(row.killedAt)||row.killedAt<=0||
     row.scoutState!=='observing'||
     !Number.isSafeInteger(row.scoutUntil)||row.scoutUntil<=now||

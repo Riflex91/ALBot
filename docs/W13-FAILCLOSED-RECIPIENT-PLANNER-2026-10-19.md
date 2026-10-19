@@ -50,3 +50,7 @@ auf den aktuellen `main`-Versionsstand `0.10.12-candidate`
 übernommen. Die generierten Entwicklungsartefakte werden aus der
 kombinierten Source regeneriert, nicht mit veralteten 0.10.11-Dateien
 überschrieben. Der separate signierte Release wird nicht verändert.
+
+**Merge-Gate:** Die Abnahme nutzt ausschließlich den endgültigen PR-Commit
+mit regulärer, tatsächlich ausgeführter Linux- und Windows-CI.
+Ein `action_required`-Run ohne gestartete Jobs ist keine Abnahme.

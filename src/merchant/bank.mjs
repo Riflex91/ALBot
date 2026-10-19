@@ -20,6 +20,34 @@ export function bankExpansionAffordable(cost,gold,staticBudget,fraction=.75){
    Number.isFinite(fraction)&&fraction>=0&&fraction<=1&&
    cost<=Math.floor(gold*fraction);
 }
+// W03: an observed bank-gold transfer must account for ALL open buy-stand
+// bids, with no rounding, coercion or overflow. This is planning evidence,
+// never an authorization to call the game bank API by itself.
+export function bankGoldTransferPlan({wallet,bankGold,slots={},goldTarget,
+ goldReserve,characterReserve=0,purchaseMinimum=0}={}){
+ const values=[wallet,bankGold,goldTarget,goldReserve,characterReserve,purchaseMinimum];
+ if(values.some(v=>!Number.isSafeInteger(v)||v<0)||
+    !slots||typeof slots!=='object'||Array.isArray(slots))return null;
+ let committed=0;
+ for(const [slot,bid] of Object.entries(slots)){
+  if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid?.b)continue;
+  const price=bid.price,quantity=bid.q??1;
+  if(!Number.isSafeInteger(price)||price<1||
+     !Number.isSafeInteger(quantity)||quantity<1||
+     !Number.isSafeInteger(price*quantity)||
+     !Number.isSafeInteger(committed+price*quantity))return null;
+  committed+=price*quantity;
+ }
+ const reserve=Math.max(goldTarget,goldReserve,characterReserve),
+  target=Math.max(reserve+committed,purchaseMinimum);
+ if(!Number.isSafeInteger(target)||wallet===target)return null;
+ const depositing=wallet>target;
+ const quantity=depositing?wallet-target:Math.min(target-wallet,bankGold);
+ if(!Number.isSafeInteger(quantity)||quantity<=0)return null;
+ return {method:depositing?'bank_deposit':'bank_withdraw',
+  quantity,target,committed};
+}
+
 // Every bank pack keeps its own workspace reserve. Summing free slots
 // across different packs can report usable capacity when NONE of the packs
 // can accept one more regular deposit.
@@ -1295,14 +1323,36 @@ export function createBank(bot){
  }
  function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),size:items.length,observedLength:p.c.bank?.[pack]?.length??null,used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}
  function gold(){
-  if(!cfg.merchant.bank||!cfg.merchant.bankGold||!p.c.bank||me.name!==cfg.party.merchant)return false;
-  const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
-  // Preserve a market purchase's verified financing need until it returns.
-  const marketMinimum=bot.market?.fundingMinimumGold?.()??0;
-  const target=Math.max(Math.max(cfg.merchant.goldTarget,cfg.merchant.goldReserve,me.goldReserve??0)+commitments,marketMinimum),before=p.c.gold,stored=p.c.bank.gold;
-  if(!Number.isFinite(stored)||before===target)return false;
-  const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
-  return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
+  if(cfg.merchant.bank!==true||cfg.merchant.bankGold!==true||
+     !p.c.bank||me.name!==cfg.party.merchant)return false;
+  // Merely retaining an off-map bank object does not prove that a live
+  // bank balance may be mutated. Require an observed local pack.
+  const local=()=>Object.entries(p.c.bank??{}).some(([pack,items])=>
+   /^items\d+$/.test(pack)&&packMap(pack)===p.c.map&&
+   Array.isArray(items)&&items.length<=42);
+  if(!local())return false;
+  const input=()=>({wallet:p.c.gold,bankGold:p.c.bank?.gold,
+   slots:p.c.slots,goldTarget:cfg.merchant.goldTarget,
+   goldReserve:cfg.merchant.goldReserve,
+   characterReserve:me.goldReserve??0,
+   purchaseMinimum:bot.market?.fundingMinimumGold?.()??0});
+  const plan=bankGoldTransferPlan(input());
+  if(!plan)return false;
+  const {method,quantity:q,target,committed}=plan;
+  const before=p.c.gold,stored=p.c.bank.gold;
+  // A bid that changes after planning cannot reuse an old bank transfer.
+  const guard=()=>{
+   const live=local()?bankGoldTransferPlan(input()):null;
+   return cfg.merchant.bank===true&&cfg.merchant.bankGold===true&&
+    live?.method===method&&live.quantity===q&&
+    live.target===target&&live.committed===committed&&
+    p.c.gold===before&&p.c.bank?.gold===stored;
+  };
+  return e.perform('bank.gold',{guard,
+   call:()=>p.call(method,q),
+   observe:()=>p.c.gold===before+(method==='bank_deposit'?-q:q)&&
+    p.c.bank?.gold===stored+(method==='bank_deposit'?q:-q),
+   details:{quantity:q,before}});
  }
  // Safe consolidation precedes evidence-based, rule-bound bank reclaim.
  function audit(){if(!cfg.merchant.bank||!p.c.bank||bot.inventoryBlocked||bot.journal)return false;

@@ -106,3 +106,46 @@ test('taken mail recovery refuses a different attachment or contradictory physic
   assert.deepEqual(calls,[],'no claim replay or settlement on weak evidence');
  }
 });
+
+test('G03 failed cursor persistence cannot authorize a subsequent reward claim',async()=>{
+ const scheduled=[],attempts=[];
+ const bot={me:{name:'A'},cfg:{world:{rewardMail:true}},running:true,
+  journal:null,inventoryBlocked:false,
+  p:{c:{name:'A',items:[null,null],isize:2,gold:100,c:{}},
+   G,read:()=>null,write:()=>false,realm:()=>'EUI',has:()=>true,
+   rewardMailCapability:()=>({supported:true}),
+   readRewardMailPage:async()=>({mail:[{...row}],more:false})},
+  bank:{pending:false},logistics:{reserved:false},monsters:()=>[],
+  exec:{pending:new Map(),run:(key,resources,guard,invoke)=>{
+   if(guard())scheduled.push(Promise.resolve(invoke()).catch(()=>{}));
+   return true;}},
+  economy:{perform:()=>{attempts.push('claim');return true;}}
+ };
+ const mail=createRewardMail(bot,{now:()=>1000000});
+ mail.tick();await Promise.all(scheduled);
+ assert.equal(mail.status().reason,'mail-cursor-storage-unavailable');
+ assert.equal(mail.status().queued,0);
+ mail.tick();
+ assert.deepEqual(attempts,[],'the next tick cannot act on an uncommitted page');
+});
+
+test('G03 malformed cursor pagination cannot leak claimable rows into queue',async()=>{
+ const scheduled=[],attempts=[];
+ const bot={me:{name:'A'},cfg:{world:{rewardMail:true}},running:true,
+  journal:null,inventoryBlocked:false,
+  p:{c:{name:'A',items:[null,null],isize:2,gold:100,c:{}},
+   G,read:()=>null,write:()=>true,realm:()=>'EUI',has:()=>true,
+   rewardMailCapability:()=>({supported:true}),
+   readRewardMailPage:async()=>({mail:[{...row}],more:true,cursor:'0'})},
+  bank:{pending:false},logistics:{reserved:false},monsters:()=>[],
+  exec:{pending:new Map(),run:(key,resources,guard,invoke)=>{
+   if(guard())scheduled.push(Promise.resolve(invoke()).catch(()=>{}));
+   return true;}},
+  economy:{perform:()=>{attempts.push('claim');return true;}}
+ };
+ const mail=createRewardMail(bot,{now:()=>1000000});
+ mail.tick();await Promise.all(scheduled);
+ assert.equal(mail.status().queued,0);
+ mail.tick();
+ assert.deepEqual(attempts,[]);
+});

@@ -87,6 +87,16 @@ export function createGearAllocation(bot){
  let rows=[...outstanding,...(completedSpace?completed.slice(-completedSpace):[])];
  function save(next){if(unsafeHistory||!bot.p.write(key,next))return false;rows=next;return true;}
  function goalFor(item,to,slot=null){return bot.gear?.goals()?.find(g=>g.recipient===to&&g.item===item.name&&g.level===(item.level??0)&&(!slot||g.gearSlot===slot));}
+ // An offer is not a physical receiver receipt. Before reserving a copy
+ // and again at the delayed dispatch boundary, verify the actual addressed
+ // receiver's heartbeat identity, life, realm and pinned process session.
+ function verifiedRecipient(to,session=null){
+  const peer=bot.transport?.fresh?.(to);
+  if(!peer||peer.name!==to||peer.running!==true||peer.rip!==false||
+     peer.realm!==bot.p.realm()||typeof peer.session!=='string'||
+     !peer.session||session!==null&&peer.session!==session)return null;
+  return peer;
+ }
  function reserve(j){
   const goal=goalFor(j.item,j.to,j.gear?.slot);
   if(!j.gear)return !goal;
@@ -94,14 +104,14 @@ export function createGearAllocation(bot){
   // Once an offer has promised gear, removing/changing its goal must
   // cancel its dispatch, not silently turn it into an ordinary send.
   if(!goal||!Number.isSafeInteger(j.quantity)||j.quantity!==1)return false;
-  const peer=bot.transport.fresh(j.to),live=bot.p.c.items[j.slot];
+  const peer=verifiedRecipient(j.to,j.session),live=bot.p.c.items[j.slot];
   if(!peer?.session||peer.session!==j.session||
      fingerprint(live)!==j.fingerprint||
      !j.gearAck||j.gearAck!==j.gear.expected||
      fingerprint(peer.gear?.slots?.[j.gear.slot])!==j.gear.expected)
     return false;
   const old=rows.find(r=>r.id===j.id);
-  if(old)return old.state==='reserved'&&old.recipient===j.to&&
+  if(old)return old.state==='reserved'&&old.realm===bot.p.realm()&&old.recipient===j.to&&
     old.recipientSession===j.session&&old.fingerprint===j.fingerprint&&
     old.slot===j.slot&&old.variant===identity(live)&&
     old.quantity===j.quantity;
@@ -119,7 +129,7 @@ export function createGearAllocation(bot){
  function guard(j){
   if(!j.gear)return true;
   if(unsafeHistory)return false;
-  const live=bot.p.c.items?.[j.slot],peer=bot.transport.fresh(j.to);
+  const live=bot.p.c.items?.[j.slot],peer=verifiedRecipient(j.to,j.session);
   if(!goalFor(j.item,j.to,j.gear.slot)||
      !peer?.session||peer.session!==j.session||
      j.gearAck!==j.gear.expected||
@@ -139,8 +149,8 @@ export function createGearAllocation(bot){
  function offer(item,to){
   const g=goalFor(item,to);if(!g)return null;
   if(unsafeHistory)return false;
-  const peer=bot.transport.fresh(to);
-  if(!peer?.gear||!peer.session)return false;
+  const peer=verifiedRecipient(to);
+  if(!peer?.gear)return false;
   if(unclaimedGearUnits(rows,bot.p.c.items,item)<1)return false;
   return {goal:g.name,slot:g.gearSlot,
    expected:fingerprint(peer.gear.slots?.[g.gearSlot]),

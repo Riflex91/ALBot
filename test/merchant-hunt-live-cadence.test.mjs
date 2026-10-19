@@ -7,9 +7,9 @@ import {serverRegistrySignature} from '../src/party/travel.mjs';
 const now=1000000;
 const hunt={key:'halloween:osnake:west',target:'osnake',kind:'hunt',started:now-300000};
 const west={...hunt,score:55000,travelSeconds:4,
- evidenceSeconds:140,pressureRatio:.75};
+ evidenceSeconds:140,pressureRatio:.75,observedAt:now-1000};
 const east={key:'halloween:osnake:east',target:'osnake',score:103000,
- travelSeconds:90,evidenceSeconds:0,pressureRatio:0};
+ travelSeconds:90,evidenceSeconds:0,pressureRatio:0,observedAt:now-1000};
 function pick(patch={}){return chooseHuntSpawn({current:hunt,currentRank:west,
  candidate:east,now,...patch});}
 test('osnake quest remains pinned even when distance makes other spawn score oscillate',()=>{

@@ -41,6 +41,18 @@ export function verifiedTeamRoleOwner(members,role,{now=Date.now(),ttlMs=10000,r
   b.mpRatio-a.mpRatio||a.name.localeCompare(b.name));
  return candidates[0]??null;
 }
+// N05: area history is an observation, not a permanent permission to move.
+// Crowd-driven relocation needs two independent, recent measurements; an old
+// 90-second aggregate can otherwise redirect a team hours after it was seen.
+const MAX_SPAWN_PRESSURE_AGE_MS=15*60*1000;
+export function freshSpawnPressure(row,now=Date.now()){
+ return Number.isSafeInteger(now)&&now>0&&
+  Number.isSafeInteger(row?.observedAt)&&row.observedAt>0&&
+  row.observedAt<=now&&now-row.observedAt<=MAX_SPAWN_PRESSURE_AGE_MS&&
+  Number.isFinite(row.evidenceSeconds)&&row.evidenceSeconds>=90&&
+  Number.isFinite(row.pressureRatio)&&row.pressureRatio>=0&&
+  row.pressureRatio<=1;
+}
 // Only live, directly visible fighters provide a reliable immediate contest
 // signal. No visible player at an unseen distant destination is NOT proof
 // that the destination is empty. Historical pressure remains independent.
@@ -92,9 +104,7 @@ export function chooseFarmAreaSwitch({
  // Require a bounded improvement over the existing hysteresis threshold.
  // Relieve objectively crowded spawns even when a safer nearby site offers
  // marginally less raw XP. Both sites need independent 90s observation.
- const verified=r=>Number.isFinite(r.evidenceSeconds)&&r.evidenceSeconds>=90&&
-  Number.isFinite(r.pressureRatio)&&r.pressureRatio>=0&&r.pressureRatio<=1;
- if(verified(currentRank)&&verified(candidate)&&
+ if(freshSpawnPressure(currentRank,now)&&freshSpawnPressure(candidate,now)&&
    currentRank.pressureRatio>=.65&&candidate.pressureRatio<=.3&&
    candidate.travelSeconds<=currentRank.travelSeconds+120&&
    candidate.score>=currentRank.score*.85)
@@ -127,10 +137,7 @@ export function chooseHuntSpawn({
  if(now-current.started<holdMs)return keep('hunt-spawn-observation-hold');
  // Pressure is not proof merely because a server is busy, or because the
  // party has just arrived. Demand >=90s of observations on BOTH sites.
- const sufficient=row=>Number.isFinite(row?.evidenceSeconds)&&
-  row.evidenceSeconds>=90&&Number.isFinite(row?.pressureRatio)&&
-  row.pressureRatio>=0&&row.pressureRatio<=1;
- if(!sufficient(currentRank)||!sufficient(candidate))
+ if(!freshSpawnPressure(currentRank,now)||!freshSpawnPressure(candidate,now))
   return keep('no-comparable-crowd-evidence');
  if(currentRank.pressureRatio<.65||candidate.pressureRatio>.3)
   return keep('stay-for-hunt-or-server-hop');

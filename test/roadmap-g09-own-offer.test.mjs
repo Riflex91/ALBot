@@ -425,3 +425,70 @@ test('G09 a missing merchant session cannot accept new server swap evidence',asy
   received:{name:'wand'},snum:2}),false);
  assert.equal(f.maker.status().observedSwapPending,false);
 });
+
+test('G09 observed replacement RID permanently invalidates pending swap UI receipt',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ const original=f.slots.trade3;
+ f.slots.trade3={...original,rid:'OTHER-RID'};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().observedSwapPending,false,
+  'contradicted UI event must not remain reusable');
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().receipt,null);
+ assert.equal(f.maker.post(1,f.rule),false);
+});
+test('G09 same-RID stand variant or wanted item drift invalidates prior swap event',async()=>{
+ for(const mutate of [
+  x=>{x.name='staff';},
+  x=>{x.want.name='other';},
+  x=>{x.want.q=2;},
+  x=>{x.q=2;},
+  x=>{x.giveaway=true;}
+ ]){
+  const f=fixture();f.maker.post(0,f.rule);
+  await f.pending.call();assert.equal(f.pending.observe(),true);
+  assert.equal(f.pending.onConfirmed(),true);
+  const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+  assert.equal(f.maker.observeSwap(evt),true);
+  mutate(f.slots.trade3);
+  assert.equal(f.maker.sample(),false);
+  assert.equal(f.maker.status().observedSwapPending,false);
+  f.slots.trade3=null;f.inventory[2]={name:'wand'};
+  assert.equal(f.maker.sample(),false);
+  assert.equal(f.maker.status().receipt,null);
+ }
+});
+test('G09 swap UI received while own stand already carries conflicting RID is ignored',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ f.slots.trade3={...f.slots.trade3,rid:'OTHER-RID'};
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),false);
+ assert.equal(f.maker.status().observedSwapPending,false);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().receipt,null);
+});
+test('G09 original unchanged listing keeps provisional swap event until actual removal',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().observedSwapPending,true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),true);
+ assert.equal(f.maker.status().state,'swap-receipt-verified-no-repost');
+});

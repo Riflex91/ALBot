@@ -22,7 +22,7 @@ function fixture(){
  const bot={p,cfg:{general:{testLogging:true},farming:{pvp:false,maxAggro:5},
    party:{enabled:false,aoe:false,aoeMaxTargets:5},skills:[]},
   me:{name:'R',role:'farmer'},farmers:['R'],teamNames:['R'],running:true,
-  count:()=>4,canConsumeImplicit:()=>true,
+  count:()=>4,canConsumeImplicit:()=>true,logistics:{reserved:false},
   beginValue(){},endValue(){},event:(name,details)=>events.push({name,details}),
   entity:id=>id===target.id?target:null,monsters:()=>[target],allowed:()=>true,
   strategy:{heartbeat:()=>activity},bosses:{profile:id=>id==='greenjr'?

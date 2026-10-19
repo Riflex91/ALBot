@@ -252,3 +252,56 @@ test('G09 read-only socket UI listener detaches and never interferes with unrela
  const noSocket=createPorts({parent:{}});
  assert.equal(noSocket.watchOwnTradeSwaps(()=>{}),null);
 });
+
+test('G09 own barter intent persists outgoing baseline before server-side posting',async()=>{
+ const f=fixture();assert.equal(f.maker.post(0,f.rule),true);
+ await f.pending.call();
+ const intent=f.writes.get('albot:trade-offer:v1:M');
+ assert.equal(intent.outgoingBefore,2);
+ assert.equal(intent.receiveBefore,0);
+ assert.equal(intent.state,'dispatch-intent-unverified');
+ assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M').outgoingBefore,2);
+});
+test('G09 returned outgoing item blocks inferred swap settlement despite exact incoming receipt',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();f.pending.onConfirmed();
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;
+ f.inventory[0]={name:'sword',level:0};
+ f.inventory[2]={name:'wand',level:0};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().receipt,null);
+ f.inventory[0]=null;
+ assert.equal(f.maker.sample(),true,
+  'stable outgoing post-listing stock and incoming receipt can complete checkpoint');
+});
+test('G09 missing outgoing copy blocks a false swap receipt',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();f.pending.onConfirmed();
+ assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2}),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ f.inventory[1]=null;
+ assert.equal(f.maker.sample(),false,
+  'unrelated outgoing inventory loss cannot be attributed to this swap');
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+});
+test('G09 old saved listing without outgoing physical baseline stays unknown after matching swap UI',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();f.pending.onConfirmed();
+ const legacy=structuredClone(f.writes.get('albot:trade-offer:v1:M'));
+ delete legacy.outgoingBefore;
+ const older=fixture(legacy);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(older.maker.observeSwap(evt),false);
+ older.slots.trade3=null;older.inventory[2]={name:'wand'};
+ assert.equal(older.maker.sample(),false);
+ assert.equal(older.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(older.maker.post(0,older.rule),false);
+});

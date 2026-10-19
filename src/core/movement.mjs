@@ -29,12 +29,14 @@ export function createMovement(bot){
   // On headless clients the native smart path search can live in parent,
   // even while character.moving is false and root.smart is absent.
   const smartActive=()=>[p.root?.smart,p.parent?.smart].some(s=>s?.moving||s?.searching);
+  // Native movement can be active even without a local ALBot order.
+  const nativeBusy=()=>!!p.c?.moving||smartActive();
   const stop=()=>{if(townQueued||p.c?.c?.town){try{Promise.resolve(p.call('stop','town')).catch(()=>{});}catch{}}townQueued=false;if(order||smartActive()||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner,scoutAdmission=null){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
     // N05's native movement must carry an explicit, re-evaluated admission
     // from the owning scout. A generic direct go('scout') has no authority.
-    if(owner==='scout'&&typeof scoutAdmission!=='function')return false;
+    if(owner==='scout'&&(typeof scoutAdmission!=='function'||nativeBusy()))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     // A local N05 scout is a direct step, never general smart navigation.
     // Even an unexpected direct call cannot widen its map or travel budget.
@@ -113,7 +115,7 @@ export function createMovement(bot){
     if(blink)token.dest={...dest,x:landing.x,y:landing.y,radius:Math.max(8,dest.radius)};
     token.mode=blink?'blink':local?'move':'smart_move';
     const scoutDispatchSafe=()=>{
-      if(order!==token||token.mode!=='move'||!samePlace(p.c,d)||
+      if(order!==token||token.mode!=='move'||nativeBusy()||!samePlace(p.c,d)||
          !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
          distance(p.c,d)>95||distance(p.c,d)<1||
          !p.has('can_move_to')||p.call('can_move_to',d.x,d.y)!==true)return false;
@@ -149,7 +151,7 @@ export function createMovement(bot){
       bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:timedOut?'timeout':'no_progress'});
     }
   }
-  return {go,poll,stop,failedRecently,get townActive(){return townQueued||!!p.c.c?.town||exec.pending.has('travel.town');},get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
+  return {go,poll,stop,failedRecently,nativeBusy,get townActive(){return townQueued||!!p.c.c?.town||exec.pending.has('travel.town');},get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner,scoutAdmission=null){
       if(order&&order.owner!==owner)return false;
       if(!p.call('can_move_to',x,y))return false;

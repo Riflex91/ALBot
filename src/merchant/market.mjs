@@ -382,7 +382,8 @@ export function createMarket(bot){
    covered,npcUnit:base,future,reason:covered?'net-visible-bid-discounted':'npc-only'};
  }
  function analysis(item){observe();const rows=history.filter(x=>variant(x.item,item)&&Date.now()-x.at<cfg.merchant.marketHistoryTtlMs),asks=rows.filter(x=>!x.side||x.side==='SELL').map(x=>x.price),bids=rows.filter(x=>x.side==='BUY').map(x=>x.price);const ask=asks.length?Math.min(...asks):null,bid=bids.length?Math.max(...bids):null;return {askingOnly:true,providers:new Set(rows.map(x=>x.seller)).size,ask,bid,spread:ask&&bid?(ask-bid)/ask:null,reference:quote(item),reason:'Beobachtete Angebote, keine bestätigten Handelsumsätze'};}
- return {listing,sellToBid,buy,wishlist,background,fundingTick,fundingMinimumGold,quote,analysis,liveBids,bidValuation,
+ return {listing,sellToBid,buy,wishlist,background,fundingTick,fundingMinimumGold,
+  fundingPending:()=>!!funding,quote,analysis,liveBids,bidValuation,
   hasVisibleBuyOffer,offerWaitMs,
   status:()=>({observedOffers:history.length,kind:'asking-price',ttlMs:cfg.merchant.marketHistoryTtlMs??21600000,
    noOfferWaits:[...noOffers].filter(([,until])=>until>Date.now()).map(([item,until])=>({item,retryAt:until})).slice(0,20)}),

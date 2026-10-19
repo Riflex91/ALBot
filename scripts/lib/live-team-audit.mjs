@@ -50,7 +50,8 @@ function idlePeriods(events,minSeconds){
 }
 export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   maxPursuitDepartures=12,maxSampledIdleSeconds=60,requireElixirs=false,
-  strict=false,requiredFarmers=null,minOverlapSeconds=0}={}){
+  strict=false,requiredFarmers=null,minOverlapSeconds=0,
+  requireSettledValueState=false}={}){
  if(!Number.isFinite(minOverlapSeconds)||minOverlapSeconds<0)
   throw Error('Invalid minimum shared observation duration');
  if(!Array.isArray(input)||!input.length)throw Error('At least one report is required');
@@ -93,6 +94,27 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
    detail:'Different realms or versions in supplied reports'});
  if(!reports.has(merchant))issues.push({level:'error',code:'MERCHANT_MISSING',
    detail:'No report for '+merchant});
+ // W14: A report must include explicit final checkpoint evidence before
+ // it can be used for value-operation acceptance. Never clear journals.
+ const valueStateEvidence={required:requireSettledValueState,
+  checked:0,missing:[],unresolved:[]};
+ if(requireSettledValueState)for(const [name,r] of reports){
+  const s=r.status;
+  if(!s||typeof s!=='object'||Array.isArray(s)||
+     typeof s.inventoryBlocked!=='boolean'||
+     !Object.hasOwn(s,'journal')){
+   valueStateEvidence.missing.push(name);
+   issues.push({level:'error',code:'MISSING_FINAL_VALUE_EVIDENCE',
+    character:name,detail:'No explicit final inventory blocker and journal snapshot'});
+   continue;
+  }
+  valueStateEvidence.checked++;
+  if(s.inventoryBlocked||s.journal!==null||r.bankPartial!=null){
+   valueStateEvidence.unresolved.push(name);
+   issues.push({level:'error',code:'UNSETTLED_FINAL_VALUE_STATE',
+    character:name,detail:'Final checkpoint remains blocked or a bank value journal is open'});
+  }
+ }
  const farmerNames=[...reports.keys()].filter(n=>n!==merchant);
  if(Number.isSafeInteger(requiredFarmers)&&requiredFarmers>=0&&farmerNames.length!==requiredFarmers)
   issues.push({level:'error',code:'ROSTER_INCOMPLETE',detail:'Expected '+requiredFarmers+' farmer reports, got '+farmerNames.length});
@@ -167,7 +189,8 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
     until:[...reports.values()].map(r=>r.exported).sort().at(-1)},
   scope:{characters:[...reports.keys()],sampledIdleIsProofOfAvailableTargets:false,
    sharedObservation:{from:sharedFrom,until:sharedUntil,seconds:sharedSeconds,
-    sufficient:validWindows&&sharedSeconds>0&&sharedSeconds>=minOverlapSeconds}},
+    sufficient:validWindows&&sharedSeconds>0&&sharedSeconds>=minOverlapSeconds},
+   valueStateEvidence},
   merchant:{name:merchant,pursuit,departures,carriedElixirs,
     outgoingItemIntents:outbound.filter(t=>t.character===merchant).length},
   transfers:{outgoingIntents:outbound.length,

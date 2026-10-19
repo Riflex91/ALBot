@@ -10,7 +10,8 @@ const refusal=(reason,detail={})=>({decision:'retreat',viable:false,
 // No optimistic assumptions about taunt, buffs, dodge, crowd control or kills.
 // Conservative credit requires verified heal/potion data or measured hits. Only an ALREADY engaged,
 // naturally aggressive live monster may be evaluated for team defense.
-// A missing healer/teammate or stale heartbeat makes the result RETREAT.
+// Unavailable non-victims contribute no damage or healing. The engaged victim
+// must remain verified; an absent optional party member is not proof of danger.
 export function estimateThreatCapability({
  monster,meta,team,now=Date.now(),observed=[],otherMonsters=[],allowHealing=true
 }={}){
@@ -20,7 +21,7 @@ export function estimateThreatCapability({
   return refusal('monster-data-unverified');
  if(!Array.isArray(team)||!team.length||team.length>5||
    !team.some(h=>h?.name===monster.target))return refusal('target-or-team-unverified');
- const members=[],attackers=[];
+ const members=[],attackers=[],unavailableMembers=[];
  for(const m of team){
   if(!m||!m.running||m.rip||!samePlace(m,monster)||
     !finite(m.hp,1,1000000)||!finite(m.max_hp,m.hp,1000000)||
@@ -30,12 +31,21 @@ export function estimateThreatCapability({
     !finite(m.stats?.range,1,3000)||
     !finite(m.x,-100000,100000)||!finite(m.y,-100000,100000)||
     (m.received!==undefined&&(!finite(m.received,0,now)||now-m.received>4000)))
-   return refusal('party-member-stale-or-unverified',{member:m?.name??null});
+   {
+    if(m?.name===monster.target)
+     return refusal('victim-stale-or-unverified',{member:m?.name??null});
+    unavailableMembers.push(m?.name??null);
+    continue;
+   }
   const d=distance(m,monster);
-  // Teammates who would have to travel for several seconds contribute no
-  // survival or damage credit during a potentially lethal engagement.
-  if(d>Math.max(180,m.stats.range+130))
-   return refusal('party-not-in-combat-support-range',{member:m.name,distance:Math.round(d)});
+  // Travel time and a stale/off-map peer must never become phantom DPS or
+  // healing. The victim is retained for defense even while out of attack
+  // range, but all other unreachable teammates are excluded.
+  const supportRange=Math.max(180,m.stats.range+35);
+  if(m.name!==monster.target&&d>supportRange){
+   unavailableMembers.push(m.name);
+   continue;
+  }
   const incomingType=meta.damage_type==='magical'?'resistance':'armor';
   const pierced=(m.stats[incomingType]??0)-
    (incomingType==='armor'?(meta.apiercing??0):(meta.rpiercing??0));
@@ -48,9 +58,10 @@ export function estimateThreatCapability({
   },{...meta,...monster,armor:monster.armor??meta.armor??0,
    resistance:monster.resistance??meta.resistance??0});
   if(!estimate.valid)return refusal('outgoing-damage-unverified',{member:m.name});
-  const priest=m.class==='priest',dps=estimate.damage*m.stats.frequency*
-   (priest?.55:.72); // priest's heal shares the basic attack opportunity
-  attackers.push({name:m.name,dps,attack:m.stats.attack});
+  const priest=m.class==='priest',canAttack=d<=Math.max(30,m.stats.range-12);
+  const dps=canAttack?estimate.damage*m.stats.frequency*
+   (priest?.55:.72):0; // no credit for a victim too far away to fight
+  if(dps>0)attackers.push({name:m.name,dps,attack:m.stats.attack});
   members.push({...m,d,incomingDps:meta.attack*meta.frequency*
    cap(multiplier,0.05,1.5),dps});
  }
@@ -83,19 +94,18 @@ export function estimateThreatCapability({
    const owned=secondary.filter(m=>m.victim===x.name).length;
    return owned!==Math.max(0,x.threats-(x.name===victim.name?1:0));
   }))return refusal('other-team-aggro-count-mismatch',{otherAggro});
- const healer=allowHealing?members.find(m=>m.class==='priest'&&
+ const healerCandidate=allowHealing?members.find(m=>m.class==='priest'&&
   !m.s?.stunned&&!m.s?.silenced&&
   (m.combatSupport?.healReady===true||
    !m.combatSupport&&Array.isArray(m.skills)&&m.skills.includes('heal')&&
     Array.isArray(m.capabilities?.ready)&&m.capabilities.ready.includes('heal'))):null;
+ const healRange=healerCandidate?.combatSupport?.healRange??healerCandidate?.stats.range;
+ const healer=healerCandidate&&finite(healerCandidate.stats.heal,1,100000)&&
+  finite(healRange,1,3000)&&
+  distance(healerCandidate,victim)<=Math.max(1,healRange-12)?
+  healerCandidate:null;
  let healingDps=0;
  if(healer){
-  const healingRange=healer.combatSupport?.healRange??healer.stats.range;
-  if(!finite(healer.stats.heal,1,100000)||
-     distance(healer,victim)>Math.max(1,healingRange-12))
-   return refusal('healer-unable-to-reach-victim',{
-    healer:healer.name,healerDistance:Math.round(distance(healer,victim)),
-    healRange:healingRange});
   // Healing and attack share the Priest's cadence. Only one verified ready
   // MP potion is budgeted, and not when the Priest is the victim (HP and MP
   // items share a potion cooldown). No future regen or repeated casts guessed.
@@ -113,7 +123,12 @@ export function estimateThreatCapability({
   healingDps=Math.max(0,healingDps*.7);
  }
  const rawDps=attackers.reduce((n,m)=>n+m.dps,0);
- if(!finite(rawDps,.01,1e8))return refusal('insufficient-damage');
+ if(!finite(rawDps,.01,1e8))return {
+  decision:'regroup',viable:false,evidence:'bounded-client-estimate',
+  reason:'no-local-attacker',victim:monster.target,monsterId:monster.id,
+  unavailableMembers,localMembers:members.map(m=>m.name),
+  healerReachable:false
+ };
  const recent=Array.isArray(observed)?observed.filter(h=>
    h?.monsterId===monster.id&&finite(h.at,now-8000,now)&&
    finite(h.damage,1,1000000)).slice(-48):[];
@@ -174,7 +189,9 @@ export function estimateThreatCapability({
    members.every(m=>!secondary.some(x=>x.victim===m.name)||m.hp/m.max_hp>=.4);
  return {decision:viable?'defend':'retreat',viable,
   reason:viable?'bounded-team-capacity':'insufficient-time-to-kill',
-  evidence:'bounded-client-estimate',otherAggroMode:secondary.length?'fully-observed-bounded':'single-aggro',
+  evidence:'bounded-client-estimate',unavailableMembers,
+  localMembers:members.map(m=>m.name),healerReachable:!!healer,
+  otherAggroMode:secondary.length?'fully-observed-bounded':'single-aggro',
   secondaryAggro:secondary.length,monster:monster.mtype,
   monsterId:monster.id,victim:victim.name,partySize:members.length,
   teamDps:Math.round(teamDps),incomingDps:Math.round(incomingDps),

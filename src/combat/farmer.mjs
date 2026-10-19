@@ -212,7 +212,7 @@ export function createFarmer(bot){
     if(rest){bot.reason='Erholung';bot.target=null;const threats=bot.monsters().filter(e=>e?.target===c.name&&e.hp>0&&!e.dead).sort((a,b)=>distance(c,a)-distance(c,b));if(threats[0])retreat(threats[0]);else bot.movement.stop();bot.skills.rotation(null);return true;}
     return false;
   }
-  function retreat(t){if(!isNaturallyAggressive(p.G,t)&&t?.target!==p.c.name)return false;if(bot.navigation?.orbit(t))return true;const c=p.c,from=xy(c);
+  function retreat(t){if(!isNaturallyAggressive(p.G,t)&&t?.target!==p.c.name)return false;const c=p.c,from=xy(c);
     // If the aggressive enemy has driven the patient out of the Priest's
     // reach, try a physically safe convergence step before fleeing farther.
     const healer=(bot.farmers??[]).filter(n=>n!==c.name)
@@ -221,7 +221,7 @@ export function createFarmer(bot){
         samePlace(c,h)&&Number.isFinite(h.x)&&Number.isFinite(h.y)&&
         Number.isFinite(h.stats?.range)&&h.stats.range>50);
     const healRange=healer?Math.max(55,healer.stats.range-20):0;
-    if(healer&&c.hp/c.max_hp<.85&&distance(c,healer)>healRange&&
+    if(healer&&distance(c,healer)>healRange&&
        distance(c,healer)<550){
       const dx=healer.x-from.x,dy=healer.y-from.y,len=Math.hypot(dx,dy);
       const step=Math.max(25,Math.min(85,(c.speed??40)*1.4));
@@ -236,6 +236,7 @@ export function createFarmer(bot){
         return true;
       }
     }
+    if(bot.navigation?.orbit(t))return true;
     const threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function helpEngagedTeamFight(leader){
   // Soft follow distance must not suppress safe, reachable assistance to an
@@ -467,7 +468,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // standstill. Combat remains forbidden until fresh evidence passes.
       if(['ranger','priest','mage'].includes(c.ctype)&&(blocker??rescueFocus)?.target&&
          (assessment?.reason==='insufficient-time-to-kill'||
-          assessment?.reason==='party-not-in-combat-support-range')){
+          assessment?.reason==='party-not-in-combat-support-range'||
+          assessment?.decision==='regroup'||
+          assessment?.unavailableMembers?.length>0)){
        const patient=bot.transport?.fresh?.((blocker??rescueFocus).target);
        const rally=safeEmergencyRallyPoint(c,patient,danger,
         p.G.monsters?.[danger.mtype]?.range);
@@ -484,6 +487,33 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         bot.event?.('combat.emergencyRally',{
          victim:patient.name,monster:danger.mtype,
          range:Math.round(distance(c,danger))});
+        return;
+       }
+       // A verified teammate across a portal cannot be reached by a local
+       // orbit. Rejoin the live selected group before conceding an engaged
+       // fight, but never chase when this character is itself under aggro.
+       const leaderPeer=bot.transport?.fresh?.(bot.leader);
+       const anchor=patient?.running&&!patient.rip?patient:
+        leaderPeer?.running&&!leaderPeer.rip?leaderPeer:null;
+       if(anchor&&anchor.realm===p.realm()&&!samePlace(c,anchor)&&
+          danger.target!==c.name&&Number.isFinite(anchor.x)&&
+          Number.isFinite(anchor.y)&&!bot.monsters().some(m=>m.target===c.name)){
+        const order=bot.movement.order;
+        // Preserve the native inter-map smart route once admitted; cancelling
+        // and recreating it on every combat tick would prevent any reunion.
+        if(order?.owner==='combat'&&order.dest&&
+           samePlace(order.dest,anchor)&&distance(order.dest,anchor)<100){
+         bot.reason='Gruppenverteidigung: zum Team zurückkehren';
+         return;
+        }
+        if(order&&['kite','farm','follow','combat','world'].includes(order.owner))
+         bot.movement.stop();
+        if(!bot.movement.order){
+         bot.movement.go({...anchor,radius:75},'combat');
+         bot.event?.('combat.teamRegroup',{member:anchor.name,
+          source:'separated-support',monster:danger.mtype});
+        }
+        bot.target=null;bot.reason='Gruppenverteidigung: zum Team zurückkehren';
         return;
        }
       }

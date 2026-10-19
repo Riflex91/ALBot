@@ -738,7 +738,9 @@ export function createProduction(bot){
      const r=e.explicit({name,level},'production'),grade=p.call('item_grade',{name,level}),scroll=r?.scroll||((kind==='compound'?'cscroll':'scroll')+grade);
      return [{item:scroll,quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];
     },score:step=>routeScore(step,new Set(),0)}:{};
-    plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,state:p.root?.S??p.parent?.S??{},...options});
+    plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,state:p.root?.S??p.parent?.S??{},
+      farmSources:allowedMonsters(),questAllowed:q=>!!p.c.s?.[q],
+      ...options});
    }catch(err){plan=[];goal=null;planningReason=err.message;e.note(err.message);continue;}
    const marketWait=deferNoOfferMarketPlan(plan[0],bot.market);
    if(marketWait>0){

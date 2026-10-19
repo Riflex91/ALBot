@@ -126,3 +126,18 @@ test('never preempt value movement, unsafe terrain, or faster or unknown-speed e
  assert.equal(activeKiteEligibility(c,{...t,speed:60},{speed:20}).reason,'enemy-not-slower');
  assert.equal(activeKiteEligibility(c,{...t,speed:undefined},{range:25}).reason,'speed-unverified');
 });
+
+test('distant self-aggro cancels stale kite and allows combat approach to regain firing range',()=>{
+ const c=hero(450,0),t={...monster,target:c.name,speed:30};
+ const stops=[],moves=[],movement={order:{owner:'kite'},
+  stop(){stops.push(this.order?.owner);this.order=null;},
+  local(...args){moves.push(args);this.order={owner:'kite'};return true;}};
+ const bot={p:{c,G:{monsters:{bee:metadata}},call:()=>true},
+  cfg:{farming:{kiting:true,orbit:true,orbitRadius:220}},
+  me:{name:'Ranger'},teamNames:['Ranger'],farmers:['Ranger'],
+  monsters:()=>[t],teamPlan:null,movement,event(){}};
+ assert.equal(createCombatNavigation(bot).rangePosition(t),false);
+ assert.deepEqual(stops,['kite']);
+ assert.deepEqual(moves,[]);
+ assert.equal(movement.order,null);
+});

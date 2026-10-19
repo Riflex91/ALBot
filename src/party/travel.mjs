@@ -1,4 +1,4 @@
-import {hopPenaltyDecision} from './travel-economics.mjs';
+import {hopPenaltyDecision,accountHopPenaltyDecision} from './travel-economics.mjs';
 import {assessServerHop,assessHomeSpawn,chooseHomeFallback} from '../world/servers.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {createHopLifecycle} from './hop-lifecycle.mjs';
@@ -131,13 +131,36 @@ export function createTeamTravel(bot){
   const economics=hopPenaltyDecision({character:p.c,from:p.realm(),to:realm,home:p.c.home??homeRealm,automatic:automatic&&w.respectHopPenalties!==false,pressureEscape});
   if(!economics.allowed){bot.event?.('server.hopCostDeferred',{realm,reason:economics.reason});return false;}
  if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
-  const names=[...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])];if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
-  hop={id:bot.session+':hop:'+Date.now(),realm,names,pressureEscape,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
+  const names=[...new Set([...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])])];
+  if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
+  // Every selected farmer pays the hop penalty, not just the leader. Fresh
+  // heartbeat level/condition data are observations, never proof of net gain.
+  const automaticGuard=automatic&&w.respectHopPenalties!==false;
+  const accountCost=accountHopPenaltyDecision({
+   members:names.map(n=>({name:n,character:n===me.name?p.c:bot.transport.fresh(n)})),
+   from:p.realm(),to:realm,home:p.c.home??homeRealm,
+   automatic:automaticGuard,pressureEscape});
+  if(!accountCost.allowed){
+   bot.event?.('server.hopCostDeferred',{realm,reason:accountCost.reason,
+    member:accountCost.member??null});
+   return false;
+  }
+  hop={id:bot.session+':hop:'+Date.now(),realm,names,pressureEscape,
+   automatic:automaticGuard,ready:new Set([me.name]),until:Date.now()+15000};bot.movement.stop();
   bot.event?.('server.hop.plan',{id:hop.id,from:p.realm(),to:realm,members:names.join(','),pressureEscape,until:hop.until});
-  for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{realm,pressureEscape},hop.id);return true;
+  for(const n of names)if(n!==me.name)bot.transport.send(n,'hopPlan',{
+   realm,pressureEscape,automatic:automaticGuard},hop.id);return true;
  }
  function applyHop(){
   if(!hop||hopLifecycle.blocked||!safe()||!destinationNormal(hop.realm))return false;
+  const cost=hopPenaltyDecision({character:p.c,from:p.realm(),to:hop.realm,
+   home:p.c.home??homeRealm,automatic:hop.automatic===true,
+   pressureEscape:hop.pressureEscape===true});
+  if(!cost.allowed){
+   bot.event?.('server.hopCostDeferred',{realm:hop.realm,reason:cost.reason,
+    member:me.name});
+   return false;
+  }
   const {id,realm}=hop,at=Date.now(),from=p.realm();
   // Existing hourly cap and durable history must be stored before navigation.
   if(!p.write('albot:hop:'+me.name,at))return false;
@@ -150,11 +173,24 @@ export function createTeamTravel(bot){
 
  function receive(from,m){
   if(m.type==='hopPlan'&&from===bot.leader&&realmAllowed(m.data?.realm)&&Date.now()-hopAt>=w.hopCooldownMs&&safe()&&!hopLifecycle.blocked){
+   // A fresh local refusal remains authoritative even when the leader's
+   // last peer heartbeat still showed an otherwise eligible character.
+   const automatic=m.data?.automatic===true&&w.respectHopPenalties!==false;
+   const cost=hopPenaltyDecision({character:p.c,from:p.realm(),
+    to:m.data.realm,home:p.c.home??homeRealm,
+    automatic,pressureEscape:m.data?.pressureEscape===true});
+   if(!cost.allowed){
+    bot.event?.('server.hopCostDeferred',{realm:m.data.realm,
+     reason:cost.reason,member:me.name});
+    return;
+   }
    if(m.data?.pressureEscape===true&&p.realm()===homeRealm&&
       !saveHome({...home,realm:homeRealm,phase:'escaped',
        retryAt:Date.now()+Math.max(600000,w.homeRetryMs??600000),
        escapeTo:m.data.realm,prior:homeRealm,enteredAt:0}))return;
-   hop={id:m.id,realm:m.data.realm,names:[],ready:new Set(),until:Date.now()+15000};bot.movement.stop();
+   hop={id:m.id,realm:m.data.realm,names:[],
+    pressureEscape:m.data?.pressureEscape===true,automatic,
+    ready:new Set(),until:Date.now()+15000};bot.movement.stop();
    bot.event?.('server.hop.planReceived',{id:m.id,from:p.realm(),to:hop.realm,leader:from});
    bot.transport.send(from,'hopAck',{},m.id);
   }else if(m.type==='hopAck'&&me.name===bot.leader&&hop?.id===m.id&&hop.names.includes(from)){

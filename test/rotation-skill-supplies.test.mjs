@@ -55,7 +55,7 @@ test('finite rotation-generated supply request creates a real recipient-bound Me
   economy:{explicit:()=>null}};
  const supply=createSupplies(ranger);
  const first=supply.request();
- assert.deepEqual(first.map(x=>[x.item,x.quantity]),[['poison',20]]);
+ assert.deepEqual(first.map(x=>[x.item,x.quantity]),[['poison',100]]);
  assert.equal(first[0].cycle>=now,true);
  assert.equal(supply.request()[0].cycle,first[0].cycle,'polling cannot duplicate an order');
  const merchant={p:{G,c:{ctype:'merchant',level:80,rip:false},
@@ -66,9 +66,9 @@ test('finite rotation-generated supply request creates a real recipient-bound Me
   economy:{explicit:()=>null}};
  const plans=createSupplies(merchant).goals();
  assert.equal(plans.length,1);
- assert.deepEqual([plans[0].item,plans[0].quantity,plans[0].recipient],['poison',20,'R']);
+ assert.deepEqual([plans[0].item,plans[0].quantity,plans[0].recipient],['poison',100,'R']);
  assert.equal(plans[0].enabled,true);
- inventory.poison=20;
+ inventory.poison=100;
  // Force the bounded 5 s recalculation without timers or changing bot internals.
  const realNow=Date.now;
  try{Date.now=()=>realNow()+6000;assert.deepEqual(supply.request(),[]);}finally{Date.now=realNow;}
@@ -84,4 +84,23 @@ test('merchant refuses mismatched class or stale reagent heartbeat requests',()=
  bot.transport.fresh=()=>({running:true,rip:false,realm:'EUII',class:'ranger',
   supplies:[{item:'poison',quantity:20,cycle:now-3600001}]});
  assert.deepEqual(createSupplies(bot).goals(),[]);
+});
+
+test('Ranger poison requests begin at 20 and refill only to 100',()=>{
+ const inventory={poison:21},persisted=new Map(),settings=cfg();
+ const ranger={p:{G,c:{ctype:'ranger',level:60,rip:false},
+  read:k=>persisted.get(k),write:(k,v)=>{persisted.set(k,v);return true;}},
+  cfg:settings,me:me('Ranger'),running:true,count:item=>inventory[item]??0,
+  economy:{explicit:()=>null}};
+ const supply=createSupplies(ranger);
+ assert.deepEqual(supply.request(),[]);
+ const realNow=Date.now;
+ try{
+  inventory.poison=20;Date.now=()=>realNow()+6000;
+  assert.equal(supply.request()[0].quantity,80);
+  inventory.poison=40;Date.now=()=>realNow()+12000;
+  assert.equal(supply.request()[0].quantity,60,'outstanding order tracks actual deficit');
+  inventory.poison=100;Date.now=()=>realNow()+18000;
+  assert.deepEqual(supply.request(),[]);
+ }finally{Date.now=realNow;}
 });

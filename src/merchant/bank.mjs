@@ -24,8 +24,8 @@ export function bankExpansionAffordable(cost,gold,staticBudget,fraction=.75){
 // bids, with no rounding, coercion or overflow. This is planning evidence,
 // never an authorization to call the game bank API by itself.
 export function bankGoldTransferPlan({wallet,bankGold,slots={},goldTarget,
- goldReserve,characterReserve=0}={}){
- const values=[wallet,bankGold,goldTarget,goldReserve,characterReserve];
+ goldReserve,characterReserve=0,purchaseMinimum=0}={}){
+ const values=[wallet,bankGold,goldTarget,goldReserve,characterReserve,purchaseMinimum];
  if(values.some(v=>!Number.isSafeInteger(v)||v<0)||
     !slots||typeof slots!=='object'||Array.isArray(slots))return null;
  let committed=0;
@@ -39,7 +39,7 @@ export function bankGoldTransferPlan({wallet,bankGold,slots={},goldTarget,
   committed+=price*quantity;
  }
  const reserve=Math.max(goldTarget,goldReserve,characterReserve),
-  target=reserve+committed;
+  target=Math.max(reserve+committed,purchaseMinimum);
  if(!Number.isSafeInteger(target)||wallet===target)return null;
  const depositing=wallet>target;
  const quantity=depositing?wallet-target:Math.min(target-wallet,bankGold);
@@ -1334,7 +1334,8 @@ export function createBank(bot){
   const input=()=>({wallet:p.c.gold,bankGold:p.c.bank?.gold,
    slots:p.c.slots,goldTarget:cfg.merchant.goldTarget,
    goldReserve:cfg.merchant.goldReserve,
-   characterReserve:me.goldReserve??0});
+   characterReserve:me.goldReserve??0,
+   purchaseMinimum:bot.market?.fundingMinimumGold?.()??0});
   const plan=bankGoldTransferPlan(input());
   if(!plan)return false;
   const {method,quantity:q,target,committed}=plan;

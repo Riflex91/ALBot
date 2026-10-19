@@ -384,3 +384,44 @@ test('G09 failed durable listing checkpoint cannot be treated as confirmed',asyn
  assert.equal(f.maker.status().state,'dispatch-intent-unverified');
  assert.equal(f.maker.post(1,f.rule),false);
 });
+
+test('G09 swap UI evidence does not cross a merchant session restart',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ f.bot.session='restarted-session';
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().observedSwapPending,false);
+ f.bot.session='test-session';
+ assert.equal(f.maker.sample(),false,'old session proof must not revive');
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().receipt,null);
+});
+test('G09 swap evidence cannot complete after a realm switch and return',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ f.p.realm=()=> 'USI';
+ assert.equal(f.maker.sample(),false);
+ f.p.realm=()=> 'EUI';
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+});
+test('G09 a missing merchant session cannot accept new server swap evidence',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ f.bot.session='';
+ assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',
+  buyer:'Other',slot:'trade3',item:{name:'sword'},
+  received:{name:'wand'},snum:2}),false);
+ assert.equal(f.maker.status().observedSwapPending,false);
+});

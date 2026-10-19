@@ -1,0 +1,31 @@
+name: Temporary candidate sync and tests
+on:
+  push:
+    branches:
+      - codex/ranger-poison-market-gold-20261019
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    if: github.repository == 'Riflex91/ALBot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/ranger-poison-market-gold-20261019
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm test
+      - name: Commit generated source parity on candidate branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u bot.js dist
+          if ! git diff --cached --quiet; then
+            git commit -m 'Sync generated ALBot runtime and personal comparison artifact'
+            git push origin HEAD:codex/ranger-poison-market-gold-20261019
+          fi

@@ -589,7 +589,15 @@ export function createTeamPlan(bot){
    if(bot.movement.order?.owner==='farm')bot.movement.stop();
    return false;
   }
-  if(samePlace(p.c,current)&&distance(p.c,current)<=65)return false;
+  if(bot.movement.order?.owner==='scout')return true;
+  if(samePlace(p.c,current)&&distance(p.c,current)<=65){
+   // Only after reaching an independently verified, already approved
+   // ordinary farm plan may a SOLO farmer make one short local N05 hop.
+   // This does not route to speculative or distant respawns.
+   if(current.kind==='farm'&&bot.respawns?.scout?.(current)===true)
+    return true;
+   return false;
+  }
   let destination={...current,radius:65};
   if(cfg.party.enabled&&me.name===bot.leader){
    const peers=(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)??{name:n});

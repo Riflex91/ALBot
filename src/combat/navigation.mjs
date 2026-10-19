@@ -41,6 +41,14 @@ export function createCombatNavigation(bot){
   // squad's spawn. Potions and Priest healing continue in the farmer loop.
   const routePlan=bot.teamPlan?.heartbeat?.()??bot.transport?.fresh?.(bot.leader)?.farmPlan;
   if(committedFarmTransit(c,bot.movement.order,routePlan))return false;
+  // A distant engaged target needs a combat approach or team regroup, not
+  // another orbit waypoint. The old unconditional orbit could strand Rangers
+  // hundreds of units away from their firing band and from their Priest.
+  const firingDistance=distance(c,t);
+  if(firingDistance>Math.max(c.range+25,(t.range??0)+70)){
+   if(bot.movement.order?.owner==='kite')bot.movement.stop();
+   return false;
+  }
   const eligibility=activeKiteEligibility(c,t,bot.p.G.monsters?.[t.mtype]);
   const now=Date.now();
   if(!eligibility.allowed){
@@ -58,7 +66,7 @@ export function createCombatNavigation(bot){
   if(owner&&!['combat','follow','farm','world','cohesion'].includes(owner))
    return false;
   const plan=bot.teamPlan?.heartbeat?.();
-  const healer=(c.hp/c.max_hp<.85&&t.target===c.name?
+  const healer=(t.target===c.name?
     (bot.farmers??[]).filter(n=>n!==c.name)
      .map(n=>bot.transport?.fresh?.(n)).find(h=>h?.class==='priest'&&
       h.running&&!h.rip&&samePlace(c,h)&&

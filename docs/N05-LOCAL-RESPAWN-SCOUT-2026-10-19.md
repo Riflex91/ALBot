@@ -70,3 +70,11 @@ Der lokale N05-Scoutauftrag ist ab jetzt **ausnahmslos ein nativer geradliniger 
 Die laufende Scoutbewegung wird bei jedem N05-Tick zusätzlich gegen den exakten autorisierten Zielpunkt sowie `order.mode === 'move'` geprüft. Ein fremder oder veränderter Modus, verschobene Koordinaten, neue PvP-Map-Eigenschaften, fehlende Monsterfreigabe oder widerrufene Map-Freigabe stoppen ausschließlich den eigenen Scoutauftrag als `safety-aborted`. Ein abgebrochener Hopp bleibt eine verbrauchte Einmalberechtigung: kein Wiederholungsversuch, keine neue Fernreise oder Monsterjagd, kein Respawnnachweis.
 
 Offline-Regressionstests prüfen den letzten fehlgeschlagenen `can_move_to`-Recheck, unverändertes herkömmliches Smart-Routing, die reine Direktroute und laufende Sicherheitswiderrufe. Der signierte Bootstrap-Release und persönliche Einstellungen bleiben unverändert.
+
+## Vollständige lokale Spawnflächen-Begrenzung (Folgeinkrement)
+
+Die freigegebene N05-Solo-Direktroute muss **vollständig innerhalb** der vom bestehenden Farmplan genehmigten rechteckigen Spawnfläche liegen, jeweils mit einem Sicherheitsrand von mindestens zehn Einheiten. Es reicht nicht mehr, dass nur der Zielpunkt in diesem Bereich liegt: Auch die *aktuelle Ausgangsposition* muss denselben Rand erfüllen. Weil das Rechteck konvex ist und der Scout ausschließlich einen nativen geradlinigen `move`-Befehl nutzt, liegt bei zwei zulässigen Endpunkten die ganze geplante Strecke innerhalb dieser genehmigten Innenfläche. Ungültige, zu schmale, umgedrehte oder mapfremde Grenzen werden abgelehnt.
+
+Während eines eigenen laufenden Scout-Auftrags prüft N05 erneut die **aktuelle physische Charakterposition** und den genehmigten Zielpunkt gegen diese Grenzen. Eine unerwartete Positionsabweichung oder eine Verkleinerung der genehmigten Spawnfläche beendet den Hopp sicherheitsbedingt und verbraucht die Einmalfreigabe. Ein verschwundener Bewegungsauftrag kann nur als `local-arrival-observed` gelten, wenn die aktuelle Endposition und der ursprünglich genehmigte Scoutpunkt weiterhin innerhalb der aktuellen zulässigen Spawnfläche liegen. Andernfalls bleibt das Ergebnis `outcome-unverified`.
+
+Weiterhin keine Wanderung zu anderen Maps oder Spawns, keine Gruppen-Sonderreise, keine Respawnvorhersage und keine automatische Wiederholung.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {approvedLocalScoutHop} from '../src/world/local-scout.mjs';
+import {approvedLocalScoutHop,insideScoutFarmBoundary} from '../src/world/local-scout.mjs';
 import {createRespawnCalendar} from '../src/world/respawn-calendar.mjs';
 
 const BEGIN=1700000000000;
@@ -232,4 +232,53 @@ test('N05 ongoing local hop revokes denied target, map or changed PvP safety',()
   assert.equal(f.calendar.status().localScoutHop.state,'safety-aborted');
   assert.equal(f.calendar.scout(f.plan),false);
  }
+});
+
+test('N05 refuses a local hop starting outside the approved spawn even if its endpoint is safe',()=>{
+ const f=fixture();f.killThenMiss();
+ f.plan.bounds=['main',-40,-110,110,110];
+ assert.equal(insideScoutFarmBoundary({map:'main',x:20,y:0},f.plan.bounds),true);
+ assert.equal(insideScoutFarmBoundary(f.character,f.plan.bounds),false);
+ assert.equal(f.calendar.scout(f.plan),false);
+ assert.equal(f.bot.movement.order,null);
+ assert.equal(f.bot.events.length,0);
+ f.character.x=-30;
+ assert.equal(insideScoutFarmBoundary(f.character,f.plan.bounds),true);
+ assert.equal(f.calendar.scout(f.plan),true,
+  'the same approved endpoint is allowed after moving into the safe interior');
+});
+test('N05 farm bounds reject invalid, inverted or too narrow rectangles',()=>{
+ const point={map:'main',x:15,y:0};
+ for(const bounds of [
+  null,[],['bank',-100,-100,100,100],
+  ['main',20,-100,-20,100],
+  ['main',0,-100,15,100],
+  ['main',-100,0,100,18],
+  ['main',-100,NaN,100,100]
+ ]){
+  assert.equal(insideScoutFarmBoundary(point,bounds),false);
+ }
+ assert.equal(insideScoutFarmBoundary(point,['main',-100,-100,100,100]),true);
+ assert.equal(insideScoutFarmBoundary({...point,x:Infinity},
+  ['main',-100,-100,100,100]),false);
+});
+test('N05 unexpected excursion beyond approved farm margin aborts active native scout',()=>{
+ const f=fixture();f.killThenMiss();
+ assert.equal(f.calendar.scout(f.plan),true);
+ f.character.x=-105;
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.stops,1);
+ assert.equal(f.bot.movement.order,null);
+ assert.equal(f.calendar.status().localScoutHop.state,'safety-aborted');
+ assert.equal(f.calendar.scout(f.plan),false,'aborted movement is not replayable');
+});
+test('N05 changed farm bounds block claiming arrival despite coincident coordinates',()=>{
+ const f=fixture();f.killThenMiss();
+ assert.equal(f.calendar.scout(f.plan),true);
+ f.bot.movement.order=null;
+ f.character.x=20;
+ f.plan.bounds=['main',20,-100,100,100];
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().localScoutHop.state,'outcome-unverified');
+ assert.equal(f.calendar.scout(f.plan),false);
 });

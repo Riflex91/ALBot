@@ -1,5 +1,18 @@
 // N05: one optional, strictly local observation hop inside an EXISTING
 // approved, currently occupied farm plan. It grants no map/monster authority.
+// Rectangular spawn bounds are convex: if both actual endpoints retain
+// this safety margin, the straight native move cannot leave the rectangle.
+export function insideScoutFarmBoundary(point,bounds,margin=10){
+ if(!point||!Array.isArray(bounds)||bounds.length!==5||
+    typeof point.map!=='string'||point.map!==bounds[0]||
+    !Number.isFinite(point.x)||!Number.isFinite(point.y)||
+    !Number.isFinite(margin)||margin<0||
+    !bounds.slice(1).every(Number.isFinite))return false;
+ const [,x1,y1,x2,y2]=bounds;
+ return x1+margin<=x2-margin&&y1+margin<=y2-margin&&
+  point.x>=x1+margin&&point.x<=x2-margin&&
+  point.y>=y1+margin&&point.y<=y2-margin;
+}
 export function approvedLocalScoutHop({row,plan,character,realm,now,
  approved=false,solo=false,safe=false}={}){
  const deny=reason=>({allowed:false,reason,point:null});
@@ -31,14 +44,8 @@ export function approvedLocalScoutHop({row,plan,character,realm,now,
  if(dist(character,plan)>65||dist(row,plan)>70||
     dist(character,row)<=45||dist(character,row)>95)
    return deny('outside-current-safe-farm-anchor');
- const bounds=plan.bounds;
- if(!Array.isArray(bounds)||bounds.length!==5||
-    bounds[0]!==row.map||!bounds.slice(1).every(Number.isFinite))
-   return deny('unverified-farm-boundary');
- const [,x1,y1,x2,y2]=bounds;
- if(x1>x2||y1>y2||
-    row.x<x1+10||row.x>x2-10||
-    row.y<y1+10||row.y>y2-10)
+ if(!insideScoutFarmBoundary(character,plan.bounds)||
+    !insideScoutFarmBoundary(row,plan.bounds))
    return deny('scout-hop-outside-approved-boundary');
  return {allowed:true,reason:'single-hop-inside-approved-farm',
   point:{map:row.map,in:row.in,x:row.x,y:row.y,radius:8},

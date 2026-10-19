@@ -102,3 +102,20 @@ test('W13 malformed variant goals fail closed even in delivery accounting',()=>{
   assert.equal(productionGoalMatchesItem(base,{...goal,variant}),false);
  }
 });
+
+test('W13 an exact variant cannot spoof its parent goal item or level',()=>{
+ for(const variant of [
+  {...goal.variant,name:'other'},
+  {...goal.variant,level:2},
+  {...goal.variant,name:'token',level:2}
+ ]){
+  const suspect={...goal,variant};
+  assert.equal(exactAutoDeliveryVariant(suspect),null);
+  assert.equal(productionGoalMatchesItem(base,suspect),false);
+ }
+ assert.equal(productionGoalMatchesItem({...base,name:'other'},goal),false);
+ assert.equal(productionGoalMatchesItem({...base,level:2},goal),false);
+ const valid={...goal,variant:{...goal.variant,name:'token',level:1}};
+ assert.equal(exactAutoDeliveryVariant(valid),identity(base));
+ assert.equal(productionGoalMatchesItem(base,valid),true);
+});

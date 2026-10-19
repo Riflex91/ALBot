@@ -4,6 +4,13 @@ export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const marketProbes=new Map(),noOffers=new Map(),MARKET_REPROBE_MS=120000;
  const variant=(a,b)=>a&&b&&a.name===b.name&&(a.level??0)===(b.level??0)&&['stat_type','p','title'].every(k=>(a[k]??'')===(b[k]??''));
+ // Finite production material requests require the actual variant, not just
+ // the display-level/grade fields used for general market price research.
+ // Listing RID belongs to the offer and is validated separately at dispatch.
+ const materialVariant=(offer,item)=>variant(offer,item)&&
+  (offer.acc??'')===(item.acc??'')&&
+  JSON.stringify(offer.data)===JSON.stringify(item.data)&&
+  !offer.l&&!offer.bound&&!offer.locked;
  const historyKey='albot:market:'+bot.me.name+':offers';let history=[],lastObserve=0;
  const cached=cfg.merchant.marketHistory?p.read(historyKey):null;if(Array.isArray(cached))history=cached.filter(x=>x&&typeof x.item?.name==='string'&&Number.isFinite(x.price)&&x.price>0&&Number.isFinite(x.at)&&x.at<=Date.now()&&Date.now()-x.at<(cfg.merchant.marketHistoryTtlMs??21600000)).slice(-128);
  function observe(){if(!cfg.merchant.marketHistory||Date.now()-lastObserve<10000)return;lastObserve=Date.now();history=history.filter(x=>Date.now()-x.at<cfg.merchant.marketHistoryTtlMs);
@@ -42,7 +49,7 @@ export function createMarket(bot){
    Object.entries(player.slots??{}).some(([slot,offer])=>
     /^trade([1-9]|1[0-6])$/.test(slot)&&offer?.rid&&
     !offer.b&&!offer.giveaway&&!offer.buy&&
-    Number.isFinite(offer.price)&&offer.price>0&&variant(offer,item)));
+    Number.isFinite(offer.price)&&offer.price>0&&materialVariant(offer,item)));
  }
  function offerWaitMs(item){
   return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());
@@ -57,7 +64,7 @@ export function createMarket(bot){
   for(const player of Object.values(p.entities)){
    if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
    for(const [slot,offer] of Object.entries(player.slots??{})){
-    const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!variant(offer,item)||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
+    const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!(finite?materialVariant(offer,item):variant(offer,item))||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
     const before=e.count(item),q=Math.floor(Math.min(offer.q??1,r.batch,r.targetCount-before,r.maxCount-before,finite?scope.quantity:Infinity)),unitPrice=offer.price,cost=q*unitPrice,rid=offer.rid;
     if(!Number.isSafeInteger(q)||q<=0||bot.free()<=cfg.merchant.minFreeSlots)continue;
     const fits=()=>{
@@ -69,7 +76,7 @@ export function createMarket(bot){
     if(!fits())continue;
     noOffers.delete(identity(item));
     let response=null,dispatchGold=null;
-    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity)&&fits()&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&variant(current,item)&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
+    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity)&&fits()&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&(finite?materialVariant(current,item):variant(current,item))&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
     observe:()=>finite?
      !!response&&typeof response==='object'&&!response.failed&&
       response.success!==false&&Number.isSafeInteger(dispatchGold)&&

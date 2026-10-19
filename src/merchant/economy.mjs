@@ -109,13 +109,18 @@ export function createEconomy(bot){
    (cfg.merchant.budgetMode==='account-loss'||cost<=bankExpansionRemaining(cfg.merchant.bankBudget,ledger.bankSpent??0));
  const exposure=()=>ledger.productionExposure===undefined?ledger.loss:Number.isSafeInteger(ledger.productionExposure)&&ledger.productionExposure>=0?ledger.productionExposure:Infinity;
  const automaticRisk=(cost,loss,r)=>!!(r?._autoProduction||r?._autoDisposition)&&(cost>0||loss>0);
- function budget(cost,loss=0,r=null){
-  if(cfg.merchant.budgetMode==='account-loss'){bot.lossGuard?.sample();const committed=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);return !bot.lossGuard?.blocked&&Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-committed>=cost);}
+ const committedGold=()=>Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
+ function budget(cost,loss=0,r=null,carriedGold=p.c.gold){
+  if(cfg.merchant.budgetMode==='account-loss'){bot.lossGuard?.sample();const committed=committedGold();return !bot.lossGuard?.blocked&&Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||carriedGold-committed>=cost);}
   if(Date.now()-ledger.hour>=3600000)ledger={...ledger,hour:Date.now(),spent:0,loss:0,productionExposure:0,supplySpent:0};
   const reserve=Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
-  const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
-  return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||p.c.gold-cost-commitments>=reserve)&&(cost===0||ledger.spent+cost<=cfg.merchant.maxSpendPerHour)&&(loss===0||ledger.loss+loss<=cfg.production.lossBudget)&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget))&&(!automaticRisk(cost,loss,r)||bot.account?.spendAllowed?.(cost,exposure()+loss,{production:true})===true);
+  const commitments=committedGold();
+  return Number.isFinite(cost)&&cost>=0&&Number.isFinite(loss)&&loss>=0&&(cost===0||carriedGold-cost-commitments>=reserve)&&(cost===0||ledger.spent+cost<=cfg.merchant.maxSpendPerHour)&&(loss===0||ledger.loss+loss<=cfg.production.lossBudget)&&(!r||(cost<=r.goldBudget&&loss<=r.lossBudget))&&(!automaticRisk(cost,loss,r)||bot.account?.spendAllowed?.(cost,exposure()+loss,{production:true})===true);
  }
+ // Simulate a future verified bank withdrawal without changing live gold,
+ // then enforce all the same spend/loss/account and active-goal policies.
+ const budgetAtGold=(gold,cost,loss=0,r=null,item=null)=>Number.isSafeInteger(gold)&&gold>=0&&
+  budget(cost,loss,r,gold)&&goalBudget(cost,loss,item);
  function budgetExplanation(cost,loss=0,r=null){
   if(cfg.merchant.budgetMode==='account-loss')return bot.lossGuard?.blocked?'Accountgold: 85-%-Verlustsperre aktiv':'Tatsächlich verfügbares Gold reicht für Kosten und bestehende Handelszusagen nicht';
   const reserve=Math.max(me.goldReserve??0,me.role==='merchant'?cfg.merchant.goldReserve:0);
@@ -211,5 +216,5 @@ export function createEconomy(bot){
   return sourceVerified&&(saleReceiptMatches(receipt,i,q,q*price)||p.c.gold===gold+q*price);
  },details:{item:i.name,variant:identity(i),quantity:q,before,sourceSlot:slot,expectedGold:q*price}});
  }
- return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,budgetExplanation,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,bankExpansionAvailable,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
+ return {rules,explicit,count,downstreamSatisfied,safe,spare,value,note,budget,budgetAtGold,committedGold,budgetExplanation,remaining,perform,destination,at,travel,npcAt,npcTravel,npcFor,npcBuy,npcSell,bankExpansionAvailable,get ledger(){return ledger;},close(){closed=true;},resume(){closed=false;}};
 }

@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/regen-albot-pr.yml
       - src/world/local-scout.mjs
+      - scripts/build.mjs
       - src/world/respawn-calendar.mjs
       - src/world/team-plan.mjs
       - test/roadmap-n05-approved-local-scout-hop.test.mjs

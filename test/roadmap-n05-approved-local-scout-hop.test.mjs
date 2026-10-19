@@ -135,3 +135,69 @@ test('N05 one-hop window cancels after twelve seconds without authorizing replay
  assert.equal(f.stops,1);
  assert.equal(f.calendar.scout(f.plan),false);
 });
+
+test('N05 accepted local movement is pending, not a confirmed scout arrival',()=>{
+ const f=fixture();f.killThenMiss();
+ assert.equal(f.calendar.scout(f.plan),true);
+ assert.equal(f.calendar.status().localScoutHop.state,'in-flight');
+ assert.equal(f.calendar.status().localScoutHop.endedAt,null);
+ assert.equal(f.calendar.status().localScoutHop.executable,false);
+ assert.equal(f.calendar.status().predictionAuthorized,false);
+});
+test('N05 local arrival requires a fresh physical character position at the dispatched hop',()=>{
+ const f=fixture();f.killThenMiss();f.calendar.scout(f.plan);
+ f.bot.movement.order=null;f.character.x=20;
+ f.advance(2000);f.calendar.sample();
+ const result=f.calendar.status().localScoutHop;
+ assert.equal(result.state,'local-arrival-observed');
+ assert.equal(result.endedAt,f.now());
+ assert.equal(f.bot.events.at(-1).type,'respawn.localScoutOutcome');
+ assert.equal(f.bot.events.at(-1).details.authority,
+  'physical-local-observation-only');
+ assert.equal(f.calendar.scout(f.plan),false,'physical arrival does not refresh one-use permit');
+ assert.equal(f.calendar.status().executable,false);
+});
+test('N05 a disappearing movement order without physical arrival is unverified',()=>{
+ const f=fixture();f.killThenMiss();f.calendar.scout(f.plan);
+ f.bot.movement.order=null;
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().localScoutHop.state,'outcome-unverified');
+ assert.equal(f.calendar.status().localScoutHop.endedAt,f.now());
+ assert.equal(f.calendar.scout(f.plan),false);
+});
+test('N05 superseded local scout movement cannot claim arrival by coincident position',()=>{
+ const f=fixture();f.killThenMiss();f.calendar.scout(f.plan);
+ f.bot.movement.order={owner:'quest',dest:{map:'main',x:400,y:0}};
+ f.character.x=20;
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().localScoutHop.state,'outcome-unverified');
+ assert.equal(f.bot.movement.order.owner,'quest',
+  'N05 must never stop a newer movement owned by another subsystem');
+ assert.equal(f.calendar.scout(f.plan),false);
+});
+test('N05 safety revocation and timeout are terminal, not arrival or replay',()=>{
+ for(const [edit,expected] of [
+  [f=>{f.character.hp=40;},'safety-aborted'],
+  [f=>{f.setPlanValid(false);},'safety-aborted'],
+  [f=>{f.advance(12001);},'timeout-aborted']
+ ]){
+  const f=fixture();f.killThenMiss();f.calendar.scout(f.plan);
+  edit(f);f.advance(2000);f.calendar.sample();
+  assert.equal(f.calendar.status().localScoutHop.state,expected);
+  assert.equal(f.calendar.status().localScoutHop.endedAt,f.now());
+  assert.equal(f.stops,1);
+  assert.equal(f.calendar.scout(f.plan),false);
+ }
+});
+test('N05 session or realm changes never make an old local movement look completed',()=>{
+ for(const edit of [
+  f=>{f.bot.session='M-second';},
+  f=>{f.setRealm('USI');}
+ ]){
+  const f=fixture();f.killThenMiss();f.calendar.scout(f.plan);
+  edit(f);f.character.x=20;f.bot.movement.order=null;
+  f.advance(2000);f.calendar.sample();
+  assert.equal(f.calendar.status().localScoutHop,null);
+  assert.equal(f.calendar.status().predictionAuthorized,false);
+ }
+});

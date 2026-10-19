@@ -33,6 +33,11 @@ export function createMovement(bot){
   function go(d,owner){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
+    // A local N05 scout is a direct step, never general smart navigation.
+    // Even an unexpected direct call cannot widen its map or travel budget.
+    if(owner==='scout'&&(!samePlace(p.c,d)||
+       !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
+       distance(p.c,d)>95||distance(p.c,d)<1))return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
     if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
@@ -97,7 +102,11 @@ export function createMovement(bot){
     }
     const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
-    const blink=local&&travelBlinkEligible(bot,d,owner),landing=blink?blinkLandingPoint(d):null;
+    // Geometry can change between scout admission and actual movement.
+    // A failed last local check must NEVER turn a scout hop into smart_move.
+    if(owner==='scout'&&!local){order=null;return false;}
+    const blink=owner!=='scout'&&local&&travelBlinkEligible(bot,d,owner),
+     landing=blink?blinkLandingPoint(d):null;
     if(blink)token.dest={...dest,x:landing.x,y:landing.y,radius:Math.max(8,dest.radius)};
     token.mode=blink?'blink':local?'move':'smart_move';
     const accepted=exec.run('move',['movement',...(blink?['mana']:[])],()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&(!blink||travelBlinkEligible(bot,d,owner)),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;

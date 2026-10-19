@@ -14,7 +14,7 @@ const row=(id,state='unresolved')=>({
 function fixture(records=[],inventory=[{...variant}]){
  const store=new Map([['albot:gear:Merchant:allocations',structuredClone(records)]]);
  let writes=true,goal=true;
- const peer={running:true,rip:false,realm:'EUI',session:'r1',
+ const peer={name:'Priest',running:true,rip:false,realm:'EUI',session:'r1',
   gear:{slots:{mainhand:null}}};
  const bot={me:{name:'Merchant'},p:{
   c:{items:inventory},realm:()=> 'EUI',

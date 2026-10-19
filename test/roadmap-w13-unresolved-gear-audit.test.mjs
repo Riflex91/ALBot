@@ -125,3 +125,26 @@ test('W13 no auto-release even with receiver receipt and missing sender inventor
  assert.equal(f.allocation.status()[0].state,'unresolved');
  assert.equal(f.allocation.recoveryStatus().blockedNewGear,false);
 });
+
+test('W13 exactly 64 pending records exclude ALL completed history instead of slice(-0)',()=>{
+ const pending=Array.from({length:64},(_,i)=>row('claim:'+i));
+ const history=Array.from({length:20},(_,i)=>row('old:'+i,'delivered'));
+ const f=fixture([...pending,...history]);
+ assert.equal(f.allocation.recoveryStatus().unsafeHistory,false);
+ assert.equal(f.allocation.status().length,64);
+ assert.equal(f.allocation.status().filter(x=>x.state==='delivered').length,0);
+ assert.deepEqual(f.allocation.status().map(x=>x.id),pending.map(x=>x.id));
+ assert.equal(f.allocation.offer(variant,'Priest'),false);
+});
+test('W13 a new 64th pending reservation drops only completed history',()=>{
+ const pending=Array.from({length:63},(_,i)=>row('claim:'+i));
+ const history=Array.from({length:10},(_,i)=>row('old:'+i,'delivered'));
+ const f=fixture([...pending,...history],
+  Array.from({length:64},()=>({...variant})));
+ assert.equal(f.allocation.status().length,64);
+ assert.equal(f.allocation.reserve(f.job()),true);
+ assert.equal(f.allocation.status().length,64);
+ assert.equal(f.allocation.status().filter(x=>x.state==='delivered').length,0);
+ assert.equal(f.allocation.recoveryStatus().outstandingCount,64);
+ assert.equal(f.allocation.reserve({...f.job(),id:'newer'}),false);
+});

@@ -11,22 +11,26 @@ Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Aktueller signierter Release-Kanal (Sequence 14, 19.10.2026)
+## Aktueller signierter Release-Kanal (Sequence 15, 19.10.2026)
 
 | Feld | Beobachteter Wert |
 | --- | --- |
-| `sequence` | `14` |
-| `version` | `0.14.0-candidate` |
+| `sequence` | `15` |
+| `version` | `0.15.0-candidate` |
 | `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| `bytes` | `765913` |
-| `sha256` | `3ed5c6a0277c14aefe0847b940f256fc2230566fa4ba53063bb4da499502f91a` |
+| `bytes` | `768559` |
+| `sha256` | `d64dffbe2646337343af2128c230d6e1a38458311807e18f4749633047fe695a` |
+
+Die neue **Sequence 15** wurde mit [Signierworkflow 39326454243](https://github.com/Riflex91/ALBot/actions/runs/39326454243) kryptografisch freigegeben; PR [#244](https://github.com/Riflex91/ALBot/pull/244) bestand die vollständige Linux-/Windows-CI. Änderungen: ausschließlich lokal verfügbare Kampfunterstützung, keine fiktiven Heiler-/DPS-Beiträge, sichereres Team-Rendezvous und begrenztes Kiting. 1.793/1.793 Offline-Tests bestanden. Persönliche **Ingame-Konfiguration** bleibt separat und unverändert; ein alter CODE kann weiterhin `risk=assertive` verwenden. Live-Abnahme offen.
+
+**Vorheriger Stand:** Sequence 14, `0.14.0-candidate`, 765913 Bytes, SHA-256 `3ed5c6a0277c14aefe0847b940f256fc2230566fa4ba53063bb4da499502f91a`.
 
 Der bestehende Loader, sein Public Key und die Ingame-Konfiguration sind nicht
 Bestandteil der G04-Änderung. Für die CI-Verifikation wird der aktuelle Release-Branch
 einmal als Commit-SHA aufgelöst und Manifest sowie Runtime werden bytegenau aus
 **demselben unveränderlichen Commit** geprüft. Die signierte URL und die strenge
 ECDSA-P-256-/SHA-256-/Sequenzkontrolle bleiben bestehen. Es gibt keine bestätigte
-Spiel-Liveabnahme und keine neue Signierung durch diesen PR.
+Spiel-Liveabnahme. Die Signierung von Sequence 15 erfolgt ausschließlich über den separaten Releaseworkflow.
 
 ## Vorheriges signiertes Release-Artefakt (sequence 11, Stand 19.10.2026)
 

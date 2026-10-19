@@ -42,14 +42,15 @@ export function createMarket(bot){
  // Only a currently visible matching seller can interrupt the no-offer cooldown.
  // Price, remaining quantity, budgets and slot capacity are ALWAYS rechecked
  // independently inside buy() and economy.perform before spending any gold.
- function hasVisibleBuyOffer(item){
+ function hasVisibleBuyOffer(item,{strict=false}={}){
   return Object.values(p.entities??{}).some(player=>player&&
    player.name!==p.c.name&&player.type==='character'&&player.stand&&
    samePlace(p.c,player)&&distance(p.c,player)<=300&&
    Object.entries(player.slots??{}).some(([slot,offer])=>
     /^trade([1-9]|1[0-6])$/.test(slot)&&offer?.rid&&
     !offer.b&&!offer.giveaway&&!offer.buy&&
-    Number.isFinite(offer.price)&&offer.price>0&&materialVariant(offer,item)));
+    Number.isFinite(offer.price)&&offer.price>0&&
+    (strict?materialVariant(offer,item):variant(offer,item))));
  }
  function offerWaitMs(item){
   return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());

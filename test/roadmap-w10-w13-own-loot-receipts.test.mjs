@@ -242,3 +242,75 @@ test('W13 two simultaneous chest callbacks cannot spend the same physical delta 
  assert.equal(result.purposeHints[0]?.observedUnits,1);
  assert.equal(f.events.filter(e=>e[0]==='loot.ownReceipt').length,1);
 });
+
+test('W10 cyclic opaque chest item never crashes server event attribution',()=>{
+ const G={items:{ring:{}}},opaque={seed:7};opaque.self=opaque;
+ const row={id:'X',opener:'Priest',gold:5,items:[
+  {name:'ring',level:0,looter:'Priest',data:opaque}]};
+ assert.doesNotThrow(()=>ownChestShare(row,'Priest',G));
+ assert.equal(ownChestShare(row,'Priest',G),null,
+  'a non-serializable item must not create a physical receipt');
+});
+
+test('W10 malformed live inventory cannot be used as a loot baseline',()=>{
+ const f=fixture(),opaque={seed:1};opaque.self=opaque;
+ f.items[0]={name:'sword',data:opaque};
+ assert.doesNotThrow(()=>f.receipts.beforeLoot('X'));
+ assert.equal(f.receipts.observeChest(chest([{name:'ring'}],5)),true);
+ f.items[1]={name:'ring'};f.setGold(105);
+ assert.doesNotThrow(()=>f.receipts.sample());
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+ assert.equal(f.receipts.status().serverOnly,1);
+});
+
+test('W10 malformed inventory denies all free-loot planning hints without throwing',()=>{
+ const item={name:'ring',level:0},
+  variant=JSON.stringify(['ring',0,'','','','','','','']),
+  proofs=[{id:'X',physical:true,at:100,
+   items:[{variant,quantity:1}]}];
+ const opaque={seed:9};opaque.self=opaque;
+ assert.deepEqual(lootPurposeEvidence({proofs,
+  inventory:[item,{name:'sword',data:opaque}],reserve:()=>0,now:200}),[]);
+ assert.equal(lootPurposeEvidence({proofs,inventory:[item],
+  reserve:()=>0,now:200})[0]?.dispatchAuthorized,false);
+});
+
+test('W10 cyclic or spoofed variant goals never become recipient suggestions',()=>{
+ const item={name:'ring',level:0,stat_type:'dex'},
+  variant=JSON.stringify(['ring',0,'dex','','','','','','']),
+  proofs=[{id:'X',physical:true,at:100,
+   items:[{variant,quantity:1}]}];
+ const cycle={stat_type:'dex'};cycle.self=cycle;
+ const goals=[
+  {item:'ring',level:0,recipient:'Cyclic',variant:cycle},
+  {item:'ring',level:0,recipient:'Spoofed item',
+   variant:{name:'sword',stat_type:'dex'}},
+  {item:'ring',level:0,recipient:'Spoofed level',
+   variant:{level:5,stat_type:'dex'}},
+  {item:'ring',level:0,recipient:'Malformed',
+   variant:{data:{x:1n}}},
+  {item:'ring',level:0,recipient:'Valid',
+   variant:{stat_type:'dex'}},
+  {item:'ring',level:0,recipient:'Generic',variant:null}
+ ];
+ const hints=lootPurposeEvidence({proofs,inventory:[item],
+  gearGoals:goals,reserve:()=>0,now:200});
+ assert.deepEqual(hints[0]?.candidateRecipients,['Valid','Generic']);
+ assert.equal(hints[0]?.dispatchAuthorized,false);
+});
+
+test('W10 own-loot status tolerates corrupted gear objectives without creating send authority',()=>{
+ const f=fixture();f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'ring'}],5)),true);
+ f.items[1]={name:'ring',level:0};f.setGold(105);f.receipts.sample();
+ const cyclic={stat_type:'dex'};cyclic.self=cyclic;
+ f.bot.gear={goals:()=>[
+  {item:'ring',level:0,recipient:'Ranger',variant:cyclic}
+ ]};
+ f.bot.production={reservedQuantity:()=>0};
+ let status;
+ assert.doesNotThrow(()=>{status=f.receipts.status();});
+ assert.equal(status.physicalConfirmed,1);
+ assert.deepEqual(status.purposeHints[0]?.candidateRecipients,[]);
+ assert.equal(status.purposeHints[0]?.dispatchAuthorized,false);
+});

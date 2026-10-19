@@ -5,13 +5,40 @@ import {identity,protectedItem} from '../core/policy.mjs';
 // inventory deposit unless a pre-loot baseline and exact delta both exist.
 const W13_LOOT_WINDOW=3500,W13_LOOT_MAX=64;
 const w13Amount=i=>i?.q===undefined?1:i.q;
+// Server loot events and account objectives can contain opaque or malformed
+// variant data. Never let JSON cycles abort the loot/status heartbeat path.
+function w13Identity(item){
+ try{
+  const key=identity(item);
+  return typeof key==='string'&&key.length<=512?key:null;
+ }catch{return null;}
+}
+// Exact recipient suggestions must never reinterpret a malformed variant
+// as a generic target or permit name/level substitution.
+function w13GearTargetMatches(g,item,variant){
+ if(typeof g?.recipient!=='string'||!g.recipient||
+    g.item!==item.name||g.level!==(item.level??0))return false;
+ if(g.variant===null||g.variant===undefined)return true;
+ if(typeof g.variant!=='object'||Array.isArray(g.variant))return false;
+ try{
+  // identity() intentionally selects only canonical item fields. A cycle
+  // in an otherwise ignored field is still malformed objective data and
+  // must not silently become a valid recipient suggestion.
+  const serialized=JSON.stringify(g.variant);
+  if(typeof serialized!=='string'||serialized.length>2048)return false;
+  if(Object.hasOwn(g.variant,'name')&&g.variant.name!==g.item||
+     Object.hasOwn(g.variant,'level')&&g.variant.level!==g.level)
+   return false;
+  return w13Identity({...g.variant,name:g.item,level:g.level})===variant;
+ }catch{return false;}
+}
 function w13Stock(items){
  if(!Array.isArray(items)||items.length>256)return null;
  const rows=new Map();
  for(const item of items){
   if(!item)continue;
-  const n=w13Amount(item),key=identity(item);
-  if(typeof item.name!=='string'||!item.name||key.length>512||
+  const n=w13Amount(item),key=w13Identity(item);
+  if(typeof item.name!=='string'||!item.name||!key||
      !Number.isSafeInteger(n)||n<1||n>1000000)return null;
   rows.set(key,(rows.get(key)??0)+n);
   if(!Number.isSafeInteger(rows.get(key))||rows.size>128)return null;
@@ -38,9 +65,8 @@ export function ownChestShare(row,name,G){
   if(typeof entry.looter!=='string'||!entry.looter||
      entry.lostandfound===true)return null;
   if(entry.looter!==name)continue;
-  const n=w13Amount(entry),key=identity(entry);
-  if(!Number.isSafeInteger(n)||n<1||n>1000000||
-     key.length>512)return null;
+  const n=w13Amount(entry),key=w13Identity(entry);
+  if(!Number.isSafeInteger(n)||n<1||n>1000000||!key)return null;
   items.set(key,(items.get(key)??0)+n);
   if(!Number.isSafeInteger(items.get(key))||items.size>32)return null;
  }
@@ -80,7 +106,12 @@ export function lootPurposeEvidence({proofs=[],inventory=[],reserve=()=>null,
  for(const entry of grouped.values()){
   let held=0,protectedUnits=0,item=null,complete=true;
   for(const x of inventory){
-   if(!x||identity(x)!==entry.variant)continue;
+   if(!x)continue;
+   const stockVariant=w13Identity(x);
+   // An opaque invalid physical item makes this snapshot inadequate to
+   // establish an uncommitted copy for ANY purpose.
+   if(!stockVariant)return [];
+   if(stockVariant!==entry.variant)continue;
    const count=x.q??1;
    if(!Number.isSafeInteger(count)||count<1||count>1000000){
     complete=false;break;
@@ -93,10 +124,8 @@ export function lootPurposeEvidence({proofs=[],inventory=[],reserve=()=>null,
   const short={name:item.name,level:item.level??0,
    statType:item.stat_type??'',property:item.p??'',title:item.title??''};
   // Never turn inferred recipient matches or demand into send authority.
-  const recipients=[...new Set(gearGoals.filter(g=>g?.item===item.name&&
-   g.level===(item.level??0)&&g.recipient&&
-   (!g.variant||identity({name:g.item,level:g.level,...g.variant})===
-    entry.variant)).map(g=>g.recipient))].slice(0,4);
+  const recipients=[...new Set(gearGoals.filter(g=>
+   w13GearTargetMatches(g,item,entry.variant)).map(g=>g.recipient))].slice(0,4);
   const productionMatch=!!activeGoal&&activeGoal.item===item.name&&
    activeGoal.level===(item.level??0);
   let reserved;

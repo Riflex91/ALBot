@@ -42,7 +42,19 @@ export function createMarket(bot){
  // Only a currently visible matching seller can interrupt the no-offer cooldown.
  // Price, remaining quantity, budgets and slot capacity are ALWAYS rechecked
  // independently inside buy() and economy.perform before spending any gold.
- function hasVisibleBuyOffer(item,{strict=false}={}){
+ function hasVisibleBuyOffer(item,{strict=false,rule=null}={}){
+  // A production wait must wake only for an offer that could actually
+  // pass the current acquisition price and finite quantity rules.
+  // Diagnostic strict calls without a rule still check only item evidence.
+  const ceiling=strict&&rule?price(item,rule):null;
+  const held=strict&&rule?e.count(item):null;
+  const room=strict&&rule?
+   Math.min(rule.batch,rule.targetCount-held,rule.maxCount-held):null;
+  if(strict&&rule&&(
+   rule.action!=='marketBuy'||rule.enabled===false||
+   !Number.isSafeInteger(ceiling)||ceiling<1||
+   !Number.isSafeInteger(held)||held<0||
+   !Number.isSafeInteger(room)||room<1))return false;
   return Object.values(p.entities??{}).some(player=>player&&
    player.name!==p.c.name&&player.type==='character'&&player.stand&&
    samePlace(p.c,player)&&distance(p.c,player)<=300&&
@@ -53,7 +65,8 @@ export function createMarket(bot){
     (!strict||(Number.isSafeInteger(offer.price)&&
      Number.isSafeInteger(offer.q??1)&&(offer.q??1)>0&&
      typeof offer.rid==='string'&&offer.rid.length>0))&&
-    (strict?materialVariant(offer,item):variant(offer,item))));
+    (strict?materialVariant(offer,item):variant(offer,item))&&
+    (!strict||!rule||offer.price<=ceiling)));
  }
  function offerWaitMs(item){
   return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());

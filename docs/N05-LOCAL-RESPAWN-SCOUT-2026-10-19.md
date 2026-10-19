@@ -54,3 +54,11 @@ Verbindliche Bedingungen:
 - `respawn.localScoutHop` dokumentiert einen Bewegungsversuch. **Die Bewegung ist weder ein bewiesener Respawn noch ein garantierter Reiseerfolg.** N05 bleibt ohne eigenständige Kampf- oder Respawn-Zeitfreigabe.
 
 Die weiter oben dokumentierte Aussage »keine autonomen Scout-Reisen« bleibt für **kartenübergreifende, gruppengeführte oder spekulative Scout-Ziele** weiterhin gültig. Dieses Inkrement fügt lediglich einen lokal genehmigten Solo-Hopp hinzu. Signierter Ingame-Release, persönliche Einstellungen und Live-Abnahme bleiben getrennt.
+
+## Bewegungsbeleg nach dem lokalen Hopp
+
+Ein `movement.local(...,'scout')`-Aufruf belegt lediglich die **Annahme eines lokalen Bewegungsauftrags**, nicht die physische Ankunft oder gar den Respawn eines Monsters. N05 veröffentlicht daher im Status `respawns.localScoutHop` einen flüchtigen, rein diagnostischen Einmalbeleg mit `state='in-flight'`.
+
+Wenn der Bewegungsauftrag verschwindet, wird `local-arrival-observed` nur mit **aktueller eigener physischer Position** innerhalb von zwölf Einheiten des genehmigten Punkts, unveränderter Realm-/Sessionbindung, demselben weiterhin gültigen Farmplan und unverändert gültigem lokalem Killbeleg gesetzt. Ein verschwundener oder durch fremde Bewegung ersetzter Auftrag ohne diese unmittelbare Beobachtung bleibt `outcome-unverified`. Ein durch die Sicherheitskontrolle gestoppter eigener Hopp wird `safety-aborted` bzw. `timeout-aborted`; er wird **nicht** nochmals automatisch versucht. Das Ereignis `respawn.localScoutOutcome` und der Status sind ausschließlich Audit-/Diagnostikquellen.
+
+Ein Session- oder Realmwechsel löscht flüchtige Scout-Abschlussdaten, statt sie in einer neuen Laufzeit künstlich zu bestätigen. **Kein Zustand bedeutet eine Monster-Respawn-Quittung, einen Farm-/Looterfolg oder eine neue Berechtigung für weitere Wege.**

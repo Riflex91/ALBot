@@ -21,6 +21,7 @@ jobs:
         run: |
           npm run build
           node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
           npm run build:editor
       - name: Verify version, preserved configuration and tests
         run: |

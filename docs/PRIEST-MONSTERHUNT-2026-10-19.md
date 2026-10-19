@@ -1,4 +1,4 @@
-# 0.13.0-candidate – Priest Monsterhunt travel ownership (19.10.2026)
+# 0.14.0-candidate – Priest Monsterhunt travel ownership (19.10.2026)
 
 ## Live-log evidence
 

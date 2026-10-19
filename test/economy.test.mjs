@@ -184,7 +184,11 @@ test('one-action limit counts dispatch, excludes stack splitting and survives pa
 });
 
 test('dependency planner bounds broad recipes as well as cycles',()=>{
- const G={items:{},craft:{root:{items:Array.from({length:257},(_,n)=>[1,'ore'+n])}}};
+ const G={items:{},craft:{root:{items:Array.from({length:257},(_,n)=>[1,'ore'+n])}},
+  monsters:{bee:{}},
+  // Every artificial ingredient is a genuine farmable fixture. The test
+  // must exercise the 256-node bound, not fail early on absent drop data.
+  drops:{monsters:{bee:Array.from({length:257},(_,n)=>[1,'ore'+n,1])}}};
  assert.throws(()=>planProduction({G,item:'root',stock:()=>0,bank:()=>0,canBuy:()=>false,allowed:['craft','farm']}),/256/);
 });
 

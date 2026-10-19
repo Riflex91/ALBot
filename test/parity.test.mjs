@@ -19,12 +19,16 @@ import {Executor} from '../src/core/executor.mjs';
 import {createEncounter} from '../src/combat/encounter.mjs';
 import {createContentGuard} from '../src/world/content.mjs';
 test('craft count distinguishes dispatch batches from produced units including rounded surplus',()=>{
- const G={items:{ore:{},bar:{}},craft:{bar:{items:[[1,'ore']],q:5,cost:0}}};
+ const G={items:{ore:{},bar:{}},craft:{bar:{items:[[1,'ore']],q:5,cost:0}},
+  monsters:{bee:{}},drops:{monsters:{bee:[[1,'ore',1]]}}};
  const plan=planProduction({G,item:'bar',quantity:11,stock:()=>0,bank:()=>0,canBuy:()=>false,allowed:['craft','farm']});
  assert.equal(plan[0].quantity,3);assert.equal(plan[1].quantity,3);assert.equal(plan[1].outputQuantity,15);
 });
 test('P90 exchange procurement plans conservative actual input after existing stock',()=>{
- const G={items:{ticket:{e:2},prize:{}},drops:{ticket:[[.1,'prize'],[.9,null]]}};
+ const G={items:{ticket:{e:2},prize:{}},
+  monsters:{bee:{}},
+  drops:{ticket:[[.1,'prize'],[.9,null]],
+   monsters:{bee:[[1,'ticket',1]]}}};
  const input=confidence=>planProduction({G,item:'prize',quantity:1,stock:n=>n==='ticket'?2:0,bank:()=>0,canBuy:()=>false,allowed:['exchange','farm'],confidence})[0].quantity;
  assert.ok(input('p90')>input('mean'));assert.equal(input('mean'),18);
 });
@@ -73,7 +77,9 @@ test('U01 P90 ranks reliable material source ahead of lower mean and exposes sel
  assert.ok(routes[0].hours>mean[0].estimatedHours);
 });
 test('U02 quest exchange requires authoritative NPC location and preserves source proof',()=>{
- const G={items:{ticket:{e:2,quest:'quest1'},prize:{}},drops:{ticket:[[1,'prize']]}};
+ const G={items:{ticket:{e:2,quest:'quest1'},prize:{}},
+  monsters:{bee:{}},
+  drops:{ticket:[[1,'prize']],monsters:{bee:[[1,'ticket',1]]}}};
  const args={G,item:'prize',stock:()=>0,bank:()=>0,canBuy:()=>false,allowed:['exchange']};
  assert.equal(exchangeSource(G,'ticket').ready,false);
  assert.equal(exchangeSource(G,'ticket').reason,'QUEST_SOURCE_DESTINATION_UNVERIFIED');
@@ -87,7 +93,9 @@ test('U02 quest exchange requires authoritative NPC location and preserves sourc
  assert.equal(exchangeSource(G,'ticket').ready,false);
 });
 test('U02 ordinary exchange remains available; inactive, unverifiable and expiring event exchanges are refused',()=>{
- const G={items:{token:{e:2},prize:{}},drops:{token:[[1,'prize']]}};
+ const G={items:{token:{e:2},prize:{}},
+  monsters:{bee:{}},
+  drops:{token:[[1,'prize']],monsters:{bee:[[1,'token',1]]}}};
  assert.equal(exchangeSource(G,'token').ready,true);
  assert.equal(planProduction({G,item:'prize',stock:()=>0,bank:()=>0,canBuy:()=>false,allowed:['exchange','farm']}).at(-1).kind,'exchange');
  G.items.token.event='seasonal';G.events={seasonal:{}};

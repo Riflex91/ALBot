@@ -1,9 +1,10 @@
 import {killQuantile} from './probability.mjs';
-import {exchangeDrops,exchangeSource} from './materials.mjs';
+import {exchangeDrops,exchangeSource,declaredFarmDropSources} from './materials.mjs';
 import {findRecipe,recipeIngredients} from './recipes.mjs';
 // Bounded dependency planning: stock -> bank/NPC -> recipe/mutation -> farm.
 // Plans never dispatch actions and never override an explicit keep rule.
-export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,maxDepth=8,permit=()=>true,score=null,recipeFor=()=>'',helpers=()=>[],confidence='mean',state={}}){
+export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allowed,maxDepth=8,permit=()=>true,score=null,recipeFor=()=>'',helpers=()=>[],confidence='mean',state={},
+ farmSources=null,questAllowed=()=>false}){
  const steps=[],visiting=new Set(),allocated=new Map(),bankAllocated=new Map(),surplus=new Map();let nodes=0;
  function need(name,l,q,depth){
   const key=name+':'+l;if(++nodes>256)throw Error('Produktionsplan überschreitet 256 Abhängigkeiten');if(!Number.isSafeInteger(q)||q<1)throw Error('Ungültige Produktionsmenge');if(depth>maxDepth)throw Error('Produktionstiefe überschritten: '+key);
@@ -19,7 +20,16 @@ export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allo
    if(l===0&&recipe&&allowed.includes('craft')&&permit(name,l,'craft'))ways.push('craft');
    if(l>0&&(G.items?.[name]?.upgrade||G.items?.[name]?.compound)&&permit(name,l-1,G.items[name].compound?'compound':'upgrade'))ways.push(G.items[name].compound?'compound':'upgrade');
    const sources=l===0&&allowed.includes('exchange')?Object.entries(G.items??{}).filter(([source,m])=>Number.isSafeInteger(m.e)&&m.e>0&&!visiting.has(source+':0')&&permit(source,0,'exchange')&&exchangeSource(G,source,state).ready&&exchangeDrops(G,G.drops?.[source]).some(x=>x.item===name)):[];
-   if(sources.length)ways.push('exchange');if(allowed.includes('market')&&permit(name,l,'marketBuy'))ways.push('marketBuy');if(allowed.includes('farm')&&permit(name,l,'farm'))ways.push('farm');
+   if(sources.length)ways.push('exchange');
+   if(allowed.includes('market')&&permit(name,l,'marketBuy'))ways.push('marketBuy');
+   const farmRequested=allowed.includes('farm')&&permit(name,l,'farm');
+   // Local farm work may be granted only for a concrete positive declared
+   // monster drop; quest and event sources need current permission/state.
+   const farmProven=farmRequested&&l===0&&
+    declaredFarmDropSources(G,name,{
+     allowedMonsters:farmSources,state,questAllowed
+    }).length>0;
+   if(farmProven)ways.push('farm');
    if(score)sources.sort((a,b)=>score({kind:'exchange',item:name,level:l,quantity:q,sources:[a]})-score({kind:'exchange',item:name,level:l,quantity:q,sources:[b]}));
    if(score)ways.sort((a,b)=>score({kind:a,item:name,level:l,quantity:q,recipe,sources})-score({kind:b,item:name,level:l,quantity:q,recipe,sources}));
    const way=ways[0];
@@ -42,6 +52,8 @@ export function planProduction({G,item,level=0,quantity=1,stock,bank,canBuy,allo
    }
    if(way==='marketBuy'){steps.push({kind:'marketBuy',item:name,level:l,quantity:q});return;}
    if(way==='farm'){steps.push({kind:'farm',item:name,level:l,quantity:q});return;}
+   if(farmRequested&&!farmProven)
+    throw Error('Kein belegter erlaubter Monster-Drop für Farmbedarf: '+key);
    throw Error('Kein freigegebener Beschaffungsweg: '+key);
   }finally{visiting.delete(key);}
  }

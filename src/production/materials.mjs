@@ -66,4 +66,37 @@ export function exchangeSource(G,item,state={},now=Date.now()){
  return {ready:true,quest,npc,destination,evidence,event,eventExpires};
 }
 
+// W06: a farm step needs at least one independently declared, currently
+// usable drop source. Unlisted monsters or inactive event/quest sources are
+// NOT equivalent to an unbounded "farm this item" permission.
+export function declaredFarmDropSources(G,item,{
+ allowedMonsters=null,state={},questAllowed=()=>false,now=Date.now()
+}={}){
+ if(typeof item!=='string'||!item||!G?.drops?.monsters||
+    !Number.isSafeInteger(now)||now<=0||
+    typeof questAllowed!=='function')return [];
+ const names=allowedMonsters===null?
+  Object.keys(G.drops.monsters):
+  Array.isArray(allowedMonsters)?allowedMonsters:null;
+ if(!names||names.length>256)return [];
+ const result=[],seen=new Set();
+ for(const monster of names){
+  if(typeof monster!=='string'||!monster||seen.has(monster))continue;
+  seen.add(monster);
+  const table=G.drops.monsters[monster];
+  if(!Array.isArray(table))continue;
+  const meta=G.monsters?.[monster]??{};
+  let active;
+  try{
+   active=materialEvent(G,monster,state,now);
+   if(!active.active||meta.quest&&!questAllowed(meta.quest))continue;
+   const drops=materialDrops(G,table);
+   if(!drops.some(x=>x.item===item&&Number.isFinite(x.chance)&&
+       x.chance>0&&Number.isFinite(x.quantity)&&x.quantity>=1))continue;
+  }catch{continue;}
+  result.push(monster);
+  if(result.length>=32)break;
+ }
+ return result;
+}
 export function expectedMonsterGold(G,id){const base=Number(G.monster_gold?.[id]??G.monsters?.[id]?.gold??0),d=G.drops?.gold;return (Number.isFinite(base)?base:0)*(Number.isFinite(d?.base)?d.base+(Number(d.random)||0)/2:1)+materialDrops(G,G.drops?.monsters?.[id]).filter(r=>r.item==='gold').reduce((n,r)=>n+r.chance*r.quantity,0);}

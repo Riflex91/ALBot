@@ -33,7 +33,7 @@ export function estimateThreatCapability({
     (m.received!==undefined&&(!finite(m.received,0,now)||now-m.received>4000)))
    {
     if(m?.name===monster.target)
-     return refusal('victim-stale-or-unverified',{member:m?.name??null});
+     return refusal('party-member-stale-or-unverified',{member:m?.name??null,victim:true});
     unavailableMembers.push(m?.name??null);
     continue;
    }

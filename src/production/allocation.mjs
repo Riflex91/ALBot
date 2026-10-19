@@ -154,7 +154,24 @@ export function createGearAllocation(bot){
  }
  function rules(){receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
  function equipGuard(item,slot){const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
- function tick(){let changed=false;for(const r of receiving){if(identity(bot.p.c.slots?.[r.slot])===identity(r.item)&&r.state!=='equipped'){r.state='equipped';changed=true;bot.event('gear.equipped',{id:r.id,slot:r.slot,item:r.item.name,reason:'Empfaengerzustand bestaetigt'});}}if(changed)bot.p.write(receivingKey,receiving);let delivered=false;for(const r of rows)if(r.state==='delivered'&&identity({...bot.transport.fresh(r.recipient)?.gear?.slots?.[r.gearSlot],l:undefined,b:undefined})===r.variant){r.state='equipped';delivered=true;}if(delivered)save(rows);}
+ function tick(){
+  const newReceiving=receiving.map(r=>r.state!=='equipped'&&
+   identity(bot.p.c.slots?.[r.slot])===identity(r.item)?
+   {...r,state:'equipped'}:r);
+  if(newReceiving.some((r,i)=>r!==receiving[i])&&
+     bot.p.write(receivingKey,newReceiving)){
+   for(let i=0;i<newReceiving.length;i++)if(newReceiving[i]!==receiving[i])
+    bot.event('gear.equipped',{id:newReceiving[i].id,slot:newReceiving[i].slot,
+     item:newReceiving[i].item.name,reason:'Empfaengerzustand bestaetigt'});
+   receiving=newReceiving;
+  }
+  // Build a new copy: failed durable writes must not clear an outstanding
+  // sender claim or claim equipment receipt in memory.
+  const next=rows.map(r=>r.state==='delivered'&&
+   identity({...bot.transport.fresh(r.recipient)?.gear?.slots?.[r.gearSlot],
+    l:undefined,b:undefined})===r.variant?{...r,state:'equipped'}:r);
+  if(next.some((r,i)=>r!==rows[i]))save(next);
+}
  return {offer,accept,rules,equipGuard,tick,reserve,guard,settle,
   pendingReceived:item=>pendingGearReceipt(receiving,item),
   status:()=>rows.map(r=>({...r})),

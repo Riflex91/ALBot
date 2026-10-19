@@ -7,6 +7,7 @@ on:
       - .github/workflows/regen-albot-pr.yml
       - src/production/allocation.mjs
       - test/roadmap-w13-durable-gear-claims.test.mjs
+      - test/autonomy.test.mjs
 permissions:
   contents: write
 jobs:

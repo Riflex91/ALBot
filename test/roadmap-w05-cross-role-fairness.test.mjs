@@ -8,7 +8,7 @@ const slots={
  earring1:null,earring2:null,orb:null
 };
 const profile=(cls,filled=[],at=now)=>({
- class:cls,level:70,complete:true,at,
+ class:cls,level:70,complete:true,at,realm:'EUI',
  slots:Object.fromEntries(Object.keys(slots).map(k=>[k,
   filled.includes(k)?{name:k,level:2}:null]))
 });
@@ -84,4 +84,52 @@ test('W05 absent canonical slots or stale/future owner never grant cross-role pr
  const extra=structuredClone(weak);
  extra.slots.fake1={name:'unrelated'};
  assert.equal(base(extra),base(weak),'unknown UI slots cannot raise gear coverage');
+});
+
+test('W05 foreign-realm gear snapshots never inflate same-class or cross-role fairness',()=>{
+ const weak=profile('priest',[]);
+ const sameClass=profile('priest',Object.keys(slots));
+ const otherRole=profile('warrior',Object.keys(slots));
+ assert.ok(gearCatchUpPriority(weak,[sameClass],{now})>0);
+ assert.equal(gearCatchUpPriority(weak,[{...sameClass,realm:'USV'}],{now}),0);
+ assert.equal(crossRoleGearPriority(weak,[
+  {profile:weak,role:'healer'},
+  {profile:{...otherRole,realm:'USV'},role:'tank'}
+ ],{role:'healer',slot:'mainhand',now}),0);
+});
+
+test('W05 old, future, incomplete or malformed peer gear cannot grant catch-up',()=>{
+ const weak=profile('priest',[]);
+ const strong=profile('priest',Object.keys(slots));
+ for(const invalid of [
+  {...strong,at:now-8*86400000},
+  {...strong,at:now+5000},
+  {...strong,at:NaN},
+  {...strong,complete:false},
+  {...strong,realm:null},
+  {...strong,slots:{...strong.slots,mainhand:{name:'weapon',level:NaN}}}
+ ]){
+  assert.equal(gearCatchUpPriority(weak,[invalid],{now}),0);
+ }
+ const partial=structuredClone(strong);
+ delete partial.slots.offhand;
+ assert.equal(gearCatchUpPriority(weak,[partial],{now}),0);
+});
+
+test('W05 canonical fifteen slots exclude synthetic extra slot inflation',()=>{
+ const weak=profile('priest',[]);
+ const strong=profile('priest',['mainhand','helmet','chest']);
+ const original=gearCatchUpPriority(weak,[strong],{now});
+ assert.ok(original>0);
+ const extra=structuredClone(strong);
+ extra.slots.synthetic={name:'impossible',level:99};
+ assert.equal(gearCatchUpPriority(weak,[extra],{now}),original);
+});
+
+test('W05 same-realm stale owner never gets a bonus from a fresh peer',()=>{
+ const weak=profile('priest',[]);
+ const strong=profile('priest',Object.keys(slots));
+ assert.ok(gearCatchUpPriority(weak,[strong],{now})>0);
+ assert.equal(gearCatchUpPriority({...weak,at:now-8*86400000},[strong],{now}),0);
+ assert.equal(gearCatchUpPriority({...weak,realm:'USV'},[strong],{now}),0);
 });

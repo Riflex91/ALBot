@@ -82,8 +82,14 @@ test('unknown event has bounded grace; explicit end overrides grace immediately'
  assert.equal(observeActivity(held,{live:true},false,1001).state,'present');
 });
 test('gear catchup compares observed same-class equipment and never invents offline strength',()=>{
- const weak={class:'ranger',complete:true,slots:{mainhand:{level:0},chest:null}},
-  strong={class:'ranger',complete:true,slots:{mainhand:{level:5},chest:{level:5}}},
+ const names=['mainhand','offhand','helmet','chest','pants','shoes','gloves',
+  'amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
+ const observedAt=Date.now(),profile=(level,extra=[])=>({
+  class:'ranger',complete:true,realm:'EUI',at:observedAt,
+  slots:Object.fromEntries(names.map(slot=>[slot,
+   slot==='mainhand'||extra.includes(slot)?{name:slot,level}:null]))
+ });
+ const weak=profile(0),strong=profile(5,['chest']),
   mage={...strong,class:'mage'};
  assert.ok(gearCatchUpPriority(weak,[weak,strong])>0);
  assert.equal(gearCatchUpPriority(strong,[weak,strong]),0);

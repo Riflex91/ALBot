@@ -21,6 +21,18 @@ Beobachtungszeitraum verlangen; ohne diese Option genügt bereits eine positive
 Prüfer-Akzeptanz. Diese Metadaten **beweisen keine laufende Ingame-Sitzung**,
 keinen signierten Release und keine tatsächliche Spielabnahme.
 
+Für Wertaktions-/Bankabnahmen zusätzlich `--require-settled-value-state`
+verwenden. Dieser aktivierbare W14-Gate verlangt für **jede** Figur einen
+abschließenden expliziten `status.inventoryBlocked`-Boolean und einen
+`status.journal`-Checkpoint im Testreport. Er verweigert Akzeptanz bei
+Inventarsperre, beliebigem offenen Wertjournal oder einem belegten
+`bankPartial`-Journal. Fehlende Pflichtfelder sind **kein**
+erfolgreicher Nullzustand. Der Prüfbericht liefert nur Charakternamen und
+Blockadecodes, keine Journalinhalte. Das Tool löst nichts auf und erlaubt
+keinen Replay. Ein sauberer Endschnappschuss allein ist noch keine
+Bestätigung sämtlicher zuvor ausgeführter Wertaktionen und keine
+Ingame-Liveabnahme.
+
 ## 1 – Read-only startup and runtime parity
 - Verify start/stop/reload creates one scheduling timer and no leaked event handlers in both environments.
 - Check heartbeat round trips, session and realm changes, team roster, script version and user config. Review the measured dispatch p95/p99 and wall-load proxy separately from real CPU use.

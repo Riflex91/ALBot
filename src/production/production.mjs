@@ -582,7 +582,8 @@ export function createProduction(bot){
    // New visible offers supersede earlier no-offer waits without waiting for
    // unrelated inventory or gold fingerprints to change.
    if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step)&&
-      !(wait.step?.kind==='marketBuy'&&bot.market?.hasVisibleBuyOffer?.({name:wait.step.item,level:wait.step.level})))continue;
+      !(wait.step?.kind==='marketBuy'&&bot.market?.hasVisibleBuyOffer?.({name:wait.step.item,level:wait.step.level,
+       ...(wait.step.item===g.item?g.variant:{})},{strict:true})))continue;
    if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient

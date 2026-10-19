@@ -134,3 +134,45 @@ test('W06 exact physical return capacity is required despite a misleading free-s
  f.c.items[9]={name:'new-filler'};
  assert.equal(f.jobs[0].job.guard(),false,'capacity loss invalidates dispatch');
 });
+
+test('W06 finite procurement ignores base-matching offers with different account or data variants',()=>{
+ for(const mutate of [
+  offer=>{offer.acc='other-account';},
+  offer=>{offer.data={boundTo:'another-owner'};},
+  offer=>{offer.l='locked';},
+  offer=>{offer.locked=true;}
+ ]){
+  const f=fixture();
+  mutate(f.seller.slots.trade2);
+  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),false);
+  assert.equal(f.market.hasVisibleBuyOffer(f.item),true,
+   'explicit market discovery retains its existing broader variant view');
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
+  assert.equal(f.jobs.length,0,'a mismatched offer never becomes an admitted purchase');
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 finite purchase revalidates material variant immediately before dispatch',()=>{
+ for(const mutate of [
+  offer=>{offer.acc='different';},
+  offer=>{offer.data={origin:'unverified'};},
+  offer=>{offer.bound=true;}
+ ]){
+  const f=fixture();
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+  assert.equal(f.jobs.length,1);
+  assert.equal(f.jobs[0].job.guard(),true);
+  mutate(f.seller.slots.trade2);
+  assert.equal(f.jobs[0].job.guard(),false,
+   'an offer changed after scheduling does not authorize gold spending');
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 stricter material variant check does not alter explicitly configured marketBuy rules',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.acc='different';
+ assert.equal(f.market.buy(f.item,f.rule),true,
+  'legacy explicitly configured market rule retains its existing selection');
+ assert.equal(f.jobs.length,1);
+ assert.equal(f.jobs[0].job.guard(),true);
+});

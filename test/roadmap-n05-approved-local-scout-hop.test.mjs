@@ -26,7 +26,8 @@ function fixture(){
    permittedMap:map=>map==='main'},monsters:()=>mobs,
   entity:id=>mobs.find(m=>m.id===id),
   events:[],event:(type,details)=>bot.events.push({type,details}),
-  movement:{order:null,local(x,y,owner){
+  movement:{order:null,dispatchAdmission:null,local(x,y,owner,admit){
+   this.dispatchAdmission=admit;
    this.order={owner,mode:'move',dest:{map:'main',in:'main',x,y}};return true;
   },stop(){stops++;this.order=null;}},
   teamPlan:{heartbeat:()=>plan,valid:()=>planValid,
@@ -281,4 +282,45 @@ test('N05 changed farm bounds block claiming arrival despite coincident coordina
  f.advance(2000);f.calendar.sample();
  assert.equal(f.calendar.status().localScoutHop.state,'outcome-unverified');
  assert.equal(f.calendar.scout(f.plan),false);
+});
+
+test('N05 deferred dispatch rechecks original kill, exact target and current live farm',()=>{
+ const f=fixture();f.killThenMiss();
+ assert.equal(f.calendar.scout(f.plan),true);
+ const admission=f.bot.movement.dispatchAdmission;
+ assert.equal(typeof admission,'function');
+ assert.equal(admission(),true);
+ for(const mutate of [
+  x=>{x.bot.teamPlan.allowed=()=>false;},
+  x=>{x.bot.strategy.permittedMap=()=>false;},
+  x=>{x.character.hp=60;},
+  x=>{x.plan.target='goo';},
+  x=>{x.plan.bounds=['main',0,-100,110,110];},
+  x=>{x.character.x=-105;},
+  x=>{x.bot.cfg.party.enabled=true;},
+  x=>{x.bot.farmers.push('AnotherFarmer');},
+  x=>{x.bot.session='new-session';},
+  x=>{x.setRealm('USI');}
+ ]){
+  const g=fixture();g.killThenMiss();g.calendar.scout(g.plan);
+  const recheck=g.bot.movement.dispatchAdmission;
+  assert.equal(recheck(),true);
+  mutate(g);
+  assert.equal(recheck(),false,'deferred command must not inherit old authorization');
+ }
+});
+test('N05 no negative sample or expired local scout lease authorizes delayed dispatch',()=>{
+ for(const mutate of [
+  f=>{f.advance(10001);},
+  f=>{f.advance(300001);},
+  f=>{f.mobs.push({id:'e1',mtype:'phoenix',type:'monster',
+   map:'main',in:'main',x:20,y:0,hp:100,dead:false});
+   f.advance(2000);f.calendar.sample();},
+  f=>{f.character.stand=true;}
+ ]){
+  const f=fixture();f.killThenMiss();f.calendar.scout(f.plan);
+  const lease=f.bot.movement.dispatchAdmission;
+  mutate(f);
+  assert.equal(lease(),false);
+ }
 });

@@ -240,7 +240,7 @@ test('N05 scout never falls back to smart_move when the final native local check
   }};
  bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
  const movement=createMovement(bot);
- assert.equal(movement.local(70,0,'scout'),false);
+ assert.equal(movement.local(70,0,'scout',()=>true),false);
  assert.equal(movement.order,null);
  assert.equal(checks,2);
  assert.equal(calls.includes('smart_move'),false);
@@ -277,7 +277,7 @@ test('N05 admitted scout selects only native move, preserving other owners smart
   }};
  bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
  const m=createMovement(bot),dest={map:'main',in:'main',x:65,y:0,radius:8};
- assert.equal(m.local(dest.x,dest.y,'scout'),true,
+ assert.equal(m.local(dest.x,dest.y,'scout',()=>true),true,
   'scout only claims a permit when a native movement order actually exists');
  assert.equal(m.order?.mode,'move');
  assert.equal(m.order?.owner,'scout');
@@ -286,5 +286,86 @@ test('N05 admitted scout selects only native move, preserving other owners smart
  m.stop();allowed=false;
  m.go({...dest,x:70},'farm');
  assert.equal(m.order?.mode,'smart_move','existing approved farm routing remains untouched');
+ m.stop();
+});
+
+test('N05 frame-delayed scout action rechecks admission before actual native move',()=>{
+ for(const invalidate of [
+  s=>{s.safe=false;},
+  s=>{s.c.x=-120;},
+  s=>{s.c.map='bank';},
+  s=>{s.canMove=false;},
+  s=>{s.c.rip=true;}
+ ]){
+  let now=50000;
+  const state={safe:true,canMove:true,c:{name:'M',map:'main',in:'main',x:0,y:0}};
+  const calls=[];
+  const bot={running:true,me:{role:'farmer'},cfg:{
+   world:{excludedMaps:[]},farming:{pvp:false}}};
+  bot.p={c:state.c,root:{},parent:{},G:{maps:{main:{},bank:{}}},
+   has:()=>true,call:(kind)=>{
+    calls.push(kind);
+    if(kind==='can_move_to')return state.canMove;
+    if(kind==='move'||kind==='smart_move')return new Promise(()=>{});
+    return Promise.resolve();
+   }};
+  bot.exec=new Executor({now:()=>now,active:()=>bot.running,
+   limit:4,onError(){}});
+  const movement=createMovement(bot);
+  bot.exec.beginFrame();
+  assert.equal(movement.local(60,0,'scout',()=>state.safe),true,
+   'action is reserved pending frame arbitration');
+  assert.equal(calls.includes('move'),false);
+  invalidate(state);
+  bot.exec.flush();
+  assert.equal(calls.includes('move'),false,'native move is never dispatched');
+  assert.equal(calls.includes('smart_move'),false);
+  assert.equal(movement.order,null,'revoked queued order does not retain ownership');
+ }
+});
+test('N05 requires a dispatch lease and rechecks native reachability before issuing move',()=>{
+ const c={name:'M',map:'main',in:'main',x:0,y:0};
+ const calls=[];
+ let recheck=0;
+ const bot={running:true,me:{role:'farmer'},cfg:{
+  world:{excludedMaps:[]},farming:{pvp:false}}};
+ bot.p={c,root:{},parent:{},G:{maps:{main:{}}},
+  has:()=>true,call:(kind)=>{
+   calls.push(kind);
+   if(kind==='can_move_to')return ++recheck<=2;
+   if(kind==='move'||kind==='smart_move')return new Promise(()=>{});
+   return Promise.resolve();
+  }};
+ bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
+ const movement=createMovement(bot);
+ assert.equal(movement.local(60,0,'scout'),false,
+  'no caller-provided live admission is not movement permission');
+ assert.equal(movement.go({map:'main',in:'main',x:60,y:0},'scout'),false);
+ assert.equal(movement.local(60,0,'scout',()=>true),false,
+  'a changed final can_move_to result denies the native dispatch');
+ assert.equal(movement.order,null);
+ assert.equal(calls.includes('move'),false);
+ assert.equal(calls.includes('smart_move'),false);
+});
+test('N05 valid live dispatch lease still produces exactly one native move',()=>{
+ const c={name:'M',map:'main',in:'main',x:0,y:0},calls=[];
+ const bot={running:true,me:{role:'farmer'},cfg:{
+  world:{excludedMaps:[]},farming:{pvp:false}}};
+ bot.p={c,root:{},parent:{},G:{maps:{main:{}}},
+  has:()=>true,call:kind=>{
+   calls.push(kind);
+   if(kind==='can_move_to')return true;
+   if(kind==='move')return new Promise(()=>{});
+   return Promise.resolve();
+  }};
+ bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
+ const m=createMovement(bot);
+ bot.exec.beginFrame();
+ assert.equal(m.local(60,0,'scout',()=>true),true);
+ assert.equal(calls.includes('move'),false);
+ bot.exec.flush();
+ assert.equal(calls.filter(x=>x==='move').length,1);
+ assert.equal(m.order?.mode,'move');
+ assert.equal(m.order?.owner,'scout');
  m.stop();
 });

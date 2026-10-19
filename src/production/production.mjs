@@ -12,6 +12,37 @@ import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,plan
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
 import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMarketPlan,firstEligibleProductionSlot} from '../merchant/production-priority.mjs';
+// Transient automatic send rules need an exact physical-variant binding.
+// The editable rule schema deliberately exposes only stat/p/title; acc, rid
+// and data cannot be expressed there and must never be silently widened.
+export function exactAutoDeliveryVariant(goal){
+ if(!goal?.variant||typeof goal.variant!=='object'||
+    Array.isArray(goal.variant)||typeof goal.item!=='string'||
+    !goal.item||!Number.isSafeInteger(goal.level)||goal.level<0)return null;
+ try{
+  if(Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
+     Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
+    return null;
+  const key=identity({...goal.variant,name:goal.item,level:goal.level});
+  return typeof key==='string'&&key.length<=512?key:null;
+ }catch{return null;}
+}
+// Shared exact-variant semantics across availability, outbound receipts,
+// gross reservations and the generated send rule's item identity.
+export function productionGoalMatchesItem(item,goal){
+ if(!item)return false;
+ if(!goal||goal.variant===null||goal.variant===undefined)return true;
+ if(typeof goal.variant!=='object'||Array.isArray(goal.variant)||
+    typeof goal.item!=='string'||!goal.item||
+    !Number.isSafeInteger(goal.level)||goal.level<0||
+    item.name!==goal.item||(item.level??0)!==goal.level||
+    Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
+    Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
+   return false;
+ try{return identity(item)===identity({
+  ...goal.variant,name:goal.item,level:goal.level
+ });}catch{return false;}
+}
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
 export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
@@ -220,7 +251,7 @@ export function createProduction(bot){
      const d=demand(g,'',null,predecessors);return d.blocked?Infinity:Math.max(g?0:pending,unbankedDemand(d.rows,
      (bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>e.safe(i)&&
       e.explicit(i)?.action!=='keep'),name,level));}if(g?.item===name&&g.level===level)return pending;return pending+goals().filter(x=>!x.recipient&&(bot.me.role==='merchant'||x.gearSlot&&x.character===bot.me.name)&&x.item===name&&x.level===level).reduce((n,x)=>Math.max(n,x.quantity),0);}
- const variantMatches=(i,g)=>!g?.variant||g.item!==i.name||['stat_type','p','title','data'].every(k=>g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined)));
+ const variantMatches=productionGoalMatchesItem;
  const qty=(name,level,g=goal)=>{let total=0,reserve=0;const groups=new Map();for(const i of p.c.items){const r=i&&e.explicit(i);if(i?.name===name&&(i.level??0)===level&&matchesOutput(i)&&variantMatches(i,g)&&r?.action!=='keep'&&!i.l&&!i.b){total+=i.q??1;groups.set(identity(i),(groups.get(identity(i))??0)+(i.q??1));reserve=Math.max(reserve,(r?.keep??0)+(r?.teamReserve??0));}}if(p.G.items[name]?.compound&&groups.size)total=Math.max(...groups.values());return Math.max(0,total-reserve-reserveOther(name,level,g));};
  function generated(action,item,quantity,g=goal){return {...defaultsFor(ITEM_RULE),name:'Automatisch: '+(g?.name??'Material')+' / '+action+' / '+item.name,_autoProduction:true,role:bot.me.role,character:bot.me.name,item:item.name,minLevel:item.level??0,maxLevel:item.level??0,...(g?.variant&&g.item===item.name?{statType:g.variant.stat_type??'',property:g.variant.p??'',title:g.variant.title??''}:{}),action,priority:g?.priority??0,targetCount:quantity,maxCount:quantity,batch:Math.max(1,quantity),maxPrice:cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.helperMaxPrice??100000,goldBudget:g?.budget??0,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,targetLevel:(item.level??0)+1};}
  function effectiveRules(){
@@ -230,7 +261,13 @@ export function createProduction(bot){
   rulesEpoch=bot.decisionEpoch;rulesCache=[];
   const extra=[];
   for(const g of pendingDeliveryRuleNeeds(goals(),g=>deliveries[goalKey(g)]?.quantity??0,bot.me.name,g=>qty(g.item,g.level,g))){
-   extra.push({...generated('send',{name:g.item,level:g.level},g.quantity,g),recipient:g.recipient});
+   // Never emit an unbounded approximate send rule for a goal requiring
+   // physical fields that the editor's plain rule schema cannot match.
+   const exact=g.variant!==null&&g.variant!==undefined;
+   const variantKey=exact?exactAutoDeliveryVariant(g):null;
+   if(exact&&!variantKey)continue;
+   extra.push({...generated('send',{name:g.item,level:g.level},g.quantity,g),
+    ...(exact?{_autoExactVariant:variantKey}:{}),recipient:g.recipient});
   }
   for(const g of goals()){
    if(g.gearSlot&&(!g.recipient||g.recipient===bot.me.name))extra.push({...generated('equip',{name:g.item,level:g.level},g.quantity,g),slot:g.gearSlot});

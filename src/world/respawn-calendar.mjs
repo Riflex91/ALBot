@@ -65,9 +65,13 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   // negative line-of-sight sample is admissible evidence.
   if(!where||!Number.isFinite(p.c.x)||!Number.isFinite(p.c.y))return;
   // Bounded polling; local visible entities are sightings, not global spawns.
+  // A missing/invalid or truncated array cannot prove any monster absent.
   if(time-lastSample<1500)return;
+  const snapshot=bot.monsters?.();
+  if(!Array.isArray(snapshot))return;
+  const completeSnapshot=snapshot.length<=128;
   lastSample=time;const visible=new Set();
-  for(const entity of (bot.monsters?.()??[]).slice(0,128)){
+  for(const entity of snapshot.slice(0,128)){
    const scope=scoped(entity);
    if(!scope||!same(scope,where)||
       Math.hypot(entity.x-p.c.x,entity.y-p.c.y)>900)continue;
@@ -99,6 +103,9 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
     resightedAt:reappeared?time:recentResighting?prior.resightedAt:null});
    if(rows.size>MAX_ROWS)rows.delete(rows.keys().next().value);
   }
+  // Observing only the first 128 of a longer list is enough to affirm
+  // visible monsters, but not enough to make any negative observation.
+  if(!completeSnapshot)return;
   for(const [id,row] of rows){
    if(visible.has(id)||!same(row,where)||
       !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||

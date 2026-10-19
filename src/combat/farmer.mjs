@@ -7,6 +7,7 @@ import {assessQuestDetachment} from './quest-detachment.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 import {roadAggroTravelDecision,committedFarmTransit,createTransitBlockObserver,verifiedTransitBlock} from './transit-defense.mjs';
+import {mapGraph,mapHops} from '../world/knowledge.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
@@ -102,6 +103,7 @@ export function createFarmer(bot){
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   let lastRoadAggroAt=0;
   const observeTransitBlock=createTransitBlockObserver();
+  let marchGraph=null,marchGraphG=null;
   const travelPlan=()=>bot.teamPlan?.heartbeat?.()??
     bot.transport?.fresh?.(bot.leader)?.farmPlan;
   const travelStatus=()=>observeTransitBlock(p.c,bot.movement?.order,
@@ -361,6 +363,16 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const marchDestination=cfg.party.enabled&&bot.leader&&me.name!==bot.leader?
      sharedFarmMarchDestination(c,marchLeader,p.realm()):null;
     const actualBlock=blockingMonster();
+    if(marchDestination&&!samePlace(c,marchLeader)&&!actualBlock&&!endangeredPeer){
+     if(marchGraphG!==p.G){marchGraphG=p.G;marchGraph=mapGraph(p.G);}
+     const ownHops=mapHops(marchGraph,c.map,marchDestination.map),
+      leadHops=mapHops(marchGraph,marchLeader.map,marchDestination.map);
+     if(Number.isFinite(ownHops)&&ownHops<leadHops){
+      if(bot.movement.order?.owner==='follow')bot.movement.stop();
+      bot.target=null;bot.reason='Gruppenreise: am Portal auf Leader warten';
+      bot.skills?.rotation?.(null);return;
+     }
+    }
     // Followers ahead of a waiting leader stop at the leash, rather than
     // completing the entire cross-map route independently.
     if(marchDestination&&samePlace(c,marchLeader)&&samePlace(c,marchDestination)&&
@@ -369,6 +381,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        !actualBlock&&!endangeredPeer){
      if(bot.movement.order?.owner==='follow')bot.movement.stop();
      bot.target=null;bot.reason='Gruppenreise: auf Leader warten';
+     bot.skills?.rotation?.(null);return;
+    }
+    if(marchDestination&&samePlace(c,marchLeader)&&
+       distance(c,marchLeader)>Math.max(100,cfg.party.followDistance??180)&&
+       !actualBlock&&!endangeredPeer){
+     const order=bot.movement.order;
+     if(order?.owner==='follow'&&(!order.dest||!samePlace(order.dest,marchLeader)||distance(order.dest,marchLeader)>80))bot.movement.stop();
+     if(!bot.movement.order)bot.movement.go({...marchLeader,radius:65},'follow');
+     bot.target=null;bot.reason='Gruppenreise: zum Leader aufschließen';
      bot.skills?.rotation?.(null);return;
     }
     // A healthy Priest whose route was cancelled by the old range gate must

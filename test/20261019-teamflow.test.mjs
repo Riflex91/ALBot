@@ -81,6 +81,7 @@ test('native movement flag cannot bypass physical team leash and portal separati
  const peer={...c,name:'R',x:-500,realm,running:true,received:10000,march:{plan:plan.id,realm,moving:true},threats:1};
  assert.equal(assessLiveSquadMarch(c,[peer],{realm,plan,now:10000}).reason,'teammate-behind');
  assert.equal(assessLiveSquadMarch(c,[{...peer,x:50}],{realm,plan,now:10000}).ready,true);
+ assert.equal(assessLiveSquadMarch(c,[{...peer,x:700,march:{...peer.march,moving:false}}],{realm,plan,now:10000}).ready,true);
  const crossMapSince=new Map(),other={...peer,map:'tunnel',in:'tunnel'};
  assert.equal(assessLiveSquadMarch(c,[other],{realm,plan,now:10000,crossMapSince}).ready,true);
  assert.equal(assessLiveSquadMarch(c,[{...other,received:22000}],{realm,plan,now:22000,crossMapSince}).reason,'teammate-portal-checkpoint');
@@ -93,6 +94,14 @@ test('a newly elected leader observes the old farmer rejection, but stale, forei
  assert.equal(sharedFarmRejection('frog',[h],'EUI','v1',11000),false);
  assert.equal(sharedFarmRejection('frog',[h],realm,'v1',15000),false);
  assert.equal(sharedFarmRejection('frog',[{...h,farmRejections:{}}],realm,'v1',11000),false);
+});
+test('leader catches up to a follower waiting one portal ahead instead of both waiting forever',()=>{
+ const remote={...c,map:'tunnel',in:'tunnel',name:'R',running:true,realm,received:20000,
+  march:{plan:plan.id,realm,moving:false}};
+ const destination={...plan,map:'cave',in:'cave'};
+ const result=assessLiveSquadMarch(c,[remote],{realm,plan:destination,now:20000,
+  mapDistance:map=>({main:2,tunnel:1,cave:0})[map]??Infinity});
+ assert.equal(result.ready,true);
 });
 test('NPC skill catalog cannot crowd out healing and trimmed heartbeat still proves sustainable healing',()=>{
  const now=Date.now(),G={skills:{...Object.fromEntries(Array.from({length:70},(_,i)=>['npc'+i,{}])),heal:{class:['priest'],mp:10,range:500}}};

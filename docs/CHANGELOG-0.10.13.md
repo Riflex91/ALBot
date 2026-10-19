@@ -13,7 +13,7 @@ ein tatsächlich durch einen Angreifer aufgehaltenes Mitglied erhält Teamhilfe.
   Frische Ablehnungen anderer ausgewählter Farmer werden für dieselbe
   Monsterdefinition und denselben Realm übernommen, maximal zehn Minuten.
 - Auf derselben Map gilt die physische Gruppenleash auch bei aktivem smart_move.
-  Vorauseilende Follower warten; der Leader darf sie einholen. Nach einem
+  Vorauseilende Follower warten auch am nächsten bekannten Portal; der Leader darf sie einholen. Zurückliegende Follower schließen zunächst zum Leader auf. Nach einem
   Mapwechsel beträgt die Übergangsfrist zwölf Sekunden, danach wartet der
   Leader auf zurückliegende Mitglieder. Bereits am Ziel angekommene Mitglieder
   verhindern das Aufholen nicht.
@@ -51,10 +51,10 @@ ein tatsächlich durch einen Angreifer aufgehaltenes Mitglied erhält Teamhilfe.
 
 ## Prüfung und Liveabnahme
 
-Neue Regressionen: `test/20261019-teamflow.test.mjs` (neun Szenarien), dazu
+Neue Regressionen: `test/20261019-teamflow.test.mjs` (zehn Szenarien), dazu
 angepasste bisherige Tests für den ausdrücklich geänderten Umgang mit
 Seashell-Priorität und bloßer Weg-Aggro. Vollständige lokale Offline-Suite:
-1752/1752 erfolgreich; Runtime/Werkstatt/Bootstrap gebaut. Linux-/Windows-CI
+1753/1753 erfolgreich; Runtime/Werkstatt/Bootstrap gebaut. Linux-/Windows-CI
 und signierter Kanal werden vor bzw. nach Veröffentlichung separat geprüft.
 Persönliche `ALBotConfig` bleibt unverändert.
 

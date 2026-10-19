@@ -117,7 +117,7 @@ export function stalledSquadRoutePeer(peers,plan,observed,now=Date.now(),stallMs
  return null;
 }
 export function assessLiveSquadMarch(character,peers,{realm,plan,
- now=Date.now(),maxGap=300,hpFloor=.6,crossMapSince=new Map(),portalGraceMs=12000}={}){
+ now=Date.now(),maxGap=300,hpFloor=.6,crossMapSince=new Map(),portalGraceMs=12000,mapDistance=null}={}){
  if(!character||!plan?.id||!Array.isArray(peers))return {ready:false,reason:'invalid-plan'};
  for(const peer of peers){
   if(!peer?.running||peer.rip||peer.realm!==realm||
@@ -137,18 +137,22 @@ export function assessLiveSquadMarch(character,peers,{realm,plan,
   // Physical arrival at the *verified* destination is sufficient even if
   // optional plan telemetry was dropped from this peer's heartbeat.
   const reached=samePlace(peer,plan)&&distance(peer,plan)<=85;
+  const aheadOnMap=samePlace(character,peer)&&samePlace(character,plan)&&
+   distance(peer,plan)+60<distance(character,plan)&&
+   peer.march?.plan===plan.id&&peer.march?.realm===realm;
+  const aheadAcrossPortal=!samePlace(character,peer)&&typeof mapDistance==='function'&&
+   Number.isFinite(mapDistance(peer.map))&&mapDistance(peer.map)<mapDistance(character.map)&&
+   peer.march?.plan===plan.id&&peer.march?.realm===realm;
   if(samePlace(character,peer)){
    crossMapSince.delete(peer.name);
-   const ahead=samePlace(character,plan)&&samePlace(peer,plan)&&
-    distance(peer,plan)+60<distance(character,plan);
-   if(!close&&!ahead)return {ready:false,reason:'teammate-behind',peer:peer.name,gap:distance(character,peer)};
+   if(!close&&!aheadOnMap)return {ready:false,reason:'teammate-behind',peer:peer.name,gap:distance(character,peer)};
   }else{
    const key=plan.id+':'+character.map+':'+(character.in??character.map)+':'+peer.map+':'+(peer.in??peer.map);
    let checkpoint=crossMapSince.get(peer.name);
    if(checkpoint?.key!==key){checkpoint={key,at:now};crossMapSince.set(peer.name,checkpoint);}
-   if(!reached&&now-checkpoint.at>=portalGraceMs)return {ready:false,reason:'teammate-portal-checkpoint',peer:peer.name};
+   if(!reached&&!aheadAcrossPortal&&now-checkpoint.at>=portalGraceMs)return {ready:false,reason:'teammate-portal-checkpoint',peer:peer.name};
   }
-  if(!close&&!progress&&!reached)return {ready:false,
+  if(!close&&!progress&&!reached&&!aheadAcrossPortal&&!aheadOnMap)return {ready:false,
     reason:'teammate-not-on-shared-route',peer:peer.name,
     gap:samePlace(character,peer)?distance(character,peer):null,
     observedMap:peer.map??null};
@@ -629,7 +633,8 @@ export function createTeamPlan(bot){
    // after every 85 units. The squad follows the SAME final spawn target.
    // Only *actual* separation/serious injury interrupts the live path.
    const march=assessLiveSquadMarch(p.c,peers,{realm:p.realm(),
-    plan:current,maxGap:Math.min(300,Math.max(100,cfg.party.followDistance??180)),hpFloor:.6,crossMapSince});
+    plan:current,maxGap:Math.min(300,Math.max(100,cfg.party.followDistance??180)),hpFloor:.6,crossMapSince,
+    mapDistance:map=>mapHops(graph,map,current.map)});
    const stuck=stalledSquadRoutePeer(peers,current,routeProgress);
    if(stuck&&march.ready){
     if(bot.movement.order?.owner==='farm')bot.movement.stop();

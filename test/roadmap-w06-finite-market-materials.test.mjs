@@ -176,3 +176,59 @@ test('W06 stricter material variant check does not alter explicitly configured m
  assert.equal(f.jobs.length,1);
  assert.equal(f.jobs[0].job.guard(),true);
 });
+
+test('W06 finite market never rounds malformed seller quantities into authorized purchases',()=>{
+ for(const quantity of [0,-1,1.5,NaN,Number.MAX_SAFE_INTEGER+1]){
+  const f=fixture({offerQuantity:quantity});
+  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),false,
+   'invalid listing quantity must not wake blocked production');
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
+  assert.equal(f.jobs.length,0);
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 finite market requires integer unit and total gold exposure',()=>{
+ for(const [unitPrice,quantity] of [
+  [10.5,2],[0.25,2],[Number.MAX_SAFE_INTEGER+1,1],
+  [Number.MAX_SAFE_INTEGER,2]
+ ]){
+  const f=fixture({offerQuantity:quantity});
+  f.rule.maxPrice=Number.MAX_SAFE_INTEGER+2;
+  f.seller.slots.trade2.price=unitPrice;
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(quantity)),false,
+   'invalid unit or total cost is never sent to the value executor');
+  assert.equal(f.jobs.length,0);
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 finite trade requires the same item baseline at delayed dispatch',()=>{
+ const f=fixture();
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ const job=f.jobs[0].job;
+ assert.equal(job.guard(),true);
+ f.setHeld(1);
+ assert.equal(job.guard(),false,'outside inventory changes invalidate prior purchase receipt baseline');
+ assert.equal(f.calls.length,0);
+ f.setHeld(0);
+ assert.equal(job.guard(),true,'an unchanged valid baseline remains eligible');
+});
+test('W06 finite dispatch rejects seller quantity or price drift to malformed values',()=>{
+ for(const change of [
+  f=>{f.seller.slots.trade2.q=2.5;},
+  f=>{f.seller.slots.trade2.price=10.5;}
+ ]){
+  const f=fixture();
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+  const job=f.jobs[0].job;
+  assert.equal(job.guard(),true);
+  change(f);
+  assert.equal(job.guard(),false);
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 explicit standalone market buy retains legacy offer-quantity behavior',()=>{
+ const f=fixture({offerQuantity:1.5});
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.jobs[0].job.details.quantity,1);
+ assert.equal(f.jobs[0].job.guard(),true);
+});

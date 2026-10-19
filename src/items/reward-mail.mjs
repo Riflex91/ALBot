@@ -95,12 +95,15 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
    Promise.resolve(p.readRewardMailPage(requested)).then(page=>{
     if(gen!==generation||!bot.running)return;
     if(!Array.isArray(page?.mail)||page.mail.length>40)throw Error('Invalid reward mail page');
+    const next=page.more===true&&typeof page.cursor==='string'&&/^\d{1,8}$/.test(page.cursor)?page.cursor:null;
+    if(page.more===true&&(!next||Number(next)<=Number(requested??0)))throw Error('Invalid reward mail cursor');
+    // Do not make a page actionable until its pagination advance is
+    // durably accepted. Invalid pages and failed storage leave the queue
+    // unchanged; they cannot schedule a later value action.
+    if(p.write(key,{cursor:next})!==true){reason='mail-cursor-storage-unavailable';return;}
     reconcile(page.mail);
     const rows=page.mail.filter(row=>row.taken===false&&rewardMailAttachment(row,bot.me.name,p.G));
     queue=rows.slice(0,40);for(const row of queue)remember(row.id,'observed');
-    const next=page.more===true&&typeof page.cursor==='string'&&/^\d{1,8}$/.test(page.cursor)?page.cursor:null;
-    if(page.more===true&&(!next||Number(next)<=Number(requested??0)))throw Error('Invalid reward mail cursor');
-    if(p.write(key,{cursor:next})!==true){reason='mail-cursor-storage-unavailable';return;}
     cursor=next;nextRead=now()+(next?5000:300000);
     reason=queue.length?'own-system-rewards-observed':'no-own-system-reward-on-page';
    }).finally(()=>{if(gen===generation)reading=false;}),

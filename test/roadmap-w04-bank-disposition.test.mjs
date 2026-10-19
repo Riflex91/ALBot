@@ -378,7 +378,7 @@ test('W04 full reserve stage rejects cross-pack surplus disappearing before disp
  const second=blank();
  second[26]={name:'scroll0',q:20};
  bot.p.c.bank.items1=second;
- assert.equal(bot.bank.preventiveDisposition(),false);
+ for(let i=0;i<3;i++)assert.equal(bot.bank.preventiveDisposition(),false);
  assert.equal(bot.bank.preventiveDisposition(),true);
  assert.equal(calls[0].kind,'bank.retrieve');
  assert.equal(calls[0].params.guard(),true);
@@ -399,7 +399,7 @@ test('W04 malformed same-variant bank quantities cannot authorize reserve reloca
  for(let n=0;n<4;n++)bot.bank.preventiveDisposition();
  assert.equal(calls.length,0,'malformed matching stock is not usable backing');
  second[26]={name:'scroll0',q:20};
- assert.equal(bot.bank.preventiveDisposition(),false);
+ for(let i=0;i<3;i++)assert.equal(bot.bank.preventiveDisposition(),false);
  assert.equal(bot.bank.preventiveDisposition(),true);
  assert.equal(calls[0].kind,'bank.retrieve');
 });

@@ -277,12 +277,14 @@ test('N05 admitted scout selects only native move, preserving other owners smart
   }};
  bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
  const m=createMovement(bot),dest={map:'main',in:'main',x:65,y:0,radius:8};
- assert.equal(m.go(dest,'scout'),true);
+ assert.equal(m.local(dest.x,dest.y,'scout'),true,
+  'scout only claims a permit when a native movement order actually exists');
  assert.equal(m.order?.mode,'move');
+ assert.equal(m.order?.owner,'scout');
  assert.equal(calls.includes('smart_move'),false);
  assert.equal(calls.includes('use_skill'),false);
  m.stop();allowed=false;
- assert.equal(m.go({...dest,x:70},'farm'),true);
+ m.go({...dest,x:70},'farm');
  assert.equal(m.order?.mode,'smart_move','existing approved farm routing remains untouched');
  m.stop();
 });

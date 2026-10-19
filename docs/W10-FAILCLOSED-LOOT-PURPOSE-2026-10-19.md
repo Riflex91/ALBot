@@ -26,7 +26,8 @@ exakt bezeichneten Empfängerhinweis verfälschen.
 - Empfängerhinweise verlangen ein tatsächlich gültiges Ziel:
   korrekten Namen/Level, ausdrücklichen Empfänger sowie bei exakten
   Zielen die richtige, vollständige Variante. Fehlerhafte
-  `data`-Zyklen, BigInts, Namens-/Levelsubstitutionen werden ohne
+  `data`-Zyklen, nicht serialisierbare Zusatzfelder, BigInts,
+  Namens-/Levelsubstitutionen werden ohne
   Ausnahme unterdrückt; nachweislich gültige und generische
   Hinweise bleiben erhalten.
 - Der Zweck-Status bleibt strikt `dispatchAuthorized:false`.

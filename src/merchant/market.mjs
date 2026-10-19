@@ -65,9 +65,25 @@ export function createMarket(bot){
   if(finite&&(!scope||!Number.isSafeInteger(scope.quantity)||
       scope.quantity<1||scope.quantity>1000000||
       typeof scope.admit!=='function'||scope.admit()!==true))return false;
-  for(const player of Object.values(p.entities)){
-   if(player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
-   for(const [slot,offer] of Object.entries(player.slots??{})){
+  const entries=Object.values(p.entities??{}).flatMap(player=>
+   Object.entries(player?.slots??{}).map(([slot,offer])=>({player,slot,offer})));
+  if(finite){
+   // Rank only currently eligible, exact-variant offers. A lower price on
+   // a different material, stale listing or malformed quantity must not
+   // distort the choice. All authorization guards still run at dispatch.
+   const priceRank=({player,slot,offer})=>
+    player&&player.name!==p.c.name&&player.type==='character'&&
+    player.stand&&samePlace(p.c,player)&&distance(p.c,player)<=300&&
+    /^trade([1-9]|1[0-6])$/.test(slot)&&
+    offer&&!offer.b&&!offer.buy&&!offer.giveaway&&
+    typeof offer.rid==='string'&&!!offer.rid&&
+    Number.isSafeInteger(offer.price)&&offer.price>0&&
+    Number.isSafeInteger(offer.q??1)&&(offer.q??1)>0&&
+    materialVariant(offer,item)?offer.price:Infinity;
+   entries.sort((a,b)=>priceRank(a)-priceRank(b));
+  }
+  for(const {player,slot,offer} of entries){
+   if(!player||player.name===p.c.name||player.type!=='character'||!player.stand||!samePlace(p.c,player)||distance(p.c,player)>300)continue;
     const ceiling=price(item,r);if(!/^trade([1-9]|1[0-6])$/.test(slot)||!offer||offer.b||offer.giveaway||offer.buy||!offer.rid||!(finite?materialVariant(offer,item):variant(offer,item))||!Number.isFinite(offer.price)||offer.price<=0||!ceiling||offer.price>ceiling)continue;
     // Production purchases cannot round malformed seller quantities or
     // risk a fractional / non-safe total gold debit. Free explicit market
@@ -101,7 +117,6 @@ export function createMarket(bot){
     details:{item:item.name,variant:identity(item),quantity:q,before,
      unitPrice,seller:player.name??player.id,tradeSlot:slot,rid,
      source:finite?'finite-production-plan':'explicit-market-rule'}});
-   }
   }
   // A search for missing live player offers is not an admitted purchase.
   // The first trip is allowed; subsequent bank->market journeys are bounded

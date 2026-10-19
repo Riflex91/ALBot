@@ -18,3 +18,9 @@ Der bestehende passive, an Realm und Instanz gebundene Respawnkalender kann nach
 Ein reisender autonomer Scout benötigt zusätzliche serverseitig belastbare Spawnmetadaten, eine genehmigte Ziel-/Map-Liste, Team- und Kampfbereitschaft, Reisebudget und robuste negative Vor-Ort-Belege. Dieses Paket **autorisiert keinen** neuen Wegpunkt, keine neue Monster-ID, kein Server-Hopping, keine Temporal-Orb-Nutzung und keinen Kampf anhand von Kalenderdaten.
 
 Es wurden nur Offline-Regressionstests ergänzt. Es liegt keine Ingame-Liveabnahme vor, und der separate signierte Bootstrap-Release wurde nicht geändert.
+
+## Session-Schutz (Folgeinkrement)
+
+Die lokale Kill-Sichtung und ihr flüchtiges Hit-Journal sind nun zusätzlich an die **konkrete laufende Bot-Session** gebunden. Wechselt die Session bei gleichem Realm, räumt der Kalender eigene kurzlebige Treffer-, Scout- und Sichtungsbelege vollständig ab; selbst bei anschließender Rückkehr in die ursprüngliche Session werden sie nicht neu freigeschaltet. Ein Server-Todesereignis aus der alten Session kann keinen Kill für die neue Session zertifizieren.
+
+Fehlt eine gültige Session-ID, erzeugt N05 weder neue lokale Sichtungen noch einen eigenen Killbeleg. Der Status zeigt die aktuelle Session nur diagnostisch; der Kalender bleibt nicht ausführbar und erteilt weiterhin keine Reise- oder Kampfberechtigungen. Persistierte historische Killzeilen bleiben nach Neustart (unverändert zu oben) nicht zur Verlängerung eines Scoutfensters berechtigt.

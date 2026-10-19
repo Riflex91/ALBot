@@ -26,7 +26,8 @@ function fixture(){
    permittedMap:map=>map==='main'},monsters:()=>mobs,
   entity:id=>mobs.find(m=>m.id===id),
   events:[],event:(type,details)=>bot.events.push({type,details}),
-  movement:{order:null,dispatchAdmission:null,local(x,y,owner,admit){
+  movement:{order:null,nativeActive:false,dispatchAdmission:null,
+   nativeBusy(){return this.nativeActive;},local(x,y,owner,admit){
    this.dispatchAdmission=admit;
    this.order={owner,mode:'move',dest:{map:'main',in:'main',x,y}};return true;
   },stop(){stops++;this.order=null;}},
@@ -323,4 +324,28 @@ test('N05 no negative sample or expired local scout lease authorizes delayed dis
   mutate(f);
   assert.equal(lease(),false);
  }
+});
+
+test('N05 rejects local scout planning during uncontrolled native motion',()=>{
+ for(const edit of [
+  f=>{f.bot.movement.nativeActive=true;},
+  f=>{f.character.moving=true;f.bot.movement.nativeBusy=()=>!!f.character.moving;},
+  f=>{f.bot.movement.nativeBusy=()=>true;}
+ ]){
+  const f=fixture();f.killThenMiss();edit(f);
+  assert.equal(f.calendar.scout(f.plan),false);
+  assert.equal(f.bot.movement.order,null);
+  assert.equal(f.bot.events.length,0);
+  assert.equal(f.calendar.status().localScoutHop,null);
+ }
+});
+test('N05 queued scout lease is revoked if an unrelated native path starts before dispatch',()=>{
+ const f=fixture();f.killThenMiss();
+ assert.equal(f.calendar.scout(f.plan),true);
+ const lease=f.bot.movement.dispatchAdmission;
+ assert.equal(lease(),true);
+ f.bot.movement.nativeActive=true;
+ assert.equal(lease(),false,'native movement invalidates pre-dispatch lease');
+ f.bot.movement.nativeActive=false;
+ assert.equal(lease(),true,'the order remains pending and must still pass all other checks');
 });

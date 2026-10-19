@@ -369,3 +369,80 @@ test('N05 valid live dispatch lease still produces exactly one native move',()=>
  assert.equal(m.order?.owner,'scout');
  m.stop();
 });
+
+test('N05 native scout cannot steal an externally active move or smart route',()=>{
+ for(const mutate of [
+  x=>{x.c.moving=true;},
+  x=>{x.p.root.smart={moving:true};},
+  x=>{x.p.root.smart={searching:true};},
+  x=>{x.p.parent.smart={searching:true};},
+  x=>{x.p.parent.smart={moving:true};}
+ ]){
+  const c={map:'main',in:'main',x:0,y:0,moving:false};
+  const calls=[],bot={running:true,me:{role:'farmer'},
+   cfg:{world:{excludedMaps:[]},farming:{pvp:false}}};
+  const p={c,root:{},parent:{},G:{maps:{main:{}}},has:()=>true,
+   call:name=>{
+    calls.push(name);
+    if(name==='can_move_to')return true;
+    if(name==='move'||name==='smart_move')return new Promise(()=>{});
+    return Promise.resolve();
+   }};
+  bot.p=p;bot.exec=new Executor({now:Date.now,
+   active:()=>bot.running,limit:4,onError(){}});
+  const m=createMovement(bot);mutate({c,p});
+  assert.equal(m.nativeBusy(),true);
+  assert.equal(m.local(60,0,'scout',()=>true),false);
+  assert.equal(m.order,null);
+  assert.equal(calls.includes('move'),false);
+  assert.equal(calls.includes('smart_move'),false);
+  assert.equal(bot.exec.pending.size,0);
+ }
+});
+test('N05 queued native scout command aborts when external movement appears before flush',()=>{
+ for(const mutate of [
+  x=>{x.c.moving=true;},
+  x=>{x.p.parent.smart={searching:true};},
+  x=>{x.p.root.smart={moving:true};}
+ ]){
+  const c={map:'main',in:'main',x:0,y:0,moving:false};
+  const calls=[],bot={running:true,me:{role:'farmer'},
+   cfg:{world:{excludedMaps:[]},farming:{pvp:false}}};
+  const p={c,root:{},parent:{},G:{maps:{main:{}}},has:()=>true,
+   call:name=>{
+    calls.push(name);
+    if(name==='can_move_to')return true;
+    if(name==='move'||name==='smart_move')return new Promise(()=>{});
+    return Promise.resolve();
+   }};
+  bot.p=p;bot.exec=new Executor({now:Date.now,
+   active:()=>bot.running,limit:4,onError(){}});
+  const m=createMovement(bot);bot.exec.beginFrame();
+  assert.equal(m.local(60,0,'scout',()=>true),true);
+  assert.equal(calls.includes('move'),false);
+  mutate({c,p});
+  bot.exec.flush();
+  assert.equal(calls.includes('move'),false);
+  assert.equal(calls.includes('smart_move'),false);
+  assert.equal(m.order,null,'revoked native lease releases queued ownership');
+ }
+});
+test('N05 native movement arbitration preserves ordinary non-scout farm routes',()=>{
+ const c={map:'main',in:'main',x:0,y:0,moving:true};
+ const calls=[],bot={running:true,me:{role:'farmer'},
+  cfg:{world:{excludedMaps:[]},farming:{pvp:false}}};
+ bot.p={c,root:{},parent:{},G:{maps:{main:{}}},has:()=>true,
+  call:name=>{
+   calls.push(name);
+   if(name==='can_move_to')return false;
+   if(name==='smart_move')return new Promise(()=>{});
+   return Promise.resolve();
+  }};
+ bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
+ const m=createMovement(bot);
+ m.go({map:'main',in:'main',x:75,y:0},'farm');
+ assert.equal(m.order?.mode,'smart_move',
+  'existing non-scout behavior must not gain an implicit native-busy prohibition');
+ assert.equal(calls.includes('smart_move'),true);
+ m.stop();
+});

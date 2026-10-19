@@ -65,9 +65,16 @@ export function singleSwapOpportunity(bot,slot){
  const wanted={name:r.wantItem,level:r.wantLevel,
   stat_type:r.wantStatType,p:r.wantProperty,title:r.wantTitle};
  const wantedDef=p.G.items[wanted.name];
+ let alreadyHeld,spare;
+ try{
+  alreadyHeld=e.count?.(wanted);
+  spare=e.spare?.(slot,r);
+ }catch{return null;}
  if(!wantedDef||wantedDef.s||wanted.name===item.name&&
     identity(wanted)===identity(item)||
-    e.count?.(wanted)>=r.wantTargetCount)return null;
+    !Number.isSafeInteger(alreadyHeld)||alreadyHeld<0||
+    alreadyHeld>=r.wantTargetCount||
+    !Number.isSafeInteger(spare)||spare<1)return null;
  const paymentBefore=swapCount(p.c.items,item),
   receiveBefore=swapCount(p.c.items,wanted);
  if(!Number.isSafeInteger(paymentBefore)||paymentBefore<2||

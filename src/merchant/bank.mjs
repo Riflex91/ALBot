@@ -1297,7 +1297,9 @@ export function createBank(bot){
  function gold(){
   if(!cfg.merchant.bank||!cfg.merchant.bankGold||!p.c.bank||me.name!==cfg.party.merchant)return false;
   const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
-  const target=Math.max(cfg.merchant.goldTarget,cfg.merchant.goldReserve,me.goldReserve??0)+commitments,before=p.c.gold,stored=p.c.bank.gold;
+  // Preserve a market purchase's verified financing need until it returns.
+  const marketMinimum=bot.market?.fundingMinimumGold?.()??0;
+  const target=Math.max(Math.max(cfg.merchant.goldTarget,cfg.merchant.goldReserve,me.goldReserve??0)+commitments,marketMinimum),before=p.c.gold,stored=p.c.bank.gold;
   if(!Number.isFinite(stored)||before===target)return false;
   const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
   return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});

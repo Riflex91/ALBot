@@ -149,7 +149,9 @@ export function createGearAllocation(bot){
  let receiving=savedReceiving??[];
  // An invalid durable receiving ledger is not an empty ledger.
  // Unknown entries may represent still-open physical promises.
- const unsafeReceiving=!Array.isArray(receiving)||receiving.some(r=>
+ const unsafeReceiving=!Array.isArray(receiving)||
+  new Set(receiving.map(r=>r?.id)).size!==receiving.length||
+  receiving.some(r=>
   !r||typeof r.id!=='string'||!r.id||
   typeof r.from!=='string'||!r.from||
   typeof r.session!=='string'||!r.session||
@@ -213,10 +215,10 @@ export function createGearAllocation(bot){
   receiving=next;
   return true;
  }
- function rules(){receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
- function equipGuard(item,slot){const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
+ function rules(){if(unsafeReceiving)return [];receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
+ function equipGuard(item,slot){if(unsafeReceiving)return false;const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
  function tick(){
-  const newReceiving=receiving.map(r=>r.state!=='equipped'&&
+  const newReceiving=unsafeReceiving?receiving:receiving.map(r=>r.state!=='equipped'&&
    identity(bot.p.c.slots?.[r.slot])===identity(r.item)?
    {...r,state:'equipped'}:r);
   if(newReceiving.some((r,i)=>r!==receiving[i])&&
@@ -243,7 +245,7 @@ export function createGearAllocation(bot){
   if(next.some((r,i)=>r!==rows[i]))save(next);
 }
  return {offer,accept,rules,equipGuard,tick,reserve,guard,settle,
-  pendingReceived:item=>pendingGearReceipt(receiving,item),
+  pendingReceived:item=>unsafeReceiving||pendingGearReceipt(receiving,item),
   status:()=>rows.map(r=>({...r})),
   recoveryStatus:()=>({unsafeHistory,unsafeReceiving,
    blockedNewGear:unsafeHistory||unsafeReceiving,

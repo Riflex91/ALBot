@@ -50,7 +50,9 @@ function idlePeriods(events,minSeconds){
 }
 export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   maxPursuitDepartures=12,maxSampledIdleSeconds=60,requireElixirs=false,
-  strict=false,requiredFarmers=null}={}){
+  strict=false,requiredFarmers=null,minOverlapSeconds=0}={}){
+ if(!Number.isFinite(minOverlapSeconds)||minOverlapSeconds<0)
+  throw Error('Invalid minimum shared observation duration');
  if(!Array.isArray(input)||!input.length)throw Error('At least one report is required');
  const reports=new Map(),realms=new Set(),versions=new Set();
  for(const r of input){
@@ -61,6 +63,32 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   reports.set(r.character,r);realms.add(r.realm);versions.add(r.version);
  }
  const issues=[];
+ // Two individually healthy reports are not a team run when their capture
+ // windows never overlap. Start/end metadata is not proof of active gameplay.
+ const windows=[...reports.values()].map(r=>({
+  start:Date.parse(r.started),end:Date.parse(r.exported)
+ }));
+ const validWindows=windows.every(w=>Number.isFinite(w.start)&&
+  Number.isFinite(w.end)&&w.end>w.start);
+ let sharedSeconds=0,sharedFrom=null,sharedUntil=null;
+ if(!validWindows){
+  issues.push({level:'error',code:'INVALID_OBSERVATION_WINDOW',
+   detail:'A report has missing, invalid or non-increasing capture times'});
+ }else{
+  const from=Math.max(...windows.map(w=>w.start));
+  const until=Math.min(...windows.map(w=>w.end));
+  if(until<=from){
+   issues.push({level:'error',code:'DISJOINT_OBSERVATION_WINDOWS',
+    detail:'Character reports have no simultaneous capture interval'});
+  }else{
+   sharedSeconds=(until-from)/1000;
+   sharedFrom=new Date(from).toISOString();
+   sharedUntil=new Date(until).toISOString();
+   if(sharedSeconds<minOverlapSeconds)
+    issues.push({level:'error',code:'INSUFFICIENT_OBSERVATION_OVERLAP',
+     detail:'Only '+sharedSeconds+' shared seconds (required '+minOverlapSeconds+')'});
+  }
+ }
  if(realms.size!==1||versions.size!==1)issues.push({level:'error',code:'MIXED_SESSIONS',
    detail:'Different realms or versions in supplied reports'});
  if(!reports.has(merchant))issues.push({level:'error',code:'MERCHANT_MISSING',
@@ -137,7 +165,9 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   version:versions.size===1?[...versions][0]:null,
   interval:{from:[...reports.values()].map(r=>r.started).sort()[0],
     until:[...reports.values()].map(r=>r.exported).sort().at(-1)},
-  scope:{characters:[...reports.keys()],sampledIdleIsProofOfAvailableTargets:false},
+  scope:{characters:[...reports.keys()],sampledIdleIsProofOfAvailableTargets:false,
+   sharedObservation:{from:sharedFrom,until:sharedUntil,seconds:sharedSeconds,
+    sufficient:validWindows&&sharedSeconds>0&&sharedSeconds>=minOverlapSeconds}},
   merchant:{name:merchant,pursuit,departures,carriedElixirs,
     outgoingItemIntents:outbound.filter(t=>t.character===merchant).length},
   transfers:{outgoingIntents:outbound.length,

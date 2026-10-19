@@ -8,6 +8,19 @@
 3. Export a test report per character and environment (browser and headless), preserving `started`, `gameVersion`, `realm`, `environment`, `character`, `events`, `dropped`, `settings`, `actionStats`, checkpoint/inventory blocker and version. Never collect account tokens or authentication material.
 4. Record any active value journal or unresolved transfer and **stop value-action tests** rather than clearing it manually.
 
+### W14 – Mehrcharakter-Zeitfenster für bestehende Berichte
+
+`scripts/CHECK-LIVE-TEAM.mjs` darf keine zeitlich getrennten Exporte als
+zusammenhängende Teambeobachtung werten. Der Offlineprüfer verlangt je Charakter
+endliche, aufsteigende Export-/Startzeiten sowie eine **echte gemeinsame
+Zeitüberschneidung** aller eingereichten Reports. Er liefert unter
+`scope.sharedObservation` Anfang, Ende, Dauer und Eignung. Optional kann
+`--min-overlap-seconds 600` einen mindestens zehnminütigen gemeinsamen
+Beobachtungszeitraum verlangen; ohne diese Option genügt bereits eine positive
+Überschneidung. Fehlende oder zeitlich disjunkte Fenster blockieren die
+Prüfer-Akzeptanz. Diese Metadaten **beweisen keine laufende Ingame-Sitzung**,
+keinen signierten Release und keine tatsächliche Spielabnahme.
+
 ## 1 – Read-only startup and runtime parity
 - Verify start/stop/reload creates one scheduling timer and no leaked event handlers in both environments.
 - Check heartbeat round trips, session and realm changes, team roster, script version and user config. Review the measured dispatch p95/p99 and wall-load proxy separately from real CPU use.

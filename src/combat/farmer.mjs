@@ -360,7 +360,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const endangeredPeer=emergency?.critical?.some(h=>
      h?.name!==c.name&&h?.threats>0);
     const marchLeader=bot.transport?.fresh?.(bot.leader);
-    const marchDestination=me.role==='farmer'&&cfg.farming.enabled!==false&&
+    // A live personal Monsterhunt errand owns the Priest's route until
+    // Daisy confirms it or the emergency handler deliberately interrupts it.
+    // All follower-march returns below must be unreachable during the visit.
+    const marchDestination=!bot.strategy?.busy&&me.role==='farmer'&&cfg.farming.enabled!==false&&
      cfg.party.enabled&&bot.leader&&me.name!==bot.leader?
      sharedFarmMarchDestination(c,marchLeader,p.realm()):null;
     const actualBlock=blockingMonster();

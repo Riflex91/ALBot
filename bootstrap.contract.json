@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 11,
-      "version": "0.11.0-candidate",
+      "sequence": 13,
+      "version": "0.13.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 765836,
-      "sha256": "75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31"
+      "bytes": 766793,
+      "sha256": "c6af298c7f87773175c81e7f9cbd790ee83a29b0bf3e9098fd96fa8d7063084f"
     },
     "observedLoadedUrl": null,
-    "note": "Signiertes Release sequence=11, 0.11.0-candidate, aus main-Commit 4f30819e7a4ba8d794dc41111888665fdf265ab0 / PR #241. Signierworkflow 39319057251 und Linux-/Windows-CI 39318809167: 1781/1781 Offline-Tests; ECDSA-P-256, SHA-256 75f331c2b9611d02fb954248f5fef9c90661ef6f569c5b5eb27dec171f793b31 und 765836 Runtime-Bytes geprüft, bytegleich zu Main. Benutzerautorisiertes Aggressivprofil, Rotationshaltezeit unverändert 30 Minuten, Auswahlregeln für Level-/Gear-Ausgleich erhalten. Ab jetzt +0.1 Minor je neuer signierter Runtime. Schlüssel/Loader/Kanal unverändert, Spiel-Liveabnahme offen."
+    "note": "Signierter separater Ingame-Kanal: Sequence 13, 0.13.0-candidate, gültige ECDSA-P-256-Signatur. Der 0.14.0-candidate-Quellstand dieser offenen Priest-PR ist noch nicht veröffentlicht. Loader, Kanal, Schlüssel und persönliche Konfiguration bleiben unverändert; Liveabnahme ist offen."
   }
 }

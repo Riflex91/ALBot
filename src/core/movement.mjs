@@ -34,6 +34,11 @@ export function createMovement(bot){
   const stop=()=>{if(townQueued||p.c?.c?.town){try{Promise.resolve(p.call('stop','town')).catch(()=>{});}catch{}}townQueued=false;if(order||smartActive()||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner,scoutAdmission=null){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
+    // An active Monsterhunt visit has exclusive ordinary travel ownership.
+    // Only its own route or urgent combat/kiting may preempt it; in particular
+    // a follower tick cannot replace Daisy's route after a Town teleport.
+    if(bot.me?.role==='farmer'&&bot.strategy?.busy&&
+       !['quest','combat','kite'].includes(owner))return false;
     // N05's native movement must carry an explicit, re-evaluated admission
     // from the owning scout. A generic direct go('scout') has no authority.
     if(owner==='scout'&&(typeof scoutAdmission!=='function'||nativeBusy()))return false;

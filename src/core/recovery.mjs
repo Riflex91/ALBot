@@ -510,5 +510,5 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   if(confirmed){bot.event('recovery.confirmed',{kind:j.kind,reason:'Gepinnte Bestände und Gold-/Equipänderung stimmen überein'});bot.inventoryBlocked=false;bot.endValue('confirmed');return !bot.journal;}
   bot.event('recovery.unresolved',{kind:j.kind,reason:'Beobachtung ist nicht eindeutig; kein erneuter Versand'});return false;
  }
- return {authorize,bankDispatchAllowed,reconcile,itemStatus,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus}),goldEvidence,close(){lease=null;}};
+ return {authorize,bankDispatchAllowed,reconcile,itemStatus,heartbeat:()=>lease&&lease.expires>Date.now()?{...lease}:null,status:()=>({bankOwner:lease,conflict,exchange:exchangeStatus,gold:goldStatus,bankGold:bankGoldStatus}),goldEvidence,close(){lease=null;}};
 }

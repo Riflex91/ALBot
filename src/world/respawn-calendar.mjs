@@ -232,7 +232,8 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
      a.realm===realm&&now()-a.at<=12000&&
      plan?.id===a.planId&&bot.teamPlan?.valid?.(plan)===true&&
      r?.killedAt===a.killedAt&&r.scoutState==='observing'&&
-     now()<r.scoutUntil&&same(where,point)&&!p.c.rip&&
+     now()<r.scoutUntil&&where?.map===point?.map&&
+     where?.in===point?.in&&!p.c.rip&&
      Number.isFinite(p.c.x)&&Number.isFinite(p.c.y)&&
      Math.hypot(p.c.x-point.x,p.c.y-point.y)<=12;
     finish(arrived?'local-arrival-observed':'outcome-unverified');

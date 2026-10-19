@@ -290,7 +290,7 @@ export function createMarket(bot){
      unitPrice:price/q,offerKey,source:'ponty',finite:false});
    }
    if(!e.npcTravel(d,'Ponty-Kauf'))return true;
-   const accepted=e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.npcAt(d)&&e.count(item)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(item)>=before+q,details:{item:i.name,quantity:q,before}});if(accepted)secondhand=secondhand.filter(x=>x.rid!==i.rid);return accepted;
+   const accepted=e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.npcAt(d)&&e.count(item)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(item)>=before+q,details:{item:i.name,variant:identity(item),offerRid:i.rid,quantity:q,before}});if(accepted)secondhand=secondhand.filter(x=>x.rid!==i.rid);return accepted;
   }return false;
  }
  function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}

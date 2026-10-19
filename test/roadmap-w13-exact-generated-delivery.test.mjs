@@ -68,6 +68,12 @@ test('W13 malformed exact variant proof never yields a generated send authority'
  assert.equal(exactAutoDeliveryVariant({...goal,item:'',variant:{}}),null);
  assert.equal(exactAutoDeliveryVariant({...goal,level:Infinity,variant:{}}),null);
  assert.equal(exactAutoDeliveryVariant({...goal,variant:{data:{x:'x'.repeat(600)}}}),null);
+ const circular={seed:1};circular.self=circular;
+ assert.equal(exactAutoDeliveryVariant({...goal,variant:{data:circular}}),null);
+ assert.equal(exactAutoDeliveryVariant({...goal,variant:{data:1n}}),null);
+ const malformed=structuredClone(base);malformed.data={seed:1n};
+ assert.doesNotThrow(()=>chooseRule([rule()],malformed,context));
+ assert.equal(chooseRule([rule()],malformed,context),null);
  for(const bad of [null,NaN,42,'not-an-identity']){
   assert.equal(chooseRule([rule({_autoExactVariant:bad})],
    base,context),null);

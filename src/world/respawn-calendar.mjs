@@ -1,3 +1,4 @@
+import {approvedLocalScoutHop} from './local-scout.mjs';
 // N05: passive, realm/instance-scoped observed monster calendar.
 // No predictions, travel, targeting, combat credit or game mutations.
 const MAX_ROWS=64,MAX_HITS=128,MAX_AGE_MS=21600000,MAX_HIT_MS=30000;
@@ -19,7 +20,8 @@ function validRow(r,realm,now){
 }
 export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  const {p,me}=bot,key='albot:respawn-calendar:v1:'+me.name;
- const hits=new Map(),rows=new Map();
+ const hits=new Map(),rows=new Map(),issuedScoutHops=new Set();
+ let activeScoutHop=null;
  let persisted=true,realm=p.realm(),session=bot.session,lastSample=0;
  const saved=p.read?.(key);
  if(saved?.version===1&&saved.owner===me.name&&saved.realm===realm&&
@@ -38,6 +40,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   // even when the same character remains on the same server and map.
   if(current!==realm||currentSession!==session){
    realm=current;session=currentSession;rows.clear();hits.clear();
+   issuedScoutHops.clear();activeScoutHop=null;
    lastSample=0;persisted=false;
   }
   for(const [id,row] of rows){
@@ -59,6 +62,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  };
  function sample(){
   expire();
+  guardScoutMovement();
   if(!bot.running||!cleanName(session))return;
   const time=now(),where=location(realm,p.c);
   // Without a real local observer position, neither a sighting nor a
@@ -165,6 +169,77 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   if((data?.actor??data?.hid??data?.killer)!==me.name)return false;
   return cleanName(data?.id)?credit(data.id):false;
  }
+ function scout(plan){
+  expire();
+  const time=now();
+  if(!bot.running||!cleanName(session)||!plan||
+     bot.me?.role!=='farmer'||bot.me.name!==bot.leader||
+     bot.cfg?.party?.enabled!==false||
+     (bot.farmers?.length??1)>1||
+     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     bot.strategy?.busy||p.c.rip||
+     bot.movement?.order||!bot.movement?.local||
+     bot.teamPlan?.valid?.(plan)!==true||
+     bot.teamPlan?.heartbeat?.()?.id!==plan.id||
+     bot.teamPlan?.allowed?.(plan.target)!==true||
+     bot.strategy?.permittedMap?.(plan.map)!==true||
+     p.G?.maps?.[plan.map]?.pvp||
+     !Number.isFinite(p.c.hp)||!Number.isFinite(p.c.max_hp)||
+     p.c.max_hp<=0||p.c.hp/p.c.max_hp<.9||
+     bot.combatAssessment?.emergency?.()?.active===true||
+     (bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
+      (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target))))
+   return false;
+  const options=[...rows.values()].filter(row=>row.monster===plan.target)
+   .sort((a,b)=>b.killedAt-a.killedAt).slice(0,4);
+  for(const row of options){
+   const key=row.id+':'+row.killedAt;
+   if(issuedScoutHops.has(key))continue;
+   const result=approvedLocalScoutHop({row,plan,character:p.c,
+    realm,now:time,approved:true,solo:true,safe:true});
+   if(!result.allowed)continue;
+   if(!p.has?.('can_move_to')||p.call('can_move_to',
+       result.point.x,result.point.y)!==true)continue;
+   if(bot.movement.local(result.point.x,result.point.y,'scout')!==true)
+    continue;
+   issuedScoutHops.add(key);
+   if(issuedScoutHops.size>64)
+    issuedScoutHops.delete(issuedScoutHops.values().next().value);
+   activeScoutHop={...result.witness,at:time,session};
+   bot.event?.('respawn.localScoutHop',{monster:row.monster,
+    id:row.id,map:row.map,reason:result.reason,
+    radius:result.point.radius,authority:'approved-current-farm-only'});
+   return true;
+  }
+  return false;
+ }
+ function guardScoutMovement(){
+  if(bot.movement?.order?.owner!=='scout'){
+   activeScoutHop=null;return;
+  }
+  const a=activeScoutHop,plan=bot.teamPlan?.heartbeat?.(),r=rows.get(a?.id);
+  const invalid=!bot.running||!a||a.session!==session||
+   a.realm!==realm||now()-a.at>12000||
+   !plan||plan.id!==a.planId||
+   bot.teamPlan?.valid?.(plan)!==true||
+   bot.me?.role!=='farmer'||bot.me.name!==bot.leader||
+   bot.cfg?.party?.enabled!==false||
+   (bot.farmers?.length??1)>1||
+   bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+   bot.strategy?.busy||p.c.rip||
+   !Number.isFinite(p.c.hp)||!Number.isFinite(p.c.max_hp)||
+   p.c.max_hp<=0||p.c.hp/p.c.max_hp<.9||
+   bot.combatAssessment?.emergency?.()?.active===true||
+   (bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
+    (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target)))||
+   !r||r.killedAt!==a.killedAt||r.scoutState!=='observing'||
+   now()>=r.scoutUntil||r.scoutNegatives>=SCOUT_MAX_NEGATIVES||
+   !same(location(realm,p.c),r);
+  if(invalid){
+   bot.movement.stop?.();
+   activeScoutHop=null;
+  }
+ }
  function status(){
   expire();
   const time=now(),where=location(realm,p.c);
@@ -185,5 +260,6 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
       resightedAt:r.resightedAt??null,
       authority:'local-visibility-only',executable:false}}))};
  }
- return {sample,hit,death,status,close(){hits.clear();}};
+ return {sample,hit,death,status,scout,guardScoutMovement,
+  close(){hits.clear();issuedScoutHops.clear();activeScoutHop=null;}};
 }

@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 15,
-      "version": "0.15.0-candidate",
+      "sequence": 16,
+      "version": "0.16.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 768559,
-      "sha256": "d64dffbe2646337343af2128c230d6e1a38458311807e18f4749633047fe695a"
+      "bytes": 772611,
+      "sha256": "13473debb65a32253adccda4fbf967f5540b613a84fe57059747f7d7c5610950"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 15 / 0.15.0-candidate am 19.10.2026 nach PR #244 / main-Commit 995957cbdb965ea902ce2e57cb2c4a2c35f8db08 durch Releaseworkflow 39326454243 signiert veröffentlicht. 1793/1793 Offline-Tests sowie Linux/Windows-PR-CI erfolgreich; ECDSA-P-256, SHA-256 d64dffbe2646337343af2128c230d6e1a38458311807e18f4749633047fe695a und 768559 Runtime-Bytes geprüft. Lokale Teamverteidigung und Gruppenrendezvous korrigiert, G04 und Priest/N05 erhalten. Installierter Loader und persönliche Ingame-ALBotConfig unverändert; risk=aggressive nur in Repository-Auto-Bootstrap, nicht im älteren Ingame-CODE nachgewiesen. Live-Abnahme offen."
+    "note": "Sequence 16 / 0.16.0-candidate am 19.10.2026 nach bestandenem Linux-/Windows-PR #251 und Merge 5a145668 über signierten Releaseworkflow 39331939239 veröffentlicht. 1806/1806 Offline-Tests, unveränderte persönliche ALBotConfig; ECDSA-P-256, SHA-256 13473debb65a32253adccda4fbf967f5540b613a84fe57059747f7d7c5610950 und 772611 Runtime-Bytes verifiziert. Gemeinsame Notfall-Sammelschritte und Farmplan-Fortsetzung implementiert. Ingame-Loader, öffentliche Schlüsselidentität und Release-URLs unverändert; Spiel-Liveabnahme offen."
   }
 }

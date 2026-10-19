@@ -60,7 +60,7 @@ export function singleSwapOpportunity(bot,slot){
     typeof r.wantStatType!=='string'||typeof r.wantProperty!=='string'||
     typeof r.wantTitle!=='string'||!Number.isFinite(r.lossBudget)||
     r.lossBudget<0||!G09_SAFE_SINGLE(item,p.G.items[item?.name],e)||
-    e.rules?.(item,'inventory')!==r||e.spare?.(slot,r)<1)
+    e.rules?.(item,'inventory')!==r)
   return null;
  const wanted={name:r.wantItem,level:r.wantLevel,
   stat_type:r.wantStatType,p:r.wantProperty,title:r.wantTitle};

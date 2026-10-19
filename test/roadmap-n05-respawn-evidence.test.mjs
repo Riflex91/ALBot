@@ -82,3 +82,88 @@ test('N05 bounded sightings never retain more than 64 rows',()=>{
  f.advance(21600001);f.calendar.status();
  assert.equal(f.calendar.status().rows.length,0);
 });
+
+test('N05 own confirmed kill starts only a passive finite local scout window',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),true);
+ const state=f.calendar.status().rows[0];
+ assert.equal(state.scout.state,'observing');
+ assert.equal(state.scout.negativeObservations,0);
+ assert.equal(state.scout.until,f.now()+300000);
+ assert.equal(state.scout.executable,false);
+ assert.equal(f.calendar.status().predictionAuthorized,false);
+ assert.equal(state.respawnAt,null);
+});
+test('N05 local negative observations have a hard twelve-sample limit',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),true);
+ f.mobs.length=0;
+ for(let n=0;n<18;n++){f.advance(2000);f.calendar.sample();}
+ const result=f.calendar.status().rows[0];
+ assert.equal(result.scout.negativeObservations,12);
+ assert.equal(result.scout.state,'negative-evidence-limit');
+ assert.equal(result.state,'own-kill-observed');
+ assert.equal(result.respawnAt,null);
+});
+test('N05 scout window expires without sightings or renewed travel permission',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ f.mobs.length=0;f.advance(300001);
+ const r=f.calendar.status().rows[0];
+ assert.equal(r.scout.state,'window-expired');
+ assert.equal(r.scout.until,null);
+ assert.equal(r.scout.negativeObservations,0);
+ assert.equal(r.scout.executable,false);
+ assert.equal(r.respawnAt,null);
+});
+test('N05 a live re-sighting requires an intervening negative local sample',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].scout.state,'none',
+  'a stale still-rendered monster cannot count as a newly respawned mob');
+ const g=fixture();g.calendar.sample();
+ g.calendar.hit({actor:'M',target:'e1',damage:10});g.calendar.death({actor:'M',id:'e1'});
+ g.mobs.length=0;g.advance(2000);g.calendar.sample();
+ assert.equal(g.calendar.status().rows[0].scout.negativeObservations,1);
+ g.mobs.push({id:'e1',mtype:'phoenix',type:'monster',map:'main',in:'main',
+  x:20,y:0,hp:100,dead:false});
+ g.advance(2000);g.calendar.sample();
+ const row=g.calendar.status().rows[0];
+ assert.equal(row.scout.state,'live-resighting-observed');
+ assert.equal(row.scout.resightedAt,g.now());
+ assert.equal(row.killedAt,null);
+ assert.equal(row.respawnAt,null);
+ g.advance(2000);g.calendar.sample();
+ assert.equal(g.calendar.status().rows[0].scout.state,'live-resighting-observed');
+});
+test('N05 restart and realm change never renew a consumed or historical scout window',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ const saved=f.store.get('albot:respawn-calendar:v1:M');
+ const reloaded=fixture(saved);
+ const old=reloaded.calendar.status().rows[0];
+ assert.equal(old.scout.state,'historical-unverified');
+ assert.equal(old.scout.until,null);
+ reloaded.mobs.length=0;reloaded.advance(2000);reloaded.calendar.sample();
+ assert.equal(reloaded.calendar.status().rows[0].scout.negativeObservations,0);
+ f.setRealm('USI');assert.equal(f.calendar.status().rows.length,0);
+ f.setRealm('EUI');assert.equal(f.calendar.status().rows.length,0);
+});
+test('N05 local scout evidence cannot be generated from remote instances or absent view',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ f.mobs.length=0;f.bot.p.c.in='instance-other';
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows.length,0);
+ f.bot.p.c.in='main';
+ f.bot.p.c.x=1200;
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].scout.negativeObservations,0);
+});

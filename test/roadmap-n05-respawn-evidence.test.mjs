@@ -124,8 +124,9 @@ test('N05 a live re-sighting requires an intervening negative local sample',()=>
  f.calendar.hit({actor:'M',target:'e1',damage:10});
  f.calendar.death({actor:'M',id:'e1'});
  f.advance(2000);f.calendar.sample();
- assert.equal(f.calendar.status().rows[0].scout.state,'none',
-  'a stale still-rendered monster cannot count as a newly respawned mob');
+ assert.equal(f.calendar.status().rows[0].scout.state,'observing',
+  'stale still-rendered monster must leave the confirmed kill and scout window intact');
+ assert.ok(f.calendar.status().rows[0].killedAt);
  const g=fixture();g.calendar.sample();
  g.calendar.hit({actor:'M',target:'e1',damage:10});g.calendar.death({actor:'M',id:'e1'});
  g.mobs.length=0;g.advance(2000);g.calendar.sample();

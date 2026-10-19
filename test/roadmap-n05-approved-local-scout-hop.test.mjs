@@ -27,7 +27,7 @@ function fixture(){
   entity:id=>mobs.find(m=>m.id===id),
   events:[],event:(type,details)=>bot.events.push({type,details}),
   movement:{order:null,local(x,y,owner){
-   this.order={owner,dest:{map:'main',in:'main',x,y}};return true;
+   this.order={owner,mode:'move',dest:{map:'main',in:'main',x,y}};return true;
   },stop(){stops++;this.order=null;}},
   teamPlan:{heartbeat:()=>plan,valid:()=>planValid,
    allowed:id=>id==='phoenix'}};
@@ -199,5 +199,37 @@ test('N05 session or realm changes never make an old local movement look complet
   f.advance(2000);f.calendar.sample();
   assert.equal(f.calendar.status().localScoutHop,null);
   assert.equal(f.calendar.status().predictionAuthorized,false);
+ }
+});
+
+test('N05 running scout cancels a changed movement mode or destination',()=>{
+ for(const mutate of [
+  f=>{f.bot.movement.order.mode='smart_move';},
+  f=>{f.bot.movement.order.mode='blink';},
+  f=>{f.bot.movement.order.dest.x+=70;},
+  f=>{f.bot.movement.order.dest.map='bank';},
+  f=>{f.bot.movement.order.dest.in='private-instance';}
+ ]){
+  const f=fixture();f.killThenMiss();
+  assert.equal(f.calendar.scout(f.plan),true);
+  mutate(f);f.advance(2000);f.calendar.sample();
+  assert.equal(f.bot.movement.order,null);
+  assert.equal(f.calendar.status().localScoutHop.state,'safety-aborted');
+  assert.equal(f.stops,1);
+  assert.equal(f.calendar.scout(f.plan),false);
+ }
+});
+test('N05 ongoing local hop revokes denied target, map or changed PvP safety',()=>{
+ for(const mutate of [
+  f=>{f.bot.teamPlan.allowed=()=>false;},
+  f=>{f.bot.strategy.permittedMap=()=>false;},
+  f=>{f.p.G.maps.main.pvp=true;}
+ ]){
+  const f=fixture();f.killThenMiss();
+  assert.equal(f.calendar.scout(f.plan),true);
+  mutate(f);f.advance(2000);f.calendar.sample();
+  assert.equal(f.bot.movement.order,null);
+  assert.equal(f.calendar.status().localScoutHop.state,'safety-aborted');
+  assert.equal(f.calendar.scout(f.plan),false);
  }
 });

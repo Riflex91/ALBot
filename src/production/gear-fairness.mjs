@@ -1,5 +1,6 @@
 // Only order automatic goals. Explicit priorities, budgets, locks, compatibility
 // and the existing minimum-improvement test retain their authority.
+// Snapshot timestamps are observations, not refreshed heartbeat timestamps.
 export function gearCatchUpPriority(profile,peers,{now=Date.now()}={}){
  if(!freshGearEvidence(profile,now)||!Array.isArray(peers))return 0;
  const quality=p=>{

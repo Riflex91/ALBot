@@ -66,3 +66,14 @@ test('missing positions and stale target monsters cannot grant blind movement',(
  ],free,options);
  assert.ok(point);
 });
+
+test('live monster real_x and real_y override stale display coordinates',()=>{
+ const pursuing={id:'rat-real',map:'mansion',in:'mansion',x:-500,y:-500,
+  real_x:70,real_y:0,hp:100,range:60,target:ranger.name};
+ const point=safeSquadConvergenceStep(ranger,priest,[pursuing],free,options);
+ if(point){
+  const before=Math.hypot(70-ranger.x,0-ranger.y);
+  const after=Math.hypot(70-point.x,0-point.y);
+  assert.ok(after>=before-6,'do not charge into actual attacker position');
+ }
+});

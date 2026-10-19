@@ -19,8 +19,10 @@ export function exactAutoDeliveryVariant(goal){
  if(!goal?.variant||typeof goal.variant!=='object'||
     Array.isArray(goal.variant)||typeof goal.item!=='string'||
     !goal.item||!Number.isSafeInteger(goal.level)||goal.level<0)return null;
- const key=identity({name:goal.item,level:goal.level,...goal.variant});
- return typeof key==='string'&&key.length<=512?key:null;
+ try{
+  const key=identity({name:goal.item,level:goal.level,...goal.variant});
+  return typeof key==='string'&&key.length<=512?key:null;
+ }catch{return null;}
 }
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.

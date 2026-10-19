@@ -54,20 +54,22 @@ export function safeSquadConvergenceStep(character,anchor,monsters=[],canMove=()
     now-anchor.received>4000||
     ![character.x,character.y,anchor.x,anchor.y].every(Number.isFinite))
    return null;
- const gap=distance(character,anchor);
- if(gap<=minimumGap)return null;
- const heading=Math.atan2(anchor.y-character.y,anchor.x-character.x);
+ const from=xy(character),to=xy(anchor),gap=distance(character,anchor);
+ if(![from.x,from.y,to.x,to.y].every(Number.isFinite)||
+    gap<=minimumGap)return null;
+ const heading=Math.atan2(to.y-from.y,to.x-from.x);
  const active=(monsters??[]).filter(m=>m&&m.hp>0&&!m.dead&&
-   samePlace(character,m)&&Number.isFinite(m.x)&&Number.isFinite(m.y));
+   samePlace(character,m)&&Number.isFinite(xy(m).x)&&Number.isFinite(xy(m).y));
  let best=null;
  for(const step of [80,55,35]){
   for(const offset of [0,-Math.PI/6,Math.PI/6,-Math.PI/3,Math.PI/3]){
-   const x=character.x+Math.cos(heading+offset)*step;
-   const y=character.y+Math.sin(heading+offset)*step;
-   const nextGap=Math.hypot(anchor.x-x,anchor.y-y);
+   const x=from.x+Math.cos(heading+offset)*step;
+   const y=from.y+Math.sin(heading+offset)*step;
+   const nextGap=Math.hypot(to.x-x,to.y-y);
    if(nextGap>gap-12||!canMove(x,y))continue;
    const unsafe=active.some(m=>{
-    const before=distance(character,m),after=Math.hypot(x-m.x,y-m.y);
+    const hostile=xy(m);
+    const before=distance(character,m),after=Math.hypot(x-hostile.x,y-hostile.y);
     const clearance=Math.max(85,(Number.isFinite(m.range)?m.range:30)+50);
     // A current self-attacker must never be rewarded for driving us
     // deeper into its attack zone.
@@ -78,10 +80,10 @@ export function safeSquadConvergenceStep(character,anchor,monsters=[],canMove=()
     if(before>=clearance){
      const dx=x-character.x,dy=y-character.y;
      const fraction=Math.max(0,Math.min(1,
-      ((m.x-character.x)*dx+(m.y-character.y)*dy)/
+      ((hostile.x-from.x)*dx+(hostile.y-from.y)*dy)/
       Math.max(1,dx*dx+dy*dy)));
-     if(Math.hypot(character.x+fraction*dx-m.x,
-       character.y+fraction*dy-m.y)<clearance)return true;
+     if(Math.hypot(from.x+fraction*dx-hostile.x,
+       from.y+fraction*dy-hostile.y)<clearance)return true;
     }
     return false;
    });

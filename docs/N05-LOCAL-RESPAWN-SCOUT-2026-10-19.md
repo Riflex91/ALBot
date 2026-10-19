@@ -24,3 +24,11 @@ Es wurden nur Offline-Regressionstests ergänzt. Es liegt keine Ingame-Liveabnah
 Die lokale Kill-Sichtung und ihr flüchtiges Hit-Journal sind nun zusätzlich an die **konkrete laufende Bot-Session** gebunden. Wechselt die Session bei gleichem Realm, räumt der Kalender eigene kurzlebige Treffer-, Scout- und Sichtungsbelege vollständig ab; selbst bei anschließender Rückkehr in die ursprüngliche Session werden sie nicht neu freigeschaltet. Ein Server-Todesereignis aus der alten Session kann keinen Kill für die neue Session zertifizieren.
 
 Fehlt eine gültige Session-ID, erzeugt N05 weder neue lokale Sichtungen noch einen eigenen Killbeleg. Der Status zeigt die aktuelle Session nur diagnostisch; der Kalender bleibt nicht ausführbar und erteilt weiterhin keine Reise- oder Kampfberechtigungen. Persistierte historische Killzeilen bleiben nach Neustart (unverändert zu oben) nicht zur Verlängerung eines Scoutfensters berechtigt.
+
+## Folgeinkrement – Schutz gegen alte Monster-Renderdaten
+
+Ein nach einem bestätigten Kill **immer noch als lebendig gerenderter** Eintrag derselben Monster-ID darf den gerade gespeicherten Killbeleg nicht löschen. Ein neuer Lebenszyklus dieser ID wird daher erst aus einer späteren, direkt und lokal beobachteten **Sichtungslücke** und einer neuen Lebendsichtung abgeleitet. Ein wiederholtes Hit-/Death-Ereignis, solange die vorherige Killmarkierung noch besteht, wird nicht erneut als Kill quittiert.
+
+Auch nach dem Neustart gespeicherte historische Kills behalten diesen Schutz; eine danach lokal beobachtete negative Sichtung erlaubt später eine neue gewöhnliche Lebendsichtung, jedoch **keine neu gestartete Scout-Lease** und keine behauptete Respawnzeit. Die Beobachtung des Fehlens darf bei unbekannten oder nicht endlichen Charakterkoordinaten weder als positiv noch als negativ gewertet werden.
+
+Dieses Paket bleibt vollständig passiv: kein Scout-Reisen, keine neuen Monsterfreigaben, keine Kampf- oder Respawn-Prognose und keine Änderung an der separat signierten Ingame-Runtime.

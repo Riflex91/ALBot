@@ -144,7 +144,9 @@ test('W06 finite procurement ignores base-matching offers with different account
  ]){
   const f=fixture();
   mutate(f.seller.slots.trade2);
-  assert.equal(f.market.hasVisibleBuyOffer(f.item),false);
+  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),false);
+  assert.equal(f.market.hasVisibleBuyOffer(f.item),true,
+   'explicit market discovery retains its existing broader variant view');
   assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
   assert.equal(f.jobs.length,0,'a mismatched offer never becomes an admitted purchase');
   assert.equal(f.calls.length,0);

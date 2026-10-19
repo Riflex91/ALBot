@@ -360,7 +360,8 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const endangeredPeer=emergency?.critical?.some(h=>
      h?.name!==c.name&&h?.threats>0);
     const marchLeader=bot.transport?.fresh?.(bot.leader);
-    const marchDestination=cfg.party.enabled&&bot.leader&&me.name!==bot.leader?
+    const marchDestination=me.role==='farmer'&&cfg.farming.enabled!==false&&
+     cfg.party.enabled&&bot.leader&&me.name!==bot.leader?
      sharedFarmMarchDestination(c,marchLeader,p.realm()):null;
     const actualBlock=blockingMonster();
     if(marchDestination&&!samePlace(c,marchLeader)&&!actualBlock&&!endangeredPeer){

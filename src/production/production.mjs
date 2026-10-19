@@ -49,21 +49,37 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
  // A generic target can use any physical variant. It must share the gross
  // item/level capacity with exact targets rather than creating a second
  // virtual copy under another variant key.
+ // Malformed external goals/counters cannot crash the Merchant planner or
+ // be silently widened into a generic recipient delivery.
+ if(!Array.isArray(goals)||goals.length>128||
+    typeof delivered!=='function'||typeof available!=='function')return [];
  const grouped=new Map(),totalUsed=new Map(),genericUsed=new Map(),
   exactUsed=new Map();
  const verified=n=>n===Infinity||Number.isSafeInteger(n)&&n>=0;
  for(const g of goals){
-  if(!g?.recipient||g.recipient===sender||
+  if(typeof g?.recipient!=='string'||!g.recipient||g.recipient===sender||
+     typeof g.item!=='string'||!g.item||
+     !Number.isSafeInteger(g.level)||g.level<0||g.level>99||
      !Number.isSafeInteger(g.quantity)||g.quantity<1)continue;
-  const settled=delivered(g)??0;
-  if(!Number.isSafeInteger(settled)||settled<0)continue;
-  const remaining=Math.max(0,g.quantity-settled);
-  if(!remaining)continue;
-  const groupKey=JSON.stringify([g.item,g.level]);
   const exact=g.variant!==null&&g.variant!==undefined;
-  const variantKey=exact?identity({name:g.item,level:g.level,...g.variant}):null;
-  const capacity=available(g);
-  const gross=exact?available({...g,variant:null}):capacity;
+  // The exact same validated identity must authorize both planning and
+  // the later generated send rule. Cyclic/oversized/mismatched variants
+  // are invalid, never generic fallbacks.
+  const variantKey=exact?exactAutoDeliveryVariant(g):null;
+  if(exact&&!variantKey)continue;
+  let settled,capacity,gross;
+  try{
+   settled=delivered(g)??0;
+   if(!Number.isSafeInteger(settled)||settled<0)continue;
+   if(settled>=g.quantity)continue;
+   capacity=available(g);
+   gross=exact?available({...g,variant:null}):capacity;
+  }catch{
+   // A failed demand/stock query means this goal is not actionable.
+   continue;
+  }
+  const remaining=g.quantity-settled;
+  const groupKey=JSON.stringify([g.item,g.level]);
   if(!verified(capacity)||!verified(gross)||capacity>gross)continue;
   const already=totalUsed.get(groupKey)??0;
   let free=gross-already;

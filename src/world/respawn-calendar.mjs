@@ -20,7 +20,7 @@ function validRow(r,realm,now){
 export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  const {p,me}=bot,key='albot:respawn-calendar:v1:'+me.name;
  const hits=new Map(),rows=new Map();
- let persisted=true,realm=p.realm(),lastSample=0;
+ let persisted=true,realm=p.realm(),session=bot.session,lastSample=0;
  const saved=p.read?.(key);
  if(saved?.version===1&&saved.owner===me.name&&saved.realm===realm&&
     Array.isArray(saved.rows)&&saved.rows.length<=MAX_ROWS){
@@ -33,9 +33,13 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
     scoutUntil:null,scoutNegatives:0,resightedAt:null});
  }
  function expire(){
-  const time=now(),current=p.realm();
-  if(current!==realm){realm=current;rows.clear();hits.clear();
-   lastSample=0;persisted=false;}
+  const time=now(),current=p.realm(),currentSession=bot.session;
+  // A session restart invalidates all local sighting/hit/scout evidence,
+  // even when the same character remains on the same server and map.
+  if(current!==realm||currentSession!==session){
+   realm=current;session=currentSession;rows.clear();hits.clear();
+   lastSample=0;persisted=false;
+  }
   for(const [id,row] of rows){
    if(time-row.lastSeenAt>MAX_AGE_MS||row.lastSeenAt>time){
     rows.delete(id);continue;
@@ -55,7 +59,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  };
  function sample(){
   expire();
-  if(!bot.running)return;
+  if(!bot.running||!cleanName(session))return;
   const time=now(),where=location(realm,p.c);if(!where)return;
   // Bounded polling; local visible entities are sightings, not global spawns.
   if(time-lastSample<1500)return;
@@ -106,18 +110,19 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
  }
  function hit(data){
   expire();
-  if(!bot.running||data?.actor!==me.name||!(data.damage>0)||
+  if(!bot.running||!cleanName(session)||data?.actor!==me.name||!(data.damage>0)||
      !cleanName(data.target))return;
   const entity=bot.entity?.(data.target),scope=scoped(entity);
   if(!scope||!same(scope,location(realm,p.c)))return;
-  hits.set(data.target,{at:now(),monster:entity.mtype,...scope,
+  hits.set(data.target,{at:now(),session,monster:entity.mtype,...scope,
    x:entity.x,y:entity.y});
   if(hits.size>MAX_HITS)hits.delete(hits.keys().next().value);
   if(data.kill===true)credit(data.target);
  }
  function credit(id){
   expire();
-  const hit=hits.get(id);if(!hit||now()-hit.at>MAX_HIT_MS||
+  const hit=hits.get(id);if(!cleanName(session)||!hit||
+     hit.session!==session||now()-hit.at>MAX_HIT_MS||
      !same(hit,location(realm,p.c)))return false;
   const time=now();
   const old=rows.get(id);
@@ -144,6 +149,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   const time=now(),where=location(realm,p.c);
   return {version:1,mode:'passive-observation-only',executable:false,
    predictionAuthorized:false,realm,owner:me.name,
+   session:cleanName(session)?session:null,
    persistence:persisted?'best-effort':'unconfirmed',
    rows:[...rows.values()].filter(r=>same(r,where)).slice(-MAX_ROWS)
     .map(r=>({id:r.id,monster:r.monster,map:r.map,in:r.in,

@@ -1,9 +1,14 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
 const SYSTEM_REWARD_PHRASES=['server.cave.mail_subject','server.tracktrix.mail_subject'];
-export function rewardMailAttachment(row,name,G){
+export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
+ // A server-confirmed taken mail is no longer claimable. The recovery
+ // reader must validate its attachment independently of can_take, while
+ // ordinary claims remain restricted to untaken, explicitly claimable mail.
+ const claimable=!recoverTaken&&row?.can_take===true&&row?.taken!==true,
+  acknowledged=recoverTaken===true&&row?.taken===true;
  if(!row||typeof row.id!=='string'||!/^ML_[A-Za-z0-9_:.-]{1,240}$/.test(row.id)||
-    row.to!==name||row.can_take!==true||
+    row.to!==name||!(claimable||acknowledged)||
     !SYSTEM_REWARD_PHRASES.includes(row.subject_message?.phrase))return null;
  let item=row.item;
  if(typeof item==='string'){
@@ -74,7 +79,8 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   !Object.keys(p.c.c??{}).length&&!bot.monsters().some(m=>m.target===p.c.name&&m.hp>0&&!m.dead);
  function reconcile(rows){
   const j=bot.journal;if(bot.exec.pending?.has('mail.claim')||j?.kind!=='mail.claim'||j.owner!==bot.me.name||j.realm!==p.realm())return;
-  const row=rows.find(r=>r.id===j.mailId),item=rewardMailAttachment(row,bot.me.name,p.G);
+  const row=rows.find(r=>r.id===j.mailId),
+   item=rewardMailAttachment(row,bot.me.name,p.G,{recoverTaken:true});
   if(row?.taken!==true||!item||JSON.stringify(item)!==JSON.stringify(j.attachment)||
      !rewardClaimDelta(j,p.c))return;
   bot.endValue('confirmed');

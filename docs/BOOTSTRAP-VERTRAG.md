@@ -23,7 +23,7 @@ eigenständiger Spiel-Livebeleg vor.
 
 | Feld | Beobachteter Wert |
 | --- | --- |
-| Manifest `sequence` | `12` |
+| Manifest `sequence` | `13` |
 | Manifest `version` | `0.13.0-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
 | Manifest `bytes` | `766793` |

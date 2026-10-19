@@ -78,3 +78,11 @@ Die freigegebene N05-Solo-Direktroute muss **vollständig innerhalb** der vom be
 Während eines eigenen laufenden Scout-Auftrags prüft N05 erneut die **aktuelle physische Charakterposition** und den genehmigten Zielpunkt gegen diese Grenzen. Eine unerwartete Positionsabweichung oder eine Verkleinerung der genehmigten Spawnfläche beendet den Hopp sicherheitsbedingt und verbraucht die Einmalfreigabe. Ein verschwundener Bewegungsauftrag kann nur als `local-arrival-observed` gelten, wenn die aktuelle Endposition und der ursprünglich genehmigte Scoutpunkt weiterhin innerhalb der aktuellen zulässigen Spawnfläche liegen. Andernfalls bleibt das Ergebnis `outcome-unverified`.
 
 Weiterhin keine Wanderung zu anderen Maps oder Spawns, keine Gruppen-Sonderreise, keine Respawnvorhersage und keine automatische Wiederholung.
+
+## Erneute N05-Freigabe zum tatsächlichen Dispatch-Zeitpunkt
+
+Die Bot-Aktionsausführung kann eine Bewegung zunächst nur in einem Frame vormerken. Die ursprüngliche N05-Planprüfung allein schützt daher nicht vor **Freigabeänderungen zwischen Reservierung und dem späteren nativen `move`-Aufruf**.
+
+Jeder Scout-Bewegungsauftrag führt jetzt eine flüchtige, an Session, Realm, genehmigte Plan-ID, konkrete Monster-ID, Kill-Zeitstempel und exakten Zielpunkt gebundene Dispatch-Freigabe mit sich. Der Executor prüft diese Freigabe unmittelbar beim tatsächlichen Ausführen erneut: aktuelle Solo- und Team-/Kampfsicherheit, gültiger Farmplan, Map-/Monsterfreigabe, HP und Auftragssperren, weiterhin frische negative Sichtung, genehmigte Spawn-Innenfläche und unveränderte reale Geometrie. Gleichzeitig wird der letzte `can_move_to`-Nachweis erneut eingeholt. Fehlt eine Bedingung, gibt es **keinen** nativen `move`-Aufruf.
+
+Direkte `go(..., 'scout')`- oder `local(..., 'scout')`-Aufrufe ohne eine solche aktive Freigabefunktion bleiben gesperrt. Das allgemeine Bewegungsverhalten von Farm-, Quest- und Merchant-Aktionen bleibt unverändert. Ein vorgemerkter, später widerrufener Scout-Hopp bleibt **ohne automatische Wiederholung**. Der Status unterscheidet weiterhin angeforderte/ungeklärte Bewegung von physisch belegter Ankunft; daraus entsteht kein Respawnbeweis.

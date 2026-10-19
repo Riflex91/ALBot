@@ -20,7 +20,10 @@ export function exactAutoDeliveryVariant(goal){
     Array.isArray(goal.variant)||typeof goal.item!=='string'||
     !goal.item||!Number.isSafeInteger(goal.level)||goal.level<0)return null;
  try{
-  const key=identity({name:goal.item,level:goal.level,...goal.variant});
+  if(Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
+     Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
+    return null;
+  const key=identity({...goal.variant,name:goal.item,level:goal.level});
   return typeof key==='string'&&key.length<=512?key:null;
  }catch{return null;}
 }
@@ -29,9 +32,15 @@ export function exactAutoDeliveryVariant(goal){
 export function productionGoalMatchesItem(item,goal){
  if(!item)return false;
  if(!goal||goal.variant===null||goal.variant===undefined)return true;
- if(typeof goal.variant!=='object'||Array.isArray(goal.variant))return false;
+ if(typeof goal.variant!=='object'||Array.isArray(goal.variant)||
+    typeof goal.item!=='string'||!goal.item||
+    !Number.isSafeInteger(goal.level)||goal.level<0||
+    item.name!==goal.item||(item.level??0)!==goal.level||
+    Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
+    Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
+   return false;
  try{return identity(item)===identity({
-  name:goal.item,level:goal.level,...goal.variant
+  ...goal.variant,name:goal.item,level:goal.level
  });}catch{return false;}
 }
 // Independent recipients require independent send rules even for identical items.

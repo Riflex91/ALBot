@@ -54,7 +54,7 @@ ein tatsächlich durch einen Angreifer aufgehaltenes Mitglied erhält Teamhilfe.
 Neue Regressionen: `test/20261019-teamflow.test.mjs` (neun Szenarien), dazu
 angepasste bisherige Tests für den ausdrücklich geänderten Umgang mit
 Seashell-Priorität und bloßer Weg-Aggro. Vollständige lokale Offline-Suite:
-1745/1745 erfolgreich; Runtime/Werkstatt/Bootstrap gebaut. Linux-/Windows-CI
+1752/1752 erfolgreich; Runtime/Werkstatt/Bootstrap gebaut. Linux-/Windows-CI
 und signierter Kanal werden vor bzw. nach Veröffentlichung separat geprüft.
 Persönliche `ALBotConfig` bleibt unverändert.
 

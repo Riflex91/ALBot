@@ -1,4 +1,4 @@
-import {identity,protectedItem} from '../core/policy.mjs';
+import {identity,protectedItem,verifiedExactGoalIdentity} from '../core/policy.mjs';
 
 // W10/W13: a server chest_opened event attributes the individual looter,
 // even when someone else opened the party chest. It is NOT proof of an
@@ -19,18 +19,7 @@ function w13GearTargetMatches(g,item,variant){
  if(typeof g?.recipient!=='string'||!g.recipient||
     g.item!==item.name||g.level!==(item.level??0))return false;
  if(g.variant===null||g.variant===undefined)return true;
- if(typeof g.variant!=='object'||Array.isArray(g.variant))return false;
- try{
-  // identity() intentionally selects only canonical item fields. A cycle
-  // in an otherwise ignored field is still malformed objective data and
-  // must not silently become a valid recipient suggestion.
-  const serialized=JSON.stringify(g.variant);
-  if(typeof serialized!=='string'||serialized.length>2048)return false;
-  if(Object.hasOwn(g.variant,'name')&&g.variant.name!==g.item||
-     Object.hasOwn(g.variant,'level')&&g.variant.level!==g.level)
-   return false;
-  return w13Identity({...g.variant,name:g.item,level:g.level})===variant;
- }catch{return false;}
+ return verifiedExactGoalIdentity(g)===variant;
 }
 function w13Stock(items){
  if(!Array.isArray(items)||items.length>256)return null;

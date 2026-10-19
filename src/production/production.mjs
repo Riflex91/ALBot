@@ -27,7 +27,8 @@ export function exactAutoDeliveryVariant(goal){
 // Shared exact-variant semantics across availability, outbound receipts,
 // gross reservations and the generated send rule's item identity.
 export function productionGoalMatchesItem(item,goal){
- if(!item||!goal?.variant)return !!item;
+ if(!item)return false;
+ if(!goal||goal.variant===null||goal.variant===undefined)return true;
  if(typeof goal.variant!=='object'||Array.isArray(goal.variant))return false;
  try{return identity(item)===identity({
   name:goal.item,level:goal.level,...goal.variant

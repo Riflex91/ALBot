@@ -54,8 +54,9 @@ ein tatsächlich durch einen Angreifer aufgehaltenes Mitglied erhält Teamhilfe.
 Neue Regressionen: `test/20261019-teamflow.test.mjs` (zehn Szenarien), dazu
 angepasste bisherige Tests für den ausdrücklich geänderten Umgang mit
 Seashell-Priorität und bloßer Weg-Aggro. Vollständige lokale Offline-Suite:
-1753/1753 erfolgreich; Runtime/Werkstatt/Bootstrap gebaut. Linux-/Windows-CI
-und signierter Kanal werden vor bzw. nach Veröffentlichung separat geprüft.
+1753/1753 erfolgreich; Runtime/Werkstatt/Bootstrap gebaut. Linux-/Windows-CI [39313454586](https://github.com/Riflex91/ALBot/actions/runs/39313454586) grün.
+Signierworkflow [39313699242](https://github.com/Riflex91/ALBot/actions/runs/39313699242) erfolgreich; Sequence 9, 760242 Bytes,
+SHA-256 `e7c4183cb912d567462fb288fe401374311659bad6cbf96982454bf6a2dacf7e`, ECDSA-P-256-Signatur und Bytegleichheit zu Main verifiziert.
 Persönliche `ALBotConfig` bleibt unverändert.
 
 Im Spiel noch zu prüfen: zehn Minuten gemeinsame Reise einschließlich Portal,

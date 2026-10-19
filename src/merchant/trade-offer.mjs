@@ -49,6 +49,8 @@ export function ownTradeOfferPlan(bot,slot){
  const before=variantCount(p.c.items,item);
  const wanted={name:rule.wantItem,level:0};
  const receiveBefore=variantCount(p.c.items,wanted);
+ if(!Number.isSafeInteger(before)||before<1||
+    !Number.isSafeInteger(receiveBefore)||receiveBefore<0)return null;
  const room=capacityAfterConsumption(p.c.items,[{slot,quantity:1}],
   wanted,wantMeta,{inventorySize:p.c.isize});
  if(!room||room.units<1)return null;
@@ -70,12 +72,14 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   saved.realm===p.realm()&&/^trade([1-9]|1[0-6])$/.test(saved.offerSlot)&&
   typeof saved.rid==='string'&&!!saved.rid&&
   typeof saved.outgoing==='string'&&typeof saved.incoming==='string'&&
-  Number.isSafeInteger(saved.receiveBefore)&&saved.receiveBefore>=0;
+  Number.isSafeInteger(saved.receiveBefore)&&saved.receiveBefore>=0&&
+  Number.isSafeInteger(saved.outgoingBefore)&&saved.outgoingBefore>=1;
  function postIntent(plan){
   const intent={version:1,owner:me.name,realm:plan.realm,
    offerSlot:plan.offerSlot,at:now(),state:'dispatch-intent-unverified',
    outgoing:identity(plan.item),incoming:identity(plan.wanted),
-   receiveBefore:plan.receiveBefore};
+   receiveBefore:plan.receiveBefore,
+   outgoingBefore:plan.before};
   // Persist BEFORE the external side effect. If write or server call fails
   // the possible offer remains unknown and cannot be retried automatically.
   if(!p.write?.(key,intent))throw Error('Barter intent persistence failed');
@@ -165,9 +169,25 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      !Array.isArray(p.c.items)||
      p.c.slots?.[saved.offerSlot]||
      identity(p.c.items[swapEvidence.snum])!==saved.incoming)return false;
-  const actual=p.c.items.reduce((count,item)=>
-   count+(item&&identity(item)===saved.incoming?(item.q??1):0),0);
-  if(actual!==saved.receiveBefore+1)return false;
+  // The listed outgoing unit left the inventory when trade_offer posted.
+  // A vanished listing plus matching incoming item is not proof of a swap
+  // if the original outgoing stock has returned or drifted since posting.
+  // Missing/unsafe old baselines remain unresolved, never backfilled.
+  const countUnits=variant=>{
+   let count=0;
+   for(const item of p.c.items){
+    if(!item||identity(item)!==variant)continue;
+    const quantity=item.q??1;
+    if(!Number.isSafeInteger(quantity)||quantity<1||
+       !Number.isSafeInteger(count+quantity))return null;
+    count+=quantity;
+   }
+   return count;
+  };
+  const incoming=countUnits(saved.incoming),outgoing=countUnits(saved.outgoing);
+  if(!Number.isSafeInteger(saved.receiveBefore+1)||
+     incoming!==saved.receiveBefore+1||
+     outgoing!==saved.outgoingBefore-1)return false;
   const next={...saved,state:'swap-receipt-verified-no-repost',
    receipt:{buyer:swapEvidence.buyer,snum:swapEvidence.snum,
     at:now(),rid:swapEvidence.rid}};

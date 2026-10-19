@@ -231,10 +231,9 @@ export function createBank(bot){
      identity(live)!==r.reserveStage.variant||
      !need||need.floor!==r.reserveStage.floor||
      r.take>need.missing)return false;
-  const bankHeld=packs().filter(([pack])=>packMap(pack)===p.c.map)
-   .reduce((sum,[,items])=>sum+items.reduce((n,i)=>
-    n+(i&&identity(i)===identity(live)?i.q??1:0),0),0);
-  return Number.isSafeInteger(bankHeld)&&need.held+bankHeld>need.floor;
+  const bankHeld=observedLocalReserveStock(live);
+  return bankHeld!==null&&Number.isSafeInteger(need.held+bankHeld)&&
+   need.held+bankHeld>need.floor;
  }
  function partialReady(r,phase){
   return pending===r&&partialEvidence(r).phase===phase&&
@@ -434,6 +433,27 @@ export function createBank(bot){
    identity(r.item)===identity(item)&&e.explicit?.(r.item)?.action!=='keep')?.pack??null;};
  const definitions=()=>p.G?.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
+ // W04: use ALL currently visible same-realm local bank packs for backing,
+ // not just the source pack's immutable before-image. This is a read-only
+ // check, never an account-wide authorization or a replacement for receipts.
+ // A malformed matching stack cannot help establish sellable excess.
+ function observedLocalReserveStock(item){
+  const variant=identity(item);
+  if(!variant)return null;
+  let total=0,localPacks=0;
+  for(const [pack,items] of packs()){
+   if(packMap(pack)!==p.c.map)continue;
+   localPacks++;
+   for(const held of items){
+    if(!held||identity(held)!==variant)continue;
+    const q=held.q??1;
+    if(!e.safe(held)||!Number.isSafeInteger(q)||q<1||
+       q>stackMax(held)||!Number.isSafeInteger(total+q))return null;
+    total+=q;
+   }
+  }
+  return localPacks?total:null;
+ }
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
  function ready(pack='items0',recovery=false){const map=packMap(pack);return !!map&&(cfg.merchant.bank||recovery)&&me.name===cfg.party.merchant&&e.travel(location(map),'Bank')&&!!p.c.bank;}
  // Non-destructive capacity parking is a private, single-operation bank path.
@@ -936,10 +956,9 @@ export function createBank(bot){
        (q>need.missing&&!(cfg.merchant.partialBank===true&&
         bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999))))
      return null;
-    const localBank=rows.filter(([name])=>packMap(name)===p.c.map)
-     .reduce((count,[,items])=>count+items.reduce((n,held)=>
-      n+(held&&identity(held)===identity(item)?held.q??1:0),0),0);
-    if(!Number.isSafeInteger(localBank)||need.held+localBank<=need.floor)return null;
+    const localBank=observedLocalReserveStock(item);
+    if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
+       need.held+localBank<=need.floor)return null;
     return {price:0,lossScore:-q-1e9,reserveStage:true};
    }});
   if(!batch.valid){
@@ -977,17 +996,19 @@ export function createBank(bot){
       bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999)))
     return false;
    const take=Math.min(q,need.missing);
-   const localBank=rows.filter(([name])=>packMap(name)===p.c.map)
-    .reduce((sum,[,items])=>sum+items.reduce((n,held)=>
-     n+(held&&identity(held)===identity(item)?held.q??1:0),0),0);
-   if(need.held+localBank<=need.floor)return false;
+   const localBank=observedLocalReserveStock(item);
+   if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
+      need.held+localBank<=need.floor)return false;
    // The existing single-bank journal durably records this reserved stage
    // before API dispatch and recovers exact slot evidence after interruption.
    const stage={floor:need.floor,variant:identity(item),guard:()=>{
     const live=p.c.bank?.[selected.pack]?.[selected.slot],
      current=bankOperatingReserveNeed(bot,live);
+    const remaining=live?observedLocalReserveStock(live):null;
     return !!current&&current.floor===need.floor&&
      identity(live)===identity(item)&&current.missing>=take&&
+     remaining!==null&&Number.isSafeInteger(current.held+remaining)&&
+     current.held+remaining>current.floor&&
      packMap(selected.pack)===p.c.map&&
      (q<=take||cfg.merchant.partialBank===true&&bot.free()>=2);
    }};

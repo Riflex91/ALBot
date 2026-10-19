@@ -123,6 +123,7 @@ export function bossReadiness(G,id,live,members,{maxSeconds=300,planned=false,me
 }
 export function createBosses(bot){
  const {p,cfg}=bot;let active=null,damage=0,healing=0,since=Date.now(),phase='IDLE',reason='',definition='',heals=[];
+ const lastReadinessNote=new Map();
  const healContext=()=>knowledgeFingerprint([p.G.version,p.realm(),bot.farmers.map(n=>semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))]);
  function members(planned){return bot.farmers.map(n=>n===bot.me.name?{...p.c,name:n}:bot.transport.fresh(n)).filter(h=>h&&(h.name===bot.me.name||h.running&&h.realm===p.realm())&&!h.rip&&(planned||samePlace(p.c,h)&&distance(p.c,h)<=cfg.party.followDistance*2)).map(h=>currentConditionEvidence(bot,{...h,...h.stats}));}
  function evaluate(id,live,planned=false){if(!cfg.world.bossTactics||!bossProfile(p.G,id))return null;
@@ -147,8 +148,23 @@ export function createBosses(bot){
   const stamp=knowledgeFingerprint([p.G.monsters[id],bot.farmers.map(n=>semanticGear(n===bot.me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear))]);
   if(active!==id||stamp!==definition){active=id;definition=stamp;since=Date.now();damage=healing=0;}
   const live=bot.monsters().find(m=>m.mtype===id),r=evaluate(id,live,!live);phase=r?.phase??'IDLE';reason=r?.reason??'';
-  if(live&&r&&!r.safe&&phase!=='WAIT'){bot.strategy.failActivity(reason,id);return;}
-  if(live&&phase==='WAIT'){bot.target=null;bot.reason=reason;return;}
+  if(live&&r&&!r.safe&&['WAIT','ASSEMBLE'].includes(phase)){
+   // A travelling or regrouping squad is not evidence of a failed boss fight.
+   // Do not add this species to the death/failure quarantine while assembling.
+   bot.target=null;bot.reason=reason;
+   if(Date.now()-(lastReadinessNote.get(id+':'+phase)??0)>=30000){
+    lastReadinessNote.set(id+':'+phase,Date.now());
+    bot.event?.('boss.readinessDeferred',{target:id,phase,reason,
+     present:bot.farmers.filter(n=>n===bot.me.name||!!bot.transport.fresh(n)?.running),
+     required:bot.farmers});
+   }
+   return;
+  }
+  if(live&&r&&!r.safe){
+   bot.event?.('boss.readinessRejected',{target:id,phase,reason,
+    dps:r.dps??null,seconds:r.seconds??null,damageModel:r.damageShadow?.reason??null});
+   bot.strategy.failActivity(reason,id);return;
+  }
   if(live&&r?.safe&&cfg.party.enabled&&live.target&&live.target!==r.tank&&bot.me.name===r.tank&&p.c.ctype==='warrior')bot.skills?.use('taunt',live,.5,2000);
   if(live&&phase==='BREAK_SHELL'&&p.c.slots?.mainhand?.name==='basher')bot.skills?.use('stomp',live,.5,1000);
   // Adds remain separate targets unless individually approved by the same

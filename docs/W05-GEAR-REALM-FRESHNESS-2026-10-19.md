@@ -45,3 +45,6 @@ Slots. Der Vergleich bleibt ein heuristisches Rollenmodell
 und ist **keine** Live-Abnahme oder vollständige
 accountweite Gearallokation. Signierter Bootstrap/Release
 und persönliche Konfiguration bleiben unverändert.
+
+**CI-Hinweis:** Eine erfolgreiche temporäre Artefaktgenerierung ersetzt nicht
+`verify` und `windows-verification` auf dem endgültigen PR-Commit.

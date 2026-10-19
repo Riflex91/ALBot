@@ -12,6 +12,7 @@ function fixture(){
  const seller={id:'S',name:'Seller',type:'character',stand:true,
   map:'main',x:60,y:0,slots:{trade3:listing}};
  const items=[{...pay},{...pay},null],sellerRecord={S:seller};
+ let realm='EUI';
  const r={enabled:true,action:'swap',role:'merchant',character:'M',
   item:'sword',statType:'',property:'',title:'',
   minLevel:0,maxLevel:0,keep:1,teamReserve:0,batch:1,
@@ -21,7 +22,8 @@ function fixture(){
  const p={c:{name:'M',items,isize:3,map:'main',x:0,y:0},
   G:{items:{sword:{type:'weapon',wtype:'sword'},
    wand:{type:'weapon',wtype:'wand'}}},
-  entities:sellerRecord,has:name=>name==='trade_swap',call:null};
+  entities:sellerRecord,realm:()=>realm,
+  has:name=>name==='trade_swap',call:null};
  const calls=[];p.call=(name,...args)=>{calls.push({name,args});
   if(name!=='trade_swap')throw Error('unexpected method');
   const [target,tradeSlot,slot]=args;
@@ -42,9 +44,11 @@ function fixture(){
   perform:(name,opts)=>{pending={kind:name,...opts};return true}};
  const bot={p,cfg:{merchant:{enabled:true},items:[r]},
   me:{name:'M',role:'merchant'},running:true,
+  session:'merchant-session',farmers:[],teamNames:['M'],
   economy:e,entity:id=>sellerRecord[id],inventoryBlocked:false,journal:null};
  return {bot,p,e,r,pay,receive,listing,seller,items,calls,
   setAuthorized:x=>authorized=x,setReserved:n=>reserved=n,
+  setRealm:x=>realm=x,
   get pending(){return pending;},swaps:createSingleSwap(bot)};
 }
 test('G09 swap is an optional, explicit inventory action, not inferred from marketBuy',()=>{
@@ -142,4 +146,114 @@ test('G09 successful API result without physical item receipt remains unresolved
  assert.equal(f.swaps.tick(0,f.r),true);
  await f.pending.call();
  assert.equal(f.pending.observe(),false,'server success alone cannot settle value journal');
+});
+
+test('G09 seller payment selectors are fully verified against the actual outgoing item',()=>{
+ for(const change of [
+  f=>{f.listing.want.stat_type='dex';},
+  f=>{f.listing.want.title='rare';},
+  f=>{f.listing.want.p='glow';},
+  f=>{f.listing.want.acc='account';},
+  f=>{f.listing.want.data={extra:1};},
+  f=>{f.listing.want.owner='someone';},
+  f=>{f.listing.want.src='server-drift';},
+  f=>{f.listing.want.q=2;},
+  f=>{f.listing.want.level=1;}
+ ]){
+  const f=fixture();change(f);
+  assert.equal(singleSwapOpportunity(f.bot,0),null,
+   'an unsupported or different requested payment is not an exact match');
+  assert.equal(f.swaps.tick(0,f.r),false);
+  assert.equal(f.calls.length,0);
+ }
+});
+
+test('G09 exact authorized payment stat and title match a matching advertised want',async()=>{
+ const f=fixture();
+ for(const pay of [f.items[0],f.items[1]]){
+  pay.stat_type='dex';pay.title='Rare';
+ }
+ f.r.statType='dex';f.r.title='Rare';
+ f.listing.want.stat_type='dex';f.listing.want.title='Rare';
+ assert.ok(singleSwapOpportunity(f.bot,0));
+ assert.equal(f.swaps.tick(0,f.r),true);
+ assert.equal(f.pending.guard(),true);
+ await f.pending.call();
+ assert.equal(f.pending.observe(),true);
+ assert.equal(f.calls.length,1);
+});
+
+test('G09 a different realm or process session revokes a queued trade',async()=>{
+ for(const change of [
+  f=>{f.setRealm('USIV');},
+  f=>{f.bot.session='merchant-restarted';},
+  f=>{f.bot.session='';},
+  f=>{f.seller.name='Changed Seller';}
+ ]){
+  const f=fixture();assert.equal(f.swaps.tick(0,f.r),true);
+  change(f);
+  assert.equal(f.pending.guard(),false);
+  await assert.rejects(f.pending.call(),/swap-proof-expired-before-call/);
+  assert.equal(f.calls.length,0,
+   'no live API call after realm/session/seller drift');
+ }
+});
+
+test('G09 changes between last arbitration and trade_swap call cannot use stale listing',async()=>{
+ for(const change of [
+  f=>{f.listing.want.title='suspicious';},
+  f=>{f.listing.want.stat_type='dex';},
+  f=>{f.listing.want.q=2;},
+  f=>{f.listing.rid='replaced';},
+  f=>{f.seller.x=400;},
+  f=>{f.setAuthorized(false);},
+  f=>{f.items[1]=null;},
+  f=>{f.setReserved(1);}
+ ]){
+  const f=fixture();assert.equal(f.swaps.tick(0,f.r),true);
+  assert.equal(f.pending.guard(),true);
+  change(f);
+  await assert.rejects(f.pending.call(),/swap-proof-expired-before-call/);
+  assert.equal(f.calls.length,0,
+   'the server cannot be called after a revoked second-side proof');
+ }
+});
+
+test('G09 never consumes an offer from a known own-account teammate',()=>{
+ for(const known of ['farmer','team']){
+  const f=fixture();
+  f.seller.name='Ranger1';
+  if(known==='farmer')f.bot.farmers=['Ranger1'];
+  else f.bot.teamNames=['M','Ranger1'];
+  assert.equal(singleSwapOpportunity(f.bot,0),null);
+  assert.equal(f.swaps.tick(0,f.r),false);
+  assert.equal(f.calls.length,0);
+ }
+});
+
+test('G09 malformed unrelated inventory identity cannot crash the trade planner',()=>{
+ const f=fixture(),cycle={p:3};
+ cycle.self=cycle;
+ f.items[2]={name:'malformed',data:cycle};
+ assert.doesNotThrow(()=>singleSwapOpportunity(f.bot,0));
+ assert.equal(singleSwapOpportunity(f.bot,0),null);
+ assert.equal(f.swaps.tick(0,f.r),false);
+ assert.equal(f.calls.length,0);
+});
+
+test('G09 unverified quota callbacks fail closed instead of minting spare stock',()=>{
+ for(const failure of [
+  f=>{f.e.count=()=>{throw Error('broken inventory query');};},
+  f=>{f.e.count=()=>NaN;},
+  f=>{f.e.count=()=>-1;},
+  f=>{f.e.spare=()=>{throw Error('unknown reserve');};},
+  f=>{f.e.spare=()=>NaN;},
+  f=>{f.e.spare=()=>0.5;}
+ ]){
+  const f=fixture();
+  failure(f);
+  assert.doesNotThrow(()=>singleSwapOpportunity(f.bot,0));
+  assert.equal(singleSwapOpportunity(f.bot,0),null);
+  assert.equal(f.swaps.tick(0,f.r),false);
+ }
 });

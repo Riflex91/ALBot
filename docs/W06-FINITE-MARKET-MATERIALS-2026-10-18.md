@@ -35,3 +35,11 @@ Endliche Produktions-Marktkäufe dürfen ungültige Verkäufermengen nicht mehr 
 Der geplante **Ausgangsbestand der exakten Variante** muss beim verzögerten `trade_buy`-Dispatch weiterhin unverändert sein. So kann ein parallel eingetroffenes Materialstück nicht dazu führen, dass der ursprünglich eingefrorene Post-Buy-Bestandsbeleg später einem anderen Vorgang zugeschrieben wird. Angebotsmenge und Preis werden am Dispatch erneut auf Ganzzahlintegrität geprüft. Bei Drift: kein Kauf, kein künstlicher Erfolg, vorhandenes Wertjournal unverändert.
 
 Die zusätzlichen Einschränkungen gelten nur für bereits autorisierte **endliche Produktions-Marktkäufe**. Eigenständig explizit konfigurierte Marktregeln werden durch dieses Paket nicht erweitert oder rückwirkend verschärft. Keine Freigabe neuer Materialarten, Quellen, Budgets oder Handelskategorien; signierter Release-Kanal bleibt separat.
+
+## Folgeinkrement vom 19.10.2026 – beste zugelassene Live-Verkaufsofferte
+
+Für **endliche Produktions-Marktkäufe** priorisiert der Merchant unter gleichzeitig sichtbaren und erreichbaren Live-Angeboten dieselbe zulässige Materialvariante nach dem niedrigsten Stückpreis, unabhängig von der Reihenfolge der Spieler-Entities und `trade1..trade16`-Slots. Fremde Varianten, ungültige Stapelmengen, unzulässige Stände, unpassende Realms/Instanzen und fehlende RID gelten nicht als Vergleichskandidaten. Nur ein wirklich zulässiger Kauf kann wie bisher über `economy.perform('market.buy')` laufen.
+
+Die Preisrangfolge erteilt keine Transaktionsberechtigung: Zielmengen, `admit()`, aktuelle Regel-/Preisgrenzen, physische Kapazität, live `rid`, Goldrisiko und erneute Dispatch-Verifikation gelten unverändert. Bei gleicher Preisangabe bleibt die beobachtete stabile Reihenfolge. Eigenständig konfigurierte freie `marketBuy`-Regeln behalten ausdrücklich ihre bestehende Markt-Suchreihenfolge.
+
+Der Schritt fügt weder neue Materialquellen noch eine globale Preissuche hinzu. Er arbeitet nur mit den aktuell tatsächlich sichtbaren lokalen Verkäuferständen. Liveabnahme und neue signierte Runtime-Veröffentlichung bleiben separat.

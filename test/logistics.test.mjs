@@ -383,7 +383,7 @@ test('W10/W13 confirmed loot gets first existing authorized item handoff, with n
 });
 test('W13 receipt cannot bypass existing sendRule or gross reservation',()=>{
  const f=receiptPickupPair();
- f.A.cfg.items=f.A.cfg.items.filter(x=>x.item==='ordinary');
+ f.A.cfg.items=f.A.cfg.items.map(x=>x.item==='gem0'?{...x,action:'keep',recipient:''}:x);
  f.A.logistics.poll();
  assert.equal(f.A.logistics.stats().offersSent,1,
   'only separately permitted ordinary item can be offered');

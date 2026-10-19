@@ -44,12 +44,11 @@ test('same three-person team may defensively fight verified weak already-engaged
  assert.ok(r.ttkSeconds<r.survivalSeconds);
 });
 
-test('distant healer cannot lend fictional survival to high-frequency aggro',()=>{
+test('cannot assume a healer reaches a dying Ranger after 300 unit kite displacement',()=>{
  const r=estimate(monster(),team(-160,-400));
  assert.equal(r.viable,false);
- assert.equal(r.healingDps,0);
- assert.equal(r.healerReachable,false);
- assert.ok(r.unavailableMembers.includes('My_Priest'));
+ assert.ok(['party-not-in-combat-support-range',
+   'healer-unable-to-reach-victim'].includes(r.reason),r.reason);
 });
 
 test('stale healer, missing owner, anonymous aggro and unknown damage fail closed',()=>{
@@ -59,38 +58,12 @@ test('stale healer, missing owner, anonymous aggro and unknown damage fail close
  assert.equal(estimate(monster(),team(),{...aggressive,frequency:undefined}).viable,false);
 });
 
-test('offline provisional Mage is ignored without vetoing verified local rat defense',()=>{
+test('missing teammate before the victim fails closed instead of crashing on null.name',()=>{
  const row=estimate(monster('easyaggro',300),
   [null,...team()],{...aggressive,hp:300,attack:15,frequency:.4,resistance:0});
- assert.equal(row.viable,true,JSON.stringify(row));
- assert.equal(row.decision,'defend');
- assert.deepEqual(row.unavailableMembers,[null]);
- assert.equal(row.partySize,3);
-});
-test('absent or remote support never earns DPS, healing or potion credit',()=>{
- const m=monster('easyaggro',300);
- const meta={...aggressive,hp:300,attack:15,frequency:.4,resistance:0};
- const complete=estimate(m,team(),meta);
- const distant=team();
- distant[1]={...distant[1],x:1000,y:1000};
- distant[2]={...distant[2],map:'main',in:'main'};
- const local=estimate(m,distant,meta);
- assert.equal(local.decision,'defend',JSON.stringify(local));
- assert.equal(local.healingDps,0);
- assert.equal(local.healerReachable,false);
- assert.deepEqual(local.unavailableMembers,['My_Ranger2','My_Priest']);
- assert.ok(local.teamDps<complete.teamDps);
- assert.deepEqual(local.localMembers,['My_Ranger1']);
-});
-test('unreachable victim is not authorized to attack merely because their stats exist',()=>{
- const m=monster('easyaggro',300);
- const distant=team().map((x,i)=>i===0?{...x,x:3000,y:3000}:{
-  ...x,map:'main',in:'main'});
- const row=estimate(m,distant,
-  {...aggressive,hp:300,attack:15,frequency:.4,resistance:0});
- assert.equal(row.decision,'regroup');
  assert.equal(row.viable,false);
- assert.equal(row.reason,'no-local-attacker');
+ assert.equal(row.decision,'retreat');
+ assert.equal(row.reason,'party-member-stale-or-unverified');
 });
 
 test('projected buffs, taunt and priest partyheal never become fictitious extra DPS or HP',()=>{

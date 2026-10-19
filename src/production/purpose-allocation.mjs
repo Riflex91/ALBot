@@ -80,9 +80,11 @@ export function purposeReservations({G,goals,stock,delivered=()=>0,exclude=null,
    if(!g.enabled||exclude&&JSON.stringify([g.name,g.item,g.level,g.recipient,g.gearSlot])===JSON.stringify([exclude.name,exclude.item,exclude.level,exclude.recipient,exclude.gearSlot])||recipient&&g.recipient===recipient&&g.item===recipientItem?.name&&g.level===(recipientItem.level??0))continue;
    const settled=g.recipient?delivered(g):0;
    if(!Number.isSafeInteger(settled)||settled<0||
-      !Number.isSafeInteger(g.quantity)||g.quantity<0||
-      settled>g.quantity)throw Error('invalid-purpose-demand');
-   need(g.item,g.level,g.quantity-settled,g.variant);
+      !Number.isSafeInteger(g.quantity)||g.quantity<0)
+    throw Error('invalid-purpose-demand');
+   // A formerly larger goal may have a confirmed delivered amount above
+   // the current smaller target; that goal is satisfied, not a fault.
+   need(g.item,g.level,Math.max(0,g.quantity-settled),g.variant);
   }
  }catch(e){return {blocked:true,reason:e.message,rows:[],quantity:()=>Infinity};}
  const rows=[...reserved.values()];

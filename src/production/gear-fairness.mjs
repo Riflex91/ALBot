@@ -1,13 +1,15 @@
 // Only order automatic goals. Explicit priorities, budgets, locks, compatibility
 // and the existing minimum-improvement test retain their authority.
-export function gearCatchUpPriority(profile,peers){
- if(!profile?.complete||!profile.slots)return 0;
+// Snapshot timestamps are observations, not refreshed heartbeat timestamps.
+export function gearCatchUpPriority(profile,peers,{now=Date.now()}={}){
+ if(!freshGearEvidence(profile,now)||!Array.isArray(peers))return 0;
  const quality=p=>{
-  const items=Object.values(p.slots??{}),equipped=items.filter(Boolean);
-  return {coverage:items.length?equipped.length/items.length:0,
-   level:equipped.length?equipped.reduce((n,i)=>n+(i.level??0),0)/equipped.length:0};
+  const items=SLOT_KEYS.map(key=>p.slots[key]),equipped=items.filter(Boolean);
+  return {coverage:equipped.length/items.length,
+   level:equipped.length?equipped.reduce((n,i)=>n+i.level,0)/equipped.length:0};
  };
- const group=peers.filter(p=>p?.complete&&p.class===profile.class&&p.slots);
+ const group=peers.filter(p=>freshGearEvidence(p,now)&&
+  p.realm===profile.realm&&p.class===profile.class);
  if(!group.length)return 0;
  const own=quality(profile),scores=group.map(quality);
  const coverage=Math.max(...scores.map(p=>p.coverage)),
@@ -30,6 +32,22 @@ const SLOT_PRIORITIES={
  dps:['mainhand','offhand','gloves'],
  economy:['shoes','belt','gloves']
 };
+const MAX_GEAR_EVIDENCE_AGE_MS=7*86400000;
+function freshGearEvidence(profile,now){
+ return !!profile&&profile.complete===true&&
+  typeof profile.realm==='string'&&!!profile.realm&&
+  typeof profile.class==='string'&&!!profile.class&&
+  Number.isFinite(now)&&Number.isSafeInteger(profile.at)&&
+  profile.at>0&&profile.at<=now&&
+  now-profile.at<=MAX_GEAR_EVIDENCE_AGE_MS&&
+  !!profile.slots&&typeof profile.slots==='object'&&
+  SLOT_KEYS.every(key=>{
+   if(!Object.hasOwn(profile.slots,key))return false;
+   const item=profile.slots[key];
+   return !item||typeof item==='object'&&!Array.isArray(item)&&
+    Number.isSafeInteger(item.level)&&item.level>=0&&item.level<=99;
+  });
+}
 function roleCoverage(p,role){
  if(!p?.complete||!p.slots||
     SLOT_KEYS.some(k=>!Object.hasOwn(p.slots,k)))return null;
@@ -42,13 +60,12 @@ export function crossRoleGearPriority(profile,cohort,{
  role='dps',slot='',now=Date.now(),lastImprovedAt=null
 }={}){
  const own=roleCoverage(profile,role);
- // A loaded but outdated/off-realm cached profile cannot earn automatic
- // account-wide priority. The same bounded age applies to peer profiles.
- if(!own||!Array.isArray(cohort)||!Number.isFinite(now)||
-    !Number.isFinite(profile?.at)||profile.at<=0||profile.at>now||
-    now-profile.at>604800000)return 0;
- const values=cohort.filter(x=>x?.profile?.at>0&&now>=x.profile.at&&
-  now-x.profile.at<=604800000).map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);
+ // Freshness AND realm come from actual versioned per-character gear
+ // snapshots. A remote or missing-realm cached profile is not evidence.
+ if(!own||!Array.isArray(cohort)||!freshGearEvidence(profile,now))return 0;
+ const values=cohort.filter(x=>freshGearEvidence(x?.profile,now)&&
+  x.profile.realm===profile.realm)
+  .map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);
  if(values.length<2)return 0;
  const gap=Math.max(0,Math.max(...values.map(x=>x.ratio))-own.ratio);
  const vacancy=gap>0&&!profile.slots[slot]?(slot===own.pivotal?10:4):0;

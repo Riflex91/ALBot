@@ -34,7 +34,8 @@ test('optimized automatic gear receives observed catchup priority while explicit
   enabled:true,name,role:'farmer',class:'ranger'}));
  cfg.production.gearTargets=[{enabled:true,name:'manual',character:'A',slot:'helmet',item:'helmet',level:7,budget:100000,priority:50}];
  const names=['mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
- const profile=level=>({class:'ranger',complete:true,level:80,at:Date.now(),
+ const profile=level=>({class:'ranger',complete:true,level:80,
+  realm:'EUI',at:Date.now(),
   slots:Object.fromEntries(names.map(slot=>[slot,slot==='mainhand'?{name:'bow',level}:null]))});
  const profiles={A:profile(1),B:profile(5)};
  const bot={cfg,me:{name:'M',role:'merchant'},teamNames:['M','A','B'],farmers:['A','B'],

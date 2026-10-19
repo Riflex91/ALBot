@@ -169,27 +169,32 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   if((data?.actor??data?.hid??data?.killer)!==me.name)return false;
   return cleanName(data?.id)?credit(data.id):false;
  }
+ // Shared authorizations for planning AND native dispatch. Movement
+ // ownership is deliberately checked only before planning, since the same
+ // scout must still own its queued order when this runs at dispatch time.
+ function scoutContextSafe(plan){
+  return !!(bot.running&&cleanName(session)&&plan&&
+   bot.me?.role==='farmer'&&bot.me.name===bot.leader&&
+   bot.cfg?.party?.enabled===false&&
+   (bot.farmers?.length??1)<=1&&
+   !bot.journal&&!bot.inventoryBlocked&&!bot.logistics?.reserved&&
+   !bot.strategy?.busy&&!p.c.rip&&!p.c.stand&&
+   bot.teamPlan?.valid?.(plan)===true&&
+   bot.teamPlan?.heartbeat?.()?.id===plan.id&&
+   bot.teamPlan?.allowed?.(plan.target)===true&&
+   bot.strategy?.permittedMap?.(plan.map)===true&&
+   !p.G?.maps?.[plan.map]?.pvp&&
+   Number.isFinite(p.c.hp)&&Number.isFinite(p.c.max_hp)&&
+   p.c.max_hp>0&&p.c.hp/p.c.max_hp>=.9&&
+   bot.combatAssessment?.emergency?.()?.active!==true&&
+   !(bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
+    (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target))));
+ }
  function scout(plan){
   expire();
   const time=now();
-  if(!bot.running||!cleanName(session)||!plan||
-     bot.me?.role!=='farmer'||bot.me.name!==bot.leader||
-     bot.cfg?.party?.enabled!==false||
-     (bot.farmers?.length??1)>1||
-     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
-     bot.strategy?.busy||p.c.rip||
-     bot.movement?.order||!bot.movement?.local||
-     bot.teamPlan?.valid?.(plan)!==true||
-     bot.teamPlan?.heartbeat?.()?.id!==plan.id||
-     bot.teamPlan?.allowed?.(plan.target)!==true||
-     bot.strategy?.permittedMap?.(plan.map)!==true||
-     p.G?.maps?.[plan.map]?.pvp||
-     !Number.isFinite(p.c.hp)||!Number.isFinite(p.c.max_hp)||
-     p.c.max_hp<=0||p.c.hp/p.c.max_hp<.9||
-     bot.combatAssessment?.emergency?.()?.active===true||
-     (bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
-      (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target))))
-   return false;
+  if(!scoutContextSafe(plan)||bot.movement?.order||
+     !bot.movement?.local)return false;
   const options=[...rows.values()].filter(row=>row.monster===plan.target)
    .sort((a,b)=>b.killedAt-a.killedAt).slice(0,4);
   for(const row of options){
@@ -200,8 +205,28 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    if(!result.allowed)continue;
    if(!p.has?.('can_move_to')||p.call('can_move_to',
        result.point.x,result.point.y)!==true)continue;
-   if(bot.movement.local(result.point.x,result.point.y,'scout')!==true)
-    continue;
+   // The executor may defer a move until after this tick's action
+   // arbitration. Re-evaluate the SAME live kill, plan, bounds, session,
+   // team safety and coordinates immediately before the native move call.
+   const lease={ownerSession:session,realm,id:row.id,
+    killedAt:row.killedAt,planId:plan.id,
+    x:result.point.x,y:result.point.y};
+   const admitAtDispatch=()=>{
+    expire();
+    const current=bot.teamPlan?.heartbeat?.(),live=rows.get(lease.id);
+    if(session!==lease.ownerSession||realm!==lease.realm||
+       !current||current.id!==lease.planId||
+       !scoutContextSafe(current)||!live||
+       live.killedAt!==lease.killedAt)return false;
+    const next=approvedLocalScoutHop({row:live,plan:current,
+     character:p.c,realm,now:now(),
+     approved:true,solo:true,safe:true});
+    return next.allowed&&next.point.map===result.point.map&&
+     next.point.in===result.point.in&&
+     next.point.x===lease.x&&next.point.y===lease.y;
+   };
+   if(bot.movement.local(result.point.x,result.point.y,'scout',
+       admitAtDispatch)!==true)continue;
    issuedScoutHops.add(key);
    if(issuedScoutHops.size>64)
     issuedScoutHops.delete(issuedScoutHops.values().next().value);

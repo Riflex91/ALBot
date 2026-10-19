@@ -267,3 +267,50 @@ test('N05 invalid local observer geometry never produces positive or negative sc
  f.bot.p.c.y=0;f.advance(2000);c.sample();
  assert.equal(c.status().rows[0].scout.negativeObservations,1);
 });
+
+test('N05 a truncated monster list cannot certify a negative post-kill scout sample',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ const first=c.status().rows[0].killedAt;
+ f.mobs.length=0;
+ for(let n=0;n<129;n++)f.mobs.push({id:'unrelated-'+n,
+  mtype:'goo',type:'monster',map:'other',in:'other',
+  x:9000,y:9000,hp:50,dead:false});
+ f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,0,
+  'first 128 entries of 129 are not proof the old ID is absent');
+ assert.equal(c.status().rows[0].lastMissingAt,null);
+ assert.equal(c.status().rows[0].killedAt,first);
+ f.mobs.length=0;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1,
+  'a complete subsequent local sample can count as absence');
+});
+test('N05 unavailable or malformed monster snapshots do not create negative evidence',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});c.death({actor:'M',id:'e1'});
+ const valid=f.bot.monsters;
+ f.mobs.length=0;
+ for(const invalid of [null,undefined,{},42,'']){
+  f.bot.monsters=()=>invalid;f.advance(2000);
+  assert.doesNotThrow(()=>c.sample());
+  assert.equal(c.status().rows[0].scout.negativeObservations,0);
+  assert.equal(c.status().rows[0].lastMissingAt,null);
+ }
+ f.bot.monsters=valid;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1);
+});
+test('N05 truncated snapshots may still affirm directly visible live monsters',()=>{
+ const f=fixture();f.mobs.length=0;
+ f.mobs.push({id:'observed',mtype:'phoenix',type:'monster',
+  map:'main',in:'main',x:20,y:0,hp:100,dead:false});
+ for(let i=0;i<128;i++)f.mobs.push({id:'other-'+i,
+  mtype:'goo',type:'monster',map:'other',in:'other',
+  x:7000,y:7000,hp:100,dead:false});
+ f.calendar.sample();
+ const rows=f.calendar.status().rows;
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].id,'observed');
+ assert.equal(rows[0].state,'visible-last-sampled');
+ assert.equal(f.calendar.status().executable,false);
+});

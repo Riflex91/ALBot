@@ -70,14 +70,19 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    // never a server-confirmed spawn timer or permission for a new hunt.
    const reappeared=prior?.killedAt&&prior.monster===entity.mtype&&
     same(prior,scope)&&prior.scoutState==='observing'&&
-    time<=prior.scoutUntil&&prior.scoutNegatives<SCOUT_MAX_NEGATIVES;
+    prior.scoutNegatives>0&&time<=prior.scoutUntil&&
+    prior.scoutNegatives<SCOUT_MAX_NEGATIVES;
+   const recentResighting=reappeared||prior?.scoutState==='live-resighting-observed'&&
+    prior.monster===entity.mtype&&same(prior,scope)&&
+    Number.isSafeInteger(prior.resightedAt)&&time-prior.resightedAt<=SCOUT_WINDOW_MS;
    rows.delete(entity.id);
    rows.set(entity.id,{id:entity.id,monster:entity.mtype,...scope,
     x:entity.x,y:entity.y,lastSeenAt:time,
     killedAt:null,lastMissingAt:null,missingObservations:0,
-    scoutState:reappeared?'live-resighting-observed':null,
-    scoutUntil:null,scoutNegatives:prior?.scoutNegatives??0,
-    resightedAt:reappeared?time:null});
+    scoutState:recentResighting?'live-resighting-observed':null,
+    scoutUntil:null,scoutNegatives:recentResighting?
+     prior?.scoutNegatives??0:0,
+    resightedAt:reappeared?time:recentResighting?prior.resightedAt:null});
    if(rows.size>MAX_ROWS)rows.delete(rows.keys().next().value);
   }
   for(const [id,row] of rows){

@@ -49,7 +49,8 @@ export function selectCatchUpSwap(members,current,{levelGap=2,protectedNames=[]}
    Math.min(1,Math.max(0,x.xp/x.maxXp)):0;
  const incoming=eligible.filter(x=>!current.includes(x.name)&&!x.running)
    .sort((a,b)=>a.level-b.level||progress(a)-progress(b)||a.name.localeCompare(b.name))[0];
- const outgoing=eligible.filter(x=>current.includes(x.name)&&x.running&&!fixed.has(x.name))
+ const outgoing=eligible.filter(x=>current.includes(x.name)&&x.running&&!fixed.has(x.name)&&
+   !(x.class==='priest'&&incoming?.class!=='priest'&&members.filter(m=>current.includes(m.name)&&m.class==='priest').length===1))
    .sort((a,b)=>b.level-a.level||progress(b)-progress(a)||a.name.localeCompare(b.name))[0];
  if(!incoming||!outgoing||outgoing.level-incoming.level<levelGap)return null;
  return {out:outgoing.name,in:incoming.name,fromLevel:outgoing.level,toLevel:incoming.level,
@@ -93,7 +94,7 @@ export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conse
 }
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot;let coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
- const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative';const lastOnline=new Map();
+ const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative',rotationPrepare=null;const lastOnline=new Map();
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
  const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
  if(transition&&p.headless===false&&!transition.browser)transition={...transition,browser:true,legacyRunner:true};
@@ -141,7 +142,7 @@ export function createAccount(bot){
   if(!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(loss)||loss<0||!Number.isSafeInteger(cost+loss))return false;
   const snap=risk(options);return cost+loss<=snap.sessionRiskLimit;
  }
- function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence};}
+ function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence,rotationPrepare};}
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
  }
@@ -261,7 +262,7 @@ export function createAccount(bot){
    }
    return;
   }
-  if(Date.now()-changed<cfg.party.rotationCooldownMs||!bot.farmers.every(safe)||!safe(me.name))return;
+  if(Date.now()-changed<cfg.party.rotationCooldownMs)return;
   // get_characters() can supply offline levels; do not infer a zero-level
   // character or use a stale heartbeat as evidence for account rotation.
   const roster=new Map((bot.transport?.ownCharacters?.()??[]).map(c=>[c.name,c]));
@@ -297,6 +298,8 @@ export function createAccount(bot){
   bot.accountChoice={names:target,reason:training?'Levelausgleich aus belegten Charakterleveln (kein Wechsel ohne Rückstand und Mindesthaltezeit)':
    cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder',
    catchUp:swap??null,nextEligibleAt:training?changed+Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000):null};
+  rotationPrepare=swap?{out:swap.out,into:swap.in,until:Date.now()+30000}:null;
+  if(!bot.farmers.every(safe)){bot.accountChoice.waiting='selected-farmers-draining-combat-or-value-work';return;}
   const elected=electStableCombatLeader(members,target,bot.leader,{
    explicit:cfg.party.leader,
    bossOrEvent:!!bossObjective||['boss','event'].includes(task)
@@ -313,5 +316,5 @@ export function createAccount(bot){
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }
- return {tick,heartbeat,risk,spendAllowed,receive,receiveMessage,incomingRotation:()=>handover?.in===me.name?{id:handover.id,out:handover.out}:null,active:()=>!(handover&&!handover.committed&&Date.now()<handover.until)&&!bot.lifecycleChanging&&(me.role==='merchant'||bot.farmers.includes(me.name)),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,progression:bot.progression?.status()??null,blocked,lastRotation,transition:transition?{out:transition.out,in:transition.in,mode:transition.browser?'same-browser-window':'host-runner',acked:!!transition.acked,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;bot.lifecycleChanging=false;}};
+ return {rotationPending:()=>{const request=me.name===coordinator?rotationPrepare:bot.transport.fresh(coordinator)?.team?.rotationPrepare;return !!(request&&request.until>Date.now()&&request.until<=Date.now()+30000&&bot.farmers.includes(request.out));},tick,heartbeat,risk,spendAllowed,receive,receiveMessage,incomingRotation:()=>handover?.in===me.name?{id:handover.id,out:handover.out}:null,active:()=>!(handover&&!handover.committed&&Date.now()<handover.until)&&!bot.lifecycleChanging&&(me.role==='merchant'||bot.farmers.includes(me.name)),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,progression:bot.progression?.status()??null,blocked,lastRotation,transition:transition?{out:transition.out,in:transition.in,mode:transition.browser?'same-browser-window':'host-runner',acked:!!transition.acked,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;bot.lifecycleChanging=false;}};
 }

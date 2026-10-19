@@ -240,7 +240,7 @@ test('N05 scout never falls back to smart_move when the final native local check
   }};
  bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
  const movement=createMovement(bot);
- assert.equal(movement.local(70,0,'scout'),false);
+ assert.equal(movement.local(70,0,'scout',()=>true),false);
  assert.equal(movement.order,null);
  assert.equal(checks,2);
  assert.equal(calls.includes('smart_move'),false);
@@ -277,7 +277,7 @@ test('N05 admitted scout selects only native move, preserving other owners smart
   }};
  bot.exec=new Executor({now:Date.now,active:()=>bot.running,limit:4,onError(){}});
  const m=createMovement(bot),dest={map:'main',in:'main',x:65,y:0,radius:8};
- assert.equal(m.local(dest.x,dest.y,'scout'),true,
+ assert.equal(m.local(dest.x,dest.y,'scout',()=>true),true,
   'scout only claims a permit when a native movement order actually exists');
  assert.equal(m.order?.mode,'move');
  assert.equal(m.order?.owner,'scout');
@@ -292,7 +292,7 @@ test('N05 admitted scout selects only native move, preserving other owners smart
 test('N05 frame-delayed scout action rechecks admission before actual native move',()=>{
  for(const invalidate of [
   s=>{s.safe=false;},
-  s=>{s.c.x=100;},
+  s=>{s.c.x=-120;},
   s=>{s.c.map='bank';},
   s=>{s.canMove=false;},
   s=>{s.c.rip=true;}

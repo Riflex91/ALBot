@@ -392,6 +392,7 @@ test('W13 receipt cannot bypass existing sendRule or gross reservation',()=>{
  assert.equal(f.A.p.c.items[1].name,'gem0');
  const g=receiptPickupPair();
  g.A.production={reservedQuantity:i=>i.name==='gem0'?1:0,
+  effectiveRules:()=>g.A.cfg.items,
   canRecordDelivery:()=>true,matchesOutput:()=>true};
  g.A.logistics.poll();g.A.logistics.poll();
  assert.equal(g.B.p.c.items.some(i=>i?.name==='ordinary'),true);

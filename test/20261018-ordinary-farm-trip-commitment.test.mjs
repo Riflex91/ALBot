@@ -53,12 +53,12 @@ test('ordinary scoring after arrival requires substantial benefit, not 4% positi
  assert.equal(strong.choice.key,bee.key);
 });
 
-test('the gating applies to ordinary farming across species, not priority hunts or shell supply',()=>{
+test('the gating applies to ordinary farming across species, not active priority hunts; shell supply obeys location hold',()=>{
  assert.equal(shouldHoldOrdinaryLocation(bee,minimush,'farm'),true);
  assert.equal(shouldHoldOrdinaryLocation(bee,minimush,'hunt'),false);
  assert.equal(shouldHoldOrdinaryLocation(bee,minimush,'achievement'),true,
   'optional tracker milestones must not cause impulsive long-distance farm switches');
- assert.equal(shouldHoldOrdinaryLocation(bee,minimush,'farm',true),false);
+ assert.equal(shouldHoldOrdinaryLocation(bee,minimush,'farm',true),true);
  assert.equal(shouldHoldOrdinaryLocation({kind:'hunt',target:'bee'},minimush,'farm'),false);
  assert.equal(shouldHoldOrdinaryLocation(null,minimush,'farm'),false);
  assert.equal(shouldHoldOrdinaryLocation(bee,null,'farm'),false);

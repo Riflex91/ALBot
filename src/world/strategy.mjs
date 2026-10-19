@@ -4,6 +4,12 @@ import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {knowledgeFingerprint} from './knowledge.mjs';
 import {combatMembers,compositionOptions} from './composition.mjs';
 import {assessCombat} from './risk.mjs';
+export function sharedFarmRejection(id,peers,realm,definition,now=Date.now()){
+ return (peers??[]).some(h=>h?.running&&!h.rip&&h.realm===realm&&
+  Number.isFinite(h.received)&&now-h.received>=0&&now-h.received<=4000&&
+  Array.isArray(h.farmRejections)&&h.farmRejections.slice(0,4).some(r=>r?.monster===id&&r.definition===definition&&
+   Number.isFinite(r.until)&&r.until>now&&r.until<=now+600000));
+}
 // A theoretical 12-target battle is not the actual normal farm pull.
 // Preserve a conservative 3-target floor for 3shot, the configured AoE
 // exposure and all verified already-engaged hostiles. This never authorizes
@@ -80,7 +86,7 @@ export function squadReadyForQuestVisit(self,names,lookup,{realm,maxGap=140}={})
 }
 export function createStrategy(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let activity=null,manual=null,plannedAt=0,lastG=null,lastSample=null,rates={},ranked=[],rankedAt=0,rankedG=null,questVisit=null,nextQuest=0;
- const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();
+ const full=cfg.general.testLogging!==undefined,riskKey='albot:risk:'+me.name;let failed=p.read?.(riskKey)??{},lastRisk=new Map();const rejectionEvidence=new Map();
  const explicitTargets=()=>me.farmTargets.length?me.farmTargets:cfg.farming.targets;
  const state=()=>p.root.S??p.parent.S??{};
  const task=()=>manual?.task??(activity?.kind==='boss'?'boss':activity?.kind==='event'?'event':activity?.kind==='quest'?'quest':me.role==='merchant'?'supply':'farm');
@@ -114,6 +120,8 @@ export function createStrategy(bot){
    members:(bot.farmers??[]).map(n=>({name:n,ready:n===me.name||!!bot.transport.fresh(n)?.running}))});
  }
  function safeTarget(id,live,quiet=false,planned=false){
+   if(sharedFarmRejection(id,(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)),
+      p.realm(),knowledgeFingerprint(p.G.monsters?.[id])))return false;
   if(activity?.observationUnknown&&id===activity.target&&!live?.target)return false;
   if(!full)return true;
   // A death quarantine is different from a combat-readiness rejection.
@@ -128,7 +136,7 @@ export function createStrategy(bot){
   // A roaming unrelated hostile must not quarantine the leader's safe farm
   // spawn on followers: only the failed farm target itself invalidates it.
   if(bot.teamPlan?.status?.()?.current?.target===id)bot.teamPlan.failed(reason);
-  failed=Object.fromEntries(Object.entries(failed).filter(([,until])=>until>Date.now()).slice(-31));failed[id]=Date.now()+cfg.farming.deathWindowMs;p.write?.(riskKey,failed);activity=null;manual=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.failedTarget',{target:id,reason,retryAfter:failed[id]});}
+  failed=Object.fromEntries(Object.entries(failed).filter(([,until])=>until>Date.now()).slice(-31));failed[id]=Date.now()+cfg.farming.deathWindowMs;rejectionEvidence.set(id,{monster:id,until:Math.min(failed[id],Date.now()+600000),definition:knowledgeFingerprint(p.G.monsters?.[id])});p.write?.(riskKey,failed);activity=null;manual=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.failedTarget',{target:id,reason,retryAfter:failed[id]});}
  function canVisit(h){if(!full)return true;if(bot.recovering||h.inventoryBlocked||h.rip||h.hp/h.max_hp<cfg.farming.resumeAbove)return false;
   const uncertainty=(h.motion?.moving?h.motion.speed:0)*Math.max(0,Date.now()-(h.motion?.at??Date.now()))/1000;if(uncertainty>(cfg.merchant.servicePositionError??70))return false;if(h.threats>0&&!h.motion)return false;if(h.threats>0&&h.hp/h.max_hp<(cfg.farming.pullHp??.8))return false;if(h.activity?.target){const m=p.G.monsters?.[h.activity.target];if(!m||!Number.isFinite(m.attack)||!(m.frequency>0)||m.attack*m.frequency>p.c.max_hp*.03)return false;}
   for(const spawn of p.G.maps?.[h.map]?.monsters??[]){const m=p.G.monsters?.[spawn.type],b=spawn.boundary;if(!(m?.aggro>0)||!Array.isArray(b)||b.length!==4)continue;const margin=(m.range??30)+120;if(h.x>=b[0]-margin&&h.x<=b[2]+margin&&h.y>=b[1]-margin&&h.y<=b[3]+margin&&m.attack*m.frequency>p.c.max_hp*.03)return false;}
@@ -251,5 +259,5 @@ export function createStrategy(bot){
   if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');
   return bot.economy.perform('quest.anniversary',{guard:()=>bot.economy.at(d,80)&&p.call('anniversary_can_visit'),call:()=>p.call('anniversary_kiss'),observe:()=>bot.count('anniversarygift')>gifts||JSON.stringify(p.c.anniversary??null)!==before,details:{quest:'anniversary'},timeout:20000});
  }
- return {plan,sample,targets,task,safeTarget,failActivity,canVisit,requestTask,travel,quest,anniversary,get busy(){return !!questVisit;},interruptQuest(){if(questVisit?.phase==='travel'){questVisit=null;nextQuest=Date.now()+60000;if(bot.movement.order?.owner==='quest'||bot.movement.townActive)bot.movement.stop();bot.event('quest.interrupted',{reason:'Eigene Aggro: Kampf/Erholung hat Vorrang'});}},permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,questVisit:questVisit?{...questVisit}:null,failedTargets:{...failed},learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;questVisit=null;lastSample=null;plannedAt=0;}};
+ return {farmRejections:()=>[...rejectionEvidence.values()].filter(r=>r.until>Date.now()).slice(-4),plan,sample,targets,task,safeTarget,failActivity,canVisit,requestTask,travel,quest,anniversary,get busy(){return !!questVisit;},interruptQuest(){if(questVisit?.phase==='travel'){questVisit=null;nextQuest=Date.now()+60000;if(bot.movement.order?.owner==='quest'||bot.movement.townActive)bot.movement.stop();bot.event('quest.interrupted',{reason:'Eigene Aggro: Kampf/Erholung hat Vorrang'});}},permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,questVisit:questVisit?{...questVisit}:null,failedTargets:{...failed},learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;questVisit=null;lastSample=null;plannedAt=0;}};
 }

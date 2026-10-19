@@ -19,8 +19,8 @@ const peer={name:'My_Priest',map:'main',in:'main',x:50,y:20,
 test('a fighting or visiting squad mate prevents leader running away on an ostensibly valid route',()=>{
  assert.equal(assessLiveSquadMarch(leader,[peer],{realm,plan,now}).ready,true);
  assert.deepEqual(
-  (({reason,peer})=>({reason,peer}))(assessLiveSquadMarch(leader,[{...peer,threats:1}],{realm,plan,now})),
-  {reason:'teammate-in-combat',peer:'My_Priest'});
+  (({reason,peer})=>({reason,peer}))(assessLiveSquadMarch(leader,[{...peer,threats:1,travelBlock:{plan:plan.id,at:now}}],{realm,plan,now})),
+  {reason:'teammate-transit-blocked',peer:'My_Priest'});
  assert.equal(assessLiveSquadMarch(leader,[{...peer,questVisit:true}],{realm,plan,now}).reason,
   'teammate-on-quest-visit');
  assert.equal(squadCombatEngaged([{id:1,hp:50,target:'My_Priest'}],

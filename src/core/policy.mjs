@@ -4,6 +4,30 @@ export const distance=(a,b)=>Math.hypot(xy(a).x-xy(b).x,xy(a).y-xy(b).y);
 export const samePlace=(a,b)=>!!a&&!!b&&a.map===b.map&&String(a.in??a.map)===String(b.in??b.map);
 export const protectedItem=i=>!i||!!(i.l||i.b||i.bound||i.locked||i.equipped||i.reserved||i.giveaway);
 export const identity=i=>i?JSON.stringify([i.name,i.level??0,i.stat_type??'',i.p??'',i.title??'',i.acc??'',i.rid??'',i.l??'',i.b??'',...(i.data===undefined?[]:[i.data])]):'';
+const exactGoalFields=new Set([
+ 'name','level','stat_type','p','title','acc','rid','l','b','data'
+]);
+// Single fail-closed identity contract shared by planning, sending,
+// accounting and read-only recipient hints. Any OTHER field in an exact
+// goal would be silently ignored by identity() and widen the promise.
+export function verifiedExactGoalIdentity(goal){
+ const variant=goal?.variant;
+ if(!variant||typeof variant!=='object'||Array.isArray(variant)||
+    typeof goal.item!=='string'||!goal.item||goal.item.length>120||
+    !Number.isSafeInteger(goal.level)||goal.level<0||goal.level>99)
+  return null;
+ try{
+  if(Object.keys(variant).some(key=>!exactGoalFields.has(key))||
+     Object.hasOwn(variant,'name')&&variant.name!==goal.item||
+     Object.hasOwn(variant,'level')&&variant.level!==goal.level)
+    return null;
+  const serialized=JSON.stringify(variant);
+  if(typeof serialized!=='string'||serialized.length>2048)return null;
+  const key=identity({...variant,name:goal.item,level:goal.level});
+  return typeof key==='string'&&key.length<=512?key:null;
+ }catch{return null;}
+}
+
 export const fingerprint=i=>identity(i)+':'+(i?.q??1);
 // Only transient generated SEND rules carry this extra identity binding.
 // Manual editor rules keep their existing configurable semantics.

@@ -68,3 +68,39 @@ test('full Merchant with incompatible inventory refuses loot without a journal',
  assert.equal(f.messages.some(m=>m.type==='accept'),false);
  assert.equal(f.c.items.filter(x=>!x).length,0);
 });
+
+test('W13 no gear receiver promise is persisted when physical receive capacity is zero',()=>{
+ const f=merchantReceiver(),seen=[];
+ f.c.items[0].q=9999;
+ f.bot.allocation={accept:(...args)=>{seen.push(args);return true;}};
+ f.bot.logistics.receive('Farmer',{type:'offer',session:'Farmer',
+  id:'gear:1',data:{item:potion,quantity:1,gear:{
+   slot:'mainhand',expected:'null',expires:Date.now()+5000}}});
+ assert.deepEqual(seen,[],'no gear reserve before physical capacity is established');
+ assert.equal(f.bot.journal,null);
+ assert.equal(f.messages.length,0);
+});
+
+test('W13 a capacity-backed single gear offer persists exactly one receiver promise',()=>{
+ const f=merchantReceiver(),seen=[];
+ f.bot.allocation={accept:(...args)=>{seen.push(args);return true;}};
+ f.bot.logistics.receive('Farmer',{type:'offer',session:'Farmer',
+  id:'gear:1',data:{item:potion,quantity:1,gear:{
+   slot:'mainhand',expected:'null',expires:Date.now()+5000}}});
+ assert.equal(seen.length,1);
+ assert.equal(f.bot.journal?.kind,'receive');
+ assert.equal(f.messages[0]?.type,'accept');
+ assert.equal(f.messages[0]?.data.quantity,1);
+ assert.equal(f.c.items[0].q,9998);
+});
+
+test('W13 stack-sized gear offer never leaves a partial physical gear claim',()=>{
+ const f=merchantReceiver(),seen=[];
+ f.bot.allocation={accept:(...args)=>{seen.push(args);return true;}};
+ f.bot.logistics.receive('Farmer',{type:'offer',session:'Farmer',
+  id:'gear:1',data:{item:potion,quantity:2,gear:{
+   slot:'mainhand',expected:'null',expires:Date.now()+5000}}});
+ assert.deepEqual(seen,[]);
+ assert.equal(f.bot.journal,null);
+ assert.equal(f.messages.length,0);
+});

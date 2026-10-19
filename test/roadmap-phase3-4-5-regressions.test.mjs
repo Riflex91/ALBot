@@ -39,12 +39,15 @@ test('phase 4: local and remote inventory, equipped gear and current-map bank ar
   reserved:false,lifecycleChanging:false,received:now-50};
  peer.inventoryEvidence=inventoryStockEvidence(peerItems,{
   owner:peer.name,session:peer.session,realm,at:now-50});
- const bank={complete:true,owner,session,realm,at:now-30,
-  map:'bank',packs:[{name:'items0'}],
-  rows:[{item:{name:'seashell',level:0},quantity:30,protectedUnits:0}]};
+ const bank={version:1,complete:true,mode:'shadow-only',
+  authority:'none',executable:false,scope:'current-map-only',
+  owner,session,realm,at:now-30,map:'bank',
+  packs:[{name:'items0',map:'bank',size:42,used:1}],
+  rows:[{item:{name:'seashell',level:0},quantity:30,
+   protectedUnits:0,reservedUnits:0}]};
  const result=accountPhysicalLedger({local:[{name:'seashell',level:0,q:20}],
   peers:[peer],bank,equipment:{mainhand:{name:'staff',level:4}},
-  owner,session,realm,now,expected:[peer.name]});
+  owner,session,realm,map:'bank',now,expected:[peer.name]});
  assert.equal(result.complete,true);
  assert.equal(result.variants.find(x=>x.item.name==='seashell').quantity,59);
  const equipped=result.variants.find(x=>x.item.name==='staff');

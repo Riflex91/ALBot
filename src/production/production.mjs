@@ -5,7 +5,7 @@ import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} 
 import {estimateRoutes} from './costs.mjs';
 import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {planMaterialQuotas,materialQuotaCap} from './material-quotas.mjs';
-import {identity,fingerprint,variantCount} from '../core/policy.mjs';
+import {identity,fingerprint,variantCount,verifiedExactGoalIdentity} from '../core/policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
@@ -16,32 +16,17 @@ import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMa
 // The editable rule schema deliberately exposes only stat/p/title; acc, rid
 // and data cannot be expressed there and must never be silently widened.
 export function exactAutoDeliveryVariant(goal){
- if(!goal?.variant||typeof goal.variant!=='object'||
-    Array.isArray(goal.variant)||typeof goal.item!=='string'||
-    !goal.item||!Number.isSafeInteger(goal.level)||goal.level<0)return null;
- try{
-  if(Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
-     Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
-    return null;
-  const key=identity({...goal.variant,name:goal.item,level:goal.level});
-  return typeof key==='string'&&key.length<=512?key:null;
- }catch{return null;}
+ return verifiedExactGoalIdentity(goal);
 }
 // Shared exact-variant semantics across availability, outbound receipts,
 // gross reservations and the generated send rule's item identity.
 export function productionGoalMatchesItem(item,goal){
  if(!item)return false;
  if(!goal||goal.variant===null||goal.variant===undefined)return true;
- if(typeof goal.variant!=='object'||Array.isArray(goal.variant)||
-    typeof goal.item!=='string'||!goal.item||
-    !Number.isSafeInteger(goal.level)||goal.level<0||
-    item.name!==goal.item||(item.level??0)!==goal.level||
-    Object.hasOwn(goal.variant,'name')&&goal.variant.name!==goal.item||
-    Object.hasOwn(goal.variant,'level')&&goal.variant.level!==goal.level)
-   return false;
- try{return identity(item)===identity({
-  ...goal.variant,name:goal.item,level:goal.level
- });}catch{return false;}
+ const expected=verifiedExactGoalIdentity(goal);
+ if(!expected||item.name!==goal.item||
+    (item.level??0)!==goal.level)return false;
+ try{return identity(item)===expected;}catch{return false;}
 }
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
@@ -49,21 +34,37 @@ export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>In
  // A generic target can use any physical variant. It must share the gross
  // item/level capacity with exact targets rather than creating a second
  // virtual copy under another variant key.
+ // Malformed external goals/counters cannot crash the Merchant planner or
+ // be silently widened into a generic recipient delivery.
+ if(!Array.isArray(goals)||goals.length>128||
+    typeof delivered!=='function'||typeof available!=='function')return [];
  const grouped=new Map(),totalUsed=new Map(),genericUsed=new Map(),
   exactUsed=new Map();
  const verified=n=>n===Infinity||Number.isSafeInteger(n)&&n>=0;
  for(const g of goals){
-  if(!g?.recipient||g.recipient===sender||
+  if(typeof g?.recipient!=='string'||!g.recipient||g.recipient===sender||
+     typeof g.item!=='string'||!g.item||
+     !Number.isSafeInteger(g.level)||g.level<0||g.level>99||
      !Number.isSafeInteger(g.quantity)||g.quantity<1)continue;
-  const settled=delivered(g)??0;
-  if(!Number.isSafeInteger(settled)||settled<0)continue;
-  const remaining=Math.max(0,g.quantity-settled);
-  if(!remaining)continue;
-  const groupKey=JSON.stringify([g.item,g.level]);
   const exact=g.variant!==null&&g.variant!==undefined;
-  const variantKey=exact?identity({name:g.item,level:g.level,...g.variant}):null;
-  const capacity=available(g);
-  const gross=exact?available({...g,variant:null}):capacity;
+  // The exact same validated identity must authorize both planning and
+  // the later generated send rule. Cyclic/oversized/mismatched variants
+  // are invalid, never generic fallbacks.
+  const variantKey=exact?exactAutoDeliveryVariant(g):null;
+  if(exact&&!variantKey)continue;
+  let settled,capacity,gross;
+  try{
+   settled=delivered(g)??0;
+   if(!Number.isSafeInteger(settled)||settled<0)continue;
+   if(settled>=g.quantity)continue;
+   capacity=available(g);
+   gross=exact?available({...g,variant:null}):capacity;
+  }catch{
+   // A failed demand/stock query means this goal is not actionable.
+   continue;
+  }
+  const remaining=g.quantity-settled;
+  const groupKey=JSON.stringify([g.item,g.level]);
   if(!verified(capacity)||!verified(gross)||capacity>gross)continue;
   const already=totalUsed.get(groupKey)??0;
   let free=gross-already;
@@ -210,6 +211,34 @@ export function mutationPreservesOperationalGear(bot,inputSlots,{now=Date.now()}
   before,after,unarmed:people.length};
 }
 
+// Version-1 recipient delivery history is evidence of previously credited
+// physical transfers. A corrupt snapshot cannot be treated as an empty
+// history, or the same value transfer might be credited again after restart.
+export function inspectRecipientDeliveryLedger(value){
+ const invalid=reason=>({valid:false,reason});
+ if(value===null||value===undefined)return {valid:true,reason:'empty'};
+ if(!value||typeof value!=='object'||Array.isArray(value))
+  return invalid('invalid-delivery-ledger-root');
+ let entries;
+ try{entries=Object.entries(value);}
+ catch{return invalid('unreadable-delivery-ledger');}
+ if(entries.length>1024)return invalid('delivery-ledger-cap');
+ for(const [key,row] of entries){
+  if(typeof key!=='string'||!key||key.length>2048||
+     !row||typeof row!=='object'||Array.isArray(row)||
+     !Number.isSafeInteger(row.quantity)||row.quantity<0||
+     !Array.isArray(row.last)||row.last.length>32)
+   return invalid('invalid-delivery-ledger-row');
+  const seen=new Set();
+  for(const id of row.last){
+   if(typeof id!=='string'||!id||id.length>240||seen.has(id))
+    return invalid('invalid-delivery-receipt-id');
+   seen.add(id);
+  }
+ }
+ return {valid:true,reason:'durable-ledger-verified'};
+}
+
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false,admittedGoalKey=null,admittedAt=0;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
@@ -226,17 +255,47 @@ export function createProduction(bot){
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
- let deliveries=p.read(deliveryKey)??{};if(!deliveries||typeof deliveries!=='object'||Array.isArray(deliveries))deliveries={};
+ const savedDeliveries=p.read(deliveryKey),
+  deliveryEvidence=inspectRecipientDeliveryLedger(savedDeliveries),
+  unsafeDeliveryHistory=!deliveryEvidence.valid;
+ // Keep the original persistent evidence untouched. This fallback is only
+ // for non-authoritative read-only planning; sending/crediting is blocked.
+ let deliveries=unsafeDeliveryHistory?{}:savedDeliveries??{};
  const goals=()=>{if(goalsCache&&Number.isInteger(bot.decisionEpoch)&&goalsEpoch===bot.decisionEpoch)return goalsCache;
   // Guard reentrant goal evaluation before asking gear/intelligence.
   goalsEpoch=bot.decisionEpoch;goalsCache=[];const tools=cfg.production.autonomy&&bot.me.role==='merchant'?['fishing','mining'].filter(k=>cfg.merchant[k]).map(k=>({name:'Werkzeug: '+k,enabled:true,item:k==='fishing'?'rod':'pickaxe',level:0,quantity:1,recipient:'',budget:cfg.merchant.toolBudget,priority:55})).filter(g=>p.c.slots?.mainhand?.name!==g.item):[];goalsEpoch=bot.decisionEpoch;return goalsCache=[...cfg.production.goals,...(bot.gear?.goals()??[]),...(bot.elixirs?.goals()??[]),...(bot.supplies?.goals()??[]),...(bot.intelligence?.profitGoals()??[]),...tools].filter(g=>g.enabled).sort((a,b)=>b.priority-a.priority);};
  function recordDelivery(j){
-  if(j.kind!=='send'||!j.id||!j.to||typeof j.item!=='object')return true;if(Object.values(deliveries).some(x=>x.last?.includes(j.id)))return true;const next=structuredClone(deliveries);let changed=false,remaining=j.quantity;
-  for(const g of goals().filter(g=>g.recipient===j.to&&g.item===j.item.name&&g.level===j.item.level&&variantMatches(j.item,g))){
-   const key=goalKey(g),old=next[key]??{quantity:0,last:[]};if(!Number.isFinite(old.quantity)||!Array.isArray(old.last))return false;const take=Math.min(remaining,Math.max(0,g.quantity-old.quantity));if(take<=0)continue;
-   next[key]={quantity:old.quantity+take,last:[...old.last,j.id].slice(-32)};changed=true;remaining-=take;if(!remaining)break;
+  if(j?.kind!=='send')return true;
+  // Even a confirmed send call is not a valid delivery count without a
+  // durable, non-ambiguous item quantity and recipient identity.
+  if(unsafeDeliveryHistory||typeof j.id!=='string'||!j.id||
+     j.id.length>240||typeof j.to!=='string'||!j.to||
+     !j.item||typeof j.item.name!=='string'||!j.item.name||
+     !Number.isSafeInteger(j.quantity)||j.quantity<1||
+     j.quantity>1000000)return false;
+  if(Object.values(deliveries).some(x=>x.last.includes(j.id)))return true;
+  const next=structuredClone(deliveries);
+  let changed=false,remaining=j.quantity;
+  for(const g of goals().filter(g=>g.recipient===j.to&&
+   g.item===j.item.name&&g.level===j.item.level&&variantMatches(j.item,g))){
+   if(!Number.isSafeInteger(g.quantity)||g.quantity<0)return false;
+   const key=goalKey(g),old=next[key]??{quantity:0,last:[]};
+   if(!Number.isSafeInteger(old.quantity)||old.quantity<0||
+      !Array.isArray(old.last)||old.last.length>32)return false;
+   const take=Math.min(remaining,Math.max(0,g.quantity-old.quantity));
+   if(take<=0)continue;
+   if(!Number.isSafeInteger(old.quantity+take))return false;
+   next[key]={quantity:old.quantity+take,last:[...old.last,j.id].slice(-32)};
+   changed=true;remaining-=take;
+   if(!remaining)break;
   }
-  if(changed){if(Object.keys(next).length>1024)return false;if(!p.write(deliveryKey,next))return false;deliveries=next;}return true;
+  if(changed){
+   if(Object.keys(next).length>1024||
+      inspectRecipientDeliveryLedger(next).valid!==true||
+      p.write(deliveryKey,next)!==true)return false;
+   deliveries=next;
+  }
+  return true;
  }
  function matchesOutput(i){const r=e.explicit(i,'production'),recipe=r?.recipe&&r.action==='craft'?findRecipe(p.G,i.name,r.recipe)?.recipe:null;return !recipe?.output?.data||JSON.stringify(i.data)===JSON.stringify(recipe.output.data);}
  function demand(exclude=null,recipient='',recipientItem=null,allocatedGoals=null){
@@ -396,6 +455,7 @@ export function createProduction(bot){
   }
   const slots=[...inputs,scroll,...(offering===null?[]:[offering])];if(new Set(slots).size!==slots.length)return false;
   const d=e.destination('newupgrade')??e.destination('upgrade');if(!e.npcTravel(d,kind))return false;
+  if(bot.services?.productionBuff?.(kind))return true;
   // Bind the preview to the current mutation definitions and user's rule.
   // Slot fingerprints alone do not capture changed minimum chance or scroll policy.
   const policyProof=()=>JSON.stringify([p.G.version,p.G.upgrades,p.G.compounds,p.G.items[i.name],p.G.items[scrollName],p.G.items[r.offering],r.scroll,r.offering,r.targetLevel,r.minChance,cfg.production,cfg.items]);
@@ -525,6 +585,7 @@ export function createProduction(bot){
   const questNpc=recipe.quest&&(p.G.npcs?.[recipe.quest]?recipe.quest:Object.entries(p.G.npcs??{}).find(([,n])=>n.quest===recipe.quest)?.[0]),d=e.destination(questNpc||'craftsman');if(recipe.quest&&!questNpc){e.note('Rezept-Arbeitsplatz fehlt: '+recipe.quest);return false;}
   const item={name,level:0,data:recipe.output?.data},total=()=>p.c.items.reduce((n,i)=>n+(i?.name===name&&(i.level??0)===(item.level??0)&&(item.data===undefined||JSON.stringify(i.data)===JSON.stringify(item.data))?i.q??1:0),0),before=total();
   if(!capacity(slots.map((slot,n)=>({slot,quantity:requirements[n].q})),item,yieldCount)||!e.npcTravel(d,'Craft '+name))return false;
+  if(bot.services?.productionBuff?.('craft'))return true;
   // The game chooses the craft outcome from the live recipe/ingredients. Recheck
   // that contract at dispatch: an inventory fingerprint alone cannot detect a
   // changed recipe, keep rule, reserve, output cap or crafting permission.
@@ -563,6 +624,7 @@ export function createProduction(bot){
    // tighter, stationary 35-unit worksite; recheck at final dispatch.
    const exchangeRadius=35;
    if(!e.travel(d,'Exchange '+i.name,exchangeRadius))return false;
+   if(bot.services?.productionBuff?.('exchange'))return true;
    const before=e.count(i),initialProof=proof(verified);
    return e.perform('exchange',{slots:[slot],loss:cfg.general.testLogging!==undefined?q*e.value(i):0,rule:r,guard:()=>{const live=source();return bot.storage?.exchangeAllowed?.(slot,q)!==false&&live.ready&&proof(live)===initialProof&&(!step?.sourceProof||proof(live)===JSON.stringify(step.sourceProof))&&e.at(d,exchangeRadius)&&e.spare(slot,r)>=q&&actionCapacity(p.c.items,[{slot,quantity:q}],null,p.G,1,{inventorySize:p.c.isize});},call:()=>p.call('exchange',slot),observe:()=>!p.c.q?.exchange&&!p.c.items.some(x=>x?.name==='placeholder')&&e.count(i)<=before-q,details:{item:i.name,quantity:q,before,quest:verified.quest,event:verified.event},
     onConfirmed:()=>{bot.merchant?.confirmedExchange?.(i.name,slot);return true;},timeout:45000});
@@ -618,17 +680,28 @@ export function createProduction(bot){
    {sourceProof:ticket.sourceProof}:null);
  }
  function availabilityFingerprint(step){
+  const relevant=i=>step?.kind!=='marketBuy'||i?.name===step.item;
   return JSON.stringify([step?.item,step?.level,step?.kind,
-   p.c.items.map(i=>i?[i.name,i.level??0,i.q??1,i.stat_type??'']:null),
-   (bot.bank?.catalogStock?.()??[]).map(r=>[r.item?.name,r.item?.level??0,r.item?.q??1,r.item?.stat_type??'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),p.c.gold,
-   cfg.production.enabled,cfg.production.autoHelpers,cfg.production.minChance]);
+   p.c.items.filter(relevant).map(i=>i?[i.name,i.level??0,i.q??1,i.stat_type??'']:null),
+   (bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(relevant)
+    .map(i=>[i?.name,i?.level??0,i?.q??1,i?.stat_type??'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),
+   step?.kind==='marketBuy'?null:p.c.gold,
+   cfg.production.enabled,cfg.production.autoHelpers,cfg.production.minChance,cfg.items]);
+ }
+ function goalStillWaiting(g){
+  const wait=waiting.get(goalKey(g));
+  if(!wait||wait.until<=Date.now()||wait.fingerprint!==availabilityFingerprint(wait.step))return false;
+  const item=wait.step?.kind==='marketBuy'?{name:wait.step.item,level:wait.step.level,
+   ...(wait.step.item===g.item?g.variant:{})}:null;
+  const rule=item?e.rules(item,'acquisition'):null;
+  return !(item&&rule&&e.remaining(rule)&&bot.market?.hasVisibleBuyOffer?.(item,{strict:true,rule}));
  }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
   const readyStock=[...p.c.items.filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep'),
    ...(bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep')];
   const fastGear=g=>gearChainReady(g,readyStock,p.G.items?.[g.item]);
-  const ranked=goals().map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<Math.max(cfg.merchant.taskHoldMs??30000,45000);
+  const ranked=goals().filter(g=>!goalStillWaiting(g)).map(g=>{let score=Infinity;try{const step={kind:'farm',item:g.item,level:g.level,quantity:Math.max(1,g.quantity-qty(g.item,g.level,g))};routeScore(step);score=Math.min(...(routeCache.get(JSON.stringify([step.item,step.level,step.quantity,step.sources]))??[]).map(r=>r.hours));}catch{}return {...g,utilityPerHour:(g.utility??p.G.items[g.item]?.g??1)/Math.max(.01,Number.isFinite(score)?score:1000000)};}).sort((a,b)=>{const held=g=>heldGoal===goalKey(g)&&Date.now()-heldAt<Math.max(cfg.merchant.taskHoldMs??30000,45000);
     const effective=g=>(g.priority??0)+(fastGear(g)?65:0);
     // A five-minute remote-exchange hold must not starve ready local gear.
     return effective(b)-effective(a)||Number(held(b))-Number(held(a))||
@@ -705,7 +778,7 @@ export function createProduction(bot){
   const cacheKey=JSON.stringify([step.item,step.level,step.quantity,step.sources]);if(routeCache.has(cacheKey))return routeCache.get(cacheKey).find(r=>r.kind===step.kind)?.score??Infinity;const key=step.item+':'+step.level,permit=(name,level,kind)=>{if(kind==='exchange'&&step.sources?.length===1&&name!==step.sources[0][0])return false;if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const r=e.explicit({name,level},phaseOf(kind));return !r||r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level);};
   const capped=(name,level,price)=>{const r=e.explicit({name,level},'acquisition');return Number.isFinite(price)&&price>0&&price<=(r?.maxPrice??(cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.helperMaxPrice))?price:Infinity;};
   const rows=estimateRoutes({G:p.G,item:step.item,level:step.level,quantity:step.quantity,stock:(name,level)=>name+':'+level===key?0:qty(name,level),bank:(name,level,wanted)=>name+':'+level===key?0:bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((v,i)=>v+(i?.name===name&&(i.level??0)===level&&e.safe(i)&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),allowed:cfg.production.acquireBy,permit,
-   npcPrice:name=>e.npcFor(name)?capped(name,0,p.G.items[name]?.g):Infinity,marketPrice:(name,level)=>capped(name,level,bot.market.quote?.({name,level})??e.explicit({name,level},'acquisition')?.maxPrice??cfg.production.helperMaxPrice),
+   npcPrice:name=>e.npcFor(name)?capped(name,0,p.G.items[name]?.g):Infinity,marketPrice:(name,level)=>bot.market?.offerWaitMs?.({name,level})>0?Infinity:capped(name,level,bot.market.quote?.({name,level})??e.explicit({name,level},'acquisition')?.maxPrice??cfg.production.helperMaxPrice),
    farmHours:(name,q)=>materialSources(p.G,name,q,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]})[0]?.selectedHours??Infinity,
    travelHours:(kind,name)=>{const d=kind==='buy'?e.npcFor(name):kind==='craft'?e.destination('craftsman'):kind==='retrieve'?{map:'bank',x:0,y:-100}:kind==='exchange'?(exchangeSource(p.G,name,p.root?.S??p.parent?.S??{}).destination??e.destination('exchange')):e.destination(kind==='marketBuy'?'citizen22':'newupgrade');return (bot.observations?.travelMs(d)??60000)/3600000;},
    helpers:(name,level,kind)=>{const r=e.explicit({name,level},'production');return [{item:r?.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',{name,level})),quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];},
@@ -869,7 +942,18 @@ export function createProduction(bot){
   }
   return false;
  }
- function canRecordDelivery(item,to){const matching=goals().filter(g=>g.recipient===to&&g.item===item.name&&g.level===(item.level??0));if(Object.keys(deliveries).length+matching.filter(g=>!Object.hasOwn(deliveries,goalKey(g))).length<=1024)return true;e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');return false;}
+ function canRecordDelivery(item,to){
+  if(unsafeDeliveryHistory)return false;
+  if(!item||typeof item.name!=='string'||!item.name||
+     typeof to!=='string'||!to)return false;
+  const matching=goals().filter(g=>g.recipient===to&&
+   g.item===item.name&&g.level===(item.level??0));
+  if(Object.keys(deliveries).length+
+     matching.filter(g=>!Object.hasOwn(deliveries,goalKey(g))).length<=1024)
+   return true;
+  e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');
+  return false;
+ }
  return {invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(cfg.general.testLogging===undefined)return materials;
  const first=bot.seashells?.request?.()??materials[0];if(!first)return [];
  const plan=planMaterialQuotas(first,bot.farmers,
@@ -877,5 +961,8 @@ export function createProduction(bot){
  return [{...first,...plan}];},
  reserved:i=>reservedQuantity(i)>0,
  farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.teamPlan?.candidates()??(bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets);for(const request of merchant.materials){if(request.expires&&request.expires<Date.now()||!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.explicit({name:request.item,level:0},'acquisition');if((r?.action==='farm'||!r&&cfg.production.autonomy)&&qty(request.item,0)<Math.min(r?.targetCount??request.quantity,materialQuotaCap(request,bot.me.name)))return [request.monster];}return null;},
- status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,autonomy:!!cfg.production.autonomy,marketDeferred:[...marketDeferred.values()].filter(x=>x.until>Date.now()).slice(0,20),waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialRequests:materials.slice(0,5).map(x=>({item:x.item,monster:x.monster,quantity:x.quantity})),farmOrderReceipts:materials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===materials[0].objective&&h.materialAck.item===materials[0].item&&h.materialAck.monster===materials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];planningReason=null;}};
+ status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,
+  deliveryLedgerUnsafe:unsafeDeliveryHistory,
+  deliveryLedgerReason:deliveryEvidence.reason,
+  autonomy:!!cfg.production.autonomy,marketDeferred:[...marketDeferred.values()].filter(x=>x.until>Date.now()).slice(0,20),waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialRequests:materials.slice(0,5).map(x=>({item:x.item,monster:x.monster,quantity:x.quantity})),farmOrderReceipts:materials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===materials[0].objective&&h.materialAck.item===materials[0].item&&h.materialAck.monster===materials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];planningReason=null;}};
 }

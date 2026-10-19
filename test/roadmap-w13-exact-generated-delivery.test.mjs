@@ -98,7 +98,7 @@ test('W13 same complete variant identity is used for stock availability and deli
 });
 test('W13 malformed variant goals fail closed even in delivery accounting',()=>{
  const cyclic={};cyclic.self=cyclic;
- for(const variant of [[],1,'text',{data:1n},{data:cyclic}]){
+ for(const variant of [[],0,false,'',1,'text',{data:1n},{data:cyclic}]){
   assert.equal(productionGoalMatchesItem(base,{...goal,variant}),false);
  }
 });

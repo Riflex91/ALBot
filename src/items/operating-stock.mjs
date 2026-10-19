@@ -15,6 +15,29 @@ export function operatingStockFloor(name,cfg,farmers=0){
  if(!Number.isSafeInteger(target)||target<0||target>100000)return null;
  return Math.max(hp?1000:300,target*Math.max(1,farmers));
 }
+// W02: selected party members are not the entire configured account need.
+// Offline but enabled OWN farmers still require replenishable working stock.
+// Only the local, validated configuration increases the floor; remote
+// inventory or stale heartbeat estimates never authorize liquidation.
+export function operatingReserveCohort(bot){
+ const selected=bot?.farmers??[];
+ if(!Array.isArray(selected)||selected.length>128||
+    selected.some(name=>typeof name!=='string'||!name||name.length>100))
+  return null;
+ const configured=bot?.cfg?.characters;
+ if(configured===undefined||configured===null)return new Set(selected).size;
+ if(!Array.isArray(configured)||configured.length>128)return null;
+ const names=[...selected];
+ for(const member of configured){
+  if(!member||typeof member!=='object'||Array.isArray(member)||
+     typeof member.name!=='string'||!member.name||member.name.length>100||
+     typeof member.role!=='string'||typeof member.enabled!=='boolean')
+   return null;
+  if(member.enabled&&member.role==='farmer')names.push(member.name);
+ }
+ const cohort=new Set(names);
+ return cohort.size<=128?cohort.size:null;
+}
 function operatingStockBaseRule(bot,item){
  const {cfg,p,me}=bot,e=bot.economy;
  if(me.role!=='merchant'||!cfg.merchant?.enabled||
@@ -23,8 +46,8 @@ function operatingStockBaseRule(bot,item){
     !boundedStockVariantAllowed(p.G,item)||(item.level??0)!==0||
     ['inventory','production','acquisition'].some(phase=>e.explicit(item,phase)))
   return null;
- const meta=p.G.items?.[item.name],floor=operatingStockFloor(item.name,cfg,
-  new Set(bot.farmers??[]).size);
+ const meta=p.G.items?.[item.name],cohort=operatingReserveCohort(bot),
+  floor=cohort===null?null:operatingStockFloor(item.name,cfg,cohort);
  if(floor===null||!meta||meta.cash||meta.cash_item||meta.exclusive||meta.rare||
     meta.rarity||meta.quest||meta.event||meta.action||meta.onclick||
     !Number.isFinite(meta.g)||meta.g<=0||!e.npcFor(item.name))return null;
@@ -75,4 +98,43 @@ export function bankOperatingStockRule(bot,item,{carried=false}={}){
  if(!Number.isSafeInteger(floor)||backing<floor||!Number.isFinite(price)||
     price<rule.minPrice||!e.remaining(rule))return null;
  return {...rule,batch:q,_bankOperatingStock:true,_carriedProtectedFloor:floor};
+}
+
+
+// W04: a protected operating floor may be staged from verified bank stock
+// before a DIFFERENT bank stack is considered for sale. This is a
+// read-only need, never an implicit permission to withdraw or liquidate.
+// Only full, ordinary stack variants qualify; unknown policy is fail-closed.
+export function bankOperatingReserveNeed(bot,item){
+ const {p,economy:e}=bot,meta=p.G.items?.[item?.name],q=item?.q??1;
+ if(bot.me.role!=='merchant'||!e?.safe?.(item)||
+    !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
+    !Number.isSafeInteger(q)||q<1||q>9999||
+    meta.quest||meta.q||meta.e||meta.exchange||meta.event||
+    meta.cash||meta.cash_item||meta.soulbound||meta.compound||
+    meta.upgrade||meta.rare||meta.rarity||meta.action||
+    meta.onclick||meta.offering||meta.throw||meta.ignore||
+    meta.wtype||meta.class||meta.grades||meta.tier)return null;
+ const source=e.explicit(item,'inventory');
+ let floor;
+ if(source){
+  if(source.enabled!==true||source.action!=='keep'||
+     source.excessAction!=='sell'||!Number.isSafeInteger(source.batch)||
+     source.batch<1||!Number.isSafeInteger(source.keep)||
+     !Number.isSafeInteger(source.teamReserve)||
+     source.keep<0||source.teamReserve<0)return null;
+  floor=source.keep+source.teamReserve;
+ }else{
+  const rule=operatingStockBaseRule(bot,item);
+  if(!rule)return null;
+  floor=rule.keep;
+ }
+ const reserved=bot.production?.reservedQuantity?.(item)??0;
+ const held=localVariantQuantity(p.c.items,item);
+ if(!Number.isSafeInteger(reserved)||reserved<0||
+    !Number.isSafeInteger(held)||held<0||
+    !Number.isSafeInteger(floor+reserved))return null;
+ floor+=reserved;
+ if(floor===0||held>=floor)return null;
+ return {floor,held,missing:floor-held};
 }

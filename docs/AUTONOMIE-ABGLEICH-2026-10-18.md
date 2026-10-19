@@ -4,6 +4,21 @@ Verglichener Main: [2d0ce11243c273a6445765d9c28a4c760f20e0e2](https://github.com
 
 Dies ist eine konkrete Erweiterung des bestehenden Bots. **Die gesamte Forschungsroadmap ist damit noch nicht vollständig implementiert.** Insbesondere vollständige Crypt-/Cave-Runs, Tailoring/De-Statting, temporäre Gearwechsel für Temporal Surge und ein Itemtauschmarkt bleiben eigenständige offene Pakete. Ein erfolgreicher Offlinetest ist kein Nachweis absoluten unbeaufsichtigten Spielbetriebs.
 
+## Fortschrittsnachtrag nach dieser Baseline (18.10.2026)
+
+Dieser Nachtrag ergänzt den ursprünglichen, versionsgebundenen Implementierungsnachweis; er überschreibt weder historische Quellen noch die Roadmap-Restgrenzen.
+
+| Paket | Umsetzung | Abnahme | Weiter offen |
+| --- | --- | --- | --- |
+| W04 | [PR #169](https://github.com/Riflex91/ALBot/pull/169), Main `229bd1c80ae09ffba59ec6d802f2bf33d52ea668`: fehlende vollständig abholbare Betriebsreserve aus lokal beobachteten Bankstacks mittels vorhandenem persistierten Einzelentnahmejournal ins Inventar stufen, dann separate neue Verkaufsentscheidung; Revalidierung vor Dispatch. | Linux- und Windows-CI erfolgreich; neue Fälle zu Reserve, Drift und fehlendem echten Überschuss. | Partielle Reserveentnahmen, komplexere Slotfolgen und weitere Reservationsabhängigkeiten; W02/W03 nicht pauschal erledigt. |
+| W05/W08 | [PR #170](https://github.com/Riflex91/ALBot/pull/170), Main `208226395b494d801dec6940c5e74e6f42928e5b`: normalisierte rollenübergreifende Slotaufholpriorität in **automatisch generierten** Gearzielen; vollständige frische Offline-Profile als Planungsbeleg; altersbegrenzter Bonus nur bei vorhandener bestätigter Equipquittierung. | Linux- und Windows-CI erfolgreich; Grenz-, Frische- und Rollenregressionen; 900-KiB-Integrationstest bestanden. | Vollständige, empirische Rollen-/Slotnutzenbewertung sowie bedingte flexible Gruppengröße G05. |
+
+**Unverändert:** Persönliche `bot.js`-Konfiguration wurde beim Runtimeabgleich durch das bestehende Synchronisationsskript erhalten; keine Lockerung von Budgets, Locks, Mindestverbesserung oder Mindestchancen. Die temporären PR-Artefaktsynchronisations-Workflows wurden vor beiden Merges entfernt. Main-Merges ändern **nicht** automatisch den bestehenden signierten separaten Bootstrap-Release-Kanal; für neuen Release gilt weiterhin die vorhandene Signierpipeline. Es wurde keine Live-/Dauerabnahme durchgeführt.
+
+**Weiterer Arbeitsfilter:** W02/W03/W04 übrige Restgrenzen, W05/W08 übrige Restgrenzen, W07/N01/G12, W06/G09, W10/W13/G03/G04, N05/N10, W12/N11/N12/G06/G07/G08 sowie W14-Liveabnahme bleiben offen, soweit die Übergabedokumente sie ausdrücklich so einstufen. N14 nur passiv/optional, N15 nur bei reproduziertem Fehler. Für W02 keinen zusätzlichen Accountbedarf oder neuen Verkaufsüberschuss ohne nachgewiesenen endlichen Mengen-/Variantenvertrag erfinden.
+
+---
+
 ## Bereits im untersuchten Main enthalten
 
 Nicht nochmals implementiert wurden:
@@ -87,7 +102,7 @@ Die automatische Betriebsvorratsregel gilt nur ohne explizite Itemregel. Ein exp
 
 `main/bot.js` enthält nach dem Merge die neu gebaute gemeinsame Runtime mit unveränderter persönlicher Konfiguration. `dist/albot.runtime.js` ist dieselbe Runtime ohne persönlichen JSON-Vorspann; die Werkstatt enthält das vollständige Paket.
 
-**Der installierte signierte V2-Loader lädt weiterhin einen anderen Branch.** Maßgeblich sind [BOOTSTRAP-VERTRAG](BOOTSTRAP-VERTRAG.md) und [bootstrap.contract.json](../bootstrap.contract.json). Geprüfter öffentlicher Snapshot: sequence 3, 0.10.10-candidate. Dieser PR verändert weder Release-Branch noch Schlüssel oder Signatur. Ein Main-Merge allein beweist daher kein Update der bereits im Spiel über V2 geladenen Runtime. Für den neuen Mainstand die persönliche Main-`bot.js` verwenden; für ein automatisches V2-Update ist eine gesonderte signierte Freigabe über die vorhandene Pipeline erforderlich.
+**Der installierte signierte V2-Loader verwendet weiterhin den bestehenden Release-Branch; dieser wurde anschließend auf ausdrücklichen Benutzerwunsch auf `0.10.11-candidate` (sequence 4) veröffentlicht.** Maßgeblich sind [BOOTSTRAP-VERTRAG](BOOTSTRAP-VERTRAG.md) und [bootstrap.contract.json](../bootstrap.contract.json). Die vorhandene Pipeline baut und testet die Runtime, erhält persönliche Einstellungen und signiert das neue Manifest mit dem bestehenden Releaseschlüssel. Der vorhandene Bootstrap lädt beim nächsten CODE-Start die neue Version; keine Neuinstallation erforderlich. Signatur-/Hashprüfung bleiben unverändert. Kein neuer Ingame-Ladevorgang beobachtet. Weitere Roadmap-Implementierung wurde auf Benutzerwunsch gestoppt.
 
 ## Nachweise und Primärquellen
 

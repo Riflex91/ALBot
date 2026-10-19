@@ -1,6 +1,9 @@
 import { DESCRIPTOR } from './schema.mjs';
 export const SLOT_LIMIT = 1048576;
 export const SOFT_LIMIT = 921600;
+// Separate signed bootstrap download ceiling; SLOT_LIMIT remains for legacy
+// standalone CODE exports and does not restrict a remote runtime package.
+export const BOOTSTRAP_RUNTIME_LIMIT = 8388608;
 const badKeys = new Set(['__proto__','constructor','prototype']);
 const own = (o,k) => Object.prototype.hasOwnProperty.call(o,k);
 export function parseData(source) {
@@ -65,7 +68,7 @@ export function validateSchema(s,value,path='Profil',errors=[]){
   else {if(s.type==='integer'&&!Number.isSafeInteger(value))error('Ganze sichere Zahl erwartet.');if(value<(s.minimum??-Infinity)||value>(s.maximum??Infinity))error('Zahl außerhalb der Grenzen.');}
   return errors;
 }
-export function phaseOf(action){return ['buy','marketBuy','wishlist','retrieve','farm'].includes(action)?'acquisition':['upgrade','compound','exchange','craft'].includes(action)?'production':action==='keep'?'all':'inventory';}
+export function phaseOf(action){return ['buy','marketBuy','wishlist','retrieve','farm'].includes(action)?'acquisition':['upgrade','compound','destat','exchange','craft'].includes(action)?'production':action==='keep'?'all':'inventory';}
 export function ruleRank(r){return (r.character?100:0)+(r.role!=='all'?10:0)+['statType','property','title','map','server','task'].filter(k=>r[k]).length+(r.minLevel!==0||r.maxLevel!==99?1:0);}
 function overlap(a,b){if(a.action==='send'&&b.action==='send'&&a.recipient&&b.recipient&&a.recipient!==b.recipient)return false;return a.item===b.item&&a.minLevel<=b.maxLevel&&b.minLevel<=a.maxLevel&&(a.role==='all'||b.role==='all'||a.role===b.role)&&['character','statType','property','title','map','server','task'].every(k=>!a[k]||!b[k]||a[k]===b[k])&&(phaseOf(a.action)==='all'||phaseOf(b.action)==='all'||phaseOf(a.action)===phaseOf(b.action));}
 function outcome(r){const x={...r};for(const k of ['name','enabled','priority','item','role','character','minLevel','maxLevel','statType','property','title','map','server','task'])delete x[k];return JSON.stringify(x);}
@@ -138,11 +141,17 @@ export function applyAutonomousMode(config){
  if(Array.isArray(config.production?.acquireBy))config.production.acquireBy=[...new Set([...config.production.acquireBy,'bank','npc','market','farm','craft','exchange'])];
  return config;
 }
+// A new barter field is meaningless on an old SELL/KEEP/etc rule.
+// Preserve those source rule objects byte-for-byte except pre-existing
+// mandatory migration rules. Only a deliberately enabled SWAP rule may
+// acquire missing defaults for its own explicit two-sided contract.
+const G09_SWAP_OPTIONAL_FIELDS=new Set(['wantItem','wantLevel','wantQuantity',
+ 'wantStatType','wantProperty','wantTitle','wantTargetCount']);
 export function addMissingDefaults(schema,value,path='',changes=[]){
   if(schema.type==='object'&&value&&typeof value==='object'&&!Array.isArray(value)){
     const next=structuredClone(value);
     for(const [key,s] of Object.entries(schema.properties)){
-      if(!own(next,key)){next[key]=defaultsFor(s);changes.push((path?path+'.':'')+key);}
+      if(!own(next,key)){if(/^items\[\d+\]$/.test(path)&&next.action!=='swap'&&G09_SWAP_OPTIONAL_FIELDS.has(key))continue;next[key]=defaultsFor(s);changes.push((path?path+'.':'')+key);}
       else next[key]=addMissingDefaults(s,next[key],(path?path+'.':'')+key,changes);
     }
     return next;
@@ -159,7 +168,10 @@ export function importProfile(descriptor,value){
   if(value.schemaId!==descriptor.schemaId)throw Error('Profil benötigt das Schema '+value.schemaId+'. Zuerst passendes Bot-Paket / Schema laden.');
   const next=descriptor.schemaId==='albot.full/v1'?addMissingDefaults(descriptor.schema,value.config):value.config;const errors=validateProfile(descriptor,next);if(errors.length)throw Error(errors.join('\n'));return structuredClone(next);
 }
-export function exportBundle(descriptor,config,runtime){
+export function exportBundle(descriptor,config,runtime,{target='legacy-code'}={}){
+  if(!['legacy-code','bootstrap-artifact'].includes(target))throw Error('Unbekanntes Ausgabeziel');
+  if(target==='bootstrap-artifact'&&new TextEncoder().encode(runtime?.code??'').length>BOOTSTRAP_RUNTIME_LIMIT)
+   throw Error('Bootstrap-Runtime überschreitet 8 MiB');
   const errors=validateProfile(descriptor,config);if(errors.length)throw Error(errors.join('\n'));
   if(!runtime||runtime.schemaId!==descriptor.schemaId||runtime.contractVersion!==1)throw Error('Passendes fertiges Bot-Paket fehlt. JSON-Profil kann bereits gespeichert werden.');
   // Store field names once, rather than repeating dozens of names for every
@@ -170,14 +182,18 @@ export function exportBundle(descriptor,config,runtime){
   const template=shape(descriptor.schema),safe=x=>JSON.stringify(x).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
   const code='// ALBot '+runtime.version+' | Einstellungen + Runtime\n'+'globalThis.ALBotConfig=('+unpack.toString()+')('+safe(template)+','+safe(encode(template,config))+');\n'+runtime.code+'\n';
   const bytes=new TextEncoder().encode(code).length;
-  if(bytes>SLOT_LIMIT)throw Error('Bot inklusive Einstellungen zu groß: '+bytes+' / '+SLOT_LIMIT+' UTF-8-Bytes.');
+  // A combined bootstrap review artifact is NOT directly pasteable CODE.
+  // The signed loader only downloads the runtime, so allow a bounded config
+  // wrapper without weakening the runtime's 8-MiB loader maximum.
+  const limit=target==='bootstrap-artifact'?BOOTSTRAP_RUNTIME_LIMIT+SLOT_LIMIT:SLOT_LIMIT;
+  if(bytes>limit)throw Error('Bot inklusive Einstellungen zu groß: '+bytes+' / '+limit+' UTF-8-Bytes.');
   return {code,bytes};
 }
 export async function checkPackage(data){
   if(data?.format!=='albot-package'||data.formatVersion!==1)throw Error('Bot-Paketformat unbekannt.');
   checkDescriptor(data.descriptor);const r=data.runtime;
   if(!r||r.contractVersion!==1||r.schemaId!==data.descriptor.schemaId||typeof r.code!=='string'||!r.code.trim()||typeof r.version!=='string'||!/^[a-zA-Z0-9.+_-]{1,80}$/.test(r.version)||!/^[a-f0-9]{64}$/.test(r.sha256??''))throw Error('Runtime-Vertrag oder Versions-/Hashangabe ungültig.');
-  if(new TextEncoder().encode(r.code).length>SLOT_LIMIT)throw Error('Runtime überschreitet bereits das CODE-Limit.');
+  if(new TextEncoder().encode(r.code).length>BOOTSTRAP_RUNTIME_LIMIT)throw Error('Runtime überschreitet die 8-MiB-Bootstrap-Downloadgrenze.');
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(r.code));
   if(Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('')!==r.sha256)throw Error('Bot-Paket ist beschädigt: SHA-256 stimmt nicht.');
   return data;

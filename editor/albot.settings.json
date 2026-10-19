@@ -1660,12 +1660,15 @@
                 "bank",
                 "retrieve",
                 "sell",
+                "swap",
+                "tradeOffer",
                 "buy",
                 "list",
                 "wishlist",
                 "marketBuy",
                 "upgrade",
                 "compound",
+                "destat",
                 "exchange",
                 "craft",
                 "farm"
@@ -1678,12 +1681,15 @@
                 "bank": "Bank einlagern",
                 "retrieve": "Bank entnehmen",
                 "sell": "NPC-Verkauf",
+                "swap": "Expliziter 1:1-Itemtausch (Angebot annehmen)",
+                "tradeOffer": "Einmaliges eigenes Tauschangebot (explizit)",
                 "buy": "NPC-Kauf",
                 "list": "Markt anbieten",
                 "wishlist": "Kaufgesuch",
                 "marketBuy": "Markt kaufen",
                 "upgrade": "Upgrade",
                 "compound": "Compound",
+                "destat": "De-Statting (nur genaue Überschussregel)",
                 "exchange": "Exchange",
                 "craft": "Craft",
                 "farm": "Gezielt farmen"
@@ -1830,6 +1836,52 @@
               "default": 1,
               "minimum": 0,
               "maximum": 1
+            },
+            "wantItem": {
+              "type": "string",
+              "title": "Tausch: erhaltene Item-ID (nur exakte Einzelitems)",
+              "default": "",
+              "maxLength": 160,
+              "x-catalog": "items"
+            },
+            "wantLevel": {
+              "type": "integer",
+              "title": "Tausch: exakter Eingangslevel",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 99
+            },
+            "wantQuantity": {
+              "type": "integer",
+              "title": "Tausch: exakte Empfangsmenge",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 9999
+            },
+            "wantStatType": {
+              "type": "string",
+              "title": "Tausch: Stat-Typ der Gegenleistung (leer = ohne)",
+              "default": "",
+              "maxLength": 160
+            },
+            "wantProperty": {
+              "type": "string",
+              "title": "Tausch: Eigenschaft p der Gegenleistung (leer = ohne)",
+              "default": "",
+              "maxLength": 160
+            },
+            "wantTitle": {
+              "type": "string",
+              "title": "Tausch: Titel der Gegenleistung (leer = ohne)",
+              "default": "",
+              "maxLength": 160
+            },
+            "wantTargetCount": {
+              "type": "integer",
+              "title": "Tausch: maximaler bereits gehaltener Zielbestand",
+              "default": 1,
+              "minimum": 1,
+              "maximum": 9999
             },
             "recipe": {
               "type": "string",
@@ -2192,6 +2244,26 @@
                   "minimum": 0,
                   "maximum": 99
                 },
+                "statType": {
+                  "type": "string",
+                  "title": "Gewünschter Stat-Scroll (leer = kein Tailoring)",
+                  "default": "",
+                  "maxLength": 160,
+                  "enum": [
+                    "",
+                    "str",
+                    "int",
+                    "dex",
+                    "vit"
+                  ],
+                  "x-labels": {
+                    "": "Unverändert",
+                    "str": "Stärke",
+                    "int": "Intelligenz",
+                    "dex": "Geschicklichkeit",
+                    "vit": "Vitalität"
+                  }
+                },
                 "budget": {
                   "type": "integer",
                   "title": "Gesamtes Gold-/Verlustbudget",
@@ -2214,6 +2286,7 @@
                 "slot",
                 "item",
                 "level",
+                "statType",
                 "budget",
                 "priority"
               ],

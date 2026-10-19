@@ -91,6 +91,33 @@ export function createPorts(root){
     // wrapper owns a shared singleton; stopping ALBot must not detach listeners
     // still in use by the game or another code client.
     closeProgression(){try{progressionRuntime?.detach?.();}catch{}progressionRuntime=null;progressionDefinitions=null;},
+    // The official server emits seller-visible swaps as socket "ui".
+    // Subscribe without changing game UI handlers; detach on bot disposal.
+    watchOwnTradeSwaps(handler){
+     const socket=parent.socket;
+     if(typeof handler!=='function'||!socket||
+        typeof socket.on!=='function'||
+        typeof socket.off!=='function'&&
+        typeof socket.removeListener!=='function')return null;
+     const listener=data=>{
+      if(data?.type==='swap'&&data.event===true)handler(data);
+     };
+     socket.on('ui',listener);
+     return ()=>{if(typeof socket.off==='function')socket.off('ui',listener);
+      else socket.removeListener('ui',listener);};
+    },
+    // Official chest_opened contains per-item looter and per-recipient gold.
+    // It is emitted to each group recipient. This subscriber is read-only.
+    watchChestOpened(handler){
+     const socket=parent.socket;
+     if(typeof handler!=='function'||!socket||
+       typeof socket.on!=='function'||
+       typeof socket.off!=='function'&&
+       typeof socket.removeListener!=='function')return null;
+     socket.on('chest_opened',handler);
+     return ()=>{if(typeof socket.off==='function')socket.off('chest_opened',handler);
+      else socket.removeListener('chest_opened',handler);};
+    },
     // Only a read-only tracker observation request; no user-item operations.
     trackerSocket(){return parent?.socket??null;},
     call(name,...args){const f=find(name);if(!f)throw Error('Spiel-API fehlt: '+name);return f[1].apply(f[0],args);},

@@ -15,3 +15,44 @@ export function gearCatchUpPriority(profile,peers){
  return Math.min(60,Math.max(0,Math.round((coverage-own.coverage)*40+
   Math.max(0,level-own.level)*4)));
 }
+
+
+// Comparable [0..1] role-dependent slot coverage, NOT raw DPS, gear level,
+// combat eligibility or a spend authority. A priest's mainhand, a tank's
+// defensive shell and a travelling merchant's shoes are not interchangeable.
+const SLOT_KEYS=['mainhand','offhand','helmet','chest','pants','shoes','gloves',
+ 'amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
+// Three role-critical slots carry graded coverage weight (4,3,2).
+// All other canonical slots count once; maximum is 15+3+2+1 = 21.
+const SLOT_PRIORITIES={
+ healer:['mainhand','chest','helmet'],
+ tank:['chest','offhand','helmet'],
+ dps:['mainhand','offhand','gloves'],
+ economy:['shoes','belt','gloves']
+};
+function roleCoverage(p,role){
+ if(!p?.complete||!p.slots||
+    SLOT_KEYS.some(k=>!Object.hasOwn(p.slots,k)))return null;
+ const top=SLOT_PRIORITIES[role]??SLOT_PRIORITIES.dps;
+ const filled=SLOT_KEYS.reduce((sum,k)=>sum+(p.slots[k]?
+  k===top[0]?4:k===top[1]?3:k===top[2]?2:1:0),0);
+ return {ratio:filled/21,pivotal:top[0]};
+}
+export function crossRoleGearPriority(profile,cohort,{
+ role='dps',slot='',now=Date.now(),lastImprovedAt=null
+}={}){
+ const own=roleCoverage(profile,role);
+ // A loaded but outdated/off-realm cached profile cannot earn automatic
+ // account-wide priority. The same bounded age applies to peer profiles.
+ if(!own||!Array.isArray(cohort)||!Number.isFinite(now)||
+    !Number.isFinite(profile?.at)||profile.at<=0||profile.at>now||
+    now-profile.at>604800000)return 0;
+ const values=cohort.filter(x=>x?.profile?.at>0&&now>=x.profile.at&&
+  now-x.profile.at<=604800000).map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);
+ if(values.length<2)return 0;
+ const gap=Math.max(0,Math.max(...values.map(x=>x.ratio))-own.ratio);
+ const vacancy=gap>0&&!profile.slots[slot]?(slot===own.pivotal?10:4):0;
+ const age=gap>0&&lastImprovedAt>0&&lastImprovedAt<=now?
+  Math.min(12,Math.floor((now-lastImprovedAt)/172800000)):0;
+ return Math.min(60,Math.round(gap*40)+vacancy+age);
+}

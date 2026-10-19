@@ -19,7 +19,8 @@
       "testLogging": true,
       "transferIntervalMs": 250,
       "autonomousSetup": true,
-      "autoRoster": false
+      "autoRoster": false,
+      "callCostCeiling": 160
     },
     "characters": [],
     "farming": {
@@ -239,7 +240,14 @@
       "questPreference": 1.1,
       "bossTactics": true,
       "bossMaxSeconds": 300,
-      "adaptiveLearning": true
+      "adaptiveLearning": true,
+      "eventGraceMs": 2500,
+      "seasonalBuff": true,
+      "boosters": false,
+      "activateBoosters": false,
+      "respectHopPenalties": true,
+      "travelBlink": false,
+      "rewardMail": true
     },
     "rules": []
   }

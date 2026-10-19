@@ -21,6 +21,14 @@ export function validateBankPartialRecord(r,{owner,realm,now=Date.now()}={}){
     !Number.isSafeInteger(r.before+r.total)||!integer(r.bankBefore-r.total)||
     r.sourcePrint!==fingerprint(r.item))
   return bad('invalid-quantities-or-source');
+ // Optional W04 provenance, never an independent withdrawal permission.
+ // A resume rechecks this against live policy before the FIRST dispatch;
+ // subsequent split/return steps must safely finish even if policy changes.
+ if(r.reserveStage!==undefined&&(!r.reserveStage||
+    typeof r.reserveStage!=='object'||Array.isArray(r.reserveStage)||
+    !integer(r.reserveStage.floor)||r.reserveStage.floor<r.take||
+    typeof r.reserveStage.variant!=='string'||!r.reserveStage.variant))
+  return bad('invalid-reserve-staging-provenance');
  const phases=['original','withdrawn','split'];
  if(r.prepared!==undefined){
   const v=r.prepared;

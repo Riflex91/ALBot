@@ -2,6 +2,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {Script} from 'node:vm';
 import {createHash} from 'node:crypto';
 import {VERSION} from '../src/version.mjs';
+import {BOOTSTRAP_RUNTIME_LIMIT,SLOT_LIMIT} from '../editor/lib/contract.mjs';
 const [existing,runtime]=await Promise.all([
  readFile(new URL('../bot.js',import.meta.url),'utf8'),
  readFile(new URL('../dist/albot.runtime.js',import.meta.url),'utf8')
@@ -21,7 +22,9 @@ const nextComment=originalComment.replace(/^\/\/ ALBot [^\n]+/,
 const candidate=nextComment+config+runtime.replace(/\s+$/,'')+'\n';
 if(candidate.slice(candidate.indexOf('globalThis.ALBotConfig='),candidate.indexOf('/* ALBot '))!==config)
  throw Error('Konfiguration geaendert');
-if(Buffer.byteLength(candidate)>1048576)throw Error('CODE Bundle zu gross');
+// Personal local comparison artifact, never fetched by the signed loader.
+if(Buffer.byteLength(runtime)>BOOTSTRAP_RUNTIME_LIMIT)throw Error('Bootstrap Runtime zu gross');
+if(Buffer.byteLength(candidate)>BOOTSTRAP_RUNTIME_LIMIT+SLOT_LIMIT)throw Error('Personalisiertes Bootstrap-Artefakt zu gross');
 new Script(candidate);
 const hash=createHash('sha256').update(candidate).digest('hex');
 if(process.argv.includes('--check')){

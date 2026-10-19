@@ -1,4 +1,5 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {gearCompatible} from './gear.mjs';
 import {purposeReservations} from './purpose-allocation.mjs';
 import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} from './helpers.mjs';
 import {estimateRoutes} from './costs.mjs';
@@ -97,6 +98,62 @@ export function unbankedDemand(rows,bankItems,name,level){
  }
  return remaining;
 }
+// W07/N01: a mutation may destroy the last physically usable mainhand
+// before an unarmed, freshly observed active teammate receives starter gear.
+// Compare maximum DISTINCT feasible allocations before/after consumption:
+// a copied snapshot, equipped weapon, locked item or stale peer never
+// creates spendable spare inventory. This only DENIES mutations; it does
+// not authorize sends, equips, previews or an alternative gear plan.
+export function mutationPreservesOperationalGear(bot,inputSlots,{now=Date.now()}={}){
+ const pass=()=>({allowed:true,reason:'no-observed-operating-gear-loss'});
+ if(bot.me?.role!=='merchant'||!Array.isArray(inputSlots)||
+    !Array.isArray(bot.p?.c?.items)||!Array.isArray(bot.farmers)||
+    !bot.p?.G?.items||!bot.p?.G?.classes||
+    !Number.isFinite(now)||bot.farmers.length>8)return pass();
+ const unique=new Set(inputSlots);
+ if(unique.size!==inputSlots.length||inputSlots.some(n=>
+     !Number.isSafeInteger(n)||n<0||n>=bot.p.c.items.length))
+  return {allowed:false,reason:'invalid-mutation-inputs'};
+ const people=[];
+ for(const name of bot.farmers){
+  if(typeof name!=='string'||!name||name===bot.me.name)continue;
+  const peer=bot.transport?.fresh?.(name),gear=peer?.gear;
+  if(peer?.running!==true||peer.rip||peer.realm!==bot.p.realm()||
+     !gear?.complete||typeof gear.class!=='string'||
+     !Number.isSafeInteger(gear.level)||gear.level<1||
+     !Number.isFinite(gear.at)||gear.at>now||now-gear.at>120000||
+     !gear.slots||!Object.hasOwn(gear.slots,'mainhand')||
+     gear.slots.mainhand!==null)continue;
+  people.push({class:gear.class,level:gear.level,slots:gear.slots});
+ }
+ if(!people.length)return pass();
+ const items=bot.p.c.items,usable=(i,person)=>!!i&&
+  bot.economy?.safe?.(i)===true&&
+  gearCompatible(bot.p.G,person,i,'mainhand');
+ // Compare maximum one-to-one cover, so a weapon cannot be promised to
+ // multiple unarmed farmers merely because all can equip the same item.
+ const maximum=exclude=>{
+  const owner=new Map();
+  const visit=(p,visited)=>{
+   for(let slot=0;slot<items.length;slot++){
+    if(exclude.has(slot)||visited.has(slot)||!usable(items[slot],people[p]))
+     continue;
+    visited.add(slot);
+    if(!owner.has(slot)||visit(owner.get(slot),visited)){
+     owner.set(slot,p);return true;
+    }
+   }
+   return false;
+  };
+  let count=0;
+  for(let p=0;p<people.length;p++)if(visit(p,new Set()))count++;
+  return count;
+ };
+ const before=maximum(new Set()),after=maximum(unique);
+ return after>=before?pass():{allowed:false,reason:'last-observed-functional-mainhand',
+  before,after,unarmed:people.length};
+}
+
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false,admittedGoalKey=null,admittedAt=0;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
@@ -215,6 +272,12 @@ export function createProduction(bot){
    return false;
   }
   if(e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+  const starterGuard=mutationPreservesOperationalGear(bot,inputs);
+  if(!starterGuard.allowed){
+   noteDeferred(kind,i.name,starterGuard.reason,{before:starterGuard.before,
+    after:starterGuard.after,unarmed:starterGuard.unarmed});
+   return false;
+  }
   // Only implicit standard-scroll upgrades may opt into scroll1. Explicit
   // scrolls/offerings and the profit planner keep their own helper policies.
   const fallbackKey=()=>JSON.stringify([p.c.items[slot],p.G.version,p.G.upgrades,
@@ -321,7 +384,8 @@ export function createProduction(bot){
       preview?.key!==key||Date.now()-preview.time>=5000||
       !Number.isFinite(preview.chance)||preview.chance<Math.max(r.minChance,cfg.production.minChance)||
       !Number.isFinite(preview.cost)||preview.cost!==cost||
-      e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0))return false;
+      e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0)||
+      !mutationPreservesOperationalGear(bot,inputs).allowed)return false;
    if(!inputs.every(n=>e.safe(p.c.items[n])&&identity(p.c.items[n])===identity(i)))return false;
    if(p.c.items[scroll]?.name!==scrollName||!usable(p.c.items[scroll]))return false;
    if(offering!==null&&(p.c.items[offering]?.name!==r.offering||!usable(p.c.items[offering])))return false;
@@ -334,6 +398,16 @@ export function createProduction(bot){
     const retainedFailure=kind==='upgrade'&&p.G.items[scrollName]?.grade===3.6&&
       mutationResult?.success===false&&!mutationResult.calculate&&e.count(i)===before&&identity(p.c.items[slot])===identity(i);
     return consumed&&!p.c.q?.[kind]&&(e.count(next)>after||e.count(i)<=before-inputs.length||retainedFailure);
+   },onConfirmed:()=>{
+    // Called ONLY by the existing value-effect observer after settlement.
+    // Unknown mutations never generate success/failure slot statistics.
+    const outcome=e.count(next)>after?'improved':
+     mutationResult?.success===false?'server-reported-failure':'unclassified';
+    // Shadow diagnostics must never alter the already-settled mutation,
+    // even if an optional telemetry consumer malfunctions.
+    try{bot.luckySlots?.record({kind,slot:inputs[0],fromLevel:i.level??0,
+     toLevel:next.level,outcome,confirmed:true});}catch{}
+    return true;
    },details:{item:i.name,riskVariant:identity(i),before,quantity:inputs.length,targetLevel:next.level},timeout:45000});
  }
  function craft(name,r){
@@ -629,7 +703,30 @@ export function createProduction(bot){
    });}return accepted;};
   if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));
   if(step.kind==='retrieve')return attempt(()=>bot.bank.retrieve(item,r,step.quantity));
-  if(step.kind==='craft')return attempt(()=>craft(step.item,r));if(step.kind==='marketBuy')return attempt(()=>bot.market.buy(item,r));if(step.kind==='exchange'){
+  if(step.kind==='craft')return attempt(()=>craft(step.item,r));
+  if(step.kind==='marketBuy'){
+   // W06: one material/acquisition node, not the rule's entire targetCount.
+   // Replanning, replacing a goal or editing an explicit acquisition rule
+   // immediately invalidates this request before the trade_buy dispatch.
+   const liveStep=step,liveGoal=goal;
+   const ruleSignature=rule=>JSON.stringify([rule?.action,rule?.enabled,
+    rule?.item,rule?.minLevel,rule?.maxLevel,rule?.targetCount,
+    rule?.maxCount,rule?.batch,rule?.maxPrice,rule?.goldBudget,
+    rule?.priceSource,rule?.character,rule?.role]);
+   const signature=ruleSignature(r);
+   return attempt(()=>bot.market.buy(item,r,{
+    quantity:step.quantity,
+    admit:()=>bot.running&&cfg.production.enabled&&
+     !intentBlocked&&!bot.journal&&!bot.inventoryBlocked&&
+     goal===liveGoal&&plan[0]===liveStep&&
+     liveStep.kind==='marketBuy'&&
+     Number.isSafeInteger(liveStep.quantity)&&liveStep.quantity>0&&
+     cfg.production.acquireBy.includes('market')&&
+     e.remaining(r)&&ruleSignature(r)===signature&&
+     ruleSignature(e.rules(item,'acquisition'))===signature
+   }));
+  }
+  if(step.kind==='exchange'){
    const slot=firstEligibleProductionSlot(p.c.items,item,i=>e.safe(i)&&
     e.explicit(i,'inventory')?.action!=='keep'&&e.explicit(i,'production')?.action!=='keep');
    if(slot<0)noteDeferred(step.kind,step.item,'no-safe-matching-inventory-slot');

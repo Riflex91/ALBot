@@ -17,15 +17,23 @@ Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 | --- | --- |
 | Manifest-URL | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json` |
 | Manifest-Branch | `codex/w00-w01-readonly-disposition-20261018` |
-| Manifest `sequence` | `3` |
-| Manifest `version` | `0.10.10-candidate` |
+| Manifest `sequence` | `4` |
+| Manifest `version` | `0.10.11-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `686855` |
-| Manifest `sha256` | `3c47ce5f94987016c6adac867479266932ff921c642d2bfa6fce9bd4d732429d` |
+| Manifest `bytes` | `687439` |
+| Manifest `sha256` | `92c0e27aa8020f5a658601d9e050f876e8e0ed43901dc3b11cf541086093a559` |
 | Signaturprüfung | ECDSA-P-256 über die dokumentierten Manifestfelder **gültig** |
 | Ingame-Erfolg | Aus CODE/Manifest allein **nicht nachgewiesen** |
 
 **Konsequenz:** Der Bootstrap folgt dem dokumentierten signierten Release-Branch und `manifest.runtimeUrl`, nicht automatisch `main/bot.js`. Integrierte Quelle und signierte Runtime wurden in CI gebaut und kryptografisch verifiziert; ein tatsächlicher Spielstart ist ohne Live-Nachweis unbekannt. Das persönliche Ingame-`ALBotConfig` bleibt unabhängig von der Repository-`bot.js`.
+
+Freigabe über den vorhandenen [Signierworkflow](https://github.com/Riflex91/ALBot/actions/runs/39155452952), aus Main `c684764e9c526e877c7c8d16130b376a787b2bd2`: 1.430/1.430 Offlinetests, persönliche Einstellungen unverändert, Manifest und Runtime gemeinsam veröffentlicht. Der vorhandene V2-Loader kann diese Version ohne Neuinstallation beim nächsten CODE-Start laden. Kein neuer Ingame-Ladevorgang beobachtet.
+
+## Getrennte Größenverträge (Bootstrap und alte CODE-Ausgabe)
+
+- **Externe signierte Runtime:** Der vorhandene V2-Loader lädt höchstens 8.388.608 Bytes (8 MiB); Manifest `bytes`, gültige ECDSA-P-256-Signatur, SHA-256, Runtime-Header und Downgrade-Schutz bleiben Pflicht. Eine alte **900-KiB-Benchmark** des vollständigen Regelkatalogs ist **keine** Bootstrap-Grenze und darf Runtimeänderungen nicht sperren.
+- **Legacy-Direkt-CODE/Werkstatt:** Das explizite Ausgabeziel `legacy-code` von `exportBundle` behält das separate 1-MiB-CODE-Limit. Der Repository-Build und die lokalen personalisierten Vergleichsartefakte benutzen dagegen `target:'bootstrap-artifact'`: Runtime bis 8 MiB plus höchstens 1 MiB Konfigurationswrapper. Diese kombinierte Datei ist **nicht** automatisch direkt in den CODE-Slot einfügbar. `checkPackage` akzeptiert externe Runtime-Pakete bis zur Bootstrap-Grenze.
+- **Build-Artefakt:** `main/dist/albot.runtime.js` bleibt nur ein Build. `bot.js` und `dist/albot.js` sind kombinierte Vergleichsartefakte, aber bei mehr als 1 MiB **keine** gültigen Direkt-CODE-Exporte. Der aktive Loader führt weiterhin die separat signierte `manifest.runtimeUrl` aus; ein Main-Merge ist kein Release. Die Freigabe benötigt weiterhin Signatur-, SHA-256-, Byte- und Versionsprüfung.
 
 ## Maschinenlesbarer Vertrag und CI
 

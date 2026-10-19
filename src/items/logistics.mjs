@@ -1,5 +1,5 @@
 import {potionTarget,onlineSupplyFarmers} from './potion-supply.mjs';
-import {protectedItem,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
+import {protectedItem,identity,variantCount,transferable,fingerprint,distance,samePlace,chooseRule} from '../core/policy.mjs';
 import {phaseOf} from '../../editor/lib/contract.mjs';
 import {peerReadyForHandoff} from './handoff-coordinator.mjs';
 import {inspectReceiveSenderSession} from './transfer-reconciliation.mjs';
@@ -37,6 +37,79 @@ export function physicalReceiveCapacity(items,item,meta,{maxNewSlots=Infinity,in
  // shared planner also checks exact compatible-stack headroom.
  const limit=Number.isFinite(maxNewSlots)?Math.max(0,Math.min(1,Math.floor(maxNewSlots))):1;
  return capacityAfterConsumption(items,[],item,meta,{maxNewSlots:limit,inventorySize})?.units??0;
+}
+// A confirmed physical loot receipt can only change offer ORDER. It does
+// not create recipient authorization, a send rule, a quantity or a reserve.
+// The normal two-party inventory journal remains the sole transfer path.
+export function receiptBackedPickupOrder(items,hints,{role,merchant,pickup}={}){
+ const slots=Array.isArray(items)?items.map((_,index)=>index):[];
+ if(role!=='farmer'||pickup!==true||typeof merchant!=='string'||
+    !merchant||!Array.isArray(hints)||hints.length>16)return slots;
+ const credits=new Map();
+ for(const row of hints){
+  if(row?.evidence!=='own-physical-receipt-confirmed'||
+     row.state!=='read-only-demand-match'||
+     row.dispatchAuthorized!==false||
+     typeof row.variantIdentity!=='string'||!row.variantIdentity||
+     row.variantIdentity.length>512||
+     !Number.isSafeInteger(row.observedUnits)||row.observedUnits<1||
+     !Number.isSafeInteger(row.currentUnits)||row.currentUnits<1||
+     !Number.isSafeInteger(row.uncommittedEstimate)||
+     row.uncommittedEstimate<1)continue;
+  // Duplicate status rows may not increase the available priority credit.
+  const cap=Math.min(row.observedUnits,row.currentUnits,
+   row.uncommittedEstimate);
+  credits.set(row.variantIdentity,Math.max(credits.get(row.variantIdentity)??0,cap));
+ }
+ const preferred=new Set();
+ for(const slot of slots){
+  const item=items[slot];
+  if(protectedItem(item))continue;
+  const key=identity(item),credit=credits.get(key)??0;
+  const units=item?.q??1;
+  if(credit<1||!Number.isSafeInteger(units)||units<1)continue;
+  preferred.add(slot);
+  credits.set(key,Math.max(0,credit-units));
+ }
+ return slots.sort((a,b)=>Number(preferred.has(b))-Number(preferred.has(a)));
+}
+// W13: prefer an already authorized gear recipient whose CURRENT, live
+// target is most urgent. This is order-only: no send rule, extra copy,
+// recipient, equipment promise or inventory authority is ever created.
+export function orderedGearRecipients(recipients,item,{role='',gearEnabled=false,
+ explicitRules=[],goals=[],peers={},realm='',allocations=[]}={}){
+ if(!Array.isArray(recipients)||recipients.length<2||recipients.length>32||
+    role!=='merchant'||gearEnabled!==true||!item||
+    !Array.isArray(explicitRules)||!Array.isArray(goals)||
+    !Array.isArray(allocations)||goals.length>256||
+    allocations.length>256)return recipients;
+ // User-defined keep/send actions retain their configured precedence.
+ if(explicitRules.some(r=>r?.enabled&&r.item===item.name&&
+    (r.action==='keep'||r.action==='send')))return recipients;
+ const wanted=new Set(recipients);
+ const priority=new Map();
+ const unique=new Set();
+ for(const goal of goals){
+  if(goal?.enabled===false||goal?.item!==item.name||
+     goal.level!==(item.level??0)||!wanted.has(goal.recipient)||
+     typeof goal.recipient!=='string'||!goal.gearSlot||
+     !Number.isFinite(goal.priority))continue;
+  // Never prefer an incompatible stat/title/property variant.
+  if(goal.variant&&identity({...item,...goal.variant})!==identity(item))continue;
+  const peer=peers[goal.recipient];
+  if(!peer?.running||peer.rip||peer.realm!==realm||
+     typeof peer.session!=='string'||!peer.session)continue;
+  const claim=allocations.some(r=>r?.recipient===goal.recipient&&
+    r.variant===identity(item)&&
+    (r.state==='unresolved'||r.state==='reserved'));
+  if(claim)continue; // no priority credit from an unconfirmed promise
+  const score=Math.min(100000,Math.max(-100000,goal.priority));
+  priority.set(goal.recipient,Math.max(priority.get(goal.recipient)??-Infinity,score));
+ }
+ if(!priority.size)return recipients;
+ return recipients.map((name,index)=>({name,index,score:priority.get(name)}))
+  .sort((a,b)=>(b.score??-Infinity)-(a.score??-Infinity)||a.index-b.index)
+  .map(x=>x.name);
 }
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),clock=()=>exec.now();
@@ -86,11 +159,19 @@ export function createLogistics(bot){
   };
   const sendRecipients=item=>{
     const configured=[...new Set(allRules().filter(r=>r.enabled&&r.action==='send'&&r.item===item.name&&r.recipient&&r.recipient!==me.name).map(r=>r.recipient))];
-    return configured.length?configured:(item?.name==='tracker'&&me.role==='merchant'?
+    if(configured.length){
+     if(me.role!=='merchant'||configured.length<2)return configured;
+     const peers=Object.fromEntries(configured.map(name=>[name,transport.fresh(name)]));
+     return orderedGearRecipients(configured,item,{
+      role:me.role,gearEnabled:cfg.production?.gear===true,
+      explicitRules:cfg.items,goals:bot.gear?.goals?.()??[],
+      peers,realm:p.realm(),allocations:bot.allocation?.status?.()??[]});
+    }
+    return item?.name==='tracker'&&me.role==='merchant'?
       (bot.farmers??[]).filter(name=>!!trackerRule(item,name)):
       (autoLootRule(item)?[cfg.party.merchant]:
       (isPotion(item)&&!explicitInventory(item)&&!bot.economy?.explicit(item)&&
-        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?refillFarmers().map(x=>x.name):[])));
+        (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?refillFarmers().map(x=>x.name):[]));
   };
   const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??trackerRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
   const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
@@ -286,7 +367,17 @@ export function createLogistics(bot){
     if(bot.supplyOnly||bot.checkpoint?.durable===false||bot.gold?.reserved||!allowOffer||incoming||bot.bank?.pending||bot.journal||exec.busy('inventory')||bot.inventoryBlocked||!bot.running)return;
     if(me.role==='merchant'&&bot.services?.active){travel();return;}
     if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.supply))return;
-    outer:for(let slot=0;slot<p.c.items.length;slot++){
+    // Priority is a diagnostic hint only. All existing sendRule,
+    // availableTransfer, authenticated-peer, gear-accept and value-journal
+    // checks below are mandatory after ordering, without exceptions.
+    let hints=[];
+    if(me.role==='farmer'&&cfg.merchant.pickup===true){
+     try{hints=bot.lootReceipts?.status?.()?.purposeHints??[];}
+     catch{hints=[];}
+    }
+    const candidates=receiptBackedPickupOrder(p.c.items,hints,{
+     role:me.role,merchant:cfg.party?.merchant,pickup:cfg.merchant.pickup});
+    outer:for(const slot of candidates){
       const item=p.c.items[slot];if(!item||protectedItem(item))continue;
       for(const to of sendRecipients(item)){
         const r=sendRule(item,to);if(!r)continue;

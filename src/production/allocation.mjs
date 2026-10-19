@@ -145,7 +145,22 @@ export function createGearAllocation(bot){
    unclaimedGearUnits(rows,bot.p.c.items,live,{excludeId:j.id})>=j.quantity;
 }
  function settle(j,state){const row=rows.find(r=>r.id===j.id);if(!row)return true;if(row.state==='delivered')return state==='confirmed';return save(rows.map(r=>r.id===j.id?{...r,state:state==='confirmed'?'delivered':'unresolved',settled:Date.now(),settlement:{id:j.id,variant:identity(j.item),recipientSession:j.session,quantity:j.quantity,receipt:!!j.receipt}}:r));}
- const receivingKey=key+':receiving';let receiving=bot.p.read(receivingKey)??[];if(!Array.isArray(receiving))receiving=[];
+ const receivingKey=key+':receiving',savedReceiving=bot.p.read(receivingKey);
+ let receiving=savedReceiving??[];
+ // An invalid durable receiving ledger is not an empty ledger.
+ // Unknown entries may represent still-open physical promises.
+ const unsafeReceiving=!Array.isArray(receiving)||
+  new Set(receiving.map(r=>r?.id)).size!==receiving.length||
+  receiving.some(r=>
+  !r||typeof r.id!=='string'||!r.id||
+  typeof r.from!=='string'||!r.from||
+  typeof r.session!=='string'||!r.session||
+  !Number.isSafeInteger(r.expires)||r.expires<1||
+  !['accepted','equipped'].includes(r.state)||
+  !r.item||typeof r.item.name!=='string'||!r.item.name||
+  typeof r.slot!=='string'||!r.slot||
+  typeof r.expected!=='string');
+ if(!Array.isArray(receiving))receiving=[];
  function offer(item,to){
   const g=goalFor(item,to);if(!g)return null;
   if(unsafeHistory)return false;
@@ -156,19 +171,54 @@ export function createGearAllocation(bot){
    expected:fingerprint(peer.gear.slots?.[g.gearSlot]),
    item,expires:Date.now()+bot.cfg.general.messageTtlMs};
 }
- function accept(id,from,session,item,g){if(!g)return true;const profile=bot.gear.snapshot(),old=bot.p.c.slots?.[g.slot],explicit=bot.economy.explicit(item);
-  if(g.expires<Date.now()||from!==bot.cfg.party.merchant||protectedItem(old)&&old||g.expected!==fingerprint(profile.slots?.[g.slot])||!gearCompatible(bot.p.G,profile,item,g.slot)||explicit&&explicit.action!=='equip')return false;
-  const role=bot.me.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):bot.me.gearRole;
-  try{const next=bot.p.call('item_properties',item),previous=old?bot.p.call('item_properties',old):null;
-   if(!gearSuitability(previous,next,role,profile.class,bot.me.merchantMobility).ok)return false;
-   if(old&&gearScore(next,role,profile.class)<=gearScore(previous,role,profile.class))return false;
+ function accept(id,from,session,item,g){
+  if(!g)return true;
+  const now=Date.now(),ttl=bot.cfg.general.messageTtlMs;
+  // Repeated ids are never new promises, even if the item, slot or
+  // originating session is substituted in a subsequent offer.
+  if(unsafeReceiving||typeof id!=='string'||!id||id.length>240||
+     typeof from!=='string'||!from||
+     typeof session!=='string'||!session||
+     !Number.isSafeInteger(ttl)||ttl<1||
+     !Number.isSafeInteger(g.expires)||g.expires<=now||
+     g.expires>now+Math.max(1000,ttl*2)||
+     typeof g.slot!=='string'||!g.slot||
+     typeof g.expected!=='string'||!g.expected||
+     !item||typeof item.name!=='string'||!item.name||
+     receiving.some(r=>r.id===id&&r.expires>now))return false;
+  const profile=bot.gear.snapshot(),old=bot.p.c.slots?.[g.slot],
+   explicit=bot.economy.explicit(item);
+  if(from!==bot.cfg.party.merchant||
+     protectedItem(old)&&old||
+     g.expected!==fingerprint(profile.slots?.[g.slot])||
+     !gearCompatible(bot.p.G,profile,item,g.slot)||
+     explicit&&explicit.action!=='equip')return false;
+  const role=bot.me.gearRole==='auto'?
+   (profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):
+   bot.me.gearRole;
+  try{
+   const next=bot.p.call('item_properties',item),
+    previous=old?bot.p.call('item_properties',old):null;
+   if(!gearSuitability(previous,next,role,profile.class,bot.me.merchantMobility).ok)
+    return false;
+   if(old&&gearScore(next,role,profile.class)<=
+      gearScore(previous,role,profile.class))return false;
   }catch{return false;}
-  const row={id,from,session,item,slot:g.slot,expected:g.expected,expires:Date.now()+600000,state:'accepted'};const next=receiving.filter(r=>r.id!==id&&r.expires>Date.now()).slice(-15);next.push(row);if(!bot.p.write(receivingKey,next))return false;receiving=next;return true;
+  // Retain every unexpired receiver promise, never evict a live record
+  // to fit the bounded (16) ledger.
+  const active=receiving.filter(r=>r.expires>now);
+  if(active.length>=16)return false;
+  const row={id,from,session,item,slot:g.slot,expected:g.expected,
+   expires:now+600000,state:'accepted'};
+  const next=[...active,row];
+  if(!bot.p.write(receivingKey,next))return false;
+  receiving=next;
+  return true;
  }
- function rules(){receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
- function equipGuard(item,slot){const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
+ function rules(){if(unsafeReceiving)return [];receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
+ function equipGuard(item,slot){if(unsafeReceiving)return false;const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
  function tick(){
-  const newReceiving=receiving.map(r=>r.state!=='equipped'&&
+  const newReceiving=unsafeReceiving?receiving:receiving.map(r=>r.state!=='equipped'&&
    identity(bot.p.c.slots?.[r.slot])===identity(r.item)?
    {...r,state:'equipped'}:r);
   if(newReceiving.some((r,i)=>r!==receiving[i])&&
@@ -195,9 +245,10 @@ export function createGearAllocation(bot){
   if(next.some((r,i)=>r!==rows[i]))save(next);
 }
  return {offer,accept,rules,equipGuard,tick,reserve,guard,settle,
-  pendingReceived:item=>pendingGearReceipt(receiving,item),
+  pendingReceived:item=>unsafeReceiving||pendingGearReceipt(receiving,item),
   status:()=>rows.map(r=>({...r})),
-  recoveryStatus:()=>({unsafeHistory,blockedNewGear:unsafeHistory,
+  recoveryStatus:()=>({unsafeHistory,unsafeReceiving,
+   blockedNewGear:unsafeHistory||unsafeReceiving,
    outstandingCount:rows.filter(r=>['reserved','unresolved'].includes(r.state)).length,
    outstanding:rows.filter(r=>['reserved','unresolved'].includes(r.state))
     .slice(0,32).map(r=>inspectGearClaimEvidence(r,{

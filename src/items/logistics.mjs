@@ -259,7 +259,9 @@ export function createLogistics(bot){
       counters.offersReceived++;
       if(bot.checkpoint?.durable===false||bot.lifecycleChanging||bot.movement?.townActive||p.c.c?.town||exec.pending?.has('travel.town')||bot.gold?.reserved||job||incoming||bot.journal||bot.bank?.pending||bot.services?.active||exec.busy('inventory')||bot.inventoryBlocked||completed.has(m.id)||!near(from)||!safeItem(d.item)||!Number.isSafeInteger(d.quantity)||d.quantity<1||d.quantity>1000000)return;
       if(me.role==='merchant'&&(!cfg.merchant.enabled||!cfg.merchant.pickup))return;
-      if(d.gear&&!(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false))return;const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;
+      // No durable gear promise before verified receiver slot/stack room.
+      if(d.gear&&d.quantity!==1)return;
+      const elixirRequested=d.elixir===true&&bot.elixirs?.request?.()?.item===d.item.name;
       const trackerRequested=me.role==='farmer'&&from===cfg.party?.merchant&&
        d.item.name==='tracker'&&!carriedAchievementCarrier(p.c.items)&&
        bot.free()>(cfg.farming.freeSlots??4)&&
@@ -274,6 +276,8 @@ export function createLogistics(bot){
        }
        return;
       }
+      if(d.gear&&(quantity!==1||
+         !(bot.allocation?.accept(m.id,from,m.session,d.item,d.gear)??false)))return;
       if(bot.services?.waiting){bot.services.interrupt();if(bot.movement.order?.owner==='economy')bot.movement.stop();}
       if(me.role==='merchant')bot.movement?.stop();incoming={id:m.id,from,session:m.session,ownerSession:bot.session,item:d.item,quantity,before:count(d.item),until:clock()+cfg.general.messageTtlMs};
       // Persist BEFORE acknowledgement; a restart cannot safely infer a retry.

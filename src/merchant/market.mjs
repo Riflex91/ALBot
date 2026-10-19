@@ -5,7 +5,7 @@ export function createMarket(bot){
  const marketProbes=new Map(),noOffers=new Map(),MARKET_REPROBE_MS=120000;
  // Funding is a short-lived, durable quote snapshot, NEVER a purchase permit.
  const fundingKey='albot:market-funding:v1:'+bot.me.name;
- let funding=p.read(fundingKey)??null;
+ let funding=p.read?.(fundingKey)??null;
  const deniedFunding=new Map(),FUNDING_TTL_MS=600000;
  const ruleStamp=r=>JSON.stringify([r?.action,r?.enabled,r?.item,r?.minLevel,
   r?.maxLevel,r?.batch,r?.maxCount,r?.targetCount,r?.maxPrice,r?.goldBudget,r?.priceSource]);

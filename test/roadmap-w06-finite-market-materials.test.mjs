@@ -134,3 +134,180 @@ test('W06 exact physical return capacity is required despite a misleading free-s
  f.c.items[9]={name:'new-filler'};
  assert.equal(f.jobs[0].job.guard(),false,'capacity loss invalidates dispatch');
 });
+
+test('W06 finite procurement ignores base-matching offers with different account or data variants',()=>{
+ for(const mutate of [
+  offer=>{offer.acc='other-account';},
+  offer=>{offer.data={boundTo:'another-owner'};},
+  offer=>{offer.l='locked';},
+  offer=>{offer.locked=true;}
+ ]){
+  const f=fixture();
+  mutate(f.seller.slots.trade2);
+  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),false);
+  assert.equal(f.market.hasVisibleBuyOffer(f.item),true,
+   'explicit market discovery retains its existing broader variant view');
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
+  assert.equal(f.jobs.length,0,'a mismatched offer never becomes an admitted purchase');
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 finite purchase revalidates material variant immediately before dispatch',()=>{
+ for(const mutate of [
+  offer=>{offer.acc='different';},
+  offer=>{offer.data={origin:'unverified'};},
+  offer=>{offer.bound=true;}
+ ]){
+  const f=fixture();
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+  assert.equal(f.jobs.length,1);
+  assert.equal(f.jobs[0].job.guard(),true);
+  mutate(f.seller.slots.trade2);
+  assert.equal(f.jobs[0].job.guard(),false,
+   'an offer changed after scheduling does not authorize gold spending');
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 stricter material variant check does not alter explicitly configured marketBuy rules',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.acc='different';
+ assert.equal(f.market.buy(f.item,f.rule),true,
+  'legacy explicitly configured market rule retains its existing selection');
+ assert.equal(f.jobs.length,1);
+ assert.equal(f.jobs[0].job.guard(),true);
+});
+
+test('W06 finite market never rounds malformed seller quantities into authorized purchases',()=>{
+ for(const quantity of [0,-1,1.5,NaN,Number.MAX_SAFE_INTEGER+1]){
+  const f=fixture({offerQuantity:quantity});
+  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),false,
+   'invalid listing quantity must not wake blocked production');
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
+  assert.equal(f.jobs.length,0);
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 finite market requires integer unit and total gold exposure',()=>{
+ for(const [unitPrice,quantity] of [
+  [10.5,2],[0.25,2],[Number.MAX_SAFE_INTEGER+1,1],
+  [Number.MAX_SAFE_INTEGER,2]
+ ]){
+  const f=fixture({offerQuantity:quantity});
+  f.rule.maxPrice=Number.MAX_SAFE_INTEGER+2;
+  f.seller.slots.trade2.price=unitPrice;
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(quantity)),false,
+   'invalid unit or total cost is never sent to the value executor');
+  assert.equal(f.jobs.length,0);
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 finite trade requires the same item baseline at delayed dispatch',()=>{
+ const f=fixture();
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ const job=f.jobs[0].job;
+ assert.equal(job.guard(),true);
+ f.setHeld(1);
+ assert.equal(job.guard(),false,'outside inventory changes invalidate prior purchase receipt baseline');
+ assert.equal(f.calls.length,0);
+ f.setHeld(0);
+ assert.equal(job.guard(),true,'an unchanged valid baseline remains eligible');
+});
+test('W06 finite dispatch rejects seller quantity or price drift to malformed values',()=>{
+ for(const change of [
+  f=>{f.seller.slots.trade2.q=2.5;},
+  f=>{f.seller.slots.trade2.price=10.5;}
+ ]){
+  const f=fixture();
+  assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+  const job=f.jobs[0].job;
+  assert.equal(job.guard(),true);
+  change(f);
+  assert.equal(job.guard(),false);
+  assert.equal(f.calls.length,0);
+ }
+});
+test('W06 explicit standalone market buy retains legacy offer-quantity behavior',()=>{
+ const f=fixture({offerQuantity:1.5});
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.jobs[0].job.details.quantity,1);
+ assert.equal(f.jobs[0].job.guard(),true);
+});
+
+test('W06 finite purchase chooses cheapest authorized visible seller, not entity order',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=70;
+ f.p.entities.T={id:'T',name:'Second',type:'character',stand:true,
+  map:'main',in:'main',x:90,y:0,
+  slots:{trade9:{name:'raremat',level:0,q:4,rid:'CHEAP-01',price:5}}};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ const job=f.jobs[0].job;
+ assert.equal(job.cost,10);
+ assert.equal(job.details.seller,'Second');
+ assert.equal(job.details.tradeSlot,'trade9');
+ assert.equal(job.guard(),true);
+});
+test('W06 finite purchase sorts asks within same visible merchant stand',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=40;
+ f.seller.slots.trade3={name:'raremat',level:0,q:3,
+  rid:'LOW-02',price:4};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ assert.equal(f.jobs[0].job.details.tradeSlot,'trade3');
+ assert.equal(f.jobs[0].job.details.unitPrice,4);
+ assert.equal(f.jobs[0].job.cost,8);
+});
+test('W06 cheaper mismatched or unsafe material listing never outranks valid offer',()=>{
+ const f=fixture();
+ f.seller.slots.trade3={name:'raremat',level:0,q:3,
+  rid:'UNRELATED',price:1,acc:'foreign'};
+ f.seller.slots.trade4={name:'raremat',level:0,q:1.5,
+  rid:'INVALID-Q',price:2};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ assert.equal(f.jobs[0].job.details.tradeSlot,'trade2');
+ assert.equal(f.jobs[0].job.cost,20);
+});
+test('W06 explicit standalone market buys preserve original market encounter order',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=60;
+ f.seller.slots.trade3={name:'raremat',level:0,q:4,
+  rid:'LOW-01',price:5};
+ assert.equal(f.market.buy(f.item,f.rule),true);
+ assert.equal(f.jobs[0].job.details.tradeSlot,'trade2');
+ assert.equal(f.jobs[0].job.details.unitPrice,60);
+});
+
+test('W06 only an affordable live offer may interrupt a finite material no-offer wait',()=>{
+ const f=fixture();
+ const scope={strict:true,rule:f.rule};
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),true);
+ f.seller.slots.trade2.price=150;
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),true,
+  'matching material alone remains read-only evidence, not purchase authority');
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),false,
+  'price above the actual maximum must not wake blocked production');
+ f.seller.slots.trade2.price=100;
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),true,
+  'a newly affordable listing may trigger a fresh guarded attempt');
+});
+test('W06 exhausted target, batch, or disabled purchase rule never wakes finite procurement',()=>{
+ const f=fixture(),scope={strict:true,rule:f.rule};
+ for(const mutate of [
+  g=>g.setHeld(20),
+  g=>{g.rule.batch=0;},
+  g=>{g.rule.targetCount=0;},
+  g=>{g.rule.action='sell';},
+  g=>{g.rule.enabled=false;}
+ ]){
+  const g=fixture();mutate(g);
+  assert.equal(g.market.hasVisibleBuyOffer(g.item,
+   {strict:true,rule:g.rule}),false);
+ }
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,scope),true);
+});
+test('W06 explicit market discovery remains independent of finite-production price ceiling',()=>{
+ const f=fixture();
+ f.seller.slots.trade2.price=150;
+ assert.equal(f.market.hasVisibleBuyOffer(f.item),true);
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),true);
+ assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true,rule:f.rule}),false);
+});

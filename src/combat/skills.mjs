@@ -7,6 +7,18 @@ import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 import {provisionalImpactDamage,healCollisionDecision} from './impact-coordination.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
+// Poison is a per-cast reagent. Only verified boss profiles or an active,
+// currently observed boss/event objective may authorize an expensive arrow.
+export function poisonArrowCombatAllowed(G,target,activity=null,profile=null,now=Date.now()){
+ const id=target?.mtype,meta=G?.monsters?.[id];
+ if(target?.type!=='monster'||typeof id!=='string'||!meta)return false;
+ if(meta.boss===true||profile?.id===id&&profile.supported===true)return true;
+ return !!activity&&['boss','event'].includes(activity.kind)&&
+  activity.target===id&&activity.observationUnknown!==true&&
+  Number.isFinite(activity.expires)&&activity.expires>now&&
+  activity.map===target.map&&
+  (activity.in??activity.map)===(target.in??target.map);
+}
 export function conditionActive(entity,id,now=Date.now()){const value=entity?.s?.[id]??entity?.status?.[id]??entity?.effects?.[id]??entity?.conditions?.[id];if(!value)return false;if(typeof value!=='object')return true;const end=value.expiresAt??value.expires??value.endsAt;const timestamp=typeof end==='number'?end:Date.parse(end??'');if(Number.isFinite(timestamp))return timestamp>now;return value.ms===undefined||value.ms>0;}
 // AoE is a normal farmer capability. Limits on hostile targets, pulls,
 // mana, PVP, weapons and cooldowns are still enforced in use().
@@ -71,6 +83,7 @@ export function createSkills(bot){
   const asArray=v=>Array.isArray(v)?v:v?[v]:[];
   function ready(id,target,reserve=.2,ignoreCooldown=false){
     const c=p.c,s=p.G.skills[id];if(!s||c.rip||!runtimeConditionGate(c,p.G,'skill:'+id,['mana','skill']).allowed)return false;
+     if(id==='poisonarrow'&&!poisonArrowCombatAllowed(p.G,target,bot.strategy?.heartbeat?.(),bot.bosses?.profile?.(target?.mtype)))return false;
     if(s.hostile&&(p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp)return false;
     if(asArray(s.class).length&&!asArray(s.class).includes(c.ctype)||c.level<(s.level??0))return false;
     if(!ignoreCooldown){
@@ -241,6 +254,7 @@ export function createSkills(bot){
     if(s.target&&!target)return false;
     if(s.target==='player'&&target?.type==='monster')return false;
     const guard=()=>ready(id,target,reserve)&&
+      (id!=='poisonarrow'||(()=>{const live=bot.entity(target?.id);return !!live&&poisonArrowCombatAllowed(p.G,live,bot.strategy?.heartbeat?.(),bot.bosses?.profile?.(live.mtype));})())&&
       (id!=='revive'||(()=>{const live=bot.entity(target?.name??target?.id);return !!live&&live.rip&&live.hp>=live.max_hp&&reviveDeathKey(bot,live)===reviveKey&&bot.revivals?.canCast(live,reviveKey)!==false;})())&&
       (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
     if(!guard()){
@@ -424,7 +438,7 @@ export function createSkills(bot){
     if(cfg.party.advancedSkills&&c.ctype==='mage'&&long){if(use('cburst',t,.4,700))return;const ratio=p.G.skills.burst?.ratio;if(Number.isFinite(ratio)&&t.hp>=Math.max(1200,c.attack*4)&&t.hp<=c.mp*ratio&&c.mp/c.max_mp>=.75&&!bot.allies().some(a=>a.name!==c.name&&a.mp/a.max_mp<.5)&&use('burst',t,0,6000))return;}
     const choices={
       warrior:[[long&&cfg.party.buffs,'warcry',null,5000],[t.target&&t.target!==c.name&&bot.teamNames.includes(t.target),'taunt',t,1500],[distance(c,t)>c.range*1.4,'charge',null,10000]],
-      ranger:[[long,'huntersmark',t,5000],[long,'poisonarrow',t,1500],[(t.armor??p.G.monsters[t.mtype]?.armor??0)>200,'piercingshot',t,700],[t.hp>c.attack*1.5,'supershot',t,1500]],
+      ranger:[[long,'huntersmark',t,5000],[long&&poisonArrowCombatAllowed(p.G,t,bot.strategy?.heartbeat?.(),bot.bosses?.profile?.(t?.mtype)),'poisonarrow',t,1500],[(t.armor??p.G.monsters[t.mtype]?.armor??0)>200,'piercingshot',t,700],[t.hp>c.attack*1.5,'supershot',t,1500]],
       mage:[[long&&t.attack>c.max_hp*.04,'entangle',t,5000],[long,'arcane_needle',t,700]],
       priest:[[long&&cfg.party.buffs,'darkblessing',null,5000],[long,'curse',t,3000],[hp<.3,'phaseout',null,5000]],
       rogue:[[t.hp>c.attack*1.5,'pcoat',null,5000],[t.hp>c.attack*1.5,'mentalburst',t,1500],[true,'quickstab',t,500],[true,'quickpunch',t,500]],

@@ -49,6 +49,8 @@ export function ownTradeOfferPlan(bot,slot){
  const before=variantCount(p.c.items,item);
  const wanted={name:rule.wantItem,level:0};
  const receiveBefore=variantCount(p.c.items,wanted);
+ if(!Number.isSafeInteger(before)||before<1||
+    !Number.isSafeInteger(receiveBefore)||receiveBefore<0)return null;
  const room=capacityAfterConsumption(p.c.items,[{slot,quantity:1}],
   wanted,wantMeta,{inventorySize:p.c.isize});
  if(!room||room.units<1)return null;
@@ -71,21 +73,31 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   typeof saved.rid==='string'&&!!saved.rid&&
   typeof saved.outgoing==='string'&&typeof saved.incoming==='string'&&
   Number.isSafeInteger(saved.receiveBefore)&&saved.receiveBefore>=0;
+ const hasOutgoingBaseline=()=>Number.isSafeInteger(saved?.outgoingBefore)&&
+  saved.outgoingBefore>=1;
  function postIntent(plan){
   const intent={version:1,owner:me.name,realm:plan.realm,
    offerSlot:plan.offerSlot,at:now(),state:'dispatch-intent-unverified',
    outgoing:identity(plan.item),incoming:identity(plan.wanted),
-   receiveBefore:plan.receiveBefore};
+   receiveBefore:plan.receiveBefore,
+   outgoingBefore:plan.before};
   // Persist BEFORE the external side effect. If write or server call fails
   // the possible offer remains unknown and cannot be retried automatically.
   if(!p.write?.(key,intent))throw Error('Barter intent persistence failed');
   saved=intent;posted=true;
  }
- function record(plan){
+ function record(plan,observedRid){
   const listing=p.c.slots?.[plan.offerSlot];
+  // Never persist a different trade RID merely because the slot was reused
+  // between the observer's positive sample and onConfirmed().
   if(saved?.state!=='dispatch-intent-unverified'||
-     !listing||typeof listing.rid!=='string'||!listing.rid)return false;
-  const confirmed={...saved,rid:listing.rid,at:now(),
+     typeof observedRid!=='string'||!observedRid||
+     listing?.rid!==observedRid||
+     saved.outgoing!==identity(plan.item)||
+     saved.incoming!==identity(plan.wanted)||
+     saved.outgoingBefore!==plan.before||
+     saved.receiveBefore!==plan.receiveBefore)return false;
+  const confirmed={...saved,rid:observedRid,at:now(),
    state:'listing-confirmed-post-trade-unverified'};
   if(!p.write?.(key,confirmed))return false;
   saved=confirmed;return true;
@@ -104,7 +116,36 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
     next.itemPrint===plan.itemPrint&&next.payValue===plan.payValue&&
     next.before===plan.before&&next.receiveBefore===plan.receiveBefore;
   };
-  let response=null;
+  let response=null,observedRid=null;
+  const postedRid=()=>{
+   const listing=p.c.slots?.[plan.offerSlot];
+   // A fulfilled server promise is necessary but never sufficient.
+   // Physical source depletion and this exact own stand entry are required.
+   if(!response||typeof response!=='object'||response.failed||
+      response.success===false||
+      saved?.state!=='dispatch-intent-unverified'||
+      saved.outgoing!==identity(plan.item)||
+      saved.incoming!==identity(plan.wanted)||
+      saved.receiveBefore!==plan.receiveBefore||
+      saved.outgoingBefore!==plan.before||
+      !listing||typeof listing.rid!=='string'||!listing.rid||
+      listing.name!==plan.item.name||
+      (listing.level??0)!==(plan.item.level??0)||
+      (listing.stat_type??'')!==(plan.item.stat_type??'')||
+      (listing.p??'')!==(plan.item.p??'')||
+      (listing.title??'')!==(plan.item.title??'')||
+      (listing.acc??'')!==(plan.item.acc??'')||
+      JSON.stringify(listing.data)!==JSON.stringify(plan.item.data)||
+      (listing.q??1)!==1||listing.b||listing.giveaway||
+      listing.want?.name!==plan.wanted.name||
+      (listing.want.level??0)!==0||
+      (listing.want.q??1)!==1||
+      (listing.want.p??'')!==''||
+      (listing.want.stat_type??'')!==''||
+      (listing.want.title??'')!==''||
+      variantCount(p.c.items,plan.item)!==plan.before-1)return null;
+   return listing.rid;
+  };
   return bot.economy.perform('market.tradeOffer',{
    slots:[slot],loss:plan.payValue,rule,
    guard:ready,
@@ -114,32 +155,38 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      plan.request,1)).then(x=>{response=x;return x;});
    },
    observe:()=>{
-    const listing=p.c.slots?.[plan.offerSlot];
-    return response?.success!==false&&!response?.failed&&
-     !!listing&&typeof listing.rid==='string'&&!!listing.rid&&
-     listing.name===plan.item.name&&
-     (listing.level??0)===(plan.item.level??0)&&
-     (listing.stat_type??'')===(plan.item.stat_type??'')&&
-     (listing.p??'')===(plan.item.p??'')&&
-     (listing.title??'')===(plan.item.title??'')&&
-     (listing.q??1)===1&&!listing.b&&!listing.giveaway&&
-     listing.want?.name===plan.wanted.name&&
-     (listing.want.level??0)===0&&
-     (listing.want.q??1)===1&&
-     variantCount(p.c.items,plan.item)===plan.before-1;
+    const rid=postedRid();
+    if(!rid||observedRid&&rid!==observedRid)return false;
+    observedRid=rid;
+    return true;
    },
-   onConfirmed:()=>record(plan),
+   onConfirmed:()=>{
+    const rid=postedRid();
+    return !!observedRid&&rid===observedRid&&record(plan,observedRid);
+   },
    details:{item:plan.item.name,variant:identity(plan.item),
     quantity:1,before:plan.before,wanted:identity(plan.wanted),
     offerSlot:plan.offerSlot,riskVariant:identity(plan.item)},
    timeout:30000
   });
  }
+ // The server UI swap event carries no listing RID. An observed
+ // replacement or mutation of the known stand entry contradicts its proof,
+ // even if that replacement disappears before physical inventory settles.
+ function matchingRecordedListing(listing){
+  if(!listing)return true; // server may already have removed this entry
+  return listing.rid===saved?.rid&&
+   identity({...listing,rid:undefined})===saved.outgoing&&
+   identity(listing.want)===saved.incoming&&
+   (listing.q??1)===1&&(listing.want?.q??1)===1&&
+   !listing.b&&!listing.giveaway;
+ }
  function observeSwap(data){
   // Official server emits UI {type:'swap',event:true,seller,buyer,
   // item,received,slot,snum}. It has no RID. The RID must already have
   // been observed and durably tied to this merchant's own stand slot.
-  if(!posted||!accurateRecord()||
+  if(!posted||!accurateRecord()||!hasOutgoingBaseline()||
+     typeof bot.session!=='string'||!bot.session||
      saved.state!=='listing-confirmed-post-trade-unverified'||
      data?.type!=='swap'||data.event!==true||
      data.seller!==me.name||typeof data.buyer!=='string'||
@@ -148,26 +195,56 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      !Number.isSafeInteger(data.snum)||data.snum<0||
      data.snum>=p.c.isize||
      identity(data.item)!==saved.outgoing||
-     identity(data.received)!==saved.incoming)return false;
+     identity(data.received)!==saved.incoming||
+     !matchingRecordedListing(p.c.slots?.[saved.offerSlot]))return false;
   // The seller's actual inventory refresh may follow the event.
   swapEvidence={at:now(),buyer:data.buyer,snum:data.snum,
-   rid:saved.rid,offerSlot:saved.offerSlot};
+   rid:saved.rid,offerSlot:saved.offerSlot,
+   ownerSession:bot.session,realm:p.realm()};
   return true;
  }
  function sample(){
   if(!swapEvidence||now()-swapEvidence.at>30000){
    swapEvidence=null;return false;
   }
-  if(!accurateRecord()||
+  // A volatile UI event from an old bot session or another server realm
+  // cannot authorize a new session's physical inventory snapshot. Discard
+  // the old evidence rather than reviving it if the session changes back.
+  if(!swapEvidence.ownerSession||swapEvidence.ownerSession!==bot.session||
+     swapEvidence.realm!==p.realm()){
+   swapEvidence=null;return false;
+  }
+  // Invalidate the volatile UI proof on the FIRST observed stand drift.
+  // A later empty slot is not enough to make that old event valid again.
+  if(!matchingRecordedListing(p.c.slots?.[swapEvidence.offerSlot])){
+   swapEvidence=null;return false;
+  }
+  if(!accurateRecord()||!hasOutgoingBaseline()||
      saved.state!=='listing-confirmed-post-trade-unverified'||
      saved.rid!==swapEvidence.rid||
      saved.offerSlot!==swapEvidence.offerSlot||
      !Array.isArray(p.c.items)||
      p.c.slots?.[saved.offerSlot]||
      identity(p.c.items[swapEvidence.snum])!==saved.incoming)return false;
-  const actual=p.c.items.reduce((count,item)=>
-   count+(item&&identity(item)===saved.incoming?(item.q??1):0),0);
-  if(actual!==saved.receiveBefore+1)return false;
+  // The listed outgoing unit left the inventory when trade_offer posted.
+  // A vanished listing plus matching incoming item is not proof of a swap
+  // if the original outgoing stock has returned or drifted since posting.
+  // Missing/unsafe old baselines remain unresolved, never backfilled.
+  const countUnits=variant=>{
+   let count=0;
+   for(const item of p.c.items){
+    if(!item||identity(item)!==variant)continue;
+    const quantity=item.q??1;
+    if(!Number.isSafeInteger(quantity)||quantity<1||
+       !Number.isSafeInteger(count+quantity))return null;
+    count+=quantity;
+   }
+   return count;
+  };
+  const incoming=countUnits(saved.incoming),outgoing=countUnits(saved.outgoing);
+  if(!Number.isSafeInteger(saved.receiveBefore+1)||
+     incoming!==saved.receiveBefore+1||
+     outgoing!==saved.outgoingBefore-1)return false;
   const next={...saved,state:'swap-receipt-verified-no-repost',
    receipt:{buyer:swapEvidence.buyer,snum:swapEvidence.snum,
     at:now(),rid:swapEvidence.rid}};

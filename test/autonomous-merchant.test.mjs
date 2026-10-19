@@ -118,9 +118,9 @@ test('skill supply requests survive reload and become bounded same-realm deliver
  bot.cfg={skills:[{enabled:true,skill:'poisonarrow',role:'farmer'}],production:{skillSupplies:true,skillSupplyCount:20,helperMaxPrice:500}};
  bot.p.G={items:{poison:{}},skills:{poisonarrow:{class:['ranger'],level:20,consume:'poison'}}};
  bot.economy={explicit:()=>null};bot.count=()=>held;
- const first=createSupplies(bot).request();assert.equal(first[0].quantity,20);
+ const first=createSupplies(bot).request();assert.equal(first[0].quantity,100);
  assert.deepEqual(createSupplies(bot).request(),first);
- held=20;assert.deepEqual(createSupplies(bot).request(),[]);
+ held=100;assert.deepEqual(createSupplies(bot).request(),[]);
  bot.me={name:'M',role:'merchant'};bot.p.c.ctype='merchant';bot.farmers=['R'];
  const peer={running:true,realm:'EUI',class:'ranger',supplies:first};bot.transport={fresh:()=>peer};
  const supplies=createSupplies(bot);assert.equal(supplies.goals()[0].recipient,'R');

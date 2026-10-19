@@ -10,7 +10,7 @@ function fixture(saved=null){
  const p={c:{map:'main',in:'main',x:0,y:0},realm:()=>realm,
   read:k=>store.get(k)??null,
   write:(k,v)=>{if(!persist)return false;store.set(k,structuredClone(v));return true;}};
- const bot={p,me:{name:'M'},running:true,monsters:()=>mobs,
+ const bot={p,me:{name:'M'},session:'M-session-1',running:true,monsters:()=>mobs,
   entity:id=>mobs.find(m=>m.id===id)};
  const calendar=createRespawnCalendar(bot,{now:()=>at});
  return {bot,calendar,mobs,store,now:()=>at,advance:ms=>{at+=ms;},
@@ -81,4 +81,236 @@ test('N05 bounded sightings never retain more than 64 rows',()=>{
  assert.equal(f.calendar.status().rows.length,64);
  f.advance(21600001);f.calendar.status();
  assert.equal(f.calendar.status().rows.length,0);
+});
+
+test('N05 own confirmed kill starts only a passive finite local scout window',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),true);
+ const state=f.calendar.status().rows[0];
+ assert.equal(state.scout.state,'observing');
+ assert.equal(state.scout.negativeObservations,0);
+ assert.equal(state.scout.until,f.now()+300000);
+ assert.equal(state.scout.executable,false);
+ assert.equal(f.calendar.status().predictionAuthorized,false);
+ assert.equal(state.respawnAt,null);
+});
+test('N05 local negative observations have a hard twelve-sample limit',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),true);
+ f.mobs.length=0;
+ for(let n=0;n<18;n++){f.advance(2000);f.calendar.sample();}
+ const result=f.calendar.status().rows[0];
+ assert.equal(result.scout.negativeObservations,12);
+ assert.equal(result.scout.state,'negative-evidence-limit');
+ assert.equal(result.state,'own-kill-observed');
+ assert.equal(result.respawnAt,null);
+});
+test('N05 scout window expires without sightings or renewed travel permission',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ f.mobs.length=0;f.advance(300001);
+ const r=f.calendar.status().rows[0];
+ assert.equal(r.scout.state,'window-expired');
+ assert.equal(r.scout.until,null);
+ assert.equal(r.scout.negativeObservations,0);
+ assert.equal(r.scout.executable,false);
+ assert.equal(r.respawnAt,null);
+});
+test('N05 a live re-sighting requires an intervening negative local sample',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].scout.state,'observing',
+  'stale still-rendered monster must leave the confirmed kill and scout window intact');
+ assert.ok(f.calendar.status().rows[0].killedAt);
+ const g=fixture();g.calendar.sample();
+ g.calendar.hit({actor:'M',target:'e1',damage:10});g.calendar.death({actor:'M',id:'e1'});
+ g.mobs.length=0;g.advance(2000);g.calendar.sample();
+ assert.equal(g.calendar.status().rows[0].scout.negativeObservations,1);
+ g.mobs.push({id:'e1',mtype:'phoenix',type:'monster',map:'main',in:'main',
+  x:20,y:0,hp:100,dead:false});
+ g.advance(2000);g.calendar.sample();
+ const row=g.calendar.status().rows[0];
+ assert.equal(row.scout.state,'live-resighting-observed');
+ assert.equal(row.scout.resightedAt,g.now());
+ assert.equal(row.killedAt,null);
+ assert.equal(row.respawnAt,null);
+ g.advance(2000);g.calendar.sample();
+ assert.equal(g.calendar.status().rows[0].scout.state,'live-resighting-observed');
+});
+test('N05 restart and realm change never renew a consumed or historical scout window',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ const saved=f.store.get('albot:respawn-calendar:v1:M');
+ const reloaded=fixture(saved);
+ const old=reloaded.calendar.status().rows[0];
+ assert.equal(old.scout.state,'historical-unverified');
+ assert.equal(old.scout.until,null);
+ reloaded.mobs.length=0;reloaded.advance(2000);reloaded.calendar.sample();
+ assert.equal(reloaded.calendar.status().rows[0].scout.negativeObservations,0);
+ f.setRealm('USI');assert.equal(f.calendar.status().rows.length,0);
+ f.setRealm('EUI');assert.equal(f.calendar.status().rows.length,0);
+});
+test('N05 local scout evidence cannot be generated from remote instances or absent view',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:10});
+ f.calendar.death({actor:'M',id:'e1'});
+ f.mobs.length=0;f.bot.p.c.in='instance-other';
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows.length,0);
+ f.bot.p.c.in='main';
+ f.bot.p.c.x=1200;
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].scout.negativeObservations,0);
+});
+ 
+test('N05 an old hit cannot authorize a kill after character-session restart',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:20});
+ f.bot.session='M-session-2';
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),false);
+ assert.equal(f.calendar.status().rows.length,0);
+ assert.equal(f.calendar.status().session,'M-session-2');
+ f.calendar.sample();
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),false);
+ f.calendar.hit({actor:'M',target:'e1',damage:20});
+ assert.equal(f.calendar.death({actor:'M',id:'e1'}),true,
+  'fresh hit and sighting in the new session remain actionable as observation');
+});
+test('N05 active local post-kill scout is invalidated on session drift',()=>{
+ const f=fixture();f.calendar.sample();
+ f.calendar.hit({actor:'M',target:'e1',damage:20});
+ f.calendar.death({actor:'M',id:'e1'});
+ assert.equal(f.calendar.status().rows[0].scout.state,'observing');
+ f.bot.session='M-session-2';
+ assert.equal(f.calendar.status().rows.length,0);
+ f.bot.session='M-session-1';
+ assert.equal(f.calendar.status().rows.length,0,
+  'return to old session must not resurrect stale scouting authority');
+});
+test('N05 missing or invalid own session cannot generate fresh sightings or credit',()=>{
+ for(const invalid of [null,undefined,'',42]){
+  const f=fixture();f.bot.session=invalid;
+  f.calendar.sample();
+  assert.equal(f.calendar.status().rows.length,0);
+  f.calendar.hit({actor:'M',target:'e1',damage:20});
+  assert.equal(f.calendar.death({actor:'M',id:'e1'}),false);
+  assert.equal(f.calendar.status().predictionAuthorized,false);
+ }
+});
+
+test('N05 stale still-rendered monster never clears a confirmed kill or authorizes duplicate credit',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:12});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ const first=c.status().rows[0].killedAt;
+ f.advance(2000);c.sample();
+ const row=c.status().rows[0];
+ assert.equal(row.killedAt,first);
+ assert.equal(row.scout.state,'observing');
+ assert.equal(row.scout.negativeObservations,0);
+ c.hit({actor:'M',target:'e1',damage:1});
+ assert.equal(c.death({actor:'M',id:'e1'}),false,
+  'a duplicate hit/death before observed disappearance cannot create a new kill');
+ assert.equal(c.status().rows[0].killedAt,first);
+});
+test('N05 genuine negative observation and later live sighting permit a new separate kill',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ const first=c.status().rows[0].killedAt;
+ f.mobs.length=0;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1);
+ f.mobs.push({id:'e1',mtype:'phoenix',type:'monster',
+  map:'main',in:'main',x:20,y:0,hp:100,dead:false});
+ f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.state,'live-resighting-observed');
+ assert.equal(c.status().rows[0].killedAt,null);
+ c.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ assert.ok(c.status().rows[0].killedAt>first);
+});
+test('N05 persisted historical death cannot be overwritten by a stale live render',()=>{
+ const first=fixture(),c=first.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ const saved=first.store.get('albot:respawn-calendar:v1:M');
+ const f=fixture(saved),before=f.calendar.status().rows[0].killedAt;
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].killedAt,before);
+ assert.equal(f.calendar.status().rows[0].scout.state,'historical-unverified');
+ f.mobs.length=0;f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].scout.negativeObservations,0,
+  'historical kill must not start a new scout window');
+ f.mobs.push({id:'e1',mtype:'phoenix',type:'monster',
+  map:'main',in:'main',x:20,y:0,hp:100,dead:false});
+ f.advance(2000);f.calendar.sample();
+ assert.equal(f.calendar.status().rows[0].killedAt,null);
+ assert.equal(f.calendar.status().rows[0].scout.state,'none',
+  'late historical re-sighting is not a predicted respawn');
+});
+test('N05 invalid local observer geometry never produces positive or negative scout evidence',()=>{
+ for(const invalid of [NaN,Infinity,-Infinity,undefined]){
+  const f=fixture();f.bot.p.c.x=invalid;
+  f.calendar.sample();
+  assert.equal(f.calendar.status().rows.length,0);
+ }
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});c.death({actor:'M',id:'e1'});
+ f.mobs.length=0;f.bot.p.c.y=NaN;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,0);
+ f.bot.p.c.y=0;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1);
+});
+
+test('N05 a truncated monster list cannot certify a negative post-kill scout sample',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ const first=c.status().rows[0].killedAt;
+ f.mobs.length=0;
+ for(let n=0;n<129;n++)f.mobs.push({id:'unrelated-'+n,
+  mtype:'goo',type:'monster',map:'other',in:'other',
+  x:9000,y:9000,hp:50,dead:false});
+ f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,0,
+  'first 128 entries of 129 are not proof the old ID is absent');
+ assert.equal(c.status().rows[0].lastMissingAt,null);
+ assert.equal(c.status().rows[0].killedAt,first);
+ f.mobs.length=0;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1,
+  'a complete subsequent local sample can count as absence');
+});
+test('N05 unavailable or malformed monster snapshots do not create negative evidence',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});c.death({actor:'M',id:'e1'});
+ const valid=f.bot.monsters;
+ f.mobs.length=0;
+ for(const invalid of [null,undefined,{},42,'']){
+  f.bot.monsters=()=>invalid;f.advance(2000);
+  assert.doesNotThrow(()=>c.sample());
+  assert.equal(c.status().rows[0].scout.negativeObservations,0);
+  assert.equal(c.status().rows[0].lastMissingAt,null);
+ }
+ f.bot.monsters=valid;f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1);
+});
+test('N05 truncated snapshots may still affirm directly visible live monsters',()=>{
+ const f=fixture();f.mobs.length=0;
+ f.mobs.push({id:'observed',mtype:'phoenix',type:'monster',
+  map:'main',in:'main',x:20,y:0,hp:100,dead:false});
+ for(let i=0;i<128;i++)f.mobs.push({id:'other-'+i,
+  mtype:'goo',type:'monster',map:'other',in:'other',
+  x:7000,y:7000,hp:100,dead:false});
+ f.calendar.sample();
+ const rows=f.calendar.status().rows;
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].id,'observed');
+ assert.equal(rows[0].state,'visible-last-sampled');
+ assert.equal(f.calendar.status().executable,false);
 });

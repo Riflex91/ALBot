@@ -20,3 +20,32 @@ Der Serverhandler `node/server.js` aus `kaansoral/adventureland_mongodb` (festge
 ## Noch offen
 
 Volle Materialbeschaffung über direkte ungebundene Warenangebote, Warenlieferungen von anderen Spielern, gesicherte nicht-reproduzierbare Rezeptnebenwege, accountweite Rewardallokation und echte Live-Game-Quittungen bleiben getrennte W06-/W13-Restpunkte. Das Inkrement ist kein signierter Ingame-Release und wurde offline getestet.
+
+## Folgeinkrement vom 19.10.2026 – physische Materialvariante
+
+- Für **endlich gebundene Produktions-Marktaufträge** muss ein sichtbares Verkaufsangebot nun neben Name, Level, Stat, Eigenschaft und Titel auch die gewünschte Accountbindung (`acc`) und die vollständigen Item-Variantendaten (`data`) erfüllen. Als gesperrt markierte Angebote sind keine Belege für beschaffbare Produktionsmaterialien.
+- Derselbe Variantenvertrag gilt sowohl bei der Suche nach einem aktuell verfügbaren Verkäufer, bei der Annahme des Marktangebots als auch erneut beim verzögerten Dispatch. Listing-`rid` bleibt eine separate unveränderliche Angebots-ID und wird wie bisher unmittelbar vor dem Serveraufruf geprüft; sie wird nicht mit der Identität der Materialvariante verwechselt.
+- **Explizit konfigurierte freie Markt-Buy-Regeln bleiben unverändert**; es werden weder neue Materialarten oder Handelsrechte erteilt noch Preis- und Goldgrenzen gelockert.
+- Nicht vorhandene Live-Angebote erzeugen weiterhin weder einen Kauf noch eine automatische Erfolgsquittung. Accountweite Belohnungen, Spieler-Barter und physischer Liveabnahmebedarf bleiben offen.
+
+## Folgeinkrement vom 19.10.2026 – Mengen- und Dispatch-Integrität
+
+Endliche Produktions-Marktkäufe dürfen ungültige Verkäufermengen nicht mehr per `Math.floor` in eine scheinbar gültige Kaufmenge umdeuten. Angebotseinheiten und Goldstückpreis müssen positive sichere Ganzzahlen sein; auch der gesamte Goldbetrag muss eine positive sichere Ganzzahl ergeben. Ungültige Angebote zählen nicht als frische Produktionsangebote, die ein früheres No-Offer-Wartefenster aufheben könnten.
+
+Der geplante **Ausgangsbestand der exakten Variante** muss beim verzögerten `trade_buy`-Dispatch weiterhin unverändert sein. So kann ein parallel eingetroffenes Materialstück nicht dazu führen, dass der ursprünglich eingefrorene Post-Buy-Bestandsbeleg später einem anderen Vorgang zugeschrieben wird. Angebotsmenge und Preis werden am Dispatch erneut auf Ganzzahlintegrität geprüft. Bei Drift: kein Kauf, kein künstlicher Erfolg, vorhandenes Wertjournal unverändert.
+
+Die zusätzlichen Einschränkungen gelten nur für bereits autorisierte **endliche Produktions-Marktkäufe**. Eigenständig explizit konfigurierte Marktregeln werden durch dieses Paket nicht erweitert oder rückwirkend verschärft. Keine Freigabe neuer Materialarten, Quellen, Budgets oder Handelskategorien; signierter Release-Kanal bleibt separat.
+
+## Folgeinkrement vom 19.10.2026 – beste zugelassene Live-Verkaufsofferte
+
+Für **endliche Produktions-Marktkäufe** priorisiert der Merchant unter gleichzeitig sichtbaren und erreichbaren Live-Angeboten dieselbe zulässige Materialvariante nach dem niedrigsten Stückpreis, unabhängig von der Reihenfolge der Spieler-Entities und `trade1..trade16`-Slots. Fremde Varianten, ungültige Stapelmengen, unzulässige Stände, unpassende Realms/Instanzen und fehlende RID gelten nicht als Vergleichskandidaten. Nur ein wirklich zulässiger Kauf kann wie bisher über `economy.perform('market.buy')` laufen.
+
+Die Preisrangfolge erteilt keine Transaktionsberechtigung: Zielmengen, `admit()`, aktuelle Regel-/Preisgrenzen, physische Kapazität, live `rid`, Goldrisiko und erneute Dispatch-Verifikation gelten unverändert. Bei gleicher Preisangabe bleibt die beobachtete stabile Reihenfolge. Eigenständig konfigurierte freie `marketBuy`-Regeln behalten ausdrücklich ihre bestehende Markt-Suchreihenfolge.
+
+Der Schritt fügt weder neue Materialquellen noch eine globale Preissuche hinzu. Er arbeitet nur mit den aktuell tatsächlich sichtbaren lokalen Verkäuferständen. Liveabnahme und neue signierte Runtime-Veröffentlichung bleiben separat.
+
+## Folgeinkrement 19.10.2026 – autorisierter Wiederanlauf statt bloßer Sichtbarkeit
+
+Ein sichtbarer Stand mit korrekter Itemvariante allein darf eine bereits gedrosselte Produktions-Marktsuche nicht wieder und wieder starten. `hasVisibleBuyOffer(..., {strict:true, rule})` prüft für solche Wiederanläufe zusätzlich, ob die **aktuelle** Erwerbsregel weiterhin `marketBuy` erlaubt, aktiviert ist, eine positive endliche Menge innerhalb von `batch`, `targetCount` und `maxCount` offen hat und der beobachtete Angebotspreis die geltende aktuelle Preisobergrenze nicht übersteigt.
+
+Die Produktionswarteschleife liest dafür die aktuelle, weiterhin zulässige Akquisitionsregel neu und respektiert ihre vorhandene Max-Aktionssperre. Überteuerte oder nicht mehr benötigte Sichtangebote bleiben unverbindliche Marktdiagnostik, nicht ein neuer Versuch mit Gold- oder Reiseausgaben. Sobald ein passendes gültiges Angebot erscheint, läuft die bisherige vollständige Wert- und Dispatch-Prüfung erneut. Dies betrifft nur den endlichen Produktions-Wakeup; freie, explizite Marktkäufe behalten ihren bisherigen Sichtbarkeitsmodus. Kein Release, keine neuen Kaufrechte.

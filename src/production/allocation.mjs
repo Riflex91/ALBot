@@ -170,9 +170,18 @@ export function createGearAllocation(bot){
   }
   // Build a new copy: failed durable writes must not clear an outstanding
   // sender claim or claim equipment receipt in memory.
-  const next=rows.map(r=>r.state==='delivered'&&
-   identity({...bot.transport.fresh(r.recipient)?.gear?.slots?.[r.gearSlot],
-    l:undefined,b:undefined})===r.variant?{...r,state:'equipped'}:r);
+  const next=rows.map(r=>{
+   if(r.state!=='delivered')return r;
+   // A matching item after a session/realm switch is not evidence that
+   // the original recipient equipped this confirmed transfer.
+   const peer=bot.transport?.fresh?.(r.recipient);
+   if(!peer?.running||peer.rip||!r.recipientSession||
+      peer.session!==r.recipientSession||!r.realm||
+      peer.realm!==r.realm||bot.p.realm()!==r.realm)return r;
+   const equipped=peer.gear?.slots?.[r.gearSlot];
+   return equipped&&identity({...equipped,l:undefined,b:undefined})===r.variant?
+    {...r,state:'equipped'}:r;
+  });
   if(next.some((r,i)=>r!==rows[i]))save(next);
 }
  return {offer,accept,rules,equipGuard,tick,reserve,guard,settle,

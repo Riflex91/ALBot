@@ -1,9 +1,14 @@
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
 const SYSTEM_REWARD_PHRASES=['server.cave.mail_subject','server.tracktrix.mail_subject'];
-export function rewardMailAttachment(row,name,G){
+export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
+ // A server-confirmed taken mail is no longer claimable. The recovery
+ // reader must validate its attachment independently of can_take, while
+ // ordinary claims remain restricted to untaken, explicitly claimable mail.
+ const claimable=!recoverTaken&&row?.can_take===true&&row?.taken!==true,
+  acknowledged=recoverTaken===true&&row?.taken===true;
  if(!row||typeof row.id!=='string'||!/^ML_[A-Za-z0-9_:.-]{1,240}$/.test(row.id)||
-    row.to!==name||row.can_take!==true||
+    row.to!==name||!(claimable||acknowledged)||
     !SYSTEM_REWARD_PHRASES.includes(row.subject_message?.phrase))return null;
  let item=row.item;
  if(typeof item==='string'){
@@ -74,7 +79,8 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   !Object.keys(p.c.c??{}).length&&!bot.monsters().some(m=>m.target===p.c.name&&m.hp>0&&!m.dead);
  function reconcile(rows){
   const j=bot.journal;if(bot.exec.pending?.has('mail.claim')||j?.kind!=='mail.claim'||j.owner!==bot.me.name||j.realm!==p.realm())return;
-  const row=rows.find(r=>r.id===j.mailId),item=rewardMailAttachment(row,bot.me.name,p.G);
+  const row=rows.find(r=>r.id===j.mailId),
+   item=rewardMailAttachment(row,bot.me.name,p.G,{recoverTaken:true});
   if(row?.taken!==true||!item||JSON.stringify(item)!==JSON.stringify(j.attachment)||
      !rewardClaimDelta(j,p.c))return;
   bot.endValue('confirmed');
@@ -89,12 +95,15 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
    Promise.resolve(p.readRewardMailPage(requested)).then(page=>{
     if(gen!==generation||!bot.running)return;
     if(!Array.isArray(page?.mail)||page.mail.length>40)throw Error('Invalid reward mail page');
+    const next=page.more===true&&typeof page.cursor==='string'&&/^\d{1,8}$/.test(page.cursor)?page.cursor:null;
+    if(page.more===true&&(!next||Number(next)<=Number(requested??0)))throw Error('Invalid reward mail cursor');
+    // Do not make a page actionable until its pagination advance is
+    // durably accepted. Invalid pages and failed storage leave the queue
+    // unchanged; they cannot schedule a later value action.
+    if(p.write(key,{cursor:next})!==true){reason='mail-cursor-storage-unavailable';return;}
     reconcile(page.mail);
     const rows=page.mail.filter(row=>row.taken===false&&rewardMailAttachment(row,bot.me.name,p.G));
     queue=rows.slice(0,40);for(const row of queue)remember(row.id,'observed');
-    const next=page.more===true&&typeof page.cursor==='string'&&/^\d{1,8}$/.test(page.cursor)?page.cursor:null;
-    if(page.more===true&&(!next||Number(next)<=Number(requested??0)))throw Error('Invalid reward mail cursor');
-    if(p.write(key,{cursor:next})!==true){reason='mail-cursor-storage-unavailable';return;}
     cursor=next;nextRead=now()+(next?5000:300000);
     reason=queue.length?'own-system-rewards-observed':'no-own-system-reward-on-page';
    }).finally(()=>{if(gen===generation)reading=false;}),

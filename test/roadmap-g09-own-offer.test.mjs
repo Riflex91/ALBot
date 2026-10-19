@@ -187,7 +187,7 @@ test('G09 mismatched seller/slot/item/recipient or non-server UI cannot close an
   e=>{e.snum=100;},e=>{e.buyer='';}
  ]){
   const f=fixture();f.maker.post(0,f.rule);
-  await f.pending.call();f.pending.onConfirmed();
+  await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
   const event=structuredClone(valid);change(event);
   assert.equal(f.maker.observeSwap(event),false);
   f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -197,7 +197,7 @@ test('G09 mismatched seller/slot/item/recipient or non-server UI cannot close an
 });
 test('G09 matching goods without official UI receipt cannot confirm a vanished listing',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
  assert.equal(f.maker.sample(),false);
  assert.equal(f.maker.status().receipt,null);
@@ -212,7 +212,7 @@ test('G09 matching goods without official UI receipt cannot confirm a vanished l
 });
 test('G09 failed settlement checkpoint preserves unknown instead of claiming completion',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2});
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -222,7 +222,7 @@ test('G09 failed settlement checkpoint preserves unknown instead of claiming com
 });
 test('G09 only paused operator may clear EXACT verified receipt marker',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
- await f.pending.call();f.pending.onConfirmed();
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
  const event={type:'swap',event:true,seller:'M',buyer:'Other',
   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
  f.maker.observeSwap(event);f.slots.trade3=null;f.inventory[2]={name:'wand'};
@@ -251,4 +251,244 @@ test('G09 read-only socket UI listener detaches and never interferes with unrela
  assert.equal(handlers.size,0);
  const noSocket=createPorts({parent:{}});
  assert.equal(noSocket.watchOwnTradeSwaps(()=>{}),null);
+});
+
+test('G09 own barter intent persists outgoing baseline before server-side posting',async()=>{
+ const f=fixture();assert.equal(f.maker.post(0,f.rule),true);
+ await f.pending.call();
+ const intent=f.writes.get('albot:trade-offer:v1:M');
+ assert.equal(intent.outgoingBefore,2);
+ assert.equal(intent.receiveBefore,0);
+ assert.equal(intent.state,'dispatch-intent-unverified');
+ assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M').outgoingBefore,2);
+});
+test('G09 returned outgoing item blocks inferred swap settlement despite exact incoming receipt',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;
+ f.inventory[0]={name:'sword',level:0};
+ f.inventory[2]={name:'wand',level:0};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().receipt,null);
+ f.inventory[0]=null;
+ assert.equal(f.maker.sample(),true,
+  'stable outgoing post-listing stock and incoming receipt can complete checkpoint');
+});
+test('G09 missing outgoing copy blocks a false swap receipt',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
+ assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2}),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ f.inventory[1]=null;
+ assert.equal(f.maker.sample(),false,
+  'unrelated outgoing inventory loss cannot be attributed to this swap');
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+});
+test('G09 old saved listing without outgoing physical baseline stays unknown after matching swap UI',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
+ const legacy=structuredClone(f.writes.get('albot:trade-offer:v1:M'));
+ delete legacy.outgoingBefore;
+ const older=fixture(legacy);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(older.maker.observeSwap(evt),false);
+ older.slots.trade3=null;older.inventory[2]={name:'wand'};
+ assert.equal(older.maker.sample(),false);
+ assert.equal(older.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(older.maker.post(0,older.rule),false);
+});
+
+test('G09 previously verified swap receipt remains manually acknowledgeable without new baseline field',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);f.pending.onConfirmed();
+ assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2}),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),true);
+ const prior=structuredClone(f.writes.get('albot:trade-offer:v1:M'));
+ delete prior.outgoingBefore;
+ const old=fixture(prior);
+ assert.equal(old.maker.status().state,'swap-receipt-verified-no-repost');
+ assert.equal(old.maker.acknowledgeVerified('R001'),false,'running bot never auto-clears');
+ old.bot.running=false;
+ assert.equal(old.maker.acknowledgeVerified('R001'),true,
+  'new extra evidence requirement must not strand previously completed records');
+});
+
+test('G09 verified stand RID cannot change between observation and durable posting',async()=>{
+ const f=fixture();
+ assert.equal(f.maker.post(0,f.rule),true);
+ await f.pending.call();
+ assert.equal(f.pending.observe(),true);
+ const original=f.slots.trade3;
+ f.slots.trade3={...original,rid:'REPLACED-RID'};
+ assert.equal(f.pending.observe(),false);
+ assert.equal(f.pending.onConfirmed(),false);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M')?.state,
+  'dispatch-intent-unverified');
+ assert.equal(f.maker.post(1,f.rule),false,'unknown trade outcome never authorizes repost');
+});
+test('G09 positive server result, verified physical listing and observer are all required',async()=>{
+ const f=fixture();
+ assert.equal(f.maker.post(0,f.rule),true);
+ await f.pending.call();
+ assert.equal(f.pending.onConfirmed(),false,'onConfirmed cannot bypass read-only observation');
+ assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M')?.rid,'R001');
+});
+test('G09 own offer cannot confirm a mutated requested receiving variant',async()=>{
+ for(const mutate of [
+  want=>{want.p='special';},
+  want=>{want.title='modified';},
+  want=>{want.stat_type='int';},
+  want=>{want.q=2;}
+ ]){
+  const f=fixture();f.maker.post(0,f.rule);
+  await f.pending.call();
+  mutate(f.slots.trade3.want);
+  assert.equal(f.pending.observe(),false);
+  assert.equal(f.pending.onConfirmed(),false);
+  assert.equal(f.writes.get('albot:trade-offer:v1:M').state,
+   'dispatch-intent-unverified');
+ }
+});
+test('G09 no official promise result means physical listing alone cannot confirm',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ f.p.call=(name,...args)=>{
+  assert.equal(name,'trade_offer');
+  f.slots.trade3={name:'sword',level:0,rid:'R001',want:{name:'wand'}};
+  f.inventory[0]=null;
+  return Promise.resolve(undefined);
+ };
+ await f.pending.call();
+ assert.equal(f.pending.observe(),false);
+ assert.equal(f.pending.onConfirmed(),false);
+ assert.equal(f.writes.get('albot:trade-offer:v1:M').state,
+  'dispatch-intent-unverified');
+});
+test('G09 failed durable listing checkpoint cannot be treated as confirmed',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();
+ assert.equal(f.pending.observe(),true);
+ f.p.write=()=>false;
+ assert.equal(f.pending.onConfirmed(),false);
+ assert.equal(f.maker.status().state,'dispatch-intent-unverified');
+ assert.equal(f.maker.post(1,f.rule),false);
+});
+
+test('G09 swap UI evidence does not cross a merchant session restart',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ f.bot.session='restarted-session';
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().observedSwapPending,false);
+ f.bot.session='test-session';
+ assert.equal(f.maker.sample(),false,'old session proof must not revive');
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().receipt,null);
+});
+test('G09 swap evidence cannot complete after a realm switch and return',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ f.p.realm=()=> 'USI';
+ assert.equal(f.maker.sample(),false);
+ f.p.realm=()=> 'EUI';
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+});
+test('G09 a missing merchant session cannot accept new server swap evidence',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ f.bot.session='';
+ assert.equal(f.maker.observeSwap({type:'swap',event:true,seller:'M',
+  buyer:'Other',slot:'trade3',item:{name:'sword'},
+  received:{name:'wand'},snum:2}),false);
+ assert.equal(f.maker.status().observedSwapPending,false);
+});
+
+test('G09 observed replacement RID permanently invalidates pending swap UI receipt',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ const original=f.slots.trade3;
+ f.slots.trade3={...original,rid:'OTHER-RID'};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().observedSwapPending,false,
+  'contradicted UI event must not remain reusable');
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().receipt,null);
+ assert.equal(f.maker.post(1,f.rule),false);
+});
+test('G09 same-RID stand variant or wanted item drift invalidates prior swap event',async()=>{
+ for(const mutate of [
+  x=>{x.name='staff';},
+  x=>{x.want.name='other';},
+  x=>{x.want.q=2;},
+  x=>{x.q=2;},
+  x=>{x.giveaway=true;}
+ ]){
+  const f=fixture();f.maker.post(0,f.rule);
+  await f.pending.call();assert.equal(f.pending.observe(),true);
+  assert.equal(f.pending.onConfirmed(),true);
+  const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+   slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+  assert.equal(f.maker.observeSwap(evt),true);
+  mutate(f.slots.trade3);
+  assert.equal(f.maker.sample(),false);
+  assert.equal(f.maker.status().observedSwapPending,false);
+  f.slots.trade3=null;f.inventory[2]={name:'wand'};
+  assert.equal(f.maker.sample(),false);
+  assert.equal(f.maker.status().receipt,null);
+ }
+});
+test('G09 swap UI received while own stand already carries conflicting RID is ignored',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ f.slots.trade3={...f.slots.trade3,rid:'OTHER-RID'};
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),false);
+ assert.equal(f.maker.status().observedSwapPending,false);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().receipt,null);
+});
+test('G09 original unchanged listing keeps provisional swap event until actual removal',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().observedSwapPending,true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ assert.equal(f.maker.sample(),true);
+ assert.equal(f.maker.status().state,'swap-receipt-verified-no-repost');
 });

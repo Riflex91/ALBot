@@ -20,6 +20,34 @@ export function bankExpansionAffordable(cost,gold,staticBudget,fraction=.75){
    Number.isFinite(fraction)&&fraction>=0&&fraction<=1&&
    cost<=Math.floor(gold*fraction);
 }
+// W03: an observed bank-gold transfer must account for ALL open buy-stand
+// bids, with no rounding, coercion or overflow. This is planning evidence,
+// never an authorization to call the game bank API by itself.
+export function bankGoldTransferPlan({wallet,bankGold,slots={},goldTarget,
+ goldReserve,characterReserve=0,purchaseMinimum=0}={}){
+ const values=[wallet,bankGold,goldTarget,goldReserve,characterReserve,purchaseMinimum];
+ if(values.some(v=>!Number.isSafeInteger(v)||v<0)||
+    !slots||typeof slots!=='object'||Array.isArray(slots))return null;
+ let committed=0;
+ for(const [slot,bid] of Object.entries(slots)){
+  if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid?.b)continue;
+  const price=bid.price,quantity=bid.q??1;
+  if(!Number.isSafeInteger(price)||price<1||
+     !Number.isSafeInteger(quantity)||quantity<1||
+     !Number.isSafeInteger(price*quantity)||
+     !Number.isSafeInteger(committed+price*quantity))return null;
+  committed+=price*quantity;
+ }
+ const reserve=Math.max(goldTarget,goldReserve,characterReserve),
+  target=Math.max(reserve+committed,purchaseMinimum);
+ if(!Number.isSafeInteger(target)||wallet===target)return null;
+ const depositing=wallet>target;
+ const quantity=depositing?wallet-target:Math.min(target-wallet,bankGold);
+ if(!Number.isSafeInteger(quantity)||quantity<=0)return null;
+ return {method:depositing?'bank_deposit':'bank_withdraw',
+  quantity,target,committed};
+}
+
 // Every bank pack keeps its own workspace reserve. Summing free slots
 // across different packs can report usable capacity when NONE of the packs
 // can accept one more regular deposit.
@@ -231,10 +259,9 @@ export function createBank(bot){
      identity(live)!==r.reserveStage.variant||
      !need||need.floor!==r.reserveStage.floor||
      r.take>need.missing)return false;
-  const bankHeld=packs().filter(([pack])=>packMap(pack)===p.c.map)
-   .reduce((sum,[,items])=>sum+items.reduce((n,i)=>
-    n+(i&&identity(i)===identity(live)?i.q??1:0),0),0);
-  return Number.isSafeInteger(bankHeld)&&need.held+bankHeld>need.floor;
+  const bankHeld=observedLocalReserveStock(live);
+  return bankHeld!==null&&Number.isSafeInteger(need.held+bankHeld)&&
+   need.held+bankHeld>need.floor;
  }
  function partialReady(r,phase){
   return pending===r&&partialEvidence(r).phase===phase&&
@@ -434,6 +461,27 @@ export function createBank(bot){
    identity(r.item)===identity(item)&&e.explicit?.(r.item)?.action!=='keep')?.pack??null;};
  const definitions=()=>p.G?.bank_packs??p.root?.bank_packs??p.parent?.bank_packs??{};
  const packMap=pack=>definitions()[pack]?.[0]??(/^items[0-7]$/.test(pack)?'bank':null);
+ // W04: use ALL currently visible same-realm local bank packs for backing,
+ // not just the source pack's immutable before-image. This is a read-only
+ // check, never an account-wide authorization or a replacement for receipts.
+ // A malformed matching stack cannot help establish sellable excess.
+ function observedLocalReserveStock(item){
+  const variant=identity(item);
+  if(!variant)return null;
+  let total=0,localPacks=0;
+  for(const [pack,items] of packs()){
+   if(packMap(pack)!==p.c.map)continue;
+   localPacks++;
+   for(const held of items){
+    if(!held||identity(held)!==variant)continue;
+    const q=held.q??1;
+    if(!e.safe(held)||!Number.isSafeInteger(q)||q<1||
+       q>stackMax(held)||!Number.isSafeInteger(total+q))return null;
+    total+=q;
+   }
+  }
+  return localPacks?total:null;
+ }
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
  function ready(pack='items0',recovery=false){const map=packMap(pack);return !!map&&(cfg.merchant.bank||recovery)&&me.name===cfg.party.merchant&&e.travel(location(map),'Bank')&&!!p.c.bank;}
  // Non-destructive capacity parking is a private, single-operation bank path.
@@ -936,10 +984,9 @@ export function createBank(bot){
        (q>need.missing&&!(cfg.merchant.partialBank===true&&
         bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999))))
      return null;
-    const localBank=rows.filter(([name])=>packMap(name)===p.c.map)
-     .reduce((count,[,items])=>count+items.reduce((n,held)=>
-      n+(held&&identity(held)===identity(item)?held.q??1:0),0),0);
-    if(!Number.isSafeInteger(localBank)||need.held+localBank<=need.floor)return null;
+    const localBank=observedLocalReserveStock(item);
+    if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
+       need.held+localBank<=need.floor)return null;
     return {price:0,lossScore:-q-1e9,reserveStage:true};
    }});
   if(!batch.valid){
@@ -977,17 +1024,19 @@ export function createBank(bot){
       bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999)))
     return false;
    const take=Math.min(q,need.missing);
-   const localBank=rows.filter(([name])=>packMap(name)===p.c.map)
-    .reduce((sum,[,items])=>sum+items.reduce((n,held)=>
-     n+(held&&identity(held)===identity(item)?held.q??1:0),0),0);
-   if(need.held+localBank<=need.floor)return false;
+   const localBank=observedLocalReserveStock(item);
+   if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
+      need.held+localBank<=need.floor)return false;
    // The existing single-bank journal durably records this reserved stage
    // before API dispatch and recovers exact slot evidence after interruption.
    const stage={floor:need.floor,variant:identity(item),guard:()=>{
     const live=p.c.bank?.[selected.pack]?.[selected.slot],
      current=bankOperatingReserveNeed(bot,live);
+    const remaining=live?observedLocalReserveStock(live):null;
     return !!current&&current.floor===need.floor&&
      identity(live)===identity(item)&&current.missing>=take&&
+     remaining!==null&&Number.isSafeInteger(current.held+remaining)&&
+     current.held+remaining>current.floor&&
      packMap(selected.pack)===p.c.map&&
      (q<=take||cfg.merchant.partialBank===true&&bot.free()>=2);
    }};
@@ -1274,12 +1323,36 @@ export function createBank(bot){
  }
  function capacity(){return packs().map(([pack,items])=>({pack,map:packMap(pack),size:items.length,observedLength:p.c.bank?.[pack]?.length??null,used:items.filter(Boolean).length,free:items.filter(i=>!i).length,workspace:cfg.merchant.bankWorkspace??0}));}
  function gold(){
-  if(!cfg.merchant.bank||!cfg.merchant.bankGold||!p.c.bank||me.name!==cfg.party.merchant)return false;
-  const commitments=Object.entries(p.c.slots??{}).reduce((n,[k,i])=>n+(k.startsWith('trade')&&i?.b?Math.max(0,Number(i.price)||0)*Math.max(1,Number(i.q)||1):0),0);
-  const target=Math.max(cfg.merchant.goldTarget,cfg.merchant.goldReserve,me.goldReserve??0)+commitments,before=p.c.gold,stored=p.c.bank.gold;
-  if(!Number.isFinite(stored)||before===target)return false;
-  const depositing=before>target,q=depositing?before-target:Math.min(target-before,stored);if(q<=0)return false;
-  return e.perform('bank.gold',{guard:()=>p.c.gold===before&&p.c.bank?.gold===stored,call:()=>p.call(depositing?'bank_deposit':'bank_withdraw',q),observe:()=>p.c.gold===before+(depositing?-q:q)&&p.c.bank?.gold===stored+(depositing?q:-q),details:{quantity:q,before}});
+  if(cfg.merchant.bank!==true||cfg.merchant.bankGold!==true||
+     !p.c.bank||me.name!==cfg.party.merchant)return false;
+  // Merely retaining an off-map bank object does not prove that a live
+  // bank balance may be mutated. Require an observed local pack.
+  const local=()=>Object.entries(p.c.bank??{}).some(([pack,items])=>
+   /^items\d+$/.test(pack)&&packMap(pack)===p.c.map&&
+   Array.isArray(items)&&items.length<=42);
+  if(!local())return false;
+  const input=()=>({wallet:p.c.gold,bankGold:p.c.bank?.gold,
+   slots:p.c.slots,goldTarget:cfg.merchant.goldTarget,
+   goldReserve:cfg.merchant.goldReserve,
+   characterReserve:me.goldReserve??0,
+   purchaseMinimum:bot.market?.fundingMinimumGold?.()??0});
+  const plan=bankGoldTransferPlan(input());
+  if(!plan)return false;
+  const {method,quantity:q,target,committed}=plan;
+  const before=p.c.gold,stored=p.c.bank.gold;
+  // A bid that changes after planning cannot reuse an old bank transfer.
+  const guard=()=>{
+   const live=local()?bankGoldTransferPlan(input()):null;
+   return cfg.merchant.bank===true&&cfg.merchant.bankGold===true&&
+    live?.method===method&&live.quantity===q&&
+    live.target===target&&live.committed===committed&&
+    p.c.gold===before&&p.c.bank?.gold===stored;
+  };
+  return e.perform('bank.gold',{guard,
+   call:()=>p.call(method,q),
+   observe:()=>p.c.gold===before+(method==='bank_deposit'?-q:q)&&
+    p.c.bank?.gold===stored+(method==='bank_deposit'?q:-q),
+   details:{quantity:q,before}});
  }
  // Safe consolidation precedes evidence-based, rule-bound bank reclaim.
  function audit(){if(!cfg.merchant.bank||!p.c.bank||bot.inventoryBlocked||bot.journal)return false;

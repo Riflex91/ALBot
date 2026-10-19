@@ -29,14 +29,19 @@ export function createSupplies(bot){
  function request(){
   if(cfg.production.skillSupplies!==true||!bot.running||p.c.rip)return [];
   if(Date.now()-last<5000)return requests;last=Date.now();
-  const target=cfg.production.skillSupplyCount??20;
+  const standardTarget=cfg.production.skillSupplyCount??20;
   const ids=[...new Set(selected())].slice(0,6),next=[];
   for(const item of ids){
+   // Rangers carry 100 poison and request a refill at 20 or fewer.
+   // Other reagents/classes retain the existing bounded supply policy.
+   const rangerPoison=p.c.ctype==='ranger'&&item==='poison';
+   const target=rangerPoison?100:standardTarget;
+   const trigger=rangerPoison?20:Math.floor(target/2);
    const rule=bot.economy.explicit({name:item,level:0});if(rule?.action==='keep')continue;
    const held=bot.count(item),old=requests.find(r=>r.item===item);
    if(held>=target)continue;
-   if(old&&Date.now()-old.cycle<3600000){next.push(old);continue;}
-   if(held>Math.floor(target/2))continue;
+   if(old&&Date.now()-old.cycle<3600000){next.push({...old,quantity:target-held});continue;}
+   if(held>trigger)continue;
    next.push({item,quantity:target-held,cycle:Date.now()});
   }
   if(JSON.stringify(next)!==JSON.stringify(requests)&&p.write(key,{version:1,requests:next}))requests=next;

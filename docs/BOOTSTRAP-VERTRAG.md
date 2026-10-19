@@ -1,6 +1,6 @@
 # Verbindlicher Bootstrap-/Ladevertrag – überprüfter Ingame-CODE
 
-Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das für die Integration signierte Release-Manifest. Der tatsächliche Spielstart wurde nicht beobachtet.
+Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das für die Integration signierte Release-Manifest. Der tatsächliche Spielstart wurde nicht beobachtet.
 
 ## Tatsächlicher Ladeweg
 
@@ -11,23 +11,25 @@ Stand: **18. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Signiertes Release-Artefakt (Integrationsstand 18.10.2026)
+## Signiertes Release-Artefakt (sequence 6, Stand 19.10.2026)
 
 | Feld | Festgestellter Wert |
 | --- | --- |
 | Manifest-URL | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json` |
 | Manifest-Branch | `codex/w00-w01-readonly-disposition-20261018` |
-| Manifest `sequence` | `4` |
+| Manifest `sequence` | `6` |
 | Manifest `version` | `0.10.11-candidate` |
 | Manifest `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
-| Manifest `bytes` | `687439` |
-| Manifest `sha256` | `92c0e27aa8020f5a658601d9e050f876e8e0ed43901dc3b11cf541086093a559` |
+| Manifest `bytes` | `743053` |
+| Manifest `sha256` | `63bc95b3649744152abf1b4e2dfbcb2627a3e2a89d38a028d2686ded1e0ac5a2` |
 | Signaturprüfung | ECDSA-P-256 über die dokumentierten Manifestfelder **gültig** |
 | Ingame-Erfolg | Aus CODE/Manifest allein **nicht nachgewiesen** |
 
 **Konsequenz:** Der Bootstrap folgt dem dokumentierten signierten Release-Branch und `manifest.runtimeUrl`, nicht automatisch `main/bot.js`. Integrierte Quelle und signierte Runtime wurden in CI gebaut und kryptografisch verifiziert; ein tatsächlicher Spielstart ist ohne Live-Nachweis unbekannt. Das persönliche Ingame-`ALBotConfig` bleibt unabhängig von der Repository-`bot.js`.
 
-Freigabe über den vorhandenen [Signierworkflow](https://github.com/Riflex91/ALBot/actions/runs/39155452952), aus Main `c684764e9c526e877c7c8d16130b376a787b2bd2`: 1.430/1.430 Offlinetests, persönliche Einstellungen unverändert, Manifest und Runtime gemeinsam veröffentlicht. Der vorhandene V2-Loader kann diese Version ohne Neuinstallation beim nächsten CODE-Start laden. Kein neuer Ingame-Ladevorgang beobachtet.
+**Aktuelle Freigabe, sequence 6 (19.10.2026):** Der Nutzer hat ausdrücklich die Synchronisierung mit `main` beauftragt. Der [Signierworkflow 39287371764](https://github.com/Riflex91/ALBot/actions/runs/39287371764) hat die Runtime exakt aus `main`-Commit `58a52a6efac5bdce12493b1b85503e382b7545f8` übernommen, mit dem unveränderten persönlichen V2-Loader und der bestehenden Ingame-Konfiguration abgeglichen, 1.658/1.658 Offline-Tests erfolgreich ausgeführt und das neue Manifest mit dem bestehenden privaten GitHub-Signierschlüssel signiert. Die veröffentlichte Runtime wurde gegen die signierten Bytes geprüft. Das ist eine **Release-/Kryptografie-Abnahme, keine Spiel-Liveabnahme**. Die Sequenz 6 wurde im Spiel noch nicht beobachtet.
+
+**Historie:** Sequence 5 war am 19.10.2026 mit [Signierworkflow 39231422549](https://github.com/Riflex91/ALBot/actions/runs/39231422549) nach [PR #191](https://github.com/Riflex91/ALBot/pull/191) veröffentlicht worden. Der neue Release verwendet weiterhin genau dieselbe Manifest-URL, Runtime-URL, öffentliche ECDSA-P-256-Prüfidentität und den unveränderten Downloader. Der Bootloader wählt automatisch das neue signierte Manifest erst bei einem erneuten Ingame-CODE-Start bzw. Reload.
 
 ## Getrennte Größenverträge (Bootstrap und alte CODE-Ausgabe)
 

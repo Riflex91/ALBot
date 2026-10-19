@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createLogistics,deliveryRouteDecision} from '../src/items/logistics.mjs';
+import {createLogistics,deliveryRouteDecision,receiptBackedPickupOrder} from '../src/items/logistics.mjs';
 import {Executor} from '../src/core/executor.mjs';
-import {chooseRule} from '../src/core/policy.mjs';
+import {chooseRule,identity} from '../src/core/policy.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
 import {LIVE_DESCRIPTOR} from '../src/config/live-a.mjs';
 function pair(){
@@ -295,4 +295,105 @@ test('explicit Merchant keep rule overrides implicit Tracktrix distribution',()=
  A.economy={explicit:i=>A.cfg.items.find(r=>r.item===i.name)};
  A.logistics.poll();A.logistics.poll();
  assert.equal(sends(),0);
+});
+
+test('W10/W13 receipt priority only reorders matching current uncommitted own loot',()=>{
+ const items=[{name:'ordinary',level:0},{name:'gem0',level:0},
+  {name:'ring',level:0,l:'s'},{name:'gem0',level:1}];
+ const hint={evidence:'own-physical-receipt-confirmed',
+  state:'read-only-demand-match',dispatchAuthorized:false,
+  variantIdentity:identity(items[1]),observedUnits:1,currentUnits:1,
+  uncommittedEstimate:1};
+ assert.deepEqual(receiptBackedPickupOrder(items,[hint],{
+  role:'farmer',merchant:'M',pickup:true}),[1,0,2,3]);
+ assert.deepEqual(receiptBackedPickupOrder(items,[hint],{
+  role:'merchant',merchant:'M',pickup:true}),[0,1,2,3]);
+ assert.deepEqual(receiptBackedPickupOrder(items,[hint],{
+  role:'farmer',merchant:'M',pickup:false}),[0,1,2,3]);
+ assert.deepEqual(receiptBackedPickupOrder(items,[hint],{
+  role:'farmer',merchant:'',pickup:true}),[0,1,2,3]);
+});
+test('W13 no physical receipt, invalid scope or zero free estimate never changes priority',()=>{
+ const items=[{name:'ordinary'},{name:'gem0'}];
+ const baseline={variantIdentity:identity(items[1]),observedUnits:1,
+  currentUnits:1,uncommittedEstimate:1,dispatchAuthorized:false,
+  evidence:'own-physical-receipt-confirmed',state:'read-only-demand-match'};
+ for(const edit of [
+  r=>{r.evidence='server-attributed-unverified';},
+  r=>{r.state='reservation-unverified';},
+  r=>{r.dispatchAuthorized=true;},
+  r=>{r.observedUnits=0;},
+  r=>{r.uncommittedEstimate=0;},
+  r=>{r.uncommittedEstimate=null;},
+  r=>{r.variantIdentity=identity({name:'other'});},
+  r=>{r.variantIdentity='';}
+ ]){
+  const row={...baseline};edit(row);
+  assert.deepEqual(receiptBackedPickupOrder(items,[row],{
+   role:'farmer',merchant:'M',pickup:true}),[0,1]);
+ }
+});
+test('W13 duplicate diagnostic rows never create more physical priority credit',()=>{
+ const items=[{name:'ordinary'},{name:'gem0'},{name:'gem0'},
+  {name:'gem0'}],entry={variantIdentity:identity(items[1]),
+  observedUnits:1,currentUnits:3,uncommittedEstimate:3,
+  dispatchAuthorized:false,evidence:'own-physical-receipt-confirmed',
+  state:'read-only-demand-match'};
+ assert.deepEqual(receiptBackedPickupOrder(items,[entry,entry],{
+  role:'farmer',merchant:'M',pickup:true}),[1,0,2,3]);
+});
+function receiptPickupPair(){
+ const {A,B,sends}=pair();
+ const r=defaultsFor(LIVE_DESCRIPTOR.schema.properties.items.items);
+ A.me.role='farmer';B.me.role='merchant';
+ A.cfg.party.merchant='B';A.cfg.merchant.pickup=true;
+ A.cfg.merchant.maxDelivery=100;
+ A.cfg.items=[
+  {...r,enabled:true,item:'ordinary',role:'farmer',action:'send',
+   recipient:'B',keep:0,teamReserve:0,batch:1},
+  {...r,enabled:true,item:'gem0',role:'farmer',action:'send',
+   recipient:'B',keep:0,teamReserve:0,batch:1}
+ ];
+ A.p.G={items:{ordinary:{type:'material'},
+  gem0:{type:'material'}}};
+ B.p.G=A.p.G;
+ A.p.c.items[0]={name:'ordinary',level:0};
+ A.p.c.items[1]={name:'gem0',level:0};
+ B.p.c.items[0]=null;
+ A.lootReceipts={status:()=>({purposeHints:[{
+  variantIdentity:identity(A.p.c.items[1]),observedUnits:1,
+  currentUnits:1,uncommittedEstimate:1,
+  evidence:'own-physical-receipt-confirmed',
+  state:'read-only-demand-match',dispatchAuthorized:false}]})};
+ return {A,B,sends};
+}
+test('W10/W13 confirmed loot gets first existing authorized item handoff, with normal receipt',async()=>{
+ const f=receiptPickupPair();
+ f.A.logistics.poll();
+ assert.equal(f.A.logistics.stats().offersSent,1);
+ assert.equal(f.sends(),0);
+ f.A.logistics.poll();
+ assert.equal(f.sends(),1);
+ assert.equal(f.B.p.c.items.some(i=>i?.name==='gem0'),true);
+ assert.equal(f.A.p.c.items[0].name,'ordinary');
+ f.B.logistics.poll();f.A.logistics.poll();await Promise.resolve();
+ f.A.exec.poll();
+ assert.equal(f.A.journal,null);
+ assert.equal(f.B.journal,null);
+});
+test('W13 receipt cannot bypass existing sendRule or gross reservation',()=>{
+ const f=receiptPickupPair();
+ f.A.cfg.items=f.A.cfg.items.filter(x=>x.item==='ordinary');
+ f.A.logistics.poll();
+ assert.equal(f.A.logistics.stats().offersSent,1,
+  'only separately permitted ordinary item can be offered');
+ f.A.logistics.poll();
+ assert.equal(f.B.p.c.items.some(i=>i?.name==='ordinary'),true);
+ assert.equal(f.A.p.c.items[1].name,'gem0');
+ const g=receiptPickupPair();
+ g.A.production={reservedQuantity:i=>i.name==='gem0'?1:0,
+  canRecordDelivery:()=>true,matchesOutput:()=>true};
+ g.A.logistics.poll();g.A.logistics.poll();
+ assert.equal(g.B.p.c.items.some(i=>i?.name==='ordinary'),true);
+ assert.equal(g.A.p.c.items[1].name,'gem0');
 });

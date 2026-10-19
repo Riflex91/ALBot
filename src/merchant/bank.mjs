@@ -1328,7 +1328,7 @@ export function createBank(bot){
   // Merely retaining an off-map bank object does not prove that a live
   // bank balance may be mutated. Require an observed local pack.
   const local=()=>Object.entries(p.c.bank??{}).some(([pack,items])=>
-   /^items\\d+$/.test(pack)&&packMap(pack)===p.c.map&&
+   /^items\d+$/.test(pack)&&packMap(pack)===p.c.map&&
    Array.isArray(items)&&items.length<=42);
   if(!local())return false;
   const input=()=>({wallet:p.c.gold,bankGold:p.c.bank?.gold,

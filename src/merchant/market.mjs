@@ -209,7 +209,7 @@ export function createMarket(bot){
     if(!fits())continue;
     if(!Number.isSafeInteger(cost)||cost<1)continue;
     const offerKey='market:'+identity(item)+':'+rid;
-    if(!e.budget(cost,0,r)){
+    if(e.budget?.(cost,0,r)===false){
      if((deniedFunding.get(offerKey)??0)>Date.now())continue;
      return requestFunding({item,rule:r,cost,quantity:q,unitPrice,offerKey,
       source:'market',finite});
@@ -283,7 +283,7 @@ export function createMarket(bot){
    const price=Math.ceil(e.value(i)*factor*(i.q??1)),q=i.q??1,before=e.count(item),reference=thisReference(item,r);
    if(!Number.isFinite(price)||price<=0||!reference||price>Math.min(r.maxPrice*q,cfg.merchant.pontyMaxSpend)||price>reference*q*cfg.merchant.bargainRatio||before+q>Math.min(r.targetCount,r.maxCount)||q>r.batch||bot.free()<=cfg.merchant.minFreeSlots)continue;
    if(!Number.isSafeInteger(price)||!Number.isSafeInteger(q)||q<1)continue;
-   if(!e.budget(price,0,r)){
+   if(e.budget?.(price,0,r)===false){
     const offerKey='ponty:'+identity(item)+':'+i.rid;
     if((deniedFunding.get(offerKey)??0)>Date.now())continue;
     return requestFunding({item,rule:r,cost:price,quantity:q,

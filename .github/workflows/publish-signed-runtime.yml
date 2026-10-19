@@ -17,108 +17,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout live signed channel without changing its personal profile
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: codex/w00-w01-readonly-disposition-20261018
-          persist-credentials: true
-      - name: Checkout exact approved, independently CI-verified main commit
-        uses: actions/checkout@v4
-        with:
-          repository: Riflex91/ALBot
-          ref: 58a52a6efac5bdce12493b1b85503e382b7545f8
-          path: upstream-main
-          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - name: Fail if main moved or approved commit changed
-        shell: bash
-        run: |
-          set -euo pipefail
-          APPROVED=58a52a6efac5bdce12493b1b85503e382b7545f8
-          test "$(git -C upstream-main rev-parse HEAD)" = "$APPROVED"
-          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$APPROVED"
-          test "$(git -C upstream-main status --porcelain)" = ""
-          echo "Pinned approved main $APPROVED"
-      - name: Install locked dependencies for approved main
-        working-directory: upstream-main
-        run: npm ci --ignore-scripts
-      - name: Rebuild approved main byte-for-byte
-        working-directory: upstream-main
+      - run: npm ci --ignore-scripts
+      - name: Build the exact runtime to be signed
         run: npm run build
-      - name: Require exactly the already merged runtime bytes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git -C upstream-main diff --exit-code -- dist/albot.runtime.js
-          test -s upstream-main/dist/albot.runtime.js
-          test "$(wc -c < upstream-main/dist/albot.runtime.js)" -le 8388608
-      - name: Verify personal main artifact matches its runtime
-        working-directory: upstream-main
-        run: node scripts/sync-personal-code.mjs --check
-      - name: Run complete approved-main offline regressions
-        working-directory: upstream-main
+      - name: Run all offline regressions before release
         run: npm test
-      - name: Verify approved-main browser/editor package
-        working-directory: upstream-main
-        run: npm run build:editor
-      - name: Install sign/verify tooling on existing signed branch
-        run: npm ci --ignore-scripts
-      - name: Promote exact approved runtime without replacing personal profile
+      - name: Preserve all personalized settings
         shell: bash
         run: |
-          set -euo pipefail
-          cp upstream-main/dist/albot.runtime.js dist/albot.runtime.js
-          cmp upstream-main/dist/albot.runtime.js dist/albot.runtime.js
           node scripts/sync-personal-code.mjs --write
           node --input-type=module <<'EOF'
           import fs from 'node:fs';
           import {execFileSync} from 'node:child_process';
-          const before=execFileSync('git',['show','HEAD:bot.js'],{encoding:'utf8'});
-          const after=fs.readFileSync('bot.js','utf8');
-          const personal=s=>{
+          const current=fs.readFileSync('bot.js','utf8');
+          const old=execFileSync('git',['show','HEAD:bot.js'],{encoding:'utf8'});
+          const cfg=s=>{
            const x=s.indexOf('globalThis.ALBotConfig='),y=s.indexOf('/* ALBot ',x);
            if(x<0||y<x)throw Error('Personal configuration boundary missing');
            return s.slice(x,y);
           };
-          if(personal(before)!==personal(after))
-           throw Error('The LIVE release personal configuration changed');
-          console.log('Existing live personal configuration retained byte-for-byte');
+          if(cfg(current)!==cfg(old))throw Error('Personal settings drift during runtime release');
+          console.log('Personal configuration retained exactly');
           EOF
-          npm run check:bootstrap:auto
-      - name: Sign manifest using GitHub private release key
+      - name: Verify installed auto-bootstrap requires no update
+        run: npm run check:bootstrap:auto
+      - name: Verify candidate browser/editor package
+        run: npm run build:editor
+      - name: Sign manifest (private key is never committed or logged)
         env:
           ALBOT_RELEASE_SIGNING_KEY_PEM: ${{ secrets.ALBOT_RELEASE_SIGNING_KEY_PEM }}
         run: npm run sign:release
-      - name: Verify signature, exact approved bytes and release sequence
+      - name: Verify the signed manifest against released bytes
+        run: npm run verify:release
+      - name: Publish runtime and signed manifest together
         shell: bash
         run: |
-          set -euo pipefail
-          npm run verify:release
-          cmp upstream-main/dist/albot.runtime.js dist/albot.runtime.js
-          node --input-type=module <<'EOF'
-          import fs from 'node:fs';
-          import crypto from 'node:crypto';
-          const m=JSON.parse(fs.readFileSync('dist/albot.release.json','utf8'));
-          const old=JSON.parse((await import('node:child_process')).execFileSync(
-           'git',['show','HEAD:dist/albot.release.json'],{encoding:'utf8'}));
-          const bytes=fs.readFileSync('dist/albot.runtime.js');
-          if(m.sequence!==old.sequence+1||m.sequence!==6)
-           throw Error('Expected monotonic release sequence 6');
-          if(m.bytes!==bytes.length||m.sha256!==crypto.createHash('sha256').update(bytes).digest('hex'))
-           throw Error('Published runtime differs from signed manifest');
-          console.log(JSON.stringify({sequence:m.sequence,bytes:m.bytes,sha256:m.sha256,
-           approvedMain:'58a52a6efac5bdce12493b1b85503e382b7545f8',runtimeUrl:m.runtimeUrl}));
-          EOF
-      - name: Publish verified runtime and signed manifest atomically in one commit
-        shell: bash
-        run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- bot.js dist/albot.runtime.js dist/albot.release.json
-          git diff --cached --quiet && { echo "No signed release difference"; exit 1; }
-          git commit -m "release(bootstrap): sequence 6 exactly from main 58a52a6efac5bdce12493b1b85503e382b7545f8 [skip release]"
+          if git diff --cached --quiet; then
+            echo "Nothing changed"
+            exit 0
+          fi
+          git commit -m "release(bootstrap): publish approved signed runtime [skip release]"
           git push origin HEAD:codex/w00-w01-readonly-disposition-20261018

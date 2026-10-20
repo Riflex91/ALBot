@@ -35,6 +35,28 @@ export function prioritizeAdmittedProductionGoal(ranked,{
  return jobs;
 }
 
+// A real currently assigned farm-material request deserves enough time for
+// the selected Farmers to reach and acknowledge a spawn. Recompute every
+// dependency/rule each epoch: never retain a missing, waiting, or obsolete goal.
+// Higher-priority urgent work wins immediately above the bounded deficit.
+export function prioritizeContinuingMaterialGoal(ranked,{
+ heldKey=null,heldAt=0,now=Date.now(),keyOf,scoreOf,
+ maxHoldMs=90000,maxPriorityDeficit=10
+}={}){
+ if(!Array.isArray(ranked)||ranked.length<2||
+    typeof keyOf!=='function'||typeof scoreOf!=='function'||
+    typeof heldKey!=='string'||!heldKey||
+    !Number.isFinite(heldAt)||heldAt<=0||
+    !Number.isFinite(now)||now<heldAt||
+    now-heldAt>=maxHoldMs)return ranked;
+ const i=ranked.findIndex(g=>keyOf(g)===heldKey);
+ if(i<=0)return ranked;
+ const gap=scoreOf(ranked[0])-scoreOf(ranked[i]);
+ if(!Number.isFinite(gap)||gap>maxPriorityDeficit)return ranked;
+ const next=[...ranked],current=next.splice(i,1)[0];next.unshift(current);
+ return next;
+}
+
 // A market search only admits movement, not an item transaction.
 // Keep the goal stable for a market buy only after executor/journal admission.
 export function admittedProductionAction(step,accepted,{journal=false,pending=false}={}){

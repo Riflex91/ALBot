@@ -80,7 +80,14 @@ export function rewardClaimDelta(journal,character){
 }
 export function createRewardMail(bot,{now=()=>Date.now()}={}){
  const {p,cfg}=bot,key='albot:reward-mail-cursor:'+bot.me.name;
- let cursor=p.read?.(key)?.cursor??null,nextRead=0,reading=false,generation=0,
+ const old=p.read?.(key),owner=bot.me.name;
+ let cursorRealm=p.realm(),
+  // Legacy {cursor:next} records may have skipped unclaimed page rows.
+  // Restart those from the beginning; taken=true rows are never claimable.
+  cursor=old?.version===2&&old.owner===owner&&old.realm===cursorRealm&&
+   (old.cursor===null||typeof old.cursor==='string'&&
+    /^\d{1,8}$/.test(old.cursor))?old.cursor:null,
+  nextRead=0,reading=false,generation=0,
   queue=[],observed=[],reason='not-scanned';
  if(bot.journal?.kind==='mail.claim')cursor=null;
  const remember=(id,state)=>{observed.push({id,state,at:now()});observed=observed.slice(-16);};
@@ -99,25 +106,40 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   if(!bot.journal){bot.inventoryBlocked=false;remember(j.mailId,'confirmed-after-reload');}
  }
  function read(){
+  // Pagination is bound to a particular realm; no cursor is portable.
+  if(p.realm()!==cursorRealm){
+   cursorRealm=p.realm();cursor=null;queue=[];generation++;
+   reading=false;nextRead=0;
+  }
   if(reading||now()<nextRead||!available().supported)return;
   if(queue.length&&!bot.journal)return;
-  const gen=generation;reading=true;nextRead=now()+60000;
+  const gen=generation,realm=cursorRealm;
+  reading=true;nextRead=now()+60000;
   const requested=cursor;
   bot.exec.run('reward.mail.read',['reward-reader'],()=>bot.running,()=>
    Promise.resolve(p.readRewardMailPage(requested)).then(page=>{
-    if(gen!==generation||!bot.running)return;
+    if(gen!==generation||!bot.running||p.realm()!==realm)return;
     if(!Array.isArray(page?.mail)||page.mail.length>40)throw Error('Invalid reward mail page');
     const next=page.more===true&&typeof page.cursor==='string'&&/^\d{1,8}$/.test(page.cursor)?page.cursor:null;
     if(page.more===true&&(!next||Number(next)<=Number(requested??0)))throw Error('Invalid reward mail cursor');
-    // Do not make a page actionable until its pagination advance is
-    // durably accepted. Invalid pages and failed storage leave the queue
-    // unchanged; they cannot schedule a later value action.
-    if(p.write(key,{cursor:next})!==true){reason='mail-cursor-storage-unavailable';return;}
+    const rows=page.mail.filter(row=>row.taken===false&&
+     rewardMailAttachment(row,owner,p.G));
+    const journalHere=bot.journal?.kind==='mail.claim'&&
+     page.mail.some(row=>row.id===bot.journal.mailId);
+    // Do not persist the next cursor while this page contains a claimable
+    // attachment or an unresolved mail value journal. A process crash must
+    // reread the SAME page rather than silently skip an uncollected reward.
+    // Already taken rows are filtered on replay; this authorizes no retry.
+    const hold=rows.length>0||journalHere;
+    const durableCursor=hold?requested:next;
+    if(p.write(key,{version:2,owner,realm,cursor:durableCursor})!==true){
+     reason='mail-cursor-storage-unavailable';return;
+    }
     reconcile(page.mail);
-    const rows=page.mail.filter(row=>row.taken===false&&rewardMailAttachment(row,bot.me.name,p.G));
     queue=rows.slice(0,40);for(const row of queue)remember(row.id,'observed');
-    cursor=next;nextRead=now()+(next?5000:300000);
-    reason=queue.length?'own-system-rewards-observed':'no-own-system-reward-on-page';
+    cursor=durableCursor;nextRead=now()+(hold||next?5000:300000);
+    reason=queue.length?'own-system-rewards-observed':
+     hold?'mail-claim-reconciliation-pending':'no-own-system-reward-on-page';
    }).finally(()=>{if(gen===generation)reading=false;}),
    {timeout:20000,delay:5000,onSettle:state=>{reading=false;
     if(['timeout','rejected','superseded'].includes(state))reason='mail-page-'+state;}});
@@ -142,7 +164,14 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
      rewardMailQuantity(receipt.item)===item.q&&
      Number.isSafeInteger(rewardMailQuantity(receipt.item)))&&
     rewardClaimDelta({kind:'mail.claim',...details},p.c),
-   onConfirmed:()=>{queue=queue.filter(r=>r.id!==row.id);remember(row.id,'confirmed');return true;},
+   onConfirmed:()=>{
+    queue=queue.filter(r=>r.id!==row.id);
+    remember(row.id,'confirmed');
+    // The checkpoint still points at this page until it is reread and
+    // the server confirms that no claimable attachments remain.
+    if(!queue.length)nextRead=0;
+    return true;
+   },
    details,timeout:20000});
  }
  return {tick(){

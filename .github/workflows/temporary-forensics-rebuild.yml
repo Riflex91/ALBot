@@ -3,11 +3,14 @@ on:
   push:
     branches:
       - fix/20261020-live-forensics-team-assist
+    paths:
+      - '.github/workflows/temporary-forensics-rebuild.yml'
+      - 'src/**'
+      - 'test/**'
 permissions:
   contents: write
 jobs:
   sync:
-    if: ${{ !contains(github.event.head_commit.message, 'chore: sync forensics build artifacts') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -125,6 +125,8 @@ test('N12 failed, thrown, rejected and mismatched API replies never permit repla
   ()=>({choice:'scene-2',vote:'safe',resolved:false}),
   ()=>({choice:'scene-1',vote:'bad',resolved:false}),
   ()=>({choice:'scene-1',vote:'safe',resolved:'false'}),
+  ()=>({choice:'scene-1',vote:'safe',resolved:false,failed:true}),
+  ()=>({choice:'scene-1',vote:'safe',resolved:false,success:false}),
   ()=>({failed:true}),
   ()=>null
  ]){

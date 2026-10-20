@@ -176,10 +176,30 @@ const secureHeaders={
  'referrer-policy':'no-referrer','cache-control':'no-store',
  'content-security-policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 };
+function telemetryCors(req,env){
+ const raw=asString(env.INGEST_ALLOWED_ORIGIN)||'https://adventure.land';
+ const origin=req.headers.get('origin');
+ if(!origin)return {};
+ if(origin!==raw||!/^https:\/\/[a-zA-Z0-9.-]+$/.test(raw))return null;
+ return {'access-control-allow-origin':raw,'vary':'Origin',
+  'access-control-allow-methods':'POST, OPTIONS',
+  'access-control-allow-headers':'Authorization, Content-Type',
+  'access-control-max-age':'600'};
+}
 export async function handleRequest(request,env,ctx={},deps={}){
  const url=new URL(request.url),path=url.pathname,fetcher=deps.fetcher??fetch;
- if(path==='/api/ingest'&&request.method==='POST'){
-  try{return await ingest(request,env);}catch{return failure('Telemetrie-Datenbankfehler',503);}
+ if(path==='/api/ingest'){
+  const cors=telemetryCors(request,env);
+  if(cors===null)return failure('Origin nicht freigegeben',403);
+  if(request.method==='OPTIONS')
+   return new Response(null,{status:204,headers:cors});
+  if(request.method!=='POST')return failure('Methode nicht erlaubt',405);
+  try{
+   const response=await ingest(request,env);
+   const headers=new Headers(response.headers);
+   for(const [name,value] of Object.entries(cors))headers.set(name,value);
+   return new Response(response.body,{status:response.status,headers});
+  }catch{return json({ok:false,error:'Telemetrie-Datenbankfehler'},503,cors);}
  }
  const auth=await validateAccess(request,env,fetcher);
  if(!auth.ok)return failure(auth.reason,auth.status);

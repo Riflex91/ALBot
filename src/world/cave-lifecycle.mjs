@@ -326,6 +326,9 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   const completedRun=record.exitRun;
   if(!durable(null))return false;
   bot.cave?.acknowledgeConfirmedExit?.(completedRun);
+  // The same verified run exit can close its separate vote journal.
+  // If that write fails, its journal remains blocked (never replayed).
+  bot.caveVoteJournal?.completeRun?.(completedRun);
   return true;
  }
  function sample(){

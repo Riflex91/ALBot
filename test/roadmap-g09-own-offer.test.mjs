@@ -492,3 +492,64 @@ test('G09 original unchanged listing keeps provisional swap event until actual r
  assert.equal(f.maker.sample(),true);
  assert.equal(f.maker.status().state,'swap-receipt-verified-no-repost');
 });
+
+test('G09 own offer does not treat null or fractional q as a physical extra',()=>{
+ for(const invalid of [null,0,-1,0.5,2,NaN,Infinity]){
+  for(const location of ['payment','reserve','wanted']){
+   const f=fixture();
+   if(location==='payment')f.inventory[0].q=invalid;
+   if(location==='reserve')f.inventory[1].q=invalid;
+   if(location==='wanted')f.inventory[2]={name:'wand',level:0,q:invalid};
+   assert.equal(ownTradeOfferPlan(f.bot,0),null,
+    location+':'+String(invalid));
+   assert.equal(f.maker.post(0,f.rule),false);
+   assert.equal(f.calls.length,0);
+  }
+ }
+ const f=fixture();f.inventory[0].q=1;f.inventory[1].q=1;
+ assert.ok(ownTradeOfferPlan(f.bot,0));
+});
+
+test('G09 pre-dispatch and listing receipts reject late null stack quantity',async()=>{
+ for(const change of [
+  f=>{f.inventory[1].q=null;},
+  f=>{f.inventory[0].q=null;}
+ ]){
+  const f=fixture();
+  assert.equal(f.maker.post(0,f.rule),true);
+  change(f);
+  assert.equal(f.pending.guard(),false);
+  assert.equal(f.calls.length,0);
+ }
+ for(const change of [
+  f=>{f.slots.trade3.q=null;},
+  f=>{f.slots.trade3.want.q=null;}
+ ]){
+  const f=fixture();
+  assert.equal(f.maker.post(0,f.rule),true);
+  await f.pending.call();
+  change(f);
+  assert.equal(f.pending.observe(),false);
+  assert.equal(f.pending.onConfirmed(),false);
+  assert.equal(f.maker.status().state,'dispatch-intent-unverified');
+ }
+});
+
+test('G09 post-swap receipt refuses malformed incoming or outgoing quantity',async()=>{
+ for(const field of ['incoming','outgoing']){
+  const f=fixture();
+  f.maker.post(0,f.rule);
+  await f.pending.call();
+  assert.equal(f.pending.observe(),true);
+  assert.equal(f.pending.onConfirmed(),true);
+  assert.equal(f.maker.observeSwap({type:'swap',event:true,
+   seller:'M',buyer:'Other',slot:'trade3',snum:2,
+   item:{name:'sword'},received:{name:'wand'}}),true);
+  f.slots.trade3=null;f.inventory[2]={name:'wand'};
+  if(field==='incoming')f.inventory[2].q=null;
+  else f.inventory[1].q=null;
+  assert.equal(f.maker.sample(),false,field);
+  assert.equal(f.maker.status().state,
+   'listing-absent-outcome-unverified');
+ }
+});

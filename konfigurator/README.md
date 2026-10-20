@@ -89,3 +89,12 @@ Der Worker speichert pro Charakter hoechstens alle 120 Sekunden einen Snapshot. 
 Dashboard-API-Antworten schliessen Snapshots aus, die aelter als sieben Tage sind. Alte Daten verbleiben maximal innerhalb der festen Tabellenobergrenzen. Fuer die neue Logik ist keine D1-Migration und kein kostenpflichtiger Cloudflare-Dienst erforderlich.
 
 Diese Drossel begrenzt D1-Schreiboperationen, nicht die Anzahl eingehender Worker-Requests oder fremde Cloudflare-Account-Nutzung. Workers Free muss weiterhin aktiv bleiben; echte Accountkosten und alle weiteren Produkte sind im Billing-Dashboard zu kontrollieren.
+
+## Access-geschuetztes Browser-Relay (Opt-in)
+
+Die separate Seite `/relay.html` ist durch dieselbe Cloudflare-Access-Anmeldung wie das Dashboard geschuetzt. Sie akzeptiert nach einem ausdruecklichen Klick nur `postMessage`-Pakete vom tatsaechlich oeffnenden Adventure-Land-Fenster und nur mit `origin=https://adventure.land` oder `https://www.adventure.land`. Sie uebertraegt diese an den gleichurspruenglichen Endpunkt `POST /api/relay-ingest`.
+
+Der Endpunkt verlangt immer eine kryptografisch gepruefte Access-JWT, `Origin` gleich der Worker-Domain und `Content-Type: application/json`. Anschliessend gelten dieselben D1-Schreibgrenzen wie bei `/api/ingest`. Keine Cross-Origin-Freigabe und keine Access-Bypass-Regel fuer `/api/relay-ingest` anlegen. Der alte Bearer-Endpunkt bleibt davon unabhaengig weiterhin tokenpflichtig.
+
+Das Relay zeigt eine lokale 120-Sekunden-Versuchsdrossel und besitzt keine Retry-Schleife oder Hintergrundabfragen. Es benoetigt keinen geheimen API-Schluessel im Spielcode, keine neue Datenbank und keinen kostenpflichtigen Cloudflare-Dienst. Ohne bewusst gestartetes Spielfenster und Benutzeraktivierung uebertraegt es nichts. Ein separat freigegebener Game-Sender sowie ein echter Browser-Livetest stehen noch aus; die signierte Ingame-Runtime wird durch diese Aenderung nicht veraendert.
+

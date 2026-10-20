@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALBot Konfigurator</title><meta name="description" content="Sichere ALBot-Konfiguration, Charakterübersicht und Bankmonitoring">
+<link rel="stylesheet" href="./styles.css">
+<script type="module" src="./app.mjs"></script>
+</head><body>
+<div class="layout">
+ <aside class="sidebar">
+  <div class="brand"><span class="brandmark">A</span><div><strong>ALBot</strong><small>Konfigurator</small></div></div>
+  <div class="sidebar-label">ÜBERSICHT</div>
+  <nav id="navigation" aria-label="Hauptmenü">
+   <button class="nav-item active" data-view="dashboard">◫ <span>Dashboard</span></button>
+   <button class="nav-item" data-view="characters">♙ <span>Charaktere</span></button>
+   <button class="nav-item" data-view="bank">▣ <span>Bank</span></button>
+   <div class="sidebar-label">KONFIGURATION</div>
+   <button class="nav-item" data-view="items">◈ <span>Items & Regeln</span></button>
+   <button class="nav-item" data-view="combat">⚔ <span>Kampf & Fähigkeiten</span></button>
+   <button class="nav-item" data-view="farming">⌖ <span>Farmen & Welt</span></button>
+   <button class="nav-item" data-view="merchant">▤ <span>Merchant</span></button>
+   <button class="nav-item" data-view="team">♧ <span>Team</span></button>
+   <div class="sidebar-label">SYSTEM</div>
+   <button class="nav-item" data-view="settings">⚙ <span>System & Synchronisierung</span></button>
+  </nav>
+  <div class="sidebar-bottom"><div id="connection" class="connection">● Nicht verbunden</div><small>Geplante Änderungen steuern den Bot noch nicht.</small></div>
+ </aside>
+ <div class="main-area">
+  <header class="topbar"><button id="menu-toggle" class="icon-btn" aria-label="Menü öffnen">☰</button><div><strong id="page-title">Dashboard</strong><span id="page-subtitle">Accountübersicht</span></div><div class="top-actions"><span id="saved-state" class="status">Nicht geladen</span><button id="save" class="button primary" disabled>Konfiguration speichern</button></div></header>
+  <main id="content" tabindex="-1"></main>
+  <footer class="footer">ALBot Konfigurator · GitHub ist Konfigurationsspeicher · Nur bestätigte Daten heißen live · Keine automatische Ingame-Übernahme</footer>
+ </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+</body></html>

@@ -528,6 +528,7 @@ test('W04 invalid offsite bank pack cannot provide or veto local reserve proof',
  for(let n=0;n<3;n++)bot.bank.preventiveDisposition();
  assert.equal(bot.bank.preventiveDisposition(),true);
  assert.equal(calls[0].params.guard(),true);
+ bot.p.G.bank_packs={items2:['bank_b',0,0]};
  bot.p.c.bank.items2=Array(43).fill({name:'scroll0',q:9999});
  assert.equal(calls[0].params.guard(),true,
   'bank_b is not on the observed local bank map and grants no backing');

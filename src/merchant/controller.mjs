@@ -42,6 +42,14 @@ export function canOpenMerchantStand(bot){
  if(exec.frame?.some(j=>j.resources.includes('movement')||j.resources.includes('inventory')||j.resources.includes('lifecycle')))return false;
  return (p.c.items??[]).some(i=>i&&p.G.items?.[i.name]?.stand);
 }
+// Background depot audit is not a pickup emergency. Separate its cadence
+// from urgent inventory/logistics paths so being parked in the bank does not
+// restart the entire exchange/sale/storage cycle every thirty seconds.
+export function routineMerchantDepotDue({now=Date.now(),completedAt=0,atBank=false}={}){
+ if(!Number.isFinite(now)||!Number.isFinite(completedAt)||now<completedAt)
+  return false;
+ return now-completedAt>=(atBank?180000:600000);
+}
 export function createMerchant(bot){
  const {p,cfg,me,exec}=bot,e=bot.economy,tasks=createFairTasks({holdMs:cfg.merchant.taskHoldMs,starvationMs:cfg.merchant.starvationMs});
  const trackerAcquisition=createTrackerAcquisition(bot);
@@ -569,7 +577,7 @@ export function createMerchant(bot){
   if(me.role!=='merchant'||!cfg.merchant.bank||!bot.bank?.ready)return false;
   const now=Date.now();
   if(!depot){
-   if(now-lastDepot<(p.c.map==='bank'?30000:600000)||bot.logistics?.reserved||bot.gold?.reserved||
+   if(!routineMerchantDepotDue({now,completedAt:lastDepot,atBank:p.c.map==='bank'})||bot.logistics?.reserved||bot.gold?.reserved||
       bot.movement.order)return false;
    depot={stage:'reconcile',started:now,stageAt:now};
    p.write?.(depotKey,{...depot,completedAt:lastDepot});

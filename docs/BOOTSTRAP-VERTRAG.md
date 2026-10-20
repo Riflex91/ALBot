@@ -11,7 +11,21 @@ Stand: **20. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Aktueller signierter Release-Kanal (Sequence 17, 20.10.2026)
+## Aktueller signierter Release-Kanal (Sequence 18, 20.10.2026)
+
+| Feld | Verifizierter Wert |
+| --- | --- |
+| `sequence` | `18` |
+| `version` | `0.18.0-candidate` |
+| `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
+| `bytes` | `878294` |
+| `sha256` | `3d5c35cd98254b98e9b2c0f6b867f19d31df4c3aeb94cd5047c4fb27ab5f6f74` |
+
+Nach Linux-/Windows-PR-Tests sowie Signierung im [Workflow 39476589158](https://github.com/Riflex91/ALBot/actions/runs/39476589158) veröffentlicht. Neue Funktion: ausdrücklich zustimmungspflichtiges Cloudflare-Access-Telemetrie-Relay im Browser, mindestens 120 Sekunden Takt und **ohne** öffentlichen Ingest-Schlüssel. Headless-Telemetrie bleibt deaktiviert. Die persönliche Ingame-Konfiguration, V2-Loader-URL und Signaturprüfung sind unverändert. **Eine echte Live-Browserabnahme fehlt noch.**
+
+### Historischer Release: Sequence 17
+
+## Frueherer signierter Release-Kanal (Sequence 17, 20.10.2026)
 
 | Feld | Verifizierter Wert |
 | --- | --- |

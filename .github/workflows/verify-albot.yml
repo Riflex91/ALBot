@@ -25,11 +25,19 @@ jobs:
       - name: Verify documented bootstrap target and version contract
         run: node scripts/verify-bootstrap-contract.mjs
       - name: Verify signed in-game release manifest and runtime
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/verify-bootstrap-channel.mjs
       - name: Full offline tests
         run: npm test
       - name: Build editor package
         run: npm run build:editor
+      - name: Verify and package Cloudflare-ready Konfigurator
+        run: |
+          npm run build:konfigurator
+          node --check konfigurator/worker/index.mjs
+          node --check konfigurator/public/app.mjs
+          node --check konfigurator/public/policy.mjs
       - name: Syntax, size, and manifest integrity
         shell: bash
         run: |
@@ -73,4 +81,6 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run the exact Windows verification script
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./scripts/VERIFY-U01-U07.ps1

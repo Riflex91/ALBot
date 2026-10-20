@@ -6,6 +6,16 @@ import {inventoryStockEvidence,packInventoryEvidence,unpackInventoryEvidence} fr
 import {inspectItemTransferEvidence} from '../items/transfer-reconciliation.mjs';
 // The full ranking contains bulky diagnostics. Recipients only need the
 // authoritative fields required to validate/adopt the shared spawn plan.
+// The leader may finish a short-lived attack tick with bot.target already
+// reset while the native character target is still observable. Publish it
+// only when the actual LIVE monster matches the current shared farm plan.
+export function verifiedNativeFarmFocus(character,monsters,plan){
+ if(!character||character.rip||!plan?.id||!plan.target||
+    character.target==null)return null;
+ return (monsters??[]).find(m=>m?.id!=null&&
+   String(m.id)===String(character.target)&&m.mtype===plan.target&&
+   m.hp>0&&!m.dead&&samePlace(character,m))?.id??null;
+}
 export function compactFarmPlan(plan){
  if(!plan?.id)return null;
  const fields=['id','key','target','map','in','x','y','realm','leader',
@@ -173,8 +183,13 @@ export function createTransport(bot){
     heartbeat(){const c=p.c;if(!c)return;const items=bot.logistics?.summary()??[];const d={browserSwitch:p.characterSwitchCapability?.()??{supported:false,reason:'capability-unavailable'},incomingRotation:bot.account?.incomingRotation?.()??null,townActive:!!bot.movement?.townActive,lifecycleChanging:!!bot.lifecycleChanging,combatLife:bot.combatLife??null,name:me.name,...xy(c),map:c.map,in:c.in??c.map,realm:p.realm(),party:c.party??null,rip:!!c.rip,hp:c.hp,max_hp:c.max_hp,mp:c.mp,max_mp:c.max_mp,class:c.ctype,level:c.level,stats:{attack:c.attack,frequency:c.frequency,armor:c.armor,resistance:c.resistance,range:c.range,heal:c.heal,mp_cost:c.mp_cost,damage_type:c.damage_type,courage:c.courage,mcourage:c.mcourage,pcourage:c.pcourage,fear:c.fear},s:Object.fromEntries(Object.entries(c.s??{}).filter(([id])=>['hardshell','sheltered','mshield','aether_shield','guardians_oath','beacon_of_resolve','poisoned','stunned','silenced','stoned','hopsickness','realmfatigue'].includes(id)||p.G.conditions?.[id]?.blocked===true||id.startsWith('paladin_aura_'))),goldBalance:Number.isSafeInteger(c.gold)&&c.gold>=0?c.gold:null,goldReconcile:bot.recovery?.goldEvidence?.()??null,itemTransferEvidence:inspectItemTransferEvidence({
       journal:bot.journal,inventory:c.items,gold:c.gold,
       owner:me.name,session:bot.session,realm:p.realm()
-     }),accountLossGuard:(()=>{const g=bot.lossGuard?.status();return g?.enabled?{blocked:g.blocked,trip:g.trip,resetAt:g.resetAt}:null;})(),bankGoldBalance:(me.name===cfg.party.merchant||c.map?.startsWith('bank'))&&Number.isSafeInteger(c.bank?.gold)&&c.bank.gold>=0?c.bank.gold:null,goldSurplus:bot.gold?.surplus()??0,monsterhunt:(()=>{const q=c.s?.monsterhunt;return q&&typeof q.id==='string'&&Number.isSafeInteger(q.c)&&q.c>=0?{id:q.id,c:q.c,...(Number.isFinite(q.ms)?{ms:Math.max(0,Math.floor(q.ms))}:{}),...(typeof q.sn==='string'?{sn:q.sn}:{})}:null;})(),huntObjective:me.name===bot.leader?bot.teamPlan?.orderedHunt?.()??null:null,squadQuestVisit:false,goldTransferPending:!!bot.gold?.reserved,goldTransferAt:bot.gold?.transferAt??0,target:bot.target?.id??null,free:bot.free(),achievementCarrier:carriedAchievementCarrier(c.items),storagePressure:me.role==='merchant'&&me.name===cfg.party.merchant&&(bot.merchant?.status?.()?.capacityRecovery===true||bot.free()<=(cfg.merchant?.minFreeSlots??4)),running:bot.running,reserved:!!bot.logistics?.reserved,journal:!!bot.journal||!!bot.bank?.pending,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,lootSlots:bot.logistics?.pickupSlots?.()??0,
+     }),accountLossGuard:(()=>{const g=bot.lossGuard?.status();return g?.enabled?{blocked:g.blocked,trip:g.trip,resetAt:g.resetAt}:null;})(),bankGoldBalance:(me.name===cfg.party.merchant||c.map?.startsWith('bank'))&&Number.isSafeInteger(c.bank?.gold)&&c.bank.gold>=0?c.bank.gold:null,goldSurplus:bot.gold?.surplus()??0,monsterhunt:(()=>{const q=c.s?.monsterhunt;return q&&typeof q.id==='string'&&Number.isSafeInteger(q.c)&&q.c>=0?{id:q.id,c:q.c,...(Number.isFinite(q.ms)?{ms:Math.max(0,Math.floor(q.ms))}:{}),...(typeof q.sn==='string'?{sn:q.sn}:{})}:null;})(),huntObjective:me.name===bot.leader?bot.teamPlan?.orderedHunt?.()??null:null,squadQuestVisit:false,goldTransferPending:!!bot.gold?.reserved,goldTransferAt:bot.gold?.transferAt??0,target:bot.target?.id??(me.name===bot.leader?verifiedNativeFarmFocus(c,bot.monsters(),bot.teamPlan?.heartbeat?.()):null),free:bot.free(),achievementCarrier:carriedAchievementCarrier(c.items),storagePressure:me.role==='merchant'&&me.name===cfg.party.merchant&&(bot.merchant?.status?.()?.capacityRecovery===true||bot.free()<=(cfg.merchant?.minFreeSlots??4)),running:bot.running,reserved:!!bot.logistics?.reserved,journal:!!bot.journal||!!bot.bank?.pending,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,lootSlots:bot.logistics?.pickupSlots?.()??0,
       travelBlock:bot.farmer?.travelStatus?.()??null,farmRejections:bot.strategy?.farmRejections?.()??[],
+      // Compact evidence only. Never relay a command; every Cave member
+      // attests its own direct native clearance and peers verify all three.
+      retreatVote:bot.caveRetreat?.heartbeat?.()??null,
+      retreatPrepare:bot.caveRetreatPrepare?.heartbeat?.()??null,
+      retreatAbort:bot.caveRetreatWatchdog?.heartbeat?.()??null,
       combatSupport:compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),potionReady()),
       potions:Object.fromEntries(['hpot0','mpot0'].map(id=>[id,
         (c.items??[]).reduce((n,i)=>n+(i?.name===id?(i.q??1):0),0)])),

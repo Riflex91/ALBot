@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>ALBot – private Telemetrie-Verbindung</title>
+<link rel="stylesheet" href="./relay.css">
+<script type="module" src="./relay.mjs"></script>
+</head>
+<body>
+<main>
+ <header><span class="mark">A</span><div><h1>ALBot Telemetrie-Relay</h1><p>Cloudflare Access · kostenloser Betrieb</p></div></header>
+ <div class="notice">Dieses Fenster empfängt ausschließlich Nachrichten aus seinem öffnenden Adventure-Land-Fenster. Es übermittelt Daten über deine Cloudflare-Access-Anmeldung – <strong>niemals über einen Token im Spielcode</strong>.</div>
+ <section>
+  <h2>Verbindung</h2>
+  <p id="state" role="status" aria-live="polite">Bereit. Empfang ist noch deaktiviert.</p>
+  <button id="activate" type="button">Empfang ausdrücklich aktivieren</button>
+  <p class="muted">Nach der Aktivierung gelten mindestens 120 Sekunden Abstand je Charakter sowie 120 Sekunden für alle Bankpacks zusammen. Kein automatisches Nachholen und keine schnellen Wiederholungen.</p>
+ </section>
+ <section>
+  <h2>Übertragungsstatus</h2>
+  <p id="result" role="status" aria-live="polite">Noch keine Telemetrie empfangen.</p>
+  <p id="counter">Erfolgreiche Uploads: 0</p>
+ </section>
+ <footer>Nur lesende Spiel-Snapshots. Kein Zugriff auf Verkaufsaktionen, Bankoperationen oder das private GitHub-Token. Schließe dieses Fenster, um die Verbindung zu beenden.</footer>
+</main>
+</body>
+</html>

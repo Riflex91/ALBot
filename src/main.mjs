@@ -8,9 +8,18 @@ import {createCaveVoteEvidence} from './world/cave-vote.mjs';
 import {createCaveVoteJournal} from './world/cave-vote-journal.mjs';
 import {createCaveConsensus} from './world/cave-consensus.mjs';
 import {createCaveTeamCoordination,inCaveInstance} from './world/cave-team-coordination.mjs';
+import {caveCumulativeThreatBudget} from './world/cave-cumulative-threat.mjs';
+import {createCaveMultiAggroFocus} from './world/cave-multi-aggro-focus.mjs';
+import {createCaveCriticalResponse} from './world/cave-critical-response.mjs';
+import {createCaveRetreatConsensus} from './world/cave-retreat-consensus.mjs';
+import {createCaveRetreatPreparation} from './world/cave-retreat-preparation.mjs';
+import {createCaveRetreatWatchdog} from './world/cave-retreat-watchdog.mjs';
 import {createCaveDefensiveCombat} from './world/cave-defensive-combat.mjs';
+import {createCaveCriticalHealTriage} from './world/cave-critical-heal-triage.mjs';
 import {createCavePriestHealing} from './world/cave-priest-healing.mjs';
+import {createCavePriestSupport} from './world/cave-priest-support.mjs';
 import {createCaveDirectCohesion} from './world/cave-direct-cohesion.mjs';
+import {createCaveEmergencyDirect} from './world/cave-emergency-direct.mjs';
 import {createLootDeparture} from './items/loot-departure.mjs';
 import {createOwnLootReceipts} from './items/loot-receipts.mjs';
 import {createActionAdmission} from './core/action-admission.mjs';
@@ -77,6 +86,8 @@ import {LIVE_DESCRIPTOR} from './config/live-a.mjs';
 import {chooseRule,variantCount,protectedItem,distance,samePlace,fingerprint} from './core/policy.mjs';
 import {Executor} from './core/executor.mjs';
 import {createPorts} from './runtime/ports.mjs';
+import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/telemetry-snapshot.mjs';
+import {createGameRelaySender,GAME_RELAY_INTERVAL_MS} from './runtime/telemetry-relay-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
 import {createLogistics} from './items/logistics.mjs';
@@ -257,7 +268,7 @@ export function install(root){
   if(cfg.production){bot.luckySlots=createLuckySlotEvidence(bot);bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.swaps=createSingleSwap(bot);bot.tradeOffers=createOwnTradeOffer(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.tailoring=createStatTailoring(bot);bot.merchant=createMerchant(bot);bot.supplyForecast=createSupplyForecast(bot);bot.accountStock=createAccountStockLedger(bot);bot.services=createServices(bot);bot.objectives=createObjectives(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
-  if(cfg.world){bot.cave=createCaveEvidence(bot);bot.caveLifecycle=createCaveLifecycle(bot,{now});bot.caveVote=createCaveVoteEvidence(bot,{now});bot.caveVoteJournal=createCaveVoteJournal(bot,{now});bot.caveConsensus=createCaveConsensus(bot,{now});bot.caveTeam=createCaveTeamCoordination(bot,{now});bot.caveCombat=createCaveDefensiveCombat(bot,{now});bot.cavePriest=createCavePriestHealing(bot,{now});bot.caveDirect=createCaveDirectCohesion(bot,{now});bot.respawns=createRespawnCalendar(bot);bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
+  if(cfg.world){bot.cave=createCaveEvidence(bot);bot.caveLifecycle=createCaveLifecycle(bot,{now});bot.caveVote=createCaveVoteEvidence(bot,{now});bot.caveVoteJournal=createCaveVoteJournal(bot,{now});bot.caveConsensus=createCaveConsensus(bot,{now});bot.caveTeam=createCaveTeamCoordination(bot,{now});bot.caveMultiAggro=createCaveMultiAggroFocus(bot,{now});bot.caveCriticalResponse=createCaveCriticalResponse(bot,{now});bot.caveRetreat=createCaveRetreatConsensus(bot,{now});bot.caveRetreatPrepare=createCaveRetreatPreparation(bot,{now});bot.caveRetreatWatchdog=createCaveRetreatWatchdog(bot,{now});bot.caveCombat=createCaveDefensiveCombat(bot,{now});bot.caveCriticalTriage=createCaveCriticalHealTriage(bot,{now});bot.cavePriest=createCavePriestHealing(bot,{now});bot.cavePriestSupport=createCavePriestSupport(bot,{now});bot.caveDirect=createCaveDirectCohesion(bot,{now});bot.caveEmergency=createCaveEmergencyDirect(bot,{now});bot.respawns=createRespawnCalendar(bot);bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
   if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.combatAssessment=createCombatAssessment(bot);bot.elixirs=createElixirs(bot);bot.seashells=createSeashellCycle(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);bot.opportunities=createWorldOpportunities(bot);bot.rewards=createRewardMail(bot);}
   const cleanup=[];
   {const stop=p.watchChestOpened?.(row=>bot.lootReceipts?.observeChest?.(row));if(typeof stop==='function')cleanup.push(stop);}
@@ -362,6 +373,26 @@ export function install(root){
        !!bot.logistics?.reserved||!!bot.gold?.reserved}));
   }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);bot.metrics.frame(elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),me.role==='farmer'&&bot.skillWakeups?
      bot.skillWakeups.nextDelay(cfg.general.combatTickMs):cfg.general.combatTickMs);}}
+  // The public runtime contains no secrets or automatic cloud connection.
+  // Access Relay requires a synchronous user click in the existing game panel,
+  // then another explicit confirmation in the signed-in popup.
+  let telemetryRelay=null,telemetryInterval=null;
+  if(!p.headless){
+    try{
+      const gameWindow=p.parent;
+      if(['https://adventure.land','https://www.adventure.land'].includes(gameWindow?.location?.origin)){
+        telemetryRelay=createGameRelaySender({
+          gameWindow,getCharacter:()=>p.c,getRealm:()=>p.realm(),
+          getBankDefinitions:()=>p.G?.bank_packs??{},role:me.role,
+          onReady:()=>{if(!disposed)telemetryRelay?.sendOnce();}
+        });
+      }
+    }catch(e){report.event('telemetry.unavailable',{reason:'unsupported-browser'});}
+  }
+  cleanup.push(()=>{
+    if(telemetryInterval!==null)root.clearInterval?.(telemetryInterval);
+    telemetryInterval=null;telemetryRelay?.disconnect();
+  });
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
       if(disposed)return false;if(bot.running)return true;
@@ -395,7 +426,24 @@ export function install(root){
     requestCaveVote:()=>bot.caveVoteJournal?.requestVote()??false,
     discardPreparedCaveVote:()=>bot.caveVoteJournal?.discardPrepared()??false,
     discardPreparedCaveEntry:()=>bot.caveLifecycle?.discardPrepared()??false,
-    status:()=>({version:VERSION,elixir:bot.elixirs?.status?.()??null,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,actionAdmission:bot.admission.status(),lootDeparture:bot.lootDeparture.status(),lootReceipts:bot.lootReceipts?.status()??null,gearAllocationRecovery:bot.allocation?.recoveryStatus?.()??null,respawns:bot.respawns?.status()??null,cave:bot.cave?.status()??null,caveLifecycle:bot.caveLifecycle?.status()??null,caveVote:bot.caveVote?.status()??null,caveVoteJournal:bot.caveVoteJournal?.status()??null,caveConsensus:bot.caveConsensus?.status()??null,caveTeam:bot.caveTeam?.status()??null,caveCombat:bot.caveCombat?.status()??null,cavePriest:bot.cavePriest?.status()??null,caveDirect:bot.caveDirect?.status()??null,revivals:bot.revivals.status(),luckySlots:bot.luckySlots?.status()??null,swaps:bot.swaps?.status()??null,tradeOffers:bot.tradeOffers?.status()??null,statTailoring:bot.tailoring?.status()??null,rewardMail:bot.rewards?.status()??null,combatLife:bot.combatLife??null,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    status:()=>({version:VERSION,elixir:bot.elixirs?.status?.()??null,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,actionAdmission:bot.admission.status(),lootDeparture:bot.lootDeparture.status(),lootReceipts:bot.lootReceipts?.status()??null,gearAllocationRecovery:bot.allocation?.recoveryStatus?.()??null,respawns:bot.respawns?.status()??null,cave:bot.cave?.status()??null,caveLifecycle:bot.caveLifecycle?.status()??null,caveVote:bot.caveVote?.status()??null,caveVoteJournal:bot.caveVoteJournal?.status()??null,caveConsensus:bot.caveConsensus?.status()??null,caveTeam:bot.caveTeam?.status()??null,caveMultiAggro:bot.caveMultiAggro?.status()??null,caveCriticalResponse:bot.caveCriticalResponse?.status()??null,caveRetreat:bot.caveRetreat?.status()??null,caveRetreatPrepare:bot.caveRetreatPrepare?.status()??null,caveRetreatWatchdog:bot.caveRetreatWatchdog?.status()??null,caveCombat:bot.caveCombat?.status()??null,caveCriticalTriage:bot.caveCriticalTriage?.status()??null,cavePriest:bot.cavePriest?.status()??null,cavePriestSupport:bot.cavePriestSupport?.status()??null,caveDirect:bot.caveDirect?.status()??null,caveEmergency:bot.caveEmergency?.status()??null,revivals:bot.revivals.status(),luckySlots:bot.luckySlots?.status()??null,swaps:bot.swaps?.status()??null,tradeOffers:bot.tradeOffers?.status()??null,statTailoring:bot.tailoring?.status()??null,rewardMail:bot.rewards?.status()??null,combatLife:bot.combatLife??null,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    telemetrySnapshot:()=>({
+      character:observedCharacterTelemetry(p.c,p.realm()),
+      bank:me.role==='merchant'?observedBankTelemetry(
+        p.c,p.realm(),p.G?.bank_packs??{}):[]
+    }),
+    telemetryStatus:()=>telemetryRelay?.status()??{connected:false,opened:false,
+      intervalMs:GAME_RELAY_INTERVAL_MS,unsupported:true},
+    openTelemetryRelay(){
+      if(disposed||!telemetryRelay||typeof root.setInterval!=='function')return false;
+      if(!telemetryRelay.open())return false;
+      if(telemetryInterval===null){
+        telemetryInterval=root.setInterval(()=>{
+          if(!disposed)telemetryRelay.sendOnce();
+        },GAME_RELAY_INTERVAL_MS);
+      }
+      return true;
+    },
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

@@ -1,6 +1,6 @@
 # Verbindlicher Bootstrap-/Ladevertrag – überprüfter Ingame-CODE
 
-Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das für die Integration signierte Release-Manifest. Der tatsächliche Spielstart wurde nicht beobachtet.
+Stand: **20. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das für die Integration signierte Release-Manifest. Der tatsächliche Spielstart wurde nicht beobachtet.
 
 ## Tatsächlicher Ladeweg
 
@@ -11,7 +11,21 @@ Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Aktueller signierter Release-Kanal (Sequence 16, 19.10.2026)
+## Aktueller signierter Release-Kanal (Sequence 17, 20.10.2026)
+
+| Feld | Verifizierter Wert |
+| --- | --- |
+| `sequence` | `17` |
+| `version` | `0.17.0-candidate` |
+| `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
+| `bytes` | `828439` |
+| `sha256` | `d93a7b43e36d9631fafe5fe26821e9d4f79b7e18682123597d9be40a5d49e396` |
+
+Veröffentlicht aus dem CI-geprüften [PR #280](https://github.com/Riflex91/ALBot/pull/280) mit [Signierworkflow 39452100947](https://github.com/Riflex91/ALBot/actions/runs/39452100947). Linux- und Windows-CI sowie 1.982/1.982 Release-Offlinetests bestanden; ECDSA-P-256-Signatur und SHA-256/Bytezahl verifiziert. Freigabekorrekturen für kumulierte Multi-Pull-Gefahr, Heilerreichweite, Notfall-Gruppenkoordination und lokale Gefahrennavigation. Die persönliche Konfiguration, Loader-URL und Public-Key-Identität sind unverändert. **Eine Ingame-Liveabnahme wurde nicht durchgeführt.**
+
+### Historischer Release-Stand: Sequence 16 (19.10.2026)
+
+## Vorheriger signierter Release-Kanal (Sequence 16, 19.10.2026)
 
 | Feld | Beobachteter Wert |
 | --- | --- |

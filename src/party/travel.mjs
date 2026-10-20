@@ -4,6 +4,12 @@ import {distance,samePlace} from '../core/policy.mjs';
 import {createHopLifecycle} from './hop-lifecycle.mjs';
 // Only official numbered European/American realms are eligible. PvP in any
 // spelling or metadata is a hard reject, even if a caller mislabels the mode.
+// Repeated missing acknowledgements should not relaunch the same 15-second
+// consensus round every minute. Never bypass the full group quorum.
+export function hopFailureBackoffMs(failures){
+ if(!Number.isSafeInteger(failures)||failures<=0)return 0;
+ return Math.min(600000,60000*2**Math.min(4,failures-1));
+}
 export function nonPvpRealm(realm){
  return typeof realm==='string'&&/^(EU|US)(?:I|II|III|IV|V|VI|VII|VIII|IX|X)$/.test(realm)&&!/pvp/i.test(realm);
 }
@@ -82,6 +88,12 @@ export function teamRealmRendezvous({farmers,localName,localRealm,peers,
 }
 export function createTeamTravel(bot){
  const {p,cfg,me,exec}=bot,w=cfg.world;let hop=null,hopAt=Number(p.read('albot:hop:'+me.name))||0;const consents=new Map();let registryRef=null,registrySignature=null,registryAt=0,lastHopDiagnostic=0,history=p.read('albot:hop-history:'+me.name)??[];if(!Array.isArray(history))history=[];
+ const hopDeferralKey='albot:hop-ack-deferral:'+me.name;
+ const savedHopDeferral=p.read(hopDeferralKey);
+ let failedHopRounds=Number.isSafeInteger(savedHopDeferral?.failures)?
+   Math.min(5,Math.max(0,savedHopDeferral.failures)):0;
+ let hopRetryAfter=Number.isFinite(savedHopDeferral?.until)?
+   Math.max(0,savedHopDeferral.until):0;
  const homeRealm=nonPvpRealm(w.homeRealm)?w.homeRealm:'';
  let reunionHold=false,lastReunion=null,lastReunionDiagnostic=0;
  // The selection is regenerated from this character's configured roster, not
@@ -130,7 +142,9 @@ export function createTeamTravel(bot){
  function requestHop(realm,{pressureEscape=false,automatic=false}={}){
   const economics=hopPenaltyDecision({character:p.c,from:p.realm(),to:realm,home:p.c.home??homeRealm,automatic:automatic&&w.respectHopPenalties!==false,pressureEscape});
   if(!economics.allowed){bot.event?.('server.hopCostDeferred',{realm,reason:economics.reason});return false;}
- if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||Date.now()-hopAt<w.hopCooldownMs||!safe()||hop||hopLifecycle.blocked)return false;
+ if(me.name!==bot.leader||!realmAllowed(realm)||realm===p.realm()||
+   Date.now()<hopRetryAfter||Date.now()-hopAt<w.hopCooldownMs||
+   !safe()||hop||hopLifecycle.blocked)return false;
   const names=[...new Set([...bot.farmers,...(cfg.party.merchant?[cfg.party.merchant]:[])])];
   if(names.some(n=>n!==me.name&&(!bot.transport.fresh(n)?.running||bot.transport.fresh(n)?.realm!==p.realm())))return false;
   // Every selected farmer pays the hop penalty, not just the leader. Fresh
@@ -168,6 +182,8 @@ export function createTeamTravel(bot){
   if(!p.write('albot:hop-history:'+me.name,next))return false;
   history=next;hopAt=at;
   if(!hopLifecycle.begin({id,from,to:realm}))return false;
+  failedHopRounds=0;hopRetryAfter=0;
+  p.write(hopDeferralKey,{failures:0,until:0});
   hop=null;return true;
  }
 
@@ -345,7 +361,15 @@ export function createTeamTravel(bot){
   if(hop){if(hop.until<Date.now()){
    bot.event?.('server.hop.timeout',{id:hop.id,to:hop.realm,
     missing:hop.names.filter(n=>!hop.ready.has(n)).join(',')});
-   if(me.name===bot.leader)for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);
+   if(me.name===bot.leader){
+    failedHopRounds=Math.min(5,failedHopRounds+1);
+    hopRetryAfter=Date.now()+hopFailureBackoffMs(failedHopRounds);
+    p.write(hopDeferralKey,{failures:failedHopRounds,until:hopRetryAfter});
+    bot.event?.('server.hop.backoff',{id:hop.id,to:hop.realm,
+     missing:hop.names.filter(n=>!hop.ready.has(n)).join(','),
+     failures:failedHopRounds,retryAt:hopRetryAfter});
+    for(const n of hop.names)bot.transport.send(n,'hopCancel',{},hop.id);
+   }
    hop=null;return;}
    if(me.name===bot.leader&&!hop.broadcast&&hop.names.every(n=>hop.ready.has(n))&&safe()){const token=hop;hop.broadcast=true;Promise.all(hop.names.filter(n=>n!==me.name).map(n=>bot.transport.send(n,'hopCommit',{realm:hop.realm},hop.id))).then(results=>{if(hop===token&&results.every(Boolean))applyHop();else if(hop===token)hop=null;},()=>{if(hop===token)hop=null;});}return;
   }
@@ -382,7 +406,8 @@ export function createTeamTravel(bot){
  function accept(name){if(w.magiport&&consents.get(name)?.purpose==='accept'&&consents.get(name)?.until>Date.now()&&safe()){consents.delete(name);return exec.run('magiport.accept',['lifecycle','movement'],()=>bot.running&&!bot.journal,()=>p.call('accept_magiport',name),{delay:10000});}return false;}
  return {requestHop,receive,tick,lifecycleTick:hopLifecycle.tick,accept,get blocked(){return reunionHold||!!hop||hopLifecycle.blocked;},
   status:()=>({registry:registry(),history:[...history],hop:hop?{id:hop.id,realm:hop.realm,until:hop.until,ready:[...hop.ready],members:[...hop.names]}:null,
-   lifecycle:hopLifecycle.status(),reunion:lastReunion?{...lastReunion,hold:reunionHold}:null,
+   lifecycle:hopLifecycle.status(),ackBackoff:{failures:failedHopRounds,
+     retryAt:hopRetryAfter},reunion:lastReunion?{...lastReunion,hold:reunionHold}:null,
    home:homeRealm?{...home}:null}),
   close(){hop=null;hopLifecycle.close();consents.clear();}};
 }

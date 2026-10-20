@@ -2,7 +2,7 @@ import {boundedInterceptPoint} from './intercept.mjs';
 import {potionChannelPolicy,rankRecoveryPotion} from './recovery-policy.mjs';
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
-import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
+import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous,leaderAssignedFarmTarget} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
@@ -358,7 +358,8 @@ export function createFarmer(bot){
   // EXISTING team fight. This path never pulls an unattached monster.
   if(!leader?.running||leader.rip||!samePlace(p.c,leader))return false;
   const range=Math.max(5,(p.c.range??0)-Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
-  const enemy=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&m.target&&
+  const visible=bot.monsters();
+  const engaged=visible.filter(m=>m?.hp>0&&!m.dead&&m.target&&
     bot.teamNames.includes(m.target)&&bot.allowed(m)&&
     (bot.strategy?.safeTarget?.(m.mtype,m)!==false||bot.combatAssessment?.canDefend(m)===true)&&
     samePlace(p.c,m)&&
@@ -366,7 +367,21 @@ export function createFarmer(bot){
     distance(leader,m)<=cfg.party.followDistance*2).sort((a,b)=>
     Number(b.id===leader.target)-Number(a.id===leader.target)||
     distance(p.c,a)-distance(p.c,b))[0];
+  const assigned=engaged?null:leaderAssignedFarmTarget(p.c,leader,visible,{
+    plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
+    maxDistance:Math.max(range,cfg.party.followDistance*2)});
+  const shared=assigned&&bot.allowed(assigned)&&
+    bot.strategy?.safeTarget?.(assigned.mtype,assigned)!==false?assigned:null;
+  const enemy=engaged??shared;
   if(!enemy)return false;
+  const neutralShared=enemy===shared&&!enemy.target;
+  const stillAssigned=()=>{
+    if(!neutralShared)return true;
+    const current=leaderAssignedFarmTarget(p.c,bot.transport?.fresh?.(bot.leader),
+      bot.monsters(),{plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),
+      teamNames:bot.teamNames,maxDistance:Math.max(range,cfg.party.followDistance*2)});
+    return current!=null&&String(current.id)===String(enemy.id);
+  };
   bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
   if(distance(p.c,enemy)>range){
    // Keep the admitted combat route until it finishes; repeated replanning
@@ -381,12 +396,12 @@ export function createFarmer(bot){
   }
   bot.navigation?.rangePosition?.(enemy);
   bot.skills.rotation(enemy);
-  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&
-    !!bot.entity(enemy.id)?.target,()=>p.call('change_target',enemy),{delay:500});
+  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&stillAssigned()&&
+    (!!bot.entity(enemy.id)?.target||neutralShared),()=>p.call('change_target',enemy),{delay:500});
   const attack=trackedAttack(enemy.id);
   exec.run('attack',['attack','mana'],()=>{
     const live=bot.entity(enemy.id);
-    return live&&live.target&&bot.teamNames.includes(live.target)&&
+    return live&&(live.target&&bot.teamNames.includes(live.target)||neutralShared&&stillAssigned())&&
       bot.allowed(live)&&(bot.strategy?.safeTarget?.(live.mtype,live)!==false||bot.combatAssessment?.canDefend(live)===true)&&
       distance(p.c,live)<=range&&p.call('can_attack',live)&&
       !p.call('is_on_cooldown','attack');
@@ -466,18 +481,48 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(bot.movement?.order?.owner==='cave'&&
          bot.caveDirect?.status?.({forDispatch:true})?.ready!==true)
        bot.movement.stop();
+      // A running emergency hop has an independent, monster-bound proof.
+      // Losing that proof stops native movement before any other Cave work.
+      if(bot.movement?.order?.owner==='cave-evade'&&
+         bot.caveEmergency?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
+      // Priest support steps have their own immutable healer/run admission.
+      if(bot.movement?.order?.owner==='cave-priest'&&
+         bot.cavePriestSupport?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
       if(['farm','follow','cohesion','combat','world','regroup',
           'quest-escort'].includes(bot.movement?.order?.owner))
        bot.movement.stop();
       bot.target=null;
       const evidence=bot.caveTeam?.status?.();
+      const criticalResponse=bot.caveCriticalResponse?.status?.();
+      const held=criticalResponse?.holdOffense===true;
+      // No Cave movement owner has a safe multi-aggro escape route.
+      // Abort an already active direct hop on a critical or disputed
+      // current-team snapshot; do NOT suppress urgent Priest healing.
+      if(held&&['cave','cave-evade','cave-priest']
+        .includes(bot.movement?.order?.owner))bot.movement.stop();
       // Only the dedicated Ranger basic-defense executor may issue an
       // instance attack. It refuses neutral mobs, movement and skills and
       // revalidates the exact team/monster at network dispatch.
       const healed=bot.cavePriest?.tick?.()===true;
-      const defended=!healed&&bot.caveCombat?.tick?.()===true;
-      const cohesion=!healed&&!defended&&bot.caveDirect?.tick?.()===true;
+      if(healed&&bot.movement?.order?.owner==='cave-priest')
+       bot.movement.stop();
+      // Healing outranks positioning; a short support step may follow.
+      const positioned=!healed&&!held&&(
+       bot.movement?.order?.owner==='cave-priest'||
+       bot.cavePriestSupport?.tick?.()===true);
+      // Guarded local separation outranks Ranger attacks, not Priest
+      // healing. A running emergency hop also blocks new attacks.
+      const evasive=!healed&&!held&&!positioned&&(
+       bot.movement?.order?.owner==='cave-evade'||
+       bot.caveEmergency?.tick?.()===true);
+      const defended=!healed&&!held&&!positioned&&!evasive&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!held&&!positioned&&!evasive&&!defended&&bot.caveDirect?.tick?.()===true;
       bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
+       held?'Cave: kritische Mehrfachaggro – Offensive und Bewegung gesperrt':
+       positioned?'Cave: Priest sichert Heilerreichweite per Direktschritt':
+       evasive?'Cave: abgesicherter Direktschritt aus Nahkampfdruck':
        defended?'Cave: bestätigte Teamverteidigung angefordert':
        cohesion?'Cave: sicherer Direktschritt zum Priest angefordert':
        'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');

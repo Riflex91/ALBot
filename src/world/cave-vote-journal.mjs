@@ -167,6 +167,16 @@ export function createCaveVoteJournal(bot,{now=()=>Date.now()}={}){
   const next={...record,phase:'vote-observed',observedAt:at};
   return validCaveVoteRecord(next)&&durable(next);
  }
+ // Called only by the Cave lifecycle AFTER a positively acknowledged
+ // exit, fresh post-exit no-resume info and durable lifecycle clearance.
+ // An unknown vote from a fully exited run is never retried.
+ function completeRun(run){
+  if(closed||readFailed||writeFailed||!caveVoteJournalRun(run)||
+     record===null)return false;
+  if(!validCaveVoteRecord(record)||record.name!==me.name||
+     record.realm!==p.realm()||record.run!==run)return false;
+  return durable(null);
+ }
  function requestVote(){
   if(closed||!bot.running||readFailed||writeFailed||
      typeof bot.exec?.dispatch!=='function'||
@@ -193,6 +203,6 @@ export function createCaveVoteJournal(bot,{now=()=>Date.now()}={}){
     return j.state==='vote-observed'&&j.journal?.choiceId===choice;
    }});
  }
- return {status,prepare,requestVote,sample,discardPrepared,
+ return {status,prepare,requestVote,sample,discardPrepared,completeRun,
   close(){closed=true;}};
 }

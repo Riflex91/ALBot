@@ -471,6 +471,10 @@ export function createBank(bot){
   let total=0,localPacks=0;
   for(const [pack,items] of packs()){
    if(packMap(pack)!==p.c.map)continue;
+   // A second pack can change after the bounded disposition scan. Do not
+   // treat a malformed 43+ slot pack as backing for a queued full/partial
+   // reserve withdrawal, even when the addressed source pack is unchanged.
+   if(items.length>42)return null;
    localPacks++;
    for(const held of items){
     if(!held||identity(held)!==variant)continue;

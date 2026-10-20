@@ -18,9 +18,10 @@ export function inCaveInstance(character){
 }
 export function caveTeamCoordination({
  cave,lifecycle,name,character,realm,teamNames,
- peers,monsters=[],now=Date.now()
+ peers,monsters=[],now=Date.now(),minHealthRatio=.7
 }={}){
- if(!caveTeamTime(now)||!caveTeamLabel(name)||!caveTeamLabel(realm))
+ if(!Number.isFinite(minHealthRatio)||minHealthRatio<.01||minHealthRatio>.7||
+    !caveTeamTime(now)||!caveTeamLabel(name)||!caveTeamLabel(realm))
   return caveTeamBlocked('invalid-identity-or-clock');
  const live=cave?.live,j=lifecycle?.journal;
  if(!live||!caveTeamRun(live.run)||!caveTeamTime(live.serverTime)||
@@ -54,7 +55,7 @@ export function caveTeamCoordination({
       !caveTeamTime(m.received)||m.received>now||
       now-m.received>3000)||
      m.rip===true||!caveTeamFinite(m.hp)||!caveTeamFinite(m.max_hp)||
-     m.max_hp<=0||m.hp/m.max_hp<.7||
+     m.max_hp<=0||m.hp<=0||m.hp/m.max_hp<minHealthRatio||
      !caveTeamFinite(m.x)||!caveTeamFinite(m.y)||
      m.map!==live.map||(m.in!==undefined&&m.in!==live.map))
    return caveTeamBlocked('member-not-currently-ready',{...scope,member:n});
@@ -96,7 +97,7 @@ export function caveTeamCoordination({
    victim:target.target,alreadyEngaged:true}:null};
 }
 export function createCaveTeamCoordination(bot,{now=()=>Date.now()}={}){
- function status(){
+ function evaluate(minHealthRatio){
   const character=bot.p?.c;
   if(!inCaveInstance(character))
    return caveTeamBlocked('not-in-cave');
@@ -107,8 +108,9 @@ export function createCaveTeamCoordination(bot,{now=()=>Date.now()}={}){
    cave:bot.cave?.status?.()??null,
    lifecycle:bot.caveLifecycle?.status?.()??null,
    name:bot.me.name,character,realm:bot.p.realm(),
-   teamNames:names,peers,monsters:bot.monsters?.()??[],now:now()
+   teamNames:names,peers,monsters:bot.monsters?.()??[],now:now(),
+   minHealthRatio
   });
  }
- return {status};
+ return {status:()=>evaluate(.7),healStatus:()=>evaluate(.01)};
 }

@@ -471,6 +471,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(bot.movement?.order?.owner==='cave-evade'&&
          bot.caveEmergency?.status?.({forDispatch:true})?.ready!==true)
        bot.movement.stop();
+      // Priest support steps have their own immutable healer/run admission.
+      if(bot.movement?.order?.owner==='cave-priest'&&
+         bot.cavePriestSupport?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
       if(['farm','follow','cohesion','combat','world','regroup',
           'quest-escort'].includes(bot.movement?.order?.owner))
        bot.movement.stop();
@@ -480,14 +484,21 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // instance attack. It refuses neutral mobs, movement and skills and
       // revalidates the exact team/monster at network dispatch.
       const healed=bot.cavePriest?.tick?.()===true;
+      if(healed&&bot.movement?.order?.owner==='cave-priest')
+       bot.movement.stop();
+      // Healing outranks positioning; a short support step may follow.
+      const positioned=!healed&&(
+       bot.movement?.order?.owner==='cave-priest'||
+       bot.cavePriestSupport?.tick?.()===true);
       // Guarded local separation outranks Ranger attacks, not Priest
       // healing. A running emergency hop also blocks new attacks.
-      const evasive=!healed&&(
+      const evasive=!healed&&!positioned&&(
        bot.movement?.order?.owner==='cave-evade'||
        bot.caveEmergency?.tick?.()===true);
-      const defended=!healed&&!evasive&&bot.caveCombat?.tick?.()===true;
-      const cohesion=!healed&&!evasive&&!defended&&bot.caveDirect?.tick?.()===true;
+      const defended=!healed&&!positioned&&!evasive&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!positioned&&!evasive&&!defended&&bot.caveDirect?.tick?.()===true;
       bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
+       positioned?'Cave: Priest sichert Heilerreichweite per Direktschritt':
        evasive?'Cave: abgesicherter Direktschritt aus Nahkampfdruck':
        defended?'Cave: bestätigte Teamverteidigung angefordert':
        cohesion?'Cave: sicherer Direktschritt zum Priest angefordert':

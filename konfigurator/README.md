@@ -3,10 +3,10 @@
 ## Sicherheit und Funktionsstand
 
 - Die neue Oberfläche bietet Dashboard, Charakterstatus mit Inventar und schematischer Positionsdarstellung, Bankfächer und globale Itemrichtlinien.
-- Globale Itemrichtlinien werden mit SHA-Konfliktprüfung **im privaten GitHub-Konfigurationsrepository** gespeichert. Sie ändern derzeit **nicht** die laufende \`ALBotConfig\`, verkaufen keine Items und veröffentlichen keinen signierten Release.
-- Der klassische vollständige Item-/Skill-/Charaktereditor wird unter \`/classic.html\` aus dem aktuellen Editor-Build kopiert. Er exportiert weiterhin nur lokal.
+- Globale Itemrichtlinien und das vollständige Profil werden als **zwei getrennte, SHA-versionierte Dateien im privaten GitHub-Konfigurationsrepository** gespeichert. Speichern ändert derzeit **nicht** die laufende \`ALBotConfig\`, verkauft keine Items und veröffentlicht keinen signierten Release.
+- Der klassische vollständige Item-/Skill-/Charaktereditor wird unter \`/classic.html\` aus dem aktuellen Editor-Build kopiert. Über einen kleinen isolierten Cloud-Adapter kann er das vollständige Profil aus dem **privaten GitHub-Repo laden und zurückspeichern**; sein lokaler JSON-/CODE-Export bleibt unverändert. Bei vorhandenem lokalem Entwurf fragt er vor dem Ersetzen nach.
 - Die Bank- und Charakteransichten lesen ausschließlich Cloudflare-D1-Telemetriesnapshots. Fehlende oder alte Bank-Maps zählen nicht als leere Bestände. Kein Snapshot autorisiert eine Bankaktion.
-- Für alle Web-Seiten, statischen Assets und Konfigurations-APIs wird **eine kryptografisch überprüfte Cloudflare-Access-JWT** inklusive Signatur, Issuer, Audience, Ablauf und E-Mail-Whitelist benötigt.
+- Für alle Web-Seiten, statischen Assets und Konfigurations-APIs wird **eine kryptografisch überprüfte Cloudflare-Access-JWT** inklusive Signatur, Issuer, Audience, Ablauf und E-Mail-Whitelist benötigt. Für die klassische Werkstatt gelten exakte SHA-256-CSP-Hashes ihrer eingebetteten Script-/Style-Blöcke, kein generelles `unsafe-inline`.
 - Der Telemetrie-Endpunkt \`/api/ingest\` ist davon getrennt und erfordert ein Worker-Secret \`INGEST_TOKEN\` (mindestens 32 zufällige Zeichen). Niemals in das öffentliche Runtime-Bundle schreiben.
 - \`GITHUB_TOKEN\` ist ein Worker-Secret mit Schreibrechten **nur auf ein separates privates Konfigurationsrepository**, nicht auf \`Riflex91/ALBot\`. Der öffentliche Source- und Runtime-Branch bleibt davon getrennt.
 - Der Worker ruft den jeweils aktuellen öffentlichen Item-Katalog und Build-Metadaten aus \`Riflex91/ALBot/main\` ab. Es gibt noch keinen Live-Config-Update-Mechanismus für Adventure Land/Headless; dieser benötigt einen gesonderten, signierten Bootstrap-/Versionsvertrag.
@@ -50,3 +50,9 @@ Für Hot-Reload muss künftig eine serverseitig signierte versionierte Konfigura
 ## Betriebskosten
 
 Die Ausgabe einzelner Änderungs-Events und Charakter-Herzschläge im Bereich 15–30 Sekunden ist für vier Bots vorgesehen. Bankfächer werden nur nach tatsächlichen Bankbeobachtungen hochgeladen. Cloudflare-Free-Quoten sind anwendungs- und accountabhängig zu prüfen. Der derzeitige Code versendet **noch keine automatische Bot-Telemetrie**.
+
+## Profilimport und private Speicherung
+
+Nach der Cloudflare-Einrichtung die Seite \`/classic.html\` öffnen. Falls im privaten Repo noch kein \`albot/profile.json\` existiert, das aktuelle eigene Profil **einmalig** über „Profil öffnen“ (JSON) oder einen bereits vorhandenen lokalen Entwurf übernehmen. Erst danach „☁ Profil auf GitHub speichern“ wählen. Bei folgenden Aufrufen lädt der Adapter automatisch das private GitHub-Profil, ohne einen lokalen Entwurf ungefragt zu überschreiben. Die globale Item-Richtlinie bleibt unter \`albot/item-policies.json\` und ist nicht mit den bisher aktiven \`config.items\` identisch.
+
+**Absichtlich noch keine automatische Signierung/Distribution:** Ein erfolgreicher GitHub-Commit bestätigt nur Speicherung. Die Ingame-Runtime verwendet weiterhin die im vorhandenen Bootstrap bereitgestellte persönliche \`ALBotConfig\`. Die neue Plattform darf niemals behaupten, dass ein Cloud-Profil ohne einen implementierten signierten Konfigurationskanal übernommen wurde.

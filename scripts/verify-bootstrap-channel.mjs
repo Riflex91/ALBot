@@ -25,8 +25,14 @@ assert.ok(manifestUrl.startsWith(allowedBranchPrefix), 'Manifest-Branch ist nich
 async function releaseTip() {
   const endpoint='https://api.github.com/repos/Riflex91/ALBot/branches/'+
     encodeURIComponent(loader.releaseChannelRef);
+  // GitHub Actions provides a scoped read-only token. Without it the
+  // unauthenticated REST rate limit can return HTTP 403 on Windows CI.
+  // Never log the token; both signed manifest and runtime still undergo
+  // the exact same cryptographic checks below.
+  const token=process.env.GITHUB_TOKEN;
   const response=await fetch(endpoint,{headers:{
-    'accept':'application/vnd.github+json','cache-control':'no-cache'
+    'accept':'application/vnd.github+json','cache-control':'no-cache',
+    ...(token?{authorization:'Bearer '+token}:{})
   },signal:AbortSignal.timeout(15000)});
   assert.ok(response.ok,'Release-Branch konnte nicht überprüft werden: HTTP '+response.status);
   const branch=await response.json();

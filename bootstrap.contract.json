@@ -24,6 +24,6 @@
       "sha256": "d93a7b43e36d9631fafe5fe26821e9d4f79b7e18682123597d9be40a5d49e396"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 17 / 0.17.0-candidate am 20.10.2026 auf dem dokumentierten signierten V2-Releasebranch beobachtet. ECDSA-P-256/Runtime-Hash werden weiterhin durch scripts/verify-bootstrap-channel.mjs gegen einen unveraenderlichen Git-Commit verifiziert. Die tatsaechlich geladene Ingame-Version ist nicht beobachtet; Loader, Release-URLs und Personalprofil bleiben unveraendert."
+    "note": "Sequence 17 / 0.17.0-candidate signiert auf dem bestehenden Bootstrap-Release-Branch; Manifest/Runtime-Hash auf GitHub verifiziert. Kein eigenstaendiger Spiel-Livetest fuer diesen Stand nachgewiesen."
   }
 }

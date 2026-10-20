@@ -14,9 +14,8 @@ CONFIG_PATH = "albot/item-policies.json"
 PUBLIC_RUNTIME_REPO = "Riflex91/ALBot"
 INGEST_ALLOWED_ORIGIN = "https://adventure.land"
 
-# AFTER creating a Cloudflare D1 database, add the real database_id:
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "albot-konfigurator"
-# database_id = "<YOUR_CLOUDFLARE_D1_DATABASE_ID>"
-# Never commit a real GitHub token, Access secret or Ingest token here.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "albot-konfigurator"
+database_id = "880c96b9-f6c5-4167-bfe2-6d6d0c55edf2"

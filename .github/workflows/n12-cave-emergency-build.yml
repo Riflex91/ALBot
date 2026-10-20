@@ -1,0 +1,47 @@
+name: Temporary N12 Cave emergency artifact regeneration
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: n12-cave-emergency-build
+  cancel-in-progress: true
+jobs:
+  build-sync:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/n12-cave-emergency-direct-20261020' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/n12-cave-emergency-direct-20261020
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Test Cave emergency preflight, movement and combat
+        run: node --test test/roadmap-n12-cave-emergency-direct.test.mjs test/roadmap-n12-cave-direct-cohesion.test.mjs test/roadmap-n12-cave-cumulative-threat.test.mjs test/roadmap-n12-cave-defensive-basic.test.mjs test/roadmap-n12-cave-priest-healing.test.mjs
+      - name: All offline regression tests
+        run: npm test
+      - name: Build source-aligned browser and headless runtime
+        run: npm run build
+      - name: Preserve personal CODE prefix
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Refresh editor assets
+        run: npm run build:editor
+      - name: Verify generated runtime parity
+        run: node scripts/sync-personal-code.mjs --check
+      - name: Commit only tracked build artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/
+          if git diff --cached --quiet; then
+            echo 'Runtime and editor match sources.'
+          else
+            git commit -m 'build(N12): sync bounded Cave emergency runtime and editor'
+            git push origin HEAD:codex/n12-cave-emergency-direct-20261020
+          fi

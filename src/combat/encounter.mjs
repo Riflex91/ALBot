@@ -181,6 +181,7 @@ export function createEncounter(bot){
      bot.account?.rotationPending?.()||bot.teamTravel?.blocked||
      bot.strategy?.busy||bot.recovering||
      bot.teamPlan?.wantsCombat?.()===false||
+     typeof bot.free!=='function'||
      bot.free()<=bot.cfg.farming.freeSlots||
      bot.combatAssessment?.emergency?.().active)return null;
   const plan=bot.teamPlan?.heartbeat?.();

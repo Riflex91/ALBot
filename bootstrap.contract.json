@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 16,
-      "version": "0.16.0-candidate",
+      "sequence": 17,
+      "version": "0.17.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 772611,
-      "sha256": "13473debb65a32253adccda4fbf967f5540b613a84fe57059747f7d7c5610950"
+      "bytes": 828439,
+      "sha256": "d93a7b43e36d9631fafe5fe26821e9d4f79b7e18682123597d9be40a5d49e396"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 16 / 0.16.0-candidate am 19.10.2026 nach bestandenem Linux-/Windows-PR #251 und Merge 5a145668 über signierten Releaseworkflow 39331939239 veröffentlicht. 1806/1806 Offline-Tests, unveränderte persönliche ALBotConfig; ECDSA-P-256, SHA-256 13473debb65a32253adccda4fbf967f5540b613a84fe57059747f7d7c5610950 und 772611 Runtime-Bytes verifiziert. Gemeinsame Notfall-Sammelschritte und Farmplan-Fortsetzung implementiert. Ingame-Loader, öffentliche Schlüsselidentität und Release-URLs unverändert; Spiel-Liveabnahme offen."
+    "note": "Sequence 17 / 0.17.0-candidate am 20.10.2026 auf dem dokumentierten signierten V2-Releasebranch beobachtet. ECDSA-P-256/Runtime-Hash werden weiterhin durch scripts/verify-bootstrap-channel.mjs gegen einen unveraenderlichen Git-Commit verifiziert. Die tatsaechlich geladene Ingame-Version ist nicht beobachtet; Loader, Release-URLs und Personalprofil bleiben unveraendert."
   }
 }

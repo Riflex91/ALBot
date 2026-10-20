@@ -58,6 +58,7 @@ export function planHazardStep({character,goal,monsters=[],definitions={},canMov
    const oldGap=validGoal?distance(here,goal):0;
    if(validGoal&&newGap>oldGap+10&&clearanceGain<.2)continue;
    const score=exposure*10+newGap*.8-clearanceGain*80+
+    (validGoal&&newGap>=oldGap-5?1000:0)+
     (step<50?8:0);
    if(!best||score<best.score)best={map:character.map,
     in:character.in??character.map,x,y,radius:8,score,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createEncounter} from '../src/combat/encounter.mjs';
 
 function scenario(){
- let mobs=[{id:'already',type:'monster',mtype:'bee',target:'Leader',hp:400,x:20,y:0}],
+ let mobs=[{id:'already',type:'monster',mtype:'bee',target:'Leader',hp:400,x:20,y:0,map:'main',in:'main'}],
      calls=[],blocked=false,plan='bee';
  const c={name:'Leader',ctype:'ranger',range:150,frequency:1,x:0,y:0,map:'main',in:'main',hp:1000,max_hp:1000,mp:1000,max_mp:1000,xp:0,attack:200};
  const aoe={aoe:[{id:'3shot',capacity:3}]};
@@ -25,9 +25,9 @@ function scenario(){
  };
  const encounter=createEncounter(bot);
  return {bot,encounter,c,calls,add:()=>{mobs=[
- {id:'already',type:'monster',mtype:'bee',target:'Leader',hp:400,x:20,y:0},
- {id:'fresh',type:'monster',mtype:'bee',target:null,hp:400,x:40,y:0},
- {id:'not-for-us',type:'monster',mtype:'goo',target:null,hp:400,x:35,y:0}
+ {id:'already',type:'monster',mtype:'bee',target:'Leader',hp:400,x:20,y:0,map:'main',in:'main'},
+ {id:'fresh',type:'monster',mtype:'bee',target:null,hp:400,x:40,y:0,map:'main',in:'main'},
+ {id:'not-for-us',type:'monster',mtype:'goo',target:null,hp:400,x:35,y:0,map:'main',in:'main'}
  ];},clear:()=>{mobs=[]},setBlocked:b=>blocked=b,setPlan:v=>plan=v};
 }
 test('after a healthy single kill, leader can add one approved bee for teammate 3shot',()=>{

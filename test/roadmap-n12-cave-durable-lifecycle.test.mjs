@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCaveLifecycle,validCaveLifecycleRecord,
  caveLifecycleDisposition} from '../src/world/cave-lifecycle.mjs';
+import {Executor} from '../src/core/executor.mjs';
 
 const time=1770000000000,run='a'.repeat(24),other='b'.repeat(24);
 const liveRun=(r=run,floor=1)=>({run:r,floor,
@@ -203,4 +204,149 @@ test('N12 only same-session preflight can authorize the future durable dispatch 
  assert.equal(f.lifecycle.markDispatchUnknown(),false);
  assert.equal(f.lifecycle.discardPrepared(),false);
  assert.deepEqual(f.calls,[]);
+});
+
+function readyOneShot(f,respond=()=>({
+ place:'enter',success:true,run,expires:time+500000,level:60
+})){
+ f.p.has=name=>name==='cave_enter';
+ f.p.call=name=>{f.calls.push(name);return respond();};
+ f.bot.exec=new Executor({
+  now:()=>f.state.at,active:()=>f.bot.running,limit:3,
+  admit:()=>true,onError:()=>{},onEvent:()=>{}
+ });
+ return f;
+}
+
+test('N12 explicit cave_enter is sent ONCE only after durable dispatch checkpoint',async()=>{
+ const f=readyOneShot(fixture());
+ assert.equal(f.lifecycle.requestEntry(),false,'must not send before prepared');
+ assert.equal(f.lifecycle.prepare(),true);
+ assert.equal(f.lifecycle.requestEntry(),true,'accepted by Executor, NOT a success receipt');
+ assert.deepEqual(f.calls,['cave_enter']);
+ assert.equal(f.lifecycle.status().journal.phase,'dispatch-unknown');
+ assert.equal(f.lifecycle.status().journal.dispatchAt,time);
+ assert.equal(f.lifecycle.requestEntry(),false);
+ await Promise.resolve();await Promise.resolve();await Promise.resolve();
+ const st=f.lifecycle.status();
+ assert.equal(st.journal.phase,'dispatch-unknown',
+  'server reply alone never proves character is inside');
+ assert.deepEqual(st.journal.serverReply,{
+  run,expires:time+500000,level:60,at:time
+ });
+ assert.equal(st.blocked,true);
+ assert.equal(f.lifecycle.discardPrepared(),false);
+ f.bot.exec.poll();
+ assert.deepEqual(f.calls,['cave_enter']);
+});
+
+test('N12 a physical server Cave map settles an explicit Cave entry once',async()=>{
+ const f=readyOneShot(fixture());
+ assert.equal(f.lifecycle.prepare(),true);
+ assert.equal(f.lifecycle.requestEntry(),true);
+ await Promise.resolve();await Promise.resolve();
+ f.state.live=liveRun();
+ f.lifecycle.sample();
+ assert.equal(f.lifecycle.status().state,'live-observed');
+ assert.equal(f.lifecycle.status().journal.phase,'observed-run');
+ assert.equal(f.lifecycle.status().journal.serverReply.run,run);
+ f.bot.exec.poll();
+ f.state.live=null;
+ assert.equal(f.lifecycle.status().state,'run-not-currently-visible');
+ assert.equal(f.lifecycle.requestEntry(),false);
+ const reboot=fixture({store:f.store,session:'reboot'});
+ assert.equal(reboot.lifecycle.status().blocked,true);
+ assert.equal(reboot.lifecycle.status().state,'run-not-currently-visible');
+ assert.deepEqual([...f.calls,...reboot.calls],['cave_enter']);
+});
+
+test('N12 failed, thrown, or rejected Cave RPC remains ambiguous without replay',async()=>{
+ for(const reply of [
+  ()=>{throw Error('socket dropped');},
+  ()=>Promise.reject(Error('timeout')),
+  ()=>({place:'enter',failed:true,reason:'already_inside'}),
+  ()=>({success:false,run,expires:time+500000,level:60}),
+  ()=>({success:true,run:other,expires:time+500000,level:60})
+ ]){
+  const f=readyOneShot(fixture(),reply);
+  assert.equal(f.lifecycle.prepare(),true);
+  assert.equal(f.lifecycle.requestEntry(),true);
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  f.bot.exec.poll();
+  assert.equal(f.lifecycle.status().journal.phase,'dispatch-unknown');
+  assert.equal(f.lifecycle.status().journal.serverReply??null,null);
+  assert.equal(f.lifecycle.discardPrepared(),false);
+  assert.equal(f.lifecycle.requestEntry(),false);
+  assert.deepEqual(f.calls,['cave_enter']);
+ }
+});
+
+test('N12 no durable dispatch checkpoint means no Cave API send',()=>{
+ const f=readyOneShot(fixture({write:false}));
+ assert.equal(f.lifecycle.prepare(),false);
+ assert.equal(f.lifecycle.requestEntry(),false);
+ assert.equal(f.calls.length,0);
+ const good=readyOneShot(fixture());
+ assert.equal(good.lifecycle.prepare(),true);
+ good.p.write=()=>false;
+ assert.equal(good.lifecycle.requestEntry(),true,
+  'Executor can accept the action, but invoke fails before the API call');
+ assert.equal(good.calls.length,0);
+ assert.equal(good.lifecycle.status().state,'storage-uncertain');
+ assert.equal(good.lifecycle.requestEntry(),false);
+});
+
+test('N12 explicit dispatch rejects drift, value locks and unavailable official endpoint',()=>{
+ const denial=[
+  f=>{f.bot.journal={kind:'sell'};},
+  f=>{f.bot.inventoryBlocked=true;},
+  f=>{f.bot.lifecycleChanging=true;},
+  f=>{f.bot.bank={pending:true};},
+  f=>{f.bot.logistics={reserved:true};},
+  f=>{f.bot.teamTravel={blocked:true};},
+  f=>{f.bot.account={rotationPending:()=>true};},
+  f=>{f.bot.session='new';},
+  f=>{f.state.preflight={...f.state.preflight,mode:'resume',run};},
+  f=>{f.state.preflight={...f.state.preflight,party:['P','R']};},
+  f=>{f.state.preflight={...f.state.preflight,localConditionsMet:false};},
+  f=>{f.state.live=liveRun();},
+  f=>{f.p.has=()=>false;},
+  f=>{f.p.has=()=>{throw Error('missing capability');};}
+ ];
+ for(const mutate of denial){
+  const f=readyOneShot(fixture());
+  assert.equal(f.lifecycle.prepare(),true);
+  mutate(f);
+  assert.equal(f.lifecycle.requestEntry(),false,
+   'cannot enter when one of the original admission assumptions changes');
+  assert.equal(f.calls.length,0);
+  assert.equal(f.lifecycle.status().journal.phase,'prepared');
+ }
+});
+
+test('N12 a positive Cave API run receipt cannot be confused with another live run',async()=>{
+ const f=readyOneShot(fixture());
+ f.lifecycle.prepare();f.lifecycle.requestEntry();
+ await Promise.resolve();await Promise.resolve();
+ f.state.live=liveRun(other);
+ assert.equal(f.lifecycle.status().state,'conflict');
+ assert.equal(f.lifecycle.status().reason,'server-reply-run-mismatch');
+ f.lifecycle.sample();
+ assert.equal(f.lifecycle.status().journal.phase,'dispatch-unknown');
+ assert.equal(f.lifecycle.status().journal.serverReply.run,run);
+ assert.equal(f.lifecycle.requestEntry(),false);
+});
+
+test('N12 stale or conflicting Cave API receipts cannot rewrite a different session',async()=>{
+ let resolve;
+ const response=new Promise(r=>{resolve=r});
+ const f=readyOneShot(fixture(),()=>response);
+ f.lifecycle.prepare();f.lifecycle.requestEntry();
+ f.bot.session='restarted';
+ resolve({place:'enter',success:true,run,
+  expires:time+500000,level:60});
+ await response;await Promise.resolve();await Promise.resolve();
+ assert.equal(f.lifecycle.status().journal.serverReply??null,null);
+ assert.equal(f.lifecycle.status().blocked,true);
+ assert.equal(f.calls.length,1);
 });

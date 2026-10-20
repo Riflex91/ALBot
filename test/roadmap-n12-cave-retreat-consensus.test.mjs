@@ -477,7 +477,7 @@ test('N12 attacker, peer and movement drift rejects the staged Cave checkpoint',
   f=>{f.bots.R1.movement.order={owner:'farm',mode:'smart_move'}},
   f=>{f.members.R2.received=when-3200},
   f=>{f.state.paused=true},
-  f=>{f.members.P.moving=true}
+  f=>{f.members.R1.moving=true}
  ];
  for(let i=0;i<edits.length;i++){
   const f=fixture();f.arm();edits[i](f);

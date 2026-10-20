@@ -4,7 +4,7 @@
 // No neutral pull, skill/AoE, movement, target-change or retry queue.
 const caveDefenseDeny=(reason,extra={})=>({
  version:1,mode:'guarded-cave-defense-basic',
- ready:false,canPull:false,canMove:false,canUseSkills:false,
+ ready:false,canAttack:false,canPull:false,canMove:false,canUseSkills:false,
  reason,...extra
 });
 const finite=n=>Number.isFinite(n);
@@ -90,11 +90,14 @@ export function createCaveDefensiveCombat(bot,{now=()=>Date.now()}={}){
     latest.victim===victim;
   };
   const invoke=()=>{
-   // Executor.run checks the guard at admission. Check it again at the
-   // literal network call to prevent a map/floor/target race.
-   if(!guard())throw Error('Cave defense proof changed before attack');
-   const live=bot.entity(focusId);
-   return bot.p.call('attack',live);
+   // Re-resolve and reverify the SAME live entity at the literal
+   // network boundary; do not fetch a different object after validation.
+   const liveProof=proof();
+   if(!liveProof.ready||liveProof.run!==run||
+      liveProof.floor!==floor||liveProof.focusId!==focusId||
+      liveProof.victim!==victim)
+    throw Error('Cave defense proof changed before attack');
+   return bot.p.call('attack',liveProof.monster);
   };
   const accepted=bot.exec.run('cave.defense.basic',['attack','mana'],
    guard,invoke,{delay:300,timeout:8000});

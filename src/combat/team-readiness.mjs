@@ -1,5 +1,6 @@
 import {runtimeConditionGate,currentConditionEvidence} from '../core/action-admission.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
+import {outgoingDamageEstimate} from './damage-model.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 
 // Neutral pulls require live, healthy, colocated participants. Defensive
@@ -65,6 +66,65 @@ export function leaderAssignedFarmTarget(character,leader,monsters,{
    Number.isFinite(m.x)&&Number.isFinite(m.y)&&
    distance(character,m)<=maxDistance&&
    distance(leader,m)<=maxDistance)??null;
+}
+// The ordinary leader-only neutral-pull gate can be relaxed for one single
+// verified one-hit basic attack at the CURRENT shared farm spawn. This is a
+// conservative independent action, never a multi-pull, spell or raid permit.
+// Unknown avoidance, damage, mechanic, or peer state fails closed.
+export function verifiedFollowerOneShot(actor,monster,{plan,leader,peers,
+ realm,game,now=Date.now(),maxDistance=140}={}){
+ const meta=game?.monsters?.[monster?.mtype];
+ const ownedPlan=leader?.farmPlan?.id??leader?.march?.plan;
+ if(!actor||!monster||monster.type!=='monster'||monster.dead||monster.rip||
+    monster.target||monster.invincible||!Number.isFinite(monster.hp)||
+    monster.hp<=0||!meta||meta.boss||meta.cooperative||meta.stationary||
+    meta.respawn_as||meta.spawns||meta.explosion||meta.aura||
+    Object.keys(meta.abilities??{}).length>0||
+    !plan?.id||!plan.target||plan.target!==monster.mtype||
+    !Number.isFinite(plan.expires)||plan.expires<=now||
+    plan.realm!==realm||ownedPlan!==plan.id||
+    !leader?.running||leader.rip||leader.realm!==realm||
+    !Number.isFinite(leader.received)||leader.received>now||
+    now-leader.received>4000||!Array.isArray(peers)||!peers.length||
+    !samePlace(actor,plan)||!samePlace(monster,plan)||
+    !samePlace(leader,plan)||!Number.isFinite(actor.x)||
+    !Number.isFinite(actor.y)||!Number.isFinite(monster.x)||
+    !Number.isFinite(monster.y)||distance(actor,plan)>85||
+    distance(leader,plan)>maxDistance||
+    distance(actor,monster)>maxDistance||
+    !Number.isFinite(actor.hp)||!(actor.max_hp>0)||
+    actor.hp/actor.max_hp<.85||
+    !Number.isFinite(actor.mp)||!(actor.max_mp>0)||
+    actor.mp/actor.max_mp<.15)return null;
+ if(!peers.every(peer=>peer?.running&&!peer.rip&&
+    peer.realm===realm&&samePlace(peer,plan)&&
+    Number.isFinite(peer.received)&&peer.received<=now&&
+    now-peer.received<=4000&&Number.isFinite(peer.x)&&
+    Number.isFinite(peer.y)&&distance(peer,plan)<=maxDistance&&
+    Number.isFinite(peer.hp)&&peer.max_hp>0&&
+    peer.hp/peer.max_hp>=.85&&Number.isFinite(peer.mp)&&
+    peer.max_mp>0&&peer.mp/peer.max_mp>=.15&&
+    !peer.inventoryBlocked&&!peer.journal&&!peer.reserved))
+   return null;
+ const target={...meta,...monster,
+  armor:monster.armor??meta.armor,
+  resistance:monster.resistance??meta.resistance,
+  avoidance:monster.avoidance??meta.avoidance,
+  evasion:monster.evasion??meta.evasion,
+  reflection:monster.reflection??meta.reflection};
+ // 100% nominal accuracy is required. Probabilistic expected damage is NOT
+ // proof of a one-shot if an enemy can dodge, evade or reflect.
+ if(![target.avoidance??0,target.evasion??0,target.reflection??0]
+    .every(x=>Number.isFinite(x)&&x===0)||
+    target.s?.fullguard||target.s?.fullguardx||
+    !Number.isFinite(target.armor??0)||
+    !Number.isFinite(target.resistance??0))return null;
+ const estimate=outgoingDamageEstimate(actor,target,{
+   uncertainty:.25,fearFactor:.9});
+ // The estimate already includes a 25% damage haircut; the additional
+ // 20% margin tolerates modest unmodelled damage variation.
+ return estimate.valid&&estimate.damage>=monster.hp*1.2?
+  {damage:estimate.damage,hp:monster.hp,margin:estimate.damage/monster.hp}:null;
 }
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;

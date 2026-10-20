@@ -4,11 +4,13 @@ on:
     branches:
       - codex/n12-cave-direct-cohesion-20261020
   workflow_dispatch:
+  pull_request:
+    branches: [main]
 permissions:
   contents: write
 jobs:
   build-and-sync:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -44,3 +46,19 @@ jobs:
             git commit -m 'build(N12): sync direct Cave cohesion runtime and editor'
             git push origin HEAD:codex/n12-cave-direct-cohesion-20261020
           fi
+  diagnose-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - name: New Cave direct-step tests
+        run: node --test test/roadmap-n12-cave-direct-cohesion.test.mjs
+      - name: Build module concatenation
+        run: npm run build

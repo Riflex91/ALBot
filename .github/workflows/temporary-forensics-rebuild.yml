@@ -1,0 +1,36 @@
+name: Temporary ALBot forensics PR build sync
+on:
+  push:
+    branches:
+      - fix/20261020-live-forensics-team-assist
+    paths:
+      - '.github/workflows/temporary-forensics-rebuild.yml'
+      - 'src/**'
+      - 'test/**'
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Rebuild generated Runtime and preserve personal configuration
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+      - name: Commit only tracked generated files
+        shell: bash
+        run: |
+          git add -u bot.js dist
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='ALBot CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: sync merged forensics build artifacts'
+          git push origin HEAD:refs/heads/fix/20261020-live-forensics-team-assist

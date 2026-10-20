@@ -198,7 +198,7 @@ test('N12 final game call revalidation rejects last-moment target visibility cha
  let reads=0;
  f.bot.entity=name=>{
   const e=original(name);
-  if(name==='R1'&&++reads===4)e.visible=false;
+  if(name==='R1'&&++reads===3)e.visible=false;
   return e;
  };
  assert.equal(f.bot.cavePriest.tick(),true);

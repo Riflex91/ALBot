@@ -149,3 +149,41 @@ test('G03 malformed cursor pagination cannot leak claimable rows into queue',asy
  mail.tick();
  assert.deepEqual(attempts,[]);
 });
+
+test('W10/W13 explicit null reward quantity or level is never implicit one',()=>{
+ for(const key of ['q','level'])for(const value of [
+  null,-1,NaN,Infinity,0.5,Number.MAX_SAFE_INTEGER+1
+ ]){
+  const attachment={name:'gem',q:1,level:0};
+  attachment[key]=value;
+  assert.equal(rewardMailAttachment({...row,item:JSON.stringify(attachment)},'A',G),
+   null,key+':'+String(value));
+ }
+ assert.equal(rewardMailAttachment({...row,item:'{"name":"gem"}'},'A',G)?.q,1);
+ assert.equal(rewardMailAttachment({...row,item:'{"name":"gem","level":0,"q":1}'},'A',G)?.q,1);
+});
+
+test('W10/W13 physical claim capacity cannot depend on malformed inventory copies',()=>{
+ const base={items:[null,{name:'gem',q:5,p:'cavefound'}],isize:2};
+ assert.equal(rewardClaimFits(base,{name:'gem',q:1,p:'cavefound'},G),true);
+ for(const quantity of [null,0,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
+  const c={...base,items:[null,{name:'gem',q:quantity,p:'cavefound'}]};
+  assert.equal(rewardClaimFits(c,{name:'gem',q:1,p:'cavefound'},G),
+   false,String(quantity));
+ }
+ assert.equal(rewardClaimFits(base,{name:'gem',q:null,p:'cavefound'},G),false);
+});
+
+test('W10/W13 exact server receipt plus q:null physical item never confirms claim',()=>{
+ const attachment={name:'gem',level:0,q:1,p:'cavefound'},
+  before=[null],journal={kind:'mail.claim',attachment,
+   beforeInventory:before.map(fingerprint),beforeGold:100};
+ assert.equal(rewardClaimDelta(journal,{items:[attachment],gold:100}),true);
+ for(const quantity of [null,0,-1,0.5,NaN,Infinity]){
+  const c={items:[{...attachment,q:quantity}],gold:100};
+  assert.equal(rewardClaimDelta(journal,c),false,String(quantity));
+ }
+ const corruptedBefore={items:[{name:'junk',q:null},null],isize:2};
+ assert.equal(rewardClaimFits(corruptedBefore,attachment,G),false,
+  'malformed unrelated before-image cannot certify the action');
+});

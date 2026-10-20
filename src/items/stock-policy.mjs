@@ -36,7 +36,7 @@ export function localVariantQuantity(inventory,item){
  const key=identity(item);
  for(const stock of inventory){
   if(!stock||identity(stock)!==key)continue;
-  const q=stock.q??1;
+  const q=stock.q===undefined?1:stock.q;
   if(!Number.isSafeInteger(q)||q<1||!Number.isSafeInteger(count+q))
    return null;
   count+=q;

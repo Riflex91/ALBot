@@ -140,3 +140,12 @@ test('W02 no local copy and no derived permission from stale bank assumptions',(
  assert.equal(boundedStockSurplus({held:null,reserved:0,
   keep:0,teamReserve:0,maximum:12}).valid,false);
 });
+
+test('W02 physical variant total distinguishes omitted q from explicit null',()=>{
+ const item={name:'ore',level:0};
+ assert.equal(localVariantQuantity([{...item}],item),1);
+ assert.equal(localVariantQuantity([{...item,q:null}],item),null);
+ assert.equal(localVariantQuantity([{...item,q:0}],item),null);
+ assert.equal(localVariantQuantity([{...item,q:5},{...item,q:3}],item),8);
+ assert.equal(localVariantQuantity([{...item,q:-1},{...item,q:1}],item),null);
+});

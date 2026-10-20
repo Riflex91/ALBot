@@ -81,15 +81,22 @@ export function rewardClaimDelta(journal,character){
 export function createRewardMail(bot,{now=()=>Date.now()}={}){
  const {p,cfg}=bot,key='albot:reward-mail-cursor:'+bot.me.name;
  const old=p.read?.(key),owner=bot.me.name;
- let cursorRealm=p.realm(),
+ const startingRealm=p.realm(),
+  verifiedCursor=old?.version===2&&old.owner===owner&&
+   old.realm===startingRealm&&(old.cursor===null||
+   typeof old.cursor==='string'&&/^\d{1,8}$/.test(old.cursor));
+ let cursorRealm=startingRealm,
   // Legacy {cursor:next} records may have skipped unclaimed page rows.
   // Restart those from the beginning; taken=true rows are never claimable.
-  cursor=old?.version===2&&old.owner===owner&&old.realm===cursorRealm&&
-   (old.cursor===null||typeof old.cursor==='string'&&
-    /^\d{1,8}$/.test(old.cursor))?old.cursor:null,
+  cursor=verifiedCursor?old.cursor:null,
+  // Legacy unknown mail.claim may be on a later page. Keep the durable
+  // replay cursor at the beginning while scanning forward READ-ONLY;
+  // never let unrelated earlier claimable mail block recovery.
+  recoverySweep=bot.journal?.kind==='mail.claim'&&
+   (!verifiedCursor||old.recoveryScan===true),
   nextRead=0,reading=false,generation=0,
   queue=[],observed=[],reason='not-scanned';
- if(bot.journal?.kind==='mail.claim')cursor=null;
+ if(recoverySweep)cursor=null;
  const remember=(id,state)=>{observed.push({id,state,at:now()});observed=observed.slice(-16);};
  const enabled=()=>cfg.world?.rewardMail===true;
  const available=()=>p.rewardMailCapability?.()??{supported:false,reason:'authenticated-mail-reader-unavailable'};
@@ -109,6 +116,7 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   // Pagination is bound to a particular realm; no cursor is portable.
   if(p.realm()!==cursorRealm){
    cursorRealm=p.realm();cursor=null;queue=[];generation++;
+   recoverySweep=bot.journal?.kind==='mail.claim';
    reading=false;nextRead=0;
   }
   if(reading||now()<nextRead||!available().supported)return;
@@ -126,6 +134,27 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
      rewardMailAttachment(row,owner,p.G));
     const journalHere=bot.journal?.kind==='mail.claim'&&
      page.mail.some(row=>row.id===bot.journal.mailId);
+    if(recoverySweep&&bot.journal?.kind==='mail.claim'){
+     // Scan pages for the historical claim, but persist ONLY the original
+     // replay point. After a crash or once the claim is resolved, revisit
+     // all skipped claimable pages; no other reward can be acted on here.
+     if(p.write(key,{version:2,owner,realm,cursor:null,
+        recoveryScan:true})!==true){
+      reason='mail-cursor-storage-unavailable';return;
+     }
+     reconcile(page.mail);
+     queue=[];
+     if(bot.journal?.kind!=='mail.claim'){
+      recoverySweep=false;cursor=null;nextRead=0;
+      reason='mail-recovery-rescan-from-start';
+     }else{
+      cursor=journalHere?requested:next;
+      nextRead=now()+5000;
+      reason=journalHere?'mail-claim-reconciliation-pending':
+       'mail-claim-searching-next-page';
+     }
+     return;
+    }
     // Do not persist the next cursor while this page contains a claimable
     // attachment or an unresolved mail value journal. A process crash must
     // reread the SAME page rather than silently skip an uncollected reward.

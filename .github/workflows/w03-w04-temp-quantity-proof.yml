@@ -1,0 +1,42 @@
+name: Temporary W03-W04 recovery proof build
+on:
+  push:
+    branches:
+      - codex/w03-w04-recovery-quantity-proof-20261020
+permissions:
+  contents: write
+jobs:
+  verify-and-generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: W03 and W04 recovery receipts and restart regression tests
+        run: |
+          node --test test/roadmap-w03-w04-bank-recovery-quantity-proof.test.mjs test/roadmap-w03-bank-partial-recovery.test.mjs test/roadmap-w03-single-bank-recovery.test.mjs test/roadmap-w04-reclaim-recovery.test.mjs test/roadmap-w04-bank-journal-collision.test.mjs test/roadmap-w04-bank-disposition.test.mjs
+      - name: Build shared runtime, editor and validate signed release channel
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          node scripts/verify-bootstrap-channel.mjs
+      - name: Commit only generated comparison artifacts
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json profiles/full-solo.json profiles/full-team.json editor/Bot-Werkstatt.html editor/albot.settings.json editor/example-profile.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build(W03/W04): regenerate safe bank recovery runtime and editor"
+            git push origin HEAD:codex/w03-w04-recovery-quantity-proof-20261020
+          fi

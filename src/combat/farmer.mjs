@@ -480,6 +480,13 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        bot.movement.stop();
       bot.target=null;
       const evidence=bot.caveTeam?.status?.();
+      const criticalResponse=bot.caveCriticalResponse?.status?.();
+      const held=criticalResponse?.holdOffense===true;
+      // No Cave movement owner has a safe multi-aggro escape route.
+      // Abort an already active direct hop on a critical or disputed
+      // current-team snapshot; do NOT suppress urgent Priest healing.
+      if(held&&['cave','cave-evade','cave-priest']
+        .includes(bot.movement?.order?.owner))bot.movement.stop();
       // Only the dedicated Ranger basic-defense executor may issue an
       // instance attack. It refuses neutral mobs, movement and skills and
       // revalidates the exact team/monster at network dispatch.
@@ -487,17 +494,18 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(healed&&bot.movement?.order?.owner==='cave-priest')
        bot.movement.stop();
       // Healing outranks positioning; a short support step may follow.
-      const positioned=!healed&&(
+      const positioned=!healed&&!held&&(
        bot.movement?.order?.owner==='cave-priest'||
        bot.cavePriestSupport?.tick?.()===true);
       // Guarded local separation outranks Ranger attacks, not Priest
       // healing. A running emergency hop also blocks new attacks.
-      const evasive=!healed&&!positioned&&(
+      const evasive=!healed&&!held&&!positioned&&(
        bot.movement?.order?.owner==='cave-evade'||
        bot.caveEmergency?.tick?.()===true);
-      const defended=!healed&&!positioned&&!evasive&&bot.caveCombat?.tick?.()===true;
-      const cohesion=!healed&&!positioned&&!evasive&&!defended&&bot.caveDirect?.tick?.()===true;
+      const defended=!healed&&!held&&!positioned&&!evasive&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!held&&!positioned&&!evasive&&!defended&&bot.caveDirect?.tick?.()===true;
       bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
+       held?'Cave: kritische Mehrfachaggro – Offensive und Bewegung gesperrt':
        positioned?'Cave: Priest sichert Heilerreichweite per Direktschritt':
        evasive?'Cave: abgesicherter Direktschritt aus Nahkampfdruck':
        defended?'Cave: bestätigte Teamverteidigung angefordert':

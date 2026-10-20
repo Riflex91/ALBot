@@ -26,12 +26,40 @@ test('bank evidence includes only fully observed local map packs with exactly 42
  bank.bank.items0[0]={name:'beewings',q:25};
  const definitions={items0:['bank'],items1:['bank_b'],items2:['bank'],items8:['bank_u']};
  const rows=observedBankTelemetry(bank,'EUI',definitions);
- assert.equal(rows.length,1);
+ assert.equal(rows.length,2,'visible 41-slot pack is still a complete 42-slot bank view');
+ assert.deepEqual(rows.map(r=>r.data.pack),['items0','items2']);
  assert.equal(rows[0].kind,'bank');
- assert.equal(rows[0].data.pack,'items0');
  assert.deepEqual(rows[0].data.slots[0],{name:'beewings',q:25,level:0});
+ assert.equal(rows[1].data.slots.length,42);
+ assert.equal(rows[1].data.slots[41],null);
  assert.deepEqual(observedBankTelemetry({...bank,map:'main'},'EUI',definitions),[]);
- assert.equal(observedBankTelemetry(bank,'EUI',{}).length,2); // items0 and items1 are known default bank packs
+ assert.equal(observedBankTelemetry(bank,'EUI',{}).length,3); // bank defaults only local items0..7
+});
+
+test('compact, sparse and empty locally observed bank packs normalize to 42 slots',()=>{
+ const compact={...char,map:'bank',bank:{
+  items0:[],
+  items1:[null,{name:'beewings',q:2}],
+  items2:Array(4),
+  items3:Array(43).fill(null),
+  items8:[{name:'beewings'}]
+ }};
+ compact.bank.items2[3]={name:'beewings',level:1};
+ const mapping={items0:['bank'],items1:['bank'],items2:['bank'],
+  items3:['bank'],items8:['bank_b']};
+ const got=observedBankTelemetry(compact,'EUI',mapping);
+ assert.deepEqual(got.map(x=>x.data.pack),['items0','items1','items2']);
+ for(const row of got)assert.equal(row.data.slots.length,42);
+ assert.equal(got[0].data.slots.every(x=>x===null),true);
+ assert.deepEqual(got[1].data.slots[1],{name:'beewings',q:2,level:0});
+ assert.equal(got[1].data.slots[41],null);
+ assert.equal(got[2].data.slots[0],null);
+ assert.deepEqual(got[2].data.slots[3],{name:'beewings',q:1,level:1});
+ assert.equal(got[2].data.slots[41],null);
+ assert.equal(observedBankTelemetry({...compact,map:'bank_b'},'EUI',mapping).length,1);
+ assert.equal(observedBankTelemetry({...compact,map:'main'},'EUI',mapping).length,0);
+ assert.equal(observedBankTelemetry({...compact,bank:{}},'EUI',mapping).length,0);
+ assert.equal(observedBankTelemetry({...compact,bank:undefined},'EUI',mapping).length,0);
 });
 
 test('both read-only packet kinds pass real Worker ingest validation with private bearer token',async()=>{

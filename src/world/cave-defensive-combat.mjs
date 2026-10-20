@@ -2,6 +2,7 @@
 // one basic attack only. All instance, roster, Priest, threat and range
 // evidence is revalidated immediately before the game API call.
 // No neutral pull, skill/AoE, movement, target-change or retry queue.
+// A complete cumulative threat budget is required for multi-aggro.
 const caveDefenseDeny=(reason,extra={})=>({
  version:1,mode:'guarded-cave-defense-basic',
  ready:false,canAttack:false,canPull:false,canMove:false,canUseSkills:false,
@@ -31,6 +32,12 @@ export function caveDefensiveAttackPreflight(bot,{
    teamReason:team?.reason??'unavailable'});
  const scope={run:team.run,floor:team.floor,map:team.map,
   focusId:team.focus.id,victim:team.focus.victim};
+ const budget=caveCumulativeThreatBudget(bot,{team,now});
+ if(budget.ready!==true)
+  return caveDefenseDeny('cave-cumulative-threat-unverified',{
+   ...scope,riskReason:budget.reason,
+   attackerCount:budget.attackerCount,
+   riskMember:budget.member??null});
  if(!Number.isSafeInteger(now)||now<=0||c.map!==team.map||
     (c.in!==undefined&&c.in!==team.map)||
     c.cave?.run!==team.run)
@@ -66,7 +73,8 @@ export function caveDefensiveAttackPreflight(bot,{
   }
  }
  return {...caveDefenseDeny('engaged-defense-ready',scope),ready:true,
-  canAttack:true,range:c.range,monster:m};
+  canAttack:true,range:c.range,monster:m,
+  attackerCount:budget.attackerCount,threatSignature:budget.signature};
 }
 export function createCaveDefensiveCombat(bot,{now=()=>Date.now()}={}){
  let attempts=0,last=null;
@@ -82,12 +90,13 @@ export function createCaveDefensiveCombat(bot,{now=()=>Date.now()}={}){
  function tick(){
   const first=proof();
   if(!first.ready||typeof bot.exec?.run!=='function')return false;
-  const {run,floor,focusId,victim}=first;
+  const {run,floor,focusId,victim,threatSignature}=first;
   const guard=()=>{
    const latest=proof();
    return latest.ready===true&&latest.run===run&&
     latest.floor===floor&&latest.focusId===focusId&&
-    latest.victim===victim;
+    latest.victim===victim&&
+    latest.threatSignature===threatSignature;
   };
   const invoke=()=>{
    // Re-resolve and reverify the SAME live entity at the literal
@@ -95,7 +104,8 @@ export function createCaveDefensiveCombat(bot,{now=()=>Date.now()}={}){
    const liveProof=proof();
    if(!liveProof.ready||liveProof.run!==run||
       liveProof.floor!==floor||liveProof.focusId!==focusId||
-      liveProof.victim!==victim)
+      liveProof.victim!==victim||
+      liveProof.threatSignature!==threatSignature)
     throw Error('Cave defense proof changed before attack');
    return bot.p.call('attack',liveProof.monster);
   };

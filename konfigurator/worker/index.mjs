@@ -144,8 +144,8 @@ function ingestAuth(req,env){
  const secret=asString(env.INGEST_TOKEN);
  return secret.length>=32&&sameBearer(header,'Bearer '+secret);
 }
-async function ingest(request,env){
- if(!ingestAuth(request,env))return failure('Ungültiger Telemetrie-Schlüssel',401);
+async function ingest(request,env,requiresBearer=true){
+ if(requiresBearer&&!ingestAuth(request,env))return failure('Ungültiger Telemetrie-Schlüssel',401);
  if(!env.DB)return failure('D1-Datenbank noch nicht konfiguriert',503);
  if(Number(request.headers.get('content-length')??0)>32768)return failure('Datenpaket zu groß',413);
  const body=await request.text();
@@ -202,6 +202,17 @@ export async function handleRequest(request,env,ctx={},deps={}){
  }
  const auth=await validateAccess(request,env,fetcher);
  if(!auth.ok)return failure(auth.reason,auth.status);
+ // Game submits through a user-authorized Access popup, never with the
+ // Worker ingest secret in the public Adventure Land runtime.
+ if(path==='/api/relay-ingest'){
+  if(request.method!=='POST')return failure('Methode nicht erlaubt',405);
+  if(request.headers.get('origin')!==url.origin)
+   return failure('Ungültige Request-Herkunft',403);
+  if((request.headers.get('content-type')??'').split(';')[0].trim().toLowerCase()!=='application/json')
+   return failure('JSON erforderlich',415);
+  try{return await ingest(request,env,false);}
+  catch{return failure('Telemetrie-Datenbankfehler',503);}
+ }
  if(!['GET','HEAD','PUT'].includes(request.method))return failure('Methode nicht erlaubt',405);
  if(request.method==='PUT'){
   if(request.headers.get('origin')!==url.origin)return failure('Ungültige Request-Herkunft',403);

@@ -33,7 +33,8 @@ export function caveCumulativeThreatBudget(bot,{
    ...scope,attackerCount:targeted.length});
  const ids=new Set(),targetCounts=Object.fromEntries(names.map(n=>[n,0]));
  for(const m of targeted){
-  if(typeof m.id!=='string'||m.id.length<1||m.id.length>100||
+  if(m.type!==undefined&&m.type!=='monster'||
+     typeof m.id!=='string'||m.id.length<1||m.id.length>100||
      ids.has(m.id)||typeof m.mtype!=='string'||m.mtype.length<1||
      !caveBudgetFinite(m.hp)||m.hp<=0||
      m.map!==team.map||(m.in!==undefined&&m.in!==team.map)||

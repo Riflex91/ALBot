@@ -1,3 +1,4 @@
+import {caveCriticalHealTriage} from './cave-critical-heal-triage.mjs';
 // W12/N12: cautious single-target Cave Priest heal. This is a
 // distinct life-saving support path, NOT ordinary farm rotations.
 // Re-evaluate the identical run, floor, roster, target and native heal
@@ -72,12 +73,26 @@ export function cavePriestHealPreflight(bot,{now=Date.now(),hostChecks=true}={})
  }
  candidates.sort((a,b)=>a.fraction-b.fraction||
   b.missing-a.missing||a.name.localeCompare(b.name));
+ // Only a complete, current multi-aggro snapshot may reorder EXISTING
+ // native-heal candidates. Unknown risk never grants any new action;
+ // keep the historical life-saving single-heal fallback available.
+ const triage=caveCriticalHealTriage(bot,{team,now});
+ if(triage.ready){
+  const rank=new Map(triage.ranked.map((member,i)=>[member.name,i]));
+  candidates.sort((a,b)=>(rank.get(a.name)??999)-
+   (rank.get(b.name)??999)||a.fraction-b.fraction||
+   a.name.localeCompare(b.name));
+ }
  if(!candidates.length)
   return caveHealDeny('no-current-injured-in-range-member',scope);
  const pick=candidates[0];
  const chosen={...scope,targetName:pick.name,
   targetHp:pick.entity.hp,targetMaxHp:pick.entity.max_hp,
-  targetFraction:pick.fraction};
+  targetFraction:pick.fraction,
+  triageMode:triage.ready?'verified-multi-aggro':'legacy-single-heal',
+  triageReason:triage.reason,
+  triageSignature:triage.ready?triage.signature:null,
+  triageAttackerCount:triage.attackerCount};
  if(hostChecks){
   try{
    if(p.has?.('heal')!==true||p.has?.('can_heal')!==true||
@@ -103,16 +118,24 @@ export function createCavePriestHealing(bot,{now=()=>Date.now()}={}){
  function tick(){
   const first=proof(true);
   if(!first.ready||typeof bot.exec?.run!=='function')return false;
-  const {run,floor,targetName}=first;
+  const {run,floor,targetName,triageSignature,triageMode}=first;
   const guard=()=>{
    const p=proof(true);
    return p.ready===true&&p.run===run&&p.floor===floor&&
-    p.targetName===targetName;
+    p.targetName===targetName&&
+    p.triageMode===triageMode&&
+    p.triageSignature===triageSignature&&
+    (triageSignature===null||p.targetHp===first.targetHp&&
+     p.targetMaxHp===first.targetMaxHp);
   };
   const invoke=()=>{
    const p=proof(true);
    if(p.ready!==true||p.run!==run||p.floor!==floor||
-      p.targetName!==targetName)
+      p.targetName!==targetName||
+      p.triageMode!==triageMode||
+      p.triageSignature!==triageSignature||
+      triageSignature!==null&&(p.targetHp!==first.targetHp||
+       p.targetMaxHp!==first.targetMaxHp))
     throw Error('Cave Priest heal proof changed before game call');
    // The exact freshly checked entity is used, never an obsolete
    // target captured from the scheduler's earlier frame.

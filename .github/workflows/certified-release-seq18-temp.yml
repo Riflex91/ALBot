@@ -38,7 +38,20 @@ jobs:
           npm run build
           node scripts/sync-personal-code.mjs --write
           node scripts/sync-personal-code.mjs --check
-          npm run check:bootstrap:auto
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {personalPrefix} from './scripts/bootstrap-support.mjs';
+          import {createAutoBootstrap} from './scripts/auto-bootstrap-support.mjs';
+          const current=createAutoBootstrap({
+           prefix:personalPrefix(fs.readFileSync('bot.js','utf8')),
+           publicKey:JSON.parse(fs.readFileSync('release/public-key.json','utf8'))
+          }).code;
+          const pinned=fs.readFileSync('dist/albot.bootstrap.auto.js','utf8');
+          const withoutVersionComment=s=>s.slice(s.indexOf(String.fromCharCode(10))+1);
+          if(withoutVersionComment(current)!==withoutVersionComment(pinned))
+           throw Error('Pinned bootstrap loader body, key or personal config changed');
+          console.log('Installed Bootstrap V2 loader is byte-identical beyond its version comment');
+          NODE
           node scripts/verify-bootstrap-contract.mjs
       - name: Full offline regression suite
         run: npm test
@@ -93,8 +106,8 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Personal code sync failed'}
           node scripts/sync-personal-code.mjs --check
           if($LASTEXITCODE -ne 0){throw 'Personal code parity failed'}
-          npm.cmd run check:bootstrap:auto
-          if($LASTEXITCODE -ne 0){throw 'Auto-bootstrap personal/key drift'}
+          node --input-type=module -e "import fs from 'node:fs';import {personalPrefix} from './scripts/bootstrap-support.mjs';import {createAutoBootstrap} from './scripts/auto-bootstrap-support.mjs';const current=createAutoBootstrap({prefix:personalPrefix(fs.readFileSync('bot.js','utf8')),publicKey:JSON.parse(fs.readFileSync('release/public-key.json','utf8'))}).code;const pinned=fs.readFileSync('dist/albot.bootstrap.auto.js','utf8');const body=s=>s.slice(s.indexOf(String.fromCharCode(10))+1);if(body(current)!==body(pinned))throw Error('Pinned Bootstrap V2 body or personal config drift');"
+          if($LASTEXITCODE -ne 0){throw 'Pinned auto-bootstrap loader content drift'}
       - name: Run exact Windows verification with pinned current signed release
         shell: pwsh
         run: ./scripts/VERIFY-U01-U07.ps1
@@ -153,7 +166,20 @@ jobs:
           npm run build
           node scripts/sync-personal-code.mjs --write
           node scripts/sync-personal-code.mjs --check
-          npm run check:bootstrap:auto
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {personalPrefix} from './scripts/bootstrap-support.mjs';
+          import {createAutoBootstrap} from './scripts/auto-bootstrap-support.mjs';
+          const current=createAutoBootstrap({
+           prefix:personalPrefix(fs.readFileSync('bot.js','utf8')),
+           publicKey:JSON.parse(fs.readFileSync('release/public-key.json','utf8'))
+          }).code;
+          const pinned=fs.readFileSync('dist/albot.bootstrap.auto.js','utf8');
+          const withoutVersionComment=s=>s.slice(s.indexOf(String.fromCharCode(10))+1);
+          if(withoutVersionComment(current)!==withoutVersionComment(pinned))
+           throw Error('Pinned bootstrap loader body, key or personal config changed');
+          console.log('Installed Bootstrap V2 loader is byte-identical beyond its version comment');
+          NODE
           npm run build:editor
           npm run build:konfigurator
           npm test

@@ -110,8 +110,14 @@ export function caveRetreatLocalProof(bot,{
      !caveRetreatNum(m.hp)||m.hp<=0||
      !caveRetreatNum(m.x)||!caveRetreatNum(m.y))
    return caveRetreatDeny('monster-identity-or-geometry-unverified',scope);
+  const meta=p.G?.monsters?.[m.mtype];
+  if(!meta||!caveRetreatNum(meta.attack)||meta.attack<=0||
+     meta.attack>100000||!caveRetreatNum(meta.frequency)||
+     meta.frequency<=0||meta.frequency>100)
+   return caveRetreatDeny('official-damage-definition-unverified',scope);
   ids.add(m.id);
-  monsterParts.push([m.id,m.target,m.mtype,m.hp,m.x,m.y].join(':'));
+  monsterParts.push([m.id,m.target,m.mtype,m.hp,m.x,m.y,
+   meta.attack,meta.frequency].join(':'));
  }
  const centroid={
   x:actors.reduce((sum,m)=>sum+m.x,0)/actors.length,

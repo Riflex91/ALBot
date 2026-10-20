@@ -180,3 +180,43 @@ test('CORS permission does not replace telemetry token authentication',async()=>
  assert.equal(response.status,401);
  assert.equal(response.headers.get('access-control-allow-origin'),'https://adventure.land');
 });
+
+test('Access relay accepts only authenticated same-origin JSON, while legacy ingest still requires bearer',async()=>{
+ const {token,certs}=await credential();
+ const writes=[];
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
+  ALLOWED_EMAIL:'user@example.com',
+  DB:{prepare(sql){return {bind(...args){return {async run(){
+   writes.push({sql,args});return {meta:{changes:1}};
+  }};}};}}};
+ const packet={version:1,kind:'character',data:{
+  name:'My_Ranger1',realm:'EUI',map:'main',level:70,
+  hp:1200,mp:500,maxHp:2000,maxMp:900,x:20,y:30,
+  expPerHour:0,goldPerHour:0,ratesMeasured:false,
+  inventory:[{name:'beewings',q:2,level:0}]
+ }};
+ const fetcher=async url=>{
+  if(String(url).includes('/cdn-cgi/access/certs'))return new Response(JSON.stringify(certs));
+  throw Error('unexpected network call');
+ };
+ const request=(path,headers={})=>new Request('https://albot.example.com'+path,{
+  method:'POST',headers:{'CF-Access-Jwt-Assertion':token,
+   origin:'https://albot.example.com','content-type':'application/json',...headers},
+  body:JSON.stringify(packet)});
+ const authorized=await handleRequest(request('/api/relay-ingest'),env,{}, {fetcher});
+ assert.equal(authorized.status,200);
+ assert.equal((await authorized.json()).ok,true);
+ assert.equal(writes.length,1);
+ assert.equal(authorized.headers.get('access-control-allow-origin'),null);
+ const badOrigin=await handleRequest(request('/api/relay-ingest',{origin:'https://adventure.land'}),env,{}, {fetcher});
+ assert.equal(badOrigin.status,403);
+ const noJwt=await handleRequest(new Request('https://albot.example.com/api/relay-ingest',{
+  method:'POST',headers:{origin:'https://albot.example.com','content-type':'application/json'},
+  body:JSON.stringify(packet)}),env,{}, {fetcher});
+ assert.equal(noJwt.status,401);
+ const wrongType=await handleRequest(request('/api/relay-ingest',{'content-type':'text/plain'}),env,{}, {fetcher});
+ assert.equal(wrongType.status,415);
+ const oldRoute=await handleRequest(request('/api/ingest'),env,{}, {fetcher});
+ assert.equal(oldRoute.status,401);
+ assert.equal(writes.length,1);
+});

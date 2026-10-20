@@ -116,14 +116,16 @@ export function bankOperatingReserveNeed(bot,item){
     meta.onclick||meta.offering||meta.throw||meta.ignore||
     meta.wtype||meta.class||meta.grades||meta.tier)return null;
  const source=e.explicit(item,'inventory');
- let floor;
+ let floor,maximum=0;
  if(source){
   if(source.enabled!==true||source.action!=='keep'||
      source.excessAction!=='sell'||!Number.isSafeInteger(source.batch)||
      source.batch<1||!Number.isSafeInteger(source.keep)||
      !Number.isSafeInteger(source.teamReserve)||
-     source.keep<0||source.teamReserve<0)return null;
+     !Number.isSafeInteger(source.maxCount)||
+     source.keep<0||source.teamReserve<0||source.maxCount<0)return null;
   floor=source.keep+source.teamReserve;
+  maximum=source.maxCount;
  }else{
   const rule=operatingStockBaseRule(bot,item);
   if(!rule)return null;
@@ -134,7 +136,10 @@ export function bankOperatingReserveNeed(bot,item){
  if(!Number.isSafeInteger(reserved)||reserved<0||
     !Number.isSafeInteger(held)||held<0||
     !Number.isSafeInteger(floor+reserved))return null;
- floor+=reserved;
+ // Explicit capped stock uses the SAME protected floor as the eventual
+ // bounded surplus sale: max(maxCount, keep + teamReserve + reservations).
+ // Staging only keep would move bank stock while leaving no sellable excess.
+ floor=Math.max(maximum,floor+reserved);
  if(floor===0||held>=floor)return null;
  return {floor,held,missing:floor-held};
 }

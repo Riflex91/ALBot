@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {scanBankDispositionWindow} from '../src/merchant/bank-disposition.mjs';
 import {createBank} from '../src/merchant/bank.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
+import {bankOperatingReserveNeed} from '../src/items/operating-stock.mjs';
 import {ITEM_RULE} from '../editor/lib/schema.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
 
@@ -402,4 +403,84 @@ test('W04 malformed same-variant bank quantities cannot authorize reserve reloca
  for(let i=0;i<3;i++)assert.equal(bot.bank.preventiveDisposition(),false);
  assert.equal(bot.bank.preventiveDisposition(),true);
  assert.equal(calls[0].kind,'bank.retrieve');
+});
+
+test('W02/W04 explicit cap stages the exact post-sale floor before a distinct sale',async()=>{
+ const f=operatingBankFixture(),{bot,inv,bankPack,setRule,calls,sales}=f;
+ const rule={...defaultsFor(ITEM_RULE),name:'Explicit bounded stock',
+  enabled:true,action:'keep',excessAction:'sell',item:'scroll0',
+  role:'all',keep:20,teamReserve:0,maxCount:100,batch:9999};
+ setRule(rule);inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:80};
+ bankPack[26]={name:'scroll0',q:30};
+ assert.deepEqual(bankOperatingReserveNeed(bot,bankPack[27]),{
+  floor:100,held:20,missing:80});
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.retrieve');
+ assert.equal(bot.bank.recoveryStatus().single.reserveStage.floor,100);
+ assert.equal(calls[0].params.guard(),true);
+ await calls[0].params.call();
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(bot.bank.pending,false);
+ assert.equal(inv[0].q,80);
+ assert.equal(inv[1].q,20);
+ assert.equal(bankPack[27],null);
+ assert.equal(sales.length,0,'reserve staging is never a sale');
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls.at(-1).kind,'bank.reclaim',
+  'only a separate observed scan can retrieve the surplus');
+ assert.equal(calls.at(-1).params.guard(),true);
+});
+
+test('W02/W04 explicit maxCount never creates staging without real local excess',()=>{
+ for(const limit of [100,200]){
+  const {bot,inv,bankPack,setRule,calls}=operatingBankFixture();
+  setRule({...defaultsFor(ITEM_RULE),enabled:true,action:'keep',
+   excessAction:'sell',item:'scroll0',role:'all',
+   keep:20,teamReserve:0,maxCount:limit,batch:9999});
+  inv[1]={name:'scroll0',q:20};
+  bankPack[27]={name:'scroll0',q:80};
+  assert.equal(bot.bank.preventiveDisposition(),false);
+  assert.equal(bot.bank.preventiveDisposition(),false);
+  assert.equal(calls.length,0,
+   'gross local stock at/below maximum has no saleable excess');
+ }
+});
+
+test('W02/W04 purpose reservations dominate a lower explicit count cap',()=>{
+ const {bot,inv,bankPack,setRule}=operatingBankFixture();
+ setRule({...defaultsFor(ITEM_RULE),enabled:true,action:'keep',
+  excessAction:'sell',item:'scroll0',role:'all',
+  keep:20,teamReserve:10,maxCount:40,batch:9999});
+ bot.production={reservedQuantity:()=>25};
+ inv[1]={name:'scroll0',q:20};bankPack[27]={name:'scroll0',q:100};
+ assert.deepEqual(bankOperatingReserveNeed(bot,bankPack[27]),{
+  floor:55,held:20,missing:35});
+});
+
+test('W02/W04 malformed explicit cap or overflow cannot stage reserved items',()=>{
+ for(const cap of [undefined,-1,NaN,1.5,Infinity]){
+  const {bot,inv,bankPack,setRule,calls}=operatingBankFixture();
+  setRule({...defaultsFor(ITEM_RULE),enabled:true,action:'keep',
+   excessAction:'sell',item:'scroll0',role:'all',
+   keep:20,teamReserve:0,maxCount:cap,batch:9999});
+  inv[1]={name:'scroll0',q:20};bankPack[27]={name:'scroll0',q:200};
+  assert.equal(bankOperatingReserveNeed(bot,bankPack[27]),null);
+  bot.bank.preventiveDisposition();
+  bot.bank.preventiveDisposition();
+  assert.equal(calls.length,0);
+ }
+});
+
+test('W02/W04 protection sum overflow does not create a usable bank floor',()=>{
+ const {bot,inv,bankPack,setRule,calls}=operatingBankFixture();
+ setRule({...defaultsFor(ITEM_RULE),enabled:true,action:'keep',
+  excessAction:'sell',item:'scroll0',role:'all',
+  keep:Number.MAX_SAFE_INTEGER,teamReserve:1,maxCount:10,batch:9999});
+ inv[1]={name:'scroll0',q:20};bankPack[27]={name:'scroll0',q:200};
+ assert.equal(bankOperatingReserveNeed(bot,bankPack[27]),null);
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ assert.equal(calls.length,0);
 });

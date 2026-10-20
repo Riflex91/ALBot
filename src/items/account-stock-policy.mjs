@@ -33,7 +33,7 @@ export function previewAccountStockPolicy({
  const invalid=reason=>({...base,status:'invalid',reason});
  const wanted=accountPreviewKey(item);
  if(!wanted)return invalid('invalid-or-opaque-item-variant');
- if(![keep,targetCount,maxCount,teamReserve,additionalReservations].every(validInt)||
+ if(![keep,targetCount,maxCount,teamReserve,additionalReservations].every(accountPreviewValidInt)||
     keep+teamReserve>maxCount||targetCount<keep+teamReserve||
     targetCount>maxCount)return invalid('invalid-stock-limits');
  if(!ledger||ledger.mode!=='shadow-only'||ledger.executable!==false||
@@ -42,7 +42,7 @@ export function previewAccountStockPolicy({
  const rows=ledger.variants.filter(row=>accountPreviewKey(row?.item)===wanted);
  if(rows.length>1)return invalid('duplicate-account-variant');
  const row=rows[0];
- if(row&&![row.quantity,row.protectedUnits,row.reservedUnits].every(validInt))
+ if(row&&![row.quantity,row.protectedUnits,row.reservedUnits].every(accountPreviewValidInt))
   return invalid('invalid-observed-quantity');
  if(row&&(row.protectedUnits>row.quantity||row.reservedUnits>row.quantity))
   return invalid('invalid-observed-reservations');

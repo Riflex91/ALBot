@@ -93,7 +93,7 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   // replay cursor at the beginning while scanning forward READ-ONLY;
   // never let unrelated earlier claimable mail block recovery.
   recoverySweep=bot.journal?.kind==='mail.claim'&&
-   (!verifiedCursor||old.recoveryScan===true),
+   (!verifiedCursor||old.recoveryScan===true||old.cursor===null),
   nextRead=0,reading=false,generation=0,
   queue=[],observed=[],reason='not-scanned';
  if(recoverySweep)cursor=null;

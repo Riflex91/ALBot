@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {leaderAssignedFarmTarget} from '../src/combat/team-readiness.mjs';
 import {verifiedNativeFarmFocus} from '../src/party/transport.mjs';
 import {reachedMovementRadius} from '../src/core/movement.mjs';
+import {hopFailureBackoffMs} from '../src/party/travel.mjs';
+import {describeReportError} from '../src/core/test-report.mjs';
 
 const now=Date.now();
 const plan={id:'leader:plan:3',target:'bee',realm:'EUII',
@@ -67,4 +69,19 @@ test('native moving flag must not restart an already satisfied follow radius',()
    {...me,radius:30}),false);
  assert.equal(reachedMovementRadius({...me,map:'bank',moving:false},
    {...me,radius:30}),false);
+});
+
+test('missing team-hop acknowledgments trigger a bounded escalating backoff',()=>{
+ assert.deepEqual([0,1,2,3,4,5,6].map(hopFailureBackoffMs),
+  [0,60000,120000,240000,480000,600000,600000]);
+ assert.equal(hopFailureBackoffMs(-1),0);
+ assert.equal(hopFailureBackoffMs(NaN),0);
+});
+
+test('plain-object native promise rejection is preserved in the test report',()=>{
+ assert.equal(describeReportError({reason:{code:'interrupted',details:{map:'bank'}}}),
+  '{"code":"interrupted","details":{"map":"bank"}}');
+ assert.equal(describeReportError(new Error('dispatch failed')),'dispatch failed');
+ const cyclic={code:'native'};cyclic.parent=cyclic;
+ assert.match(describeReportError(cyclic),/circular/);
 });

@@ -5,10 +5,12 @@ import {createCaveCriticalResponse} from '../src/world/cave-critical-response.mj
 import {caveRetreatLocalProof,createCaveRetreatConsensus}
  from '../src/world/cave-retreat-consensus.mjs';
 import {fitHeartbeat} from '../src/party/transport.mjs';
+import {createCaveRetreatPreparation,caveRetreatPreparationPreflight}
+ from '../src/world/cave-retreat-preparation.mjs';
 
 const when=1770000000000,run='a'.repeat(24),map=`zone_${run}_1`;
 function fixture(){
- const names=['R1','R2','P'],events=[],calls=[],votes={},
+ const names=['R1','R2','P'],events=[],calls=[],votes={},prepared={},
  state={now:when,clear:true,monsters:[],paused:false};
  const members={
   R1:{name:'R1',ctype:'ranger',class:'ranger',map,in:map,cave:{run},
@@ -47,7 +49,8 @@ function fixture(){
    gold:{reserved:false},
    movement:{order:null,nativeBusy:()=>false},
    transport:{fresh:other=>other===name?null:{
-    ...members[other],retreatVote:votes[other]??null}},
+    ...members[other],retreatVote:votes[other]??null,
+    retreatPrepare:prepared[other]??null}},
    entity:other=>members[other]?{
     ...members[other],visible:true,type:'character'}:null,
    monsters:()=>state.monsters,
@@ -64,13 +67,21 @@ function fixture(){
   bot.caveCriticalResponse=createCaveCriticalResponse(bot,{
    now:()=>state.now});
   bot.caveRetreat=createCaveRetreatConsensus(bot,{now:()=>state.now});
+  bot.caveRetreatPrepare=createCaveRetreatPreparation(bot,{now:()=>state.now});
   bots[name]=bot;
  }
  function publish(){
   for(const name of names)votes[name]=bots[name].caveRetreat.heartbeat();
   return votes;
  }
- return {bots,members,names,monsters,state,calls,events,votes,publish};
+ function publishPrepared(){
+  for(const name of names)votes[name]=bots[name].caveRetreat.heartbeat();
+  for(const name of names)
+   prepared[name]=bots[name].caveRetreatPrepare.heartbeat();
+  return prepared;
+ }
+ return {bots,members,names,monsters,state,calls,events,votes,
+  prepared,publish,publishPrepared};
 }
 const movementCalls=f=>f.calls.filter(([,kind])=>
  kind==='move'||kind==='smart_move'||kind==='town'||
@@ -246,4 +257,156 @@ test('N12 no pending vote is transmitted after local geometry/critical risk expi
  assert.equal(freshVote,null);
  assert.equal(b.caveRetreat.status().ready,false);
  assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 independent second-round retreat receipts establish preparation, never native movement',()=>{
+ const f=fixture();
+ f.publish();
+ for(const name of f.names)
+  assert.equal(f.bots[name].caveRetreatPrepare.status().ready,false);
+ f.publishPrepared();
+ for(const name of f.names){
+  const st=f.bots[name].caveRetreatPrepare.status();
+  assert.equal(st.ready,true,st.reason);
+  assert.equal(st.prepared,true);
+  assert.equal(st.phase,'prepared');
+  assert.deepEqual(st.participants,['P','R1','R2']);
+  assert.equal(st.executable,false);
+  assert.equal(st.canMove,false);
+  assert.equal(st.canAttack,false);
+  assert.equal(st.canPull,false);
+  assert.equal(f.prepared[name].proof,f.votes[name].key);
+  assert.equal(f.prepared[name].voteAt,f.votes[name].at);
+ }
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 second-round status is read-only and never creates an extra native path check',()=>{
+ const f=fixture();
+ f.publish();f.publishPrepared();
+ const count=f.calls.length;
+ for(const name of f.names){
+  const bot=f.bots[name];
+  for(let i=0;i<4;i++){
+   assert.equal(bot.caveRetreatPrepare.status().prepared,true);
+   assert.equal(caveRetreatPreparationPreflight(bot,{now:when}).ready,true);
+  }
+ }
+ assert.equal(f.calls.length,count);
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 partial or missing second-round quorum never stages a Cave move',()=>{
+ const f=fixture();f.publish();
+ const a=f.bots.R1.caveRetreatPrepare.heartbeat();
+ f.prepared.R1=a;
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,false);
+ f.prepared.R2=f.bots.R2.caveRetreatPrepare.heartbeat();
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,false);
+ f.prepared.P=f.bots.P.caveRetreatPrepare.heartbeat();
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,true);
+ delete f.prepared.R2;
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,false);
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().missing,'R2');
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 second-round peer tampering, stale messages and contradictory first votes are rejected',()=>{
+ const edits=[
+  f=>{f.prepared.R2.actor='P'},
+  f=>{f.prepared.R2.proof='forged'},
+  f=>{f.prepared.R2.threat='different'},
+  f=>{f.prepared.R2.dir=3},
+  f=>{f.prepared.R2.run='b'.repeat(24)},
+  f=>{f.prepared.R2.floor=2},
+  f=>{f.prepared.R2.map='main'},
+  f=>{f.prepared.R2.toX+=4},
+  f=>{f.prepared.R2.x+=3},
+  f=>{f.prepared.R2.voteAt=when-1},
+  f=>{f.prepared.R2.at=when-2600},
+  f=>{f.prepared.R2.at=when+2},
+  f=>{f.prepared.R2.v=2},
+  f=>{f.votes.R2.key='different'},
+  f=>{f.votes.R2.toY+=3},
+  f=>{f.members.R2.x+=3},
+  f=>{f.members.R2.received=when-3200},
+  f=>{f.members.R2.realm='USII'}
+ ];
+ for(let i=0;i<edits.length;i++){
+  const f=fixture();f.publish();f.publishPrepared();
+  edits[i](f);
+  const st=f.bots.R1.caveRetreatPrepare.status();
+  assert.equal(st.ready,false,'case '+i+' '+st.reason);
+  assert.equal(st.canMove,false);
+  assert.deepEqual(movementCalls(f),[]);
+ }
+});
+
+test('N12 first vote must also bind the official attacker damage definition',()=>{
+ for(const edit of [
+  f=>{f.bots.R1.p.G.monsters.shade.attack=9},
+  f=>{f.bots.R1.p.G.monsters.shade.frequency=2},
+  f=>{f.bots.R1.p.G.monsters.shade.attack=Infinity}
+ ]){
+  const f=fixture();f.publish();edit(f);
+  assert.equal(f.bots.R1.caveRetreat.status().ready,false);
+  assert.equal(f.bots.R1.caveRetreatPrepare.heartbeat(),null);
+  assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,false);
+  assert.deepEqual(movementCalls(f),[]);
+ }
+});
+
+test('N12 health, threat geometry and original team drift invalidate all preparation',()=>{
+ const edits=[
+  f=>{f.members.R1.hp--},
+  f=>{f.members.P.x+=5},
+  f=>{f.monsters[0].hp--},
+  f=>{f.monsters[1].target='P';f.members.R2.threats=0;f.members.P.threats=1},
+  f=>{f.state.monsters.push({id:'neutral',type:'monster',
+   mtype:'shade',map,in:map,x:70,y:0,hp:90,target:null})},
+  f=>{f.state.paused=true},
+  f=>{f.state.now=when+2600},
+  f=>{f.bots.R1.journal={kind:'gold'}},
+  f=>{f.bots.R1.movement.order={owner:'cave',mode:'move'}},
+  f=>{f.bots.R1.lifecycleChanging=true}
+ ];
+ for(let i=0;i<edits.length;i++){
+  const f=fixture();f.publish();f.publishPrepared();edits[i](f);
+  const st=f.bots.R1.caveRetreatPrepare.status();
+  assert.equal(st.ready,false,'case '+i+' '+st.reason);
+  assert.deepEqual(movementCalls(f),[]);
+ }
+});
+
+test('N12 a pending native Priest heal blocks movement preparation but not the heal itself',()=>{
+ const f=fixture();f.publish();f.publishPrepared();
+ const priest=f.bots.P;
+ priest.exec={pending:new Map([['cave.priest.heal',{}]])};
+ assert.equal(priest.caveRetreatPrepare.status().ready,false);
+ assert.equal(priest.caveRetreatPrepare.heartbeat(),null);
+ assert.equal(priest.caveRetreatPrepare.status().canMove,false);
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 a native geometry refusal invalidates the second-round local receipt',()=>{
+ const f=fixture();f.publish();f.publishPrepared();
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,true);
+ f.state.clear=false;
+ assert.equal(f.bots.R1.caveRetreat.heartbeat(),null);
+ assert.equal(f.bots.R1.caveRetreatPrepare.heartbeat(),null);
+ assert.equal(f.bots.R1.caveRetreatPrepare.status().ready,false);
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 fitting a large heartbeat retains both compact safety receipts',()=>{
+ const f=fixture();f.publish();f.publishPrepared();
+ const vote=f.votes.R1,prep=f.prepared.R1;
+ const packed=fitHeartbeat({items:[],materials:[],name:'R1',
+  map,realm:'EUI',retreatVote:vote,retreatPrepare:prep,
+  advice:'z'.repeat(4000),performance:{large:'y'.repeat(3000)}},1500);
+ assert.ok(packed);
+ assert.deepEqual(packed.retreatVote,vote);
+ assert.deepEqual(packed.retreatPrepare,prep);
+ assert.equal(packed.advice,undefined);
+ assert.ok(JSON.stringify(packed).length<=1500);
 });

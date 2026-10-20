@@ -10,11 +10,12 @@ export function validCaveLifecycleRecord(x){
  if(!x||typeof x!=='object'||Array.isArray(x)||x.version!==1||
   !caveLifecycleText(x.name)||!caveLifecycleText(x.realm,24)||
   !caveLifecycleText(x.session,120)||!caveLifecycleTime(x.createdAt)||
-  !caveLifecyclePhase.has(x.phase)||!['new','resume'].includes(x.mode)||
+  !caveLifecyclePhase.has(x.phase)||!['new','resume','observed'].includes(x.mode)||
   !Array.isArray(x.party)||x.party.length<1||x.party.length>3||
   x.party.some(n=>!caveLifecycleText(n))||
   new Set(x.party).size!==x.party.length||!x.party.includes(x.name)||
-  (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run)))
+  (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run))||
+  (x.mode==='observed'&&x.phase!=='observed-run')))
   return false;
  if(x.phase==='prepared')return x.dispatchAt===null&&x.observed===null;
  if(x.phase==='dispatch-unknown')
@@ -84,6 +85,12 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
  function durable(next){
   if(closed||readFailed||writeFailed)return false;
   try{
+   // Detect a second runner updating the same durable slot. This is not
+   // a distributed CAS, but never knowingly overwrite a changed journal.
+   const current=p.read(key);
+   if(JSON.stringify(current??null)!==JSON.stringify(record)){
+    writeFailed=true;return false;
+   }
    if(p.write(key,next)!==true){writeFailed=true;return false;}
    const saved=p.read(key);
    if(JSON.stringify(saved)!==JSON.stringify(next)){
@@ -125,13 +132,27 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   return durable({...record,phase:'dispatch-unknown',dispatchAt:at});
  }
  function sample(){
-  if(closed||readFailed||writeFailed||
-   !validCaveLifecycleRecord(record)||record.realm!==p.realm()||
-   record.name!==me.name||record.phase==='observed-run')return;
+  if(closed||readFailed||writeFailed)return;
   const observed=live(),at=now();
   if(!observed||!caveLifecycleHex(observed.run)||
+   !caveLifecycleTime(at))return;
+  if(record===null){
+   // A run that predates this software must survive a restart too. Its
+   // server snapshot is direct evidence of the run, NOT cave_enter success
+   // or permission to spend the account's next daily admission.
+   const party=observed.roster?.map(m=>m.name);
+   const next={version:1,name:me.name,realm:p.realm(),
+    session:bot.session,createdAt:at,mode:'observed',
+    run:observed.run,party,phase:'observed-run',
+    dispatchAt:null,observed:{run:observed.run,floor:observed.floor,
+     map:observed.map,at}};
+   if(validCaveLifecycleRecord(next))durable(next);
+   return;
+  }
+  if(!validCaveLifecycleRecord(record)||record.realm!==p.realm()||
+   record.name!==me.name||record.phase==='observed-run'||
    (record.mode==='resume'&&record.run!==observed.run)||
-   !caveLifecycleTime(at)||at<record.createdAt)return;
+   at<record.createdAt)return;
   // Prepared may not have dispatched: only claim the actual server run
   // was observed, never that this particular intent caused it.
   const next={...record,phase:'observed-run',

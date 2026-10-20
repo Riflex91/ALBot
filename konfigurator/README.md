@@ -38,8 +38,9 @@ Die Browseroberfläche steht unter \`konfigurator/public/index.html\`, der Worke
    - \`CF_ACCESS_AUD\`: Access Application Audience Tag
    - \`ALLOWED_EMAIL\`: exakte erlaubte E-Mail
    - \`INGEST_TOKEN\`: mindestens 32 zufällige Zeichen, später nur in privater Clientkonfiguration verwendet
-5. Cloudflare D1-Datenbank \`albot-konfigurator\` anlegen, die **echte** \`database_id\` in \`wrangler.toml\` eintragen und \`schema.sql\` einmalig migrieren.
-6. \`cd konfigurator && npx wrangler deploy\` erst danach ausführen. Browser-Login und Access-Prüfung im Live-Worker überprüfen, bevor echte Itemrichtlinien gespeichert werden.
+5. Für \`/api/ingest\` eine **eigene, exakte Access-Anwendungspfad-Ausnahme** konfigurieren (Bypass ausschließlich für diesen einzelnen Endpunkt); im Worker erzwingen wir weiterhin den langen Bearer-Token und CORS-Allowlist für \`https://adventure.land\`. Keine allgemeine Domain-Bypass-Policy setzen. Browser-Preflight \`OPTIONS\` auf diesem Pfad darf nicht von Access abgefangen werden. Dashboard, HTML und alle anderen \`/api/*\` müssen Access-authentifiziert bleiben.
+6. Cloudflare D1-Datenbank \`albot-konfigurator\` anlegen, die **echte** \`database_id\` in \`wrangler.toml\` eintragen und \`schema.sql\` einmalig migrieren.
+7. \`cd konfigurator && npx wrangler deploy\` erst danach ausführen. Browser-Login und Access-Prüfung im Live-Worker überprüfen, bevor echte Itemrichtlinien gespeichert werden.
 
 **Wichtig:** \`Cloudflare Access\` muss vor der Worker-Domain aktiviert sein; bei fehlenden Access-Secrets gibt die Anwendung HTTP 503 statt einer ungeschützten Website zurück. Ohne Datenbank sind die Liveansichten leer, nicht erfunden. Der persönliche Ingame-Bootstrap bleibt bis zu einer gesonderten validierten Konfigurationssignatur unverändert.
 
@@ -56,3 +57,7 @@ Die Ausgabe einzelner Änderungs-Events und Charakter-Herzschläge im Bereich 15
 Nach der Cloudflare-Einrichtung die Seite \`/classic.html\` öffnen. Falls im privaten Repo noch kein \`albot/profile.json\` existiert, das aktuelle eigene Profil **einmalig** über „Profil öffnen“ (JSON) oder einen bereits vorhandenen lokalen Entwurf übernehmen. Erst danach „☁ Profil auf GitHub speichern“ wählen. Bei folgenden Aufrufen lädt der Adapter automatisch das private GitHub-Profil, ohne einen lokalen Entwurf ungefragt zu überschreiben. Die globale Item-Richtlinie bleibt unter \`albot/item-policies.json\` und ist nicht mit den bisher aktiven \`config.items\` identisch.
 
 **Absichtlich noch keine automatische Signierung/Distribution:** Ein erfolgreicher GitHub-Commit bestätigt nur Speicherung. Die Ingame-Runtime verwendet weiterhin die im vorhandenen Bootstrap bereitgestellte persönliche \`ALBotConfig\`. Die neue Plattform darf niemals behaupten, dass ein Cloud-Profil ohne einen implementierten signierten Konfigurationskanal übernommen wurde.
+
+## Browser-Telemetrie und Cloudflare Access
+
+Ein Ingame-Browser sendet bei \`POST /api/ingest\` mit \`Authorization\` einen CORS-Preflight (\`OPTIONS\`). Deshalb darf nur dieser **exakte Pfad** außerhalb der Login-Weiterleitung liegen. Seine eigentliche \`POST\`-Verarbeitung besitzt eine unabhängige, konstante Bearer-Token-Prüfung. Vom Worker antwortet der Pfad auf Preflight nur für \`https://adventure.land\`; jeder andere Origin erhält 403. Falls Adventure Land aus einer anderen origin ausgeführt wird, erst nach Prüfung \`INGEST_ALLOWED_ORIGIN\` konfigurieren. Das ist keine Erlaubnis für fremde Websites und keine Garantie, dass ein Token im öffentlich sichtbaren Code geheim bleibt. Der spätere private Browser-/Headless-Adapter muss Schlüssel getrennt vom öffentlichen Runtime-Repository halten.

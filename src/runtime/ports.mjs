@@ -127,10 +127,10 @@ export function createPorts(root){
     read(key){try{return this.call('get',key);}catch{return null;}},
     // The official get() catches storage/JSON failures and returns null.
     // That behavior is acceptable for ordinary preferences, but would make
-    // an unresolved Cave admission look like an absent journal on restart.
+    // an unresolved Cave admission or vote look absent after a restart.
     // Read the SAME cstore_ storage used by set() without swallowing faults.
     readCaveJournal(key){
-     if(typeof key!=='string'||!/^albot:cave-lifecycle:[A-Za-z0-9_]{1,100}$/.test(key))
+     if(typeof key!=='string'||!/^albot:cave-(?:lifecycle|vote):[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid Cave journal key');
      const storage=root.localStorage??parent.localStorage;
      if(!storage||typeof storage.getItem!=='function')

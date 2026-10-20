@@ -478,7 +478,9 @@ export function createBank(bot){
    localPacks++;
    for(const held of items){
     if(!held||identity(held)!==variant)continue;
-    const q=held.q??1;
+    // Only an absent q represents an unstacked single item. Explicit
+    // null must not be counted as reserve backing for a later sale.
+    const q=held.q===undefined?1:held.q;
     if(!e.safe(held)||!Number.isSafeInteger(q)||q<1||
        q>stackMax(held)||!Number.isSafeInteger(total+q))return null;
     total+=q;

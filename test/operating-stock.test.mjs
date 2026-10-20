@@ -139,3 +139,13 @@ test('W02 disabled alternative or Merchant never inflates farmer reserve',()=>{
  bot.cfg.characters[2].enabled=true;
  assert.equal(operatingReserveCohort(bot),2);
 });
+
+
+test('W04 explicit null quantity never represents one bank reserve or surplus unit',()=>{
+ const bot=fixture(),item={name:'scroll0',q:null};
+ bot.p.c.items[0].q=110;
+ assert.equal(bankOperatingReserveNeed(bot,item),null);
+ assert.equal(bankOperatingStockRule(bot,item),null);
+ // Missing q remains the ordinary single-unit source form.
+ assert.equal(bankOperatingStockRule(bot,{name:'scroll0'})?.batch,1);
+});

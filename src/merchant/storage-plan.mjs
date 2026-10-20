@@ -60,8 +60,9 @@ export function createStoragePlanner(bot){
   if(m.e||m.quest||m.event||m.soulbound)return null;
   if((m.upgrade||m.compound||m.wtype)&&bot.intelligence?.gearUse?.(i)?.state!=='no-gear-use')return null;
   const evidence=replacement(i);if(!evidence)return null;
-  const reservations=[bot.production?.reservedQuantity?.(i)??0,
-   ...purposes.recipes.map(r=>r.quantity)];
+  const reserved=typeof bot.production?.reservedQuantity==='function'?
+   bot.production.reservedQuantity(i):0;
+  const reservations=[reserved,...purposes.recipes.map(r=>r.quantity)];
   // An unknown/overflowing reservation must never be interpreted as zero
   // (Math.max with NaN would otherwise authorize a capacity sale).
   if(reservations.some(n=>!Number.isSafeInteger(n)||n<0))return null;

@@ -41,12 +41,12 @@ export function createMovement(bot){
        !['quest','combat','kite'].includes(owner))return false;
     // N05's native movement must carry an explicit, re-evaluated admission
     // from the owning scout. A generic direct go('scout') has no authority.
-    if(['scout','cave','cave-evade'].includes(owner)&&
+    if(['scout','cave','cave-evade','cave-priest'].includes(owner)&&
        (typeof scoutAdmission!=='function'||nativeBusy()))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     // A local N05 scout is a direct step, never general smart navigation.
     // Even an unexpected direct call cannot widen its map or travel budget.
-    if(['scout','cave','cave-evade'].includes(owner)&&(!samePlace(p.c,d)||
+    if(['scout','cave','cave-evade','cave-priest'].includes(owner)&&(!samePlace(p.c,d)||
        !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
        distance(p.c,d)>(owner==='scout'?95:45)||distance(p.c,d)<1||
        owner!=='scout'&&!/^zone_[a-f0-9]{24}_[0-7]$/.test(p.c.map)))
@@ -117,8 +117,8 @@ export function createMovement(bot){
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     // Geometry can change between scout admission and actual movement.
     // A failed last local check must NEVER turn a scout hop into smart_move.
-    if(['scout','cave','cave-evade'].includes(owner)&&!local){order=null;return false;}
-    const blink=!['scout','cave','cave-evade'].includes(owner)&&local&&travelBlinkEligible(bot,d,owner),
+    if(['scout','cave','cave-evade','cave-priest'].includes(owner)&&!local){order=null;return false;}
+    const blink=!['scout','cave','cave-evade','cave-priest'].includes(owner)&&local&&travelBlinkEligible(bot,d,owner),
      landing=blink?blinkLandingPoint(d):null;
     if(blink)token.dest={...dest,x:landing.x,y:landing.y,radius:Math.max(8,dest.radius)};
     token.mode=blink?'blink':local?'move':'smart_move';
@@ -133,7 +133,7 @@ export function createMovement(bot){
     const accepted=exec.run('move',['movement',...(blink?['mana']:[])],
      ()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&
       (!blink||travelBlinkEligible(bot,d,owner))&&
-      (!['scout','cave','cave-evade'].includes(owner)||boundedDirectDispatchSafe()),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:owner==='cave-evade'?1000:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
+      (!['scout','cave','cave-evade','cave-priest'].includes(owner)||boundedDirectDispatchSafe()),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:owner==='cave-evade'?1000:owner==='cave-priest'?900:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
     if(error?.transient==='interrupted'){
      order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,
       reason:'Native smart route was cancelled externally; safe retry'});return;
@@ -169,7 +169,7 @@ export function createMovement(bot){
       // Generic go() historically returns false even on accepted travel.
       // N05 MUST verify it actually owns a native route before consuming
       // the one-use scout proof or reporting a dispatched movement.
-      return ['scout','cave','cave-evade'].includes(owner)?
+      return ['scout','cave','cave-evade','cave-priest'].includes(owner)?
         order!==prior&&order?.owner===owner&&order.mode==='move'&&
         order.dest.x===x&&order.dest.y===y:accepted;
     },

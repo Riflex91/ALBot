@@ -17,7 +17,7 @@ export function caveRetreatPreparationPreflight(bot,{
     bot.journal||bot.inventoryBlocked||bot.lifecycleChanging||
     bot.account?.rotationPending?.()||bot.bank?.pending||
     bot.logistics?.reserved||bot.logistics?.handoffActive||
-    bot.gold?.reserved||bot.teamTravel?.caveRetreatPrepareBlocked||
+    bot.gold?.reserved||bot.teamTravel?.blocked||
     bot.strategy?.busy||bot.movement?.order||
     bot.movement?.nativeBusy?.()||
     bot.exec?.pending?.has?.('cave.priest.heal'))

@@ -7,7 +7,7 @@ const caveDefenseDeny=(reason,extra={})=>({
  ready:false,canAttack:false,canPull:false,canMove:false,canUseSkills:false,
  reason,...extra
 });
-const finite=n=>Number.isFinite(n);
+const caveDefenseFinite=n=>Number.isFinite(n);
 export function caveDefensiveAttackPreflight(bot,{
  now=Date.now(),hostChecks=true
 }={}){
@@ -39,15 +39,15 @@ export function caveDefensiveAttackPreflight(bot,{
  // A target id in another instanced floor is NOT the same enemy.
  const m=bot.entity?.(team.focus.id);
  if(!m||m.type!=='monster'||m.id!==team.focus.id||
-    !finite(m.hp)||m.hp<=0||m.dead===true||
+    !caveDefenseFinite(m.hp)||m.hp<=0||m.dead===true||
     m.invincible===true||m.rip===true||
     m.map!==team.map||(m.in!==undefined&&m.in!==team.map)||
     m.target!==team.focus.victim||
     !team.members?.includes(m.target)||
-    !finite(m.x)||!finite(m.y))
+    !caveDefenseFinite(m.x)||!caveDefenseFinite(m.y))
   return caveDefenseDeny('verified-live-engaged-monster-required',scope);
- if(!finite(c.range)||c.range<12||c.range>1500||
-    !finite(c.x)||!finite(c.y)||
+ if(!caveDefenseFinite(c.range)||c.range<12||c.range>1500||
+    !caveDefenseFinite(c.x)||!caveDefenseFinite(c.y)||
     Math.hypot(c.x-m.x,c.y-m.y)>Math.max(5,c.range-12))
   return caveDefenseDeny('no-ranged-basic-attack-position',scope);
  // The established live threat capability model must positively approve

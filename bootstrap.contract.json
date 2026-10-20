@@ -24,6 +24,6 @@
       "sha256": "d93a7b43e36d9631fafe5fe26821e9d4f79b7e18682123597d9be40a5d49e396"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 17 / 0.17.0-candidate am 20.10.2026 nach bestandener Linux-/Windows-CI für PR #280 und Merge cb536198ea44da644aead77b9fcf0b78d85eb5ba über den signierten Releaseworkflow 39452100947 veröffentlicht. 1982/1982 Offline-Tests; private ECDSA-P-256-Signatur und SHA-256 d93a7b43e36d9631fafe5fe26821e9d4f79b7e18682123597d9be40a5d49e396, 828439 Runtime-Bytes bestätigt; Release-Runtime und main byteidentisch. Sicherheitsgates für Multi-Pull und Heilerreichweite, gefährdungsbewusste lokale Navigation und Heil-Telemetrie. Persönliche Konfiguration, Ingame-Loader, URLs und Public Key unverändert; Live-Spielabnahme noch offen."
+    "note": "Sequence 17 / 0.17.0-candidate am 20.10.2026 auf dem dokumentierten signierten V2-Releasebranch beobachtet. ECDSA-P-256/Runtime-Hash werden weiterhin durch scripts/verify-bootstrap-channel.mjs gegen einen unveraenderlichen Git-Commit verifiziert. Die tatsaechlich geladene Ingame-Version ist nicht beobachtet; Loader, Release-URLs und Personalprofil bleiben unveraendert."
   }
 }

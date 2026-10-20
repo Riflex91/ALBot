@@ -30,6 +30,12 @@ jobs:
         run: npm test
       - name: Build editor package
         run: npm run build:editor
+      - name: Verify and package Cloudflare-ready Konfigurator
+        run: |
+          npm run build:konfigurator
+          node --check konfigurator/worker/index.mjs
+          node --check konfigurator/public/app.mjs
+          node --check konfigurator/public/policy.mjs
       - name: Syntax, size, and manifest integrity
         shell: bash
         run: |

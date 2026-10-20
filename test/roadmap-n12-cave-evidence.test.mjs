@@ -252,3 +252,19 @@ test('N12 capability errors, clock regression and rejected late reads are fail c
   assert.equal(g.cave.status().visitError,'request-timeout');
  }finally{fixture.clock=now;f.cave.close();g.cave.close();}
 });
+
+test('N12 only a matching no-longer-live run may retire volatile prior-run evidence',()=>{
+ const f=fixture();
+ f.p.c.map=map;f.p.c.cave=live();
+ f.cave.sample();
+ assert.equal(f.cave.status().lastObservedRun.run,run);
+ assert.equal(f.cave.acknowledgeConfirmedExit(run),false,
+  'the run is still physically visible');
+ f.p.c.map='main';f.p.c.cave=null;
+ assert.equal(f.cave.acknowledgeConfirmedExit('b'.repeat(24)),false);
+ assert.equal(f.cave.status().lastObservedRun.run,run);
+ assert.equal(f.cave.acknowledgeConfirmedExit(run),true);
+ assert.equal(f.cave.status().lastObservedRun,null);
+ assert.equal(f.cave.status().entryPreflight.reason,'fresh-cave-info-required');
+ f.cave.close();
+});

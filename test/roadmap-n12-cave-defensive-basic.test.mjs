@@ -216,3 +216,19 @@ test('N12 status performs no attack or combat mutation',()=>{
  assert.equal(attacks(f).length,0);
  assert.equal(f.events.length,0);
 });
+
+test('N12 immediate network-boundary recheck aborts a monster switching victims',()=>{
+ const f=fixture(),resolve=f.bot.entity;
+ let reads=0;
+ f.bot.entity=id=>{
+  const m=resolve(id);
+  // First preflight and Executor guard see the Priest attacker.
+  // A target change just before invoke must not leak an attack.
+  if(++reads===3)m.target='stranger';
+  return m;
+ };
+ assert.equal(f.bot.caveCombat.tick(),true,
+  'Executor may accept the request before the final check fails');
+ assert.equal(attacks(f).length,0);
+ assert.equal(f.bot.caveCombat.status().last.focusId,'angry');
+});

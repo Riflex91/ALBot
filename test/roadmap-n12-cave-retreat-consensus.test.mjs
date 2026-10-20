@@ -160,7 +160,7 @@ test('N12 local position, health and enemy changes invalidate an old unanimous v
  }
 });
 
-test('N12 native geometry failure denies only the affected client's attestation',()=>{
+test('N12 native geometry failure denies the affected local route attestation',()=>{
  const f=fixture();f.state.clear=false;
  for(const name of f.names)
   assert.equal(f.bots[name].caveRetreat.heartbeat(),null);

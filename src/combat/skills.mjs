@@ -226,6 +226,14 @@ export function createSkills(bot){
       const score=aoeDamageScore(p.c,s,selected,target);
       if(score&&score.gain<=0){count(id,'targetBlocked');return false;}
     }
+    if(multi&&neutralCount>0&&
+      bot.encounter?.approvePullSet?.(selected)?.safe!==true){
+      count(id,'targetBlocked');
+      bot.event?.('combat.multiPullDenied',{skill:id,
+       reason:'unverified-aggregate-survival-or-healer-range',
+       targets:selected.map(m=>m.mtype).join(',')});
+      return false;
+    }
     if(multi){if(!aoePermitted(bot)||selected.length<(control?.minTargets??1)||
       (aimed?selected.some(e=>!eligible(e)&&!canPull(e)):
         (visible.length>limit||visible.some(e=>!eligible(e)&&!canPull(e))))||
@@ -256,7 +264,8 @@ export function createSkills(bot){
     const guard=()=>ready(id,target,reserve)&&
       (id!=='poisonarrow'||(()=>{const live=bot.entity(target?.id);return !!live&&poisonArrowCombatAllowed(p.G,live,bot.strategy?.heartbeat?.(),bot.bosses?.profile?.(live.mtype));})())&&
       (id!=='revive'||(()=>{const live=bot.entity(target?.name??target?.id);return !!live&&live.rip&&live.hp>=live.max_hp&&reviveDeathKey(bot,live)===reviveKey&&bot.revivals?.canCast(live,reviveKey)!==false;})())&&
-      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})));
+      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})&&
+      (neutralCount===0||bot.encounter?.approvePullSet?.(selected)?.safe===true)));
     if(!guard()){
       const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
       const cost=id==='burst'?p.c.mp:s.mp??0;

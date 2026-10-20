@@ -1,10 +1,10 @@
-// W12/N12: durable, fail-closed Cave entry lifecycle. This module DOES NOT
-// call cave_enter. Persistence must precede any future irreversible RPC,
-// whose unknown outcome must never be automatically replayed.
+// W12/N12: durable, fail-closed Cave entry and exit lifecycle.
+// Explicit once-only game RPCs are sent only AFTER a persistent intent
+// checkpoint. An unknown outcome is never automatically replayed.
 const caveLifecycleHex=s=>typeof s==='string'&&/^[a-f0-9]{24}$/.test(s);
 const caveLifecycleText=(s,max=100)=>typeof s==='string'&&s.length>0&&s.length<=max;
 const caveLifecycleTime=n=>Number.isSafeInteger(n)&&n>0;
-const caveLifecyclePhase=new Set(['prepared','dispatch-unknown','observed-run']);
+const caveLifecyclePhase=new Set(['prepared','dispatch-unknown','observed-run','exit-dispatch-unknown']);
 
 export function validCaveLifecycleRecord(x){
  if(!x||typeof x!=='object'||Array.isArray(x)||x.version!==1||
@@ -15,7 +15,7 @@ export function validCaveLifecycleRecord(x){
   x.party.some(n=>!caveLifecycleText(n))||
   new Set(x.party).size!==x.party.length||!x.party.includes(x.name)||
   (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run))||
-  (x.mode==='observed'&&x.phase!=='observed-run'))
+  (x.mode==='observed'&&!['observed-run','exit-dispatch-unknown'].includes(x.phase)))
   return false;
  if(x.serverReply!==undefined&&x.serverReply!==null){
   const reply=x.serverReply;
@@ -32,6 +32,17 @@ export function validCaveLifecycleRecord(x){
  if(x.phase==='dispatch-unknown')
   return caveLifecycleTime(x.dispatchAt)&&x.dispatchAt>=x.createdAt&&
    x.observed===null;
+ if(x.phase==='exit-dispatch-unknown'&&
+    (!caveLifecycleTime(x.exitAt)||!caveLifecycleText(x.exitSession,120)||
+     !caveLifecycleHex(x.exitRun)||!x.observed||
+     x.exitRun!==x.observed.run||x.exitAt<x.observed.at))
+  return false;
+ if(x.exitReply!==undefined&&x.exitReply!==null){
+  const reply=x.exitReply;
+  if(x.phase!=='exit-dispatch-unknown'||reply.exited!==true||
+     !caveLifecycleTime(reply.at)||reply.at<x.exitAt)
+   return false;
+ }
  // An observed live run need not have been caused by OUR prepared intent.
  // Preserve null dispatchAt until an actual cave_enter send is journaled.
  if(x.dispatchAt!==null&&
@@ -55,6 +66,13 @@ export function caveLifecycleDisposition(record,{name,realm,live}={}){
   return {state:'corrupt',blocked:true,reason:'invalid-durable-record'};
  if(record.name!==name||record.realm!==realm)
   return {state:'scope-mismatch',blocked:true,reason:'owner-or-realm-changed'};
+ if(record.phase==='exit-dispatch-unknown'){
+  if(live?.run&&live.run!==record.exitRun)
+   return {state:'conflict',blocked:true,reason:'exit-run-mismatch'};
+  return {state:record.exitReply?'exit-reply-observed':'exit-outcome-unknown',
+   blocked:true,reason:record.exitReply?
+    'await-fresh-post-exit-info':'exit-outcome-unknown',run:record.exitRun};
+ }
  if(live&&caveLifecycleHex(live.run)&&
   Number.isSafeInteger(live.floor)&&live.floor>=0&&live.floor<=7&&
   live.map===`zone_${live.run}_${live.floor}`){
@@ -140,8 +158,8 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    dispatchAt:null,observed:null};
   return validCaveLifecycleRecord(next)&&durable(next);
  }
- // Future executor integration only: MUST durably write BEFORE a single
- // cave_enter RPC. The current runtime deliberately NEVER calls this method.
+ // Internal journal transition: a single cave_enter RPC can run only after
+ // this durable write, through the explicit Executor dispatch boundary.
  function markDispatchUnknown(){
   if(closed||!bot.running||writeFailed||readFailed||
    !validCaveLifecycleRecord(record)||record.phase!=='prepared'||
@@ -225,6 +243,91 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
       (mode==='new'||active.run===expectedRun);
     }});
  }
+ // Cave exit is a distinct irreversible RPC. A physical outside map or
+ // disconnect alone never clears a run or its admission history.
+ function markExitUnknown(){
+  if(closed||!bot.running||readFailed||writeFailed||
+     !validCaveLifecycleRecord(record)||record.phase!=='observed-run'||
+     record.realm!==p.realm()||record.name!==me.name)return false;
+  const observed=live(),at=now();
+  if(!observed||observed.run!==record.observed.run||
+     !caveLifecycleTime(at)||at<record.observed.at)return false;
+  return durable({...record,phase:'exit-dispatch-unknown',
+   exitAt:at,exitSession:bot.session,exitRun:observed.run,
+   exitReply:null});
+ }
+ function noteExitReply(response){
+  if(closed||!bot.running||readFailed||writeFailed||
+     !validCaveLifecycleRecord(record)||
+     record.phase!=='exit-dispatch-unknown'||
+     record.name!==me.name||record.realm!==p.realm()||
+     record.exitSession!==bot.session||record.exitReply||
+     !response||typeof response!=='object'||Array.isArray(response)||
+     response.exited!==true)return false;
+  const at=now();
+  if(!caveLifecycleTime(at)||at<record.exitAt)return false;
+  return durable({...record,exitReply:{exited:true,at}});
+ }
+ function requestExit(){
+  if(closed||!bot.running||readFailed||writeFailed||
+     typeof bot.exec?.dispatch!=='function'||
+     typeof p.has!=='function'||typeof p.call!=='function')return false;
+  const guard=()=>{
+   if(bot.journal||bot.inventoryBlocked||
+      bot.bank?.pending||bot.logistics?.reserved||
+      bot.teamTravel?.blocked||bot.lifecycleChanging||
+      bot.account?.rotationPending?.()||
+      bot.exec?.pending?.size>0)return false;
+   const state=status(),inside=live();
+   return state.state==='live-observed'&&state.blocked&&
+    validCaveLifecycleRecord(record)&&
+    record.phase==='observed-run'&&
+    record.realm===p.realm()&&record.name===me.name&&
+    inside?.run===record.observed.run&&
+    p.c?.map===inside.map;
+  };
+  if(!guard())return false;
+  try{if(p.has('cave_exit')!==true)return false;}catch{return false;}
+  const expected=record.observed.run;
+  return bot.exec.dispatch('cave.exit.once',
+   ['lifecycle','movement','account'],guard,()=>{
+    if(!markExitUnknown())throw Error('Cave exit dispatch not durably journaled');
+    return Promise.resolve(p.call('cave_exit')).then(result=>{
+     noteExitReply(result);return result;
+    });
+   },{value:true,timeout:25000,delay:1000,observe:()=>false});
+ }
+ // Clearing is a separate EXPLICIT decision, never an executor success
+ // callback. It requires a positive exit RPC result plus an independently
+ // refreshed cave_info reply AFTER that acknowledgement. We do not infer
+ // exit from a missing local cave state, paused clock or disconnect.
+ function confirmExit(){
+  if(closed||!bot.running||readFailed||writeFailed||
+     !validCaveLifecycleRecord(record)||
+     record.phase!=='exit-dispatch-unknown'||
+     record.realm!==p.realm()||record.name!==me.name||
+     !record.exitReply||
+     bot.exec?.pending?.size>0||
+     bot.journal||bot.inventoryBlocked)return false;
+  const state=bot.cave?.status?.(),v=state?.visit;
+  const at=now();
+  if(!caveLifecycleTime(at)||!v||
+     v.resume!==null||typeof v.available!=='boolean'||
+     !caveLifecycleTime(v.observedAt)||
+     !caveLifecycleTime(v.serverTime)||
+     v.observedAt<=record.exitReply.at||
+     v.serverTime<record.exitReply.at||
+     v.observedAt>at||at-v.observedAt>30000||
+     state.live||
+     state.lastObservedRun&&state.lastObservedRun.run!==record.exitRun||
+     p.c?.map!=='main'||
+     p.c?.cave!==null&&p.c?.cave!==undefined||
+     p.c?.in!==undefined&&p.c.in!=='main')return false;
+  const completedRun=record.exitRun;
+  if(!durable(null))return false;
+  bot.cave?.acknowledgeConfirmedExit?.(completedRun);
+  return true;
+ }
  function sample(){
   if(closed||readFailed||writeFailed)return;
   const observed=live(),at=now();
@@ -244,7 +347,8 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    return;
   }
   if(!validCaveLifecycleRecord(record)||record.realm!==p.realm()||
-   record.name!==me.name||record.phase==='observed-run'||
+   record.name!==me.name||
+   ['observed-run','exit-dispatch-unknown'].includes(record.phase)||
    (record.mode==='resume'&&record.run!==observed.run)||
    (record.serverReply&&record.serverReply.run!==observed.run)||
    at<record.createdAt)return;
@@ -266,6 +370,6 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    live()!==null)return false;
   return durable(null);
  }
- return {prepare,markDispatchUnknown,requestEntry,sample,
-  discardPrepared,status,close(){closed=true;}};
+ return {prepare,markDispatchUnknown,requestEntry,requestExit,
+  confirmExit,sample,discardPrepared,status,close(){closed=true;}};
 }

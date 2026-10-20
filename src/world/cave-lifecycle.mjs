@@ -1,6 +1,6 @@
-// W12/N12: durable, fail-closed Cave entry lifecycle. This module DOES NOT
-// call cave_enter. Persistence must precede any future irreversible RPC,
-// whose unknown outcome must never be automatically replayed.
+// W12/N12: durable, fail-closed Cave entry and exit lifecycle.
+// Explicit once-only game RPCs are sent only AFTER a persistent intent
+// checkpoint. An unknown outcome is never automatically replayed.
 const caveLifecycleHex=s=>typeof s==='string'&&/^[a-f0-9]{24}$/.test(s);
 const caveLifecycleText=(s,max=100)=>typeof s==='string'&&s.length>0&&s.length<=max;
 const caveLifecycleTime=n=>Number.isSafeInteger(n)&&n>0;
@@ -158,8 +158,8 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    dispatchAt:null,observed:null};
   return validCaveLifecycleRecord(next)&&durable(next);
  }
- // Future executor integration only: MUST durably write BEFORE a single
- // cave_enter RPC. The current runtime deliberately NEVER calls this method.
+ // Internal journal transition: a single cave_enter RPC can run only after
+ // this durable write, through the explicit Executor dispatch boundary.
  function markDispatchUnknown(){
   if(closed||!bot.running||writeFailed||readFailed||
    !validCaveLifecycleRecord(record)||record.phase!=='prepared'||

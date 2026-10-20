@@ -1,6 +1,12 @@
-import {identity,fingerprint,variantCount} from '../core/policy.mjs';
+import {identity,fingerprint} from '../core/policy.mjs';
+import {localVariantQuantity} from './stock-policy.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
 const SYSTEM_REWARD_PHRASES=['server.cave.mail_subject','server.tracktrix.mail_subject'];
+// Missing quantity denotes a regular single item; an explicit null never does.
+const rewardMailQuantity=i=>i?.q===undefined?1:i.q;
+const rewardMailValidInventory=items=>Array.isArray(items)&&items.every(i=>
+ i===null||i===undefined||!!i&&typeof i==='object'&&
+ Number.isSafeInteger(rewardMailQuantity(i))&&rewardMailQuantity(i)>=1);
 export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
  // A server-confirmed taken mail is no longer claimable. The recovery
  // reader must validate its attachment independently of can_take, while
@@ -22,7 +28,7 @@ export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
  if(typeof item.name!=='string'||!G.items?.[item.name])return null;
  const result={name:item.name};
  for(const key of ['level','q']){
-  const value=item[key]??(key==='level'?0:1);
+  const value=item[key]===undefined?(key==='level'?0:1):item[key];
   if(!Number.isSafeInteger(value)||value<(key==='level'?0:1)||value>1000000)return null;
   result[key]=value;
  }
@@ -39,14 +45,18 @@ export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
 export function rewardClaimFits(character,item,G){
  if(item?.gold)return Number.isSafeInteger(character.gold)&&
   Number.isSafeInteger(character.gold+item.gold);
+ const amount=rewardMailQuantity(item);
+ if(!Number.isSafeInteger(amount)||amount<1||
+    !rewardMailValidInventory(character.items))return false;
  const fit=capacityAfterConsumption(character.items,[],item,G.items?.[item?.name],
   {inventorySize:character.isize});
- return !!fit&&fit.units>=(item?.q??1);
+ return !!fit&&fit.units>=amount;
 }
 export function rewardClaimDelta(journal,character){
  if(journal?.kind!=='mail.claim'||!Array.isArray(journal.beforeInventory)||
     journal.beforeInventory.length>256||!Number.isSafeInteger(journal.beforeGold))return false;
  const before=journal.beforeInventory,current=character.items??[];
+ if(!rewardMailValidInventory(current))return false;
  if(journal.attachment?.gold)return character.gold===journal.beforeGold+journal.attachment.gold&&
   JSON.stringify(current.map(fingerprint))===JSON.stringify(before);
  // All unrelated variants must remain byte-identical as a multiset. A
@@ -56,13 +66,15 @@ export function rewardClaimDelta(journal,character){
   const other=[];let quantity=0;
   for(const row of rows){if(typeof row!=='string')return null;
    const cut=row.lastIndexOf(':'),variant=row.slice(0,cut),q=Number(row.slice(cut+1));
-   if(variant===expected){if(!Number.isSafeInteger(q)||q<1)return null;quantity+=q;}
+   if(variant===expected){if(!Number.isSafeInteger(q)||q<1||
+     !Number.isSafeInteger(quantity+q))return null;quantity+=q;}
    if(variant!==expected&&row!==':1')other.push(row);
   }
   return {quantity,other:other.sort()};
  };
  const a=split(before),b=split(current.map(fingerprint));
  return !!a&&!!b&&Number.isSafeInteger(journal.attachment?.q)&&
+  localVariantQuantity(current,journal.attachment)===b.quantity&&
   b.quantity-a.quantity===journal.attachment.q&&
   character.gold===journal.beforeGold&&JSON.stringify(a.other)===JSON.stringify(b.other);
 }
@@ -127,7 +139,8 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
     .then(result=>{receipt=result;return result;});},
    observe:()=>receipt?.success===true&&receipt.id===row.id&&
     (item.gold?receipt.gold===item.gold:identity(receipt.item)===identity(item)&&
-     (receipt.item?.q??1)===(item.q??1))&&
+     rewardMailQuantity(receipt.item)===item.q&&
+     Number.isSafeInteger(rewardMailQuantity(receipt.item)))&&
     rewardClaimDelta({kind:'mail.claim',...details},p.c),
    onConfirmed:()=>{queue=queue.filter(r=>r.id!==row.id);remember(row.id,'confirmed');return true;},
    details,timeout:20000});

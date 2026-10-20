@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 18,
-      "version": "0.18.0-candidate",
+      "sequence": 19,
+      "version": "0.19.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 878294,
-      "sha256": "3d5c35cd98254b98e9b2c0f6b867f19d31df4c3aeb94cd5047c4fb27ab5f6f74"
+      "bytes": 886804,
+      "sha256": "d83f93525c6afc18b790ec820eb27074860cd617eec6acd7748a47c68e4d44c7"
     },
     "observedLoadedUrl": null,
-    "note": "Sequenz 18 / 0.18.0-candidate am 20.10.2026 nach erfolgreich geprüften PRs #304/#305 durch GitHub-Actions-Workflow 39476589158 signiert. Opt-in-Telemetrie-Relay bei CODE-Neustart verfügbar; Browser-Liveabnahme steht aus. Persoenliche ALBotConfig, Bootstrap-URL und ECDSA-Schluessel unveraendert."
+    "note": "Sequenz 19 / 0.19.0-candidate am 20.10.2026 nach Main-Commit 08d032299dd633c036409a6288d069b9e4b88ba0 durch GitHub Actions signiert und veroeffentlicht. Runtime-Hash und ECDSA-Signatur sind in der Release-Pipeline verifiziert; Browser-Liveabnahme fuer diesen Stand steht aus. Persoenliche ALBotConfig, Bootstrap-URL und ECDSA-Schluessel unveraendert."
   }
 }

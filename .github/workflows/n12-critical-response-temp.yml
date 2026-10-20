@@ -1,0 +1,47 @@
+name: Temporary N12 critical Cave response verification
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: n12-critical-response-build
+  cancel-in-progress: true
+jobs:
+  build-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/n12-cave-critical-response-20261020' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/n12-cave-critical-response-20261020
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Emergency hold and legacy Cave protection regressions
+        run: node --test test/roadmap-n12-cave-critical-response.test.mjs test/roadmap-n12-cave-critical-heal-triage.test.mjs test/roadmap-n12-cave-cumulative-threat.test.mjs test/roadmap-n12-cave-multi-aggro-focus.test.mjs test/roadmap-n12-cave-defensive-basic.test.mjs test/roadmap-n12-cave-priest-healing.test.mjs test/roadmap-n12-cave-emergency-direct.test.mjs
+      - name: Entire offline regression suite
+        run: npm test
+      - name: Build bundled runtime
+        run: npm run build
+      - name: Sync personal CODE runtime without modifying config
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Build standalone editor
+        run: npm run build:editor
+      - name: Verify generated artifact parity
+        run: node scripts/sync-personal-code.mjs --check
+      - name: Commit tracked generated code only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/
+          if git diff --cached --quiet; then
+            echo 'Generated artifacts already synchronized.'
+          else
+            git commit -m 'build(N12): sync critical Cave response runtime and editor'
+            git push origin HEAD:codex/n12-cave-critical-response-20261020
+          fi

@@ -17,8 +17,10 @@ export function inventoryStockEvidence(items,{
  const rows=new Map();
  for(const entry of items){
   if(!entry)continue;
+  // Missing q means one unstacked item; explicit null is not a receipt.
+  const quantity=entry.q===undefined?1:entry.q;
   if(!accountStockValidId(entry.name)||!accountStockInt(entry.level??0,99)||
-     !accountStockInt(entry.q??1)||!(entry.q??1))
+     !accountStockInt(quantity)||quantity<1)
    return bad('unknown-inventory-variant');
   const signature={name:entry.name,level:entry.level??0};
   let opaque=false;
@@ -49,7 +51,7 @@ export function inventoryStockEvidence(items,{
       'acc','rid','data','l','b','bound','locked','equipped','reserved','giveaway'].includes(k)))
    opaque=true;
   if(opaque&&!allowOpaque)return bad('unknown-inventory-variant:'+entry.name);
-  const key=accountStockKey(signature),quantity=entry.q??1;
+  const key=accountStockKey(signature);
   let row=rows.get(key);
   if(!row){
    if(rows.size>=maxRows)return bad('inventory-exceeds-heartbeat-budget');
@@ -66,6 +68,10 @@ export function inventoryStockEvidence(items,{
    row.reservedUnits=Math.max(row.reservedUnits,held);
   }
  }
+ // Gross commitments can exceed stock; a shadow row only represents
+ // physically reserved units and must remain serializable.
+ for(const row of rows.values())
+  row.reservedUnits=Math.min(row.reservedUnits,row.quantity);
  return {version:1,owner,session,realm,at,
   complete:true,reason:null,rows:[...rows.values()],slotCount:items.filter(Boolean).length};
 }
@@ -91,7 +97,7 @@ export function reconcileStockEvidence({
      !accountStockInt(x.quantity)||x.quantity<1||
      !accountStockInt(x.protectedUnits)||
      !accountStockInt(x.reservedUnits)||
-     x.protectedUnits>x.quantity)return false;
+     x.protectedUnits>x.quantity||x.reservedUnits>x.quantity)return false;
    const key=accountStockKey(x.item);
    if(unique.has(key))return false;
    unique.add(key);

@@ -266,7 +266,7 @@ test('N12 failed, thrown, or rejected Cave RPC remains ambiguous without replay'
   ()=>Promise.reject(Error('timeout')),
   ()=>({place:'enter',failed:true,reason:'already_inside'}),
   ()=>({success:false,run,expires:time+500000,level:60}),
-  ()=>({success:true,run:other,expires:time+500000,level:60})
+  ()=>({success:true,run:'invalid',expires:time+500000,level:60})
  ]){
   const f=readyOneShot(fixture(),reply);
   assert.equal(f.lifecycle.prepare(),true);
@@ -349,4 +349,24 @@ test('N12 stale or conflicting Cave API receipts cannot rewrite a different sess
  assert.equal(f.lifecycle.status().journal.serverReply??null,null);
  assert.equal(f.lifecycle.status().blocked,true);
  assert.equal(f.calls.length,1);
+});
+
+test('N12 server-generated run ID is accepted only for a new run, not a mismatched resume',async()=>{
+ const newEntry=readyOneShot(fixture(),()=>({
+  place:'enter',success:true,run:other,expires:time+500000,level:42
+ }));
+ newEntry.lifecycle.prepare();
+ assert.equal(newEntry.lifecycle.requestEntry(),true);
+ await Promise.resolve();await Promise.resolve();
+ assert.equal(newEntry.lifecycle.status().journal.serverReply.run,other);
+ assert.equal(newEntry.lifecycle.status().journal.phase,'dispatch-unknown');
+ const resume=readyOneShot(fixture({mode:'resume'}),()=>({
+  place:'enter',success:true,run:other,expires:time+500000,level:42
+ }));
+ resume.lifecycle.prepare();
+ assert.equal(resume.lifecycle.requestEntry(),true);
+ await Promise.resolve();await Promise.resolve();
+ assert.equal(resume.lifecycle.status().journal.serverReply??null,null);
+ assert.equal(resume.lifecycle.status().journal.phase,'dispatch-unknown');
+ assert.equal(resume.lifecycle.requestEntry(),false);
 });

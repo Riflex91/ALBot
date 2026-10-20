@@ -144,7 +144,7 @@ export function verifiedFollowerBoundedSpawn(actor,monster,options={}){
  if(!Number.isFinite(meta?.attack)||meta.attack<0||
     !Number.isFinite(meta?.frequency)||meta.frequency<=0)return null;
  const estimate=outgoingDamageEstimate(actor,target,{
-   uncertainty:.25,fearFactor:.9});
+   skill:options.skill??null,uncertainty:.25,fearFactor:.9});
  if(!estimate.valid||!(estimate.damage>0))return null;
  const hits=Math.ceil(monster.hp/estimate.damage);
  const seconds=hits/actor.frequency+0.5;
@@ -212,4 +212,26 @@ export function neutralPullReadiness(bot){
   return {ready:false,reason:'detached-team-not-ready'};
  return {ready:true,reason:detachment?'two-farmer-conservative': 'assembled',
   detachment};
+}
+
+// Individually short safe AoE encounters require the exact same leader,
+// realm, roster and monster proof as single-target bounded spawn combat.
+// A cast is not called an instant kill unless each target is an actual
+// one-hit. The caller additionally budgets all simultaneous pulls together.
+export function verifiedFollowerAoeBoundedSpawn(actor,targets,{
+ skillId,skill,...options
+}={}){
+ const maximum=skillId==='3shot'?3:skillId==='5shot'?5:0;
+ const minimum=skillId==='3shot'?3:skillId==='5shot'?4:Infinity;
+ if(!Array.isArray(targets)||targets.length<minimum||
+    targets.length>maximum||!skill||skill.hostile!==true||
+    !(skill.damage_multiplier>0)||!Number.isFinite(skill.damage_multiplier))
+   return null;
+ const ids=targets.map(m=>String(m?.id??''));
+ if(ids.some(id=>!id)||new Set(ids).size!==ids.length)return null;
+ const proofs=targets.map(m=>verifiedFollowerBoundedSpawn(actor,m,{...options,skill}));
+ if(proofs.some(p=>!p||p.hits>2))return null;
+ return {targets:ids.length,ids,
+   maximumHits:Math.max(...proofs.map(p=>p.hits)),
+   totalExposure:proofs.reduce((n,p)=>n+p.exposure,0)};
 }

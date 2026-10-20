@@ -159,6 +159,74 @@ export function verifiedFollowerBoundedSpawn(actor,monster,options={}){
    hp:monster.hp,marginHp:actor.hp-exposure-actor.max_hp*.65};
 }
 
+// Ordinary low-threat shared-spawn autonomy is NOT a one-shot proof.
+// The leader chooses a map/species; nearby followers may select distinct
+// live monsters of that species. Restrict *each* independent engagement by
+// its measured risk rather than requiring an infallible killing blow.
+// Return a concrete denial code for live diagnosis; never silently turn
+// missing evidence into an approval.
+export function assessFollowerSharedSpawn(actor,monster,{
+ plan,leader,realm,game,now=Date.now(),maxAnchorGap=190
+}={}){
+ const deny=reason=>({allowed:false,reason});
+ if(!actor||!monster||monster.type!=='monster'||monster.dead||
+    monster.rip||monster.invincible||!(monster.hp>0)||monster.target)
+   return deny('not-neutral-live-monster');
+ if(!plan?.id||!plan.target||monster.mtype!==plan.target||
+    plan.realm!==realm||!(plan.expires>now)||
+    !Number.isFinite(plan.x)||!Number.isFinite(plan.y)||
+    !samePlace(actor,plan)||!samePlace(monster,plan))
+   return deny('no-valid-shared-spawn');
+ const leaderPlan=leader?.farmPlan?.id??leader?.march?.plan;
+ if(!leader?.running||leader.rip||leader.realm!==realm||
+    leaderPlan!==plan.id||!samePlace(leader,plan)||
+    !Number.isFinite(leader.received)||leader.received>now||
+    now-leader.received>4000)
+   return deny('leader-or-spawn-proof-stale');
+ if(![actor.x,actor.y,leader.x,leader.y,monster.x,monster.y]
+    .every(Number.isFinite)||
+    distance(actor,plan)>maxAnchorGap||
+    distance(leader,plan)>maxAnchorGap||
+    distance(actor,leader)>maxAnchorGap*1.3)
+   return deny('outside-assembled-spawn');
+ if(!Number.isFinite(actor.hp)||!(actor.max_hp>0)||
+    actor.hp/actor.max_hp<.75||
+    !Number.isFinite(actor.mp)||!(actor.max_mp>0)||
+    actor.mp/actor.max_mp<.1||!(actor.attack>0)||
+    !Number.isFinite(actor.attack))
+   return deny('actor-not-combat-ready');
+ const meta=game?.monsters?.[monster.mtype];
+ if(!meta||meta.boss||meta.cooperative||meta.stationary||
+    meta.explosion||meta.aura||
+    Object.keys(meta.abilities??{}).length>0||
+    !(meta.hp>0)||!Number.isFinite(meta.hp)||
+    !Number.isFinite(meta.attack)||meta.attack<0||
+    !(meta.frequency>0)||!Number.isFinite(meta.frequency))
+   return deny('monster-mechanics-unverified');
+ // Exceptional live mutants or special states need the existing dedicated
+ // leader/risk path. Dodge chance is NOT by itself a reason to prohibit a
+ // low-threat fight: the exposure model below assumes very low net DPS.
+ if(monster.hp>Math.max(meta.hp*2,actor.attack*12)||
+    monster.s?.fullguard||monster.s?.fullguardx)
+   return deny('unbounded-health-or-guard');
+ const avoid=monster.avoidance??meta.avoidance??0;
+ const evade=monster.evasion??meta.evasion??0;
+ const reflect=monster.reflection??meta.reflection??0;
+ if(![avoid,evade,reflect].every(x=>Number.isFinite(x)&&x>=0&&x<=100)||
+    avoid>60||evade>60||reflect>60)
+   return deny('excessive-hit-uncertainty');
+ const effectiveHitFloor=actor.attack*.30;
+ const seconds=Math.min(12,Math.max(3,monster.hp/Math.max(1,effectiveHitFloor)*2+2));
+ const exposure=meta.attack*meta.frequency*seconds*1.65;
+ // This is a low-THREAT proof, not a guaranteed damage / exact-time claim.
+ // Leave most of each farmer's HP intact even without future heals/potions.
+ if(!Number.isFinite(exposure)||meta.attack*meta.frequency>actor.max_hp*.045||
+    actor.hp-exposure<actor.max_hp*.65)
+   return deny('bounded-personal-survival-failed');
+ return {allowed:true,reason:'verified-low-threat-spawn',exposure,seconds,
+  planId:plan.id,monsterId:monster.id??null};
+}
+
 // Unlike a broad multi-pull allowance this authorizes only explicit aimed
 // 3shot/5shot monster IDs, all of which independently meet the same
 // one-hit proof. An ordinary area spell with bystanders is NOT eligible.

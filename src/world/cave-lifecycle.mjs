@@ -17,9 +17,14 @@ export function validCaveLifecycleRecord(x){
   (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run)))
   return false;
  if(x.phase==='prepared')return x.dispatchAt===null&&x.observed===null;
- if(!caveLifecycleTime(x.dispatchAt)||x.dispatchAt<x.createdAt)
+ if(x.phase==='dispatch-unknown')
+  return caveLifecycleTime(x.dispatchAt)&&x.dispatchAt>=x.createdAt&&
+   x.observed===null;
+ // An observed live run need not have been caused by OUR prepared intent.
+ // Preserve null dispatchAt until an actual cave_enter send is journaled.
+ if(x.dispatchAt!==null&&
+    (!caveLifecycleTime(x.dispatchAt)||x.dispatchAt<x.createdAt))
   return false;
- if(x.phase==='dispatch-unknown')return x.observed===null;
  const o=x.observed;
  return !!o&&caveLifecycleHex(o.run)&&
   (x.mode==='new'||x.run===o.run)&&
@@ -130,7 +135,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   // Prepared may not have dispatched: only claim the actual server run
   // was observed, never that this particular intent caused it.
   const next={...record,phase:'observed-run',
-   dispatchAt:record.dispatchAt??at,
+   dispatchAt:record.dispatchAt,
    observed:{run:observed.run,floor:observed.floor,
     map:observed.map,at}};
   if(validCaveLifecycleRecord(next))durable(next);

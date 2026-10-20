@@ -8,6 +8,7 @@ import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 import {roadAggroTravelDecision,committedFarmTransit,createTransitBlockObserver,verifiedTransitBlock} from './transit-defense.mjs';
 import {mapGraph,mapHops} from '../world/knowledge.mjs';
+import {inCaveInstance} from '../world/cave-team-coordination.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
@@ -441,6 +442,20 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
+    // Cave maps are generated instances, NOT approved overworld farmspawns.
+    // Preserve urgent recovery above, but never let ordinary target selection,
+    // independent follow routes or neutral farm pulls run here. The current
+    // Cave group evidence is diagnostic-only until an instanced combat
+    // executor has its own run/floor/roster and attack authorization contract.
+    if(inCaveInstance(p.c)){
+      if(['farm','follow','cohesion','combat','world','regroup',
+          'quest-escort'].includes(bot.movement?.order?.owner))
+       bot.movement.stop();
+      bot.target=null;
+      const evidence=bot.caveTeam?.status?.();
+      bot.reason='Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
+      return;
+    }
     const c=p.c,now=Date.now();
     const detachment=assessQuestDetachment(bot);
     const questVisitor=(bot.farmers??[]).find(n=>n!==me.name&&
@@ -553,12 +568,12 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
           if(!bot.movement.order)bot.movement.go(
            combatApproach(c,danger,range,(x,y)=>p.call('can_move_to',x,y)),'combat');
         }else{
-          if(p.c.target!==danger.id)exec.run('target',['target'],()=>bot.allowed(danger),
+          if(p.c.target!==danger.id)exec.run('target',['target'],()=>!inCaveInstance(p.c)&&bot.allowed(danger),
             ()=>p.call('change_target',danger),{delay:500});
           const attack=trackedAttack(danger.id);
           exec.run('attack',['attack','mana'],()=>{
             const live=bot.entity(danger.id);
-            return live&&bot.combatAssessment?.canDefend(live)===true&&
+            return !inCaveInstance(p.c)&&live&&bot.combatAssessment?.canDefend(live)===true&&
               bot.allowed(live)&&distance(p.c,live)<=range&&
               p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
           },attack.invoke,{delay:100,onSettle:attack.settle});
@@ -848,9 +863,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // in this tick, and passive mobs are not treated as emergency threats.
     if(d<=range&&cfg.farming.kiting)bot.navigation?.rangePosition?.(target);
     if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
-    if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
+    if(c.target!==target.id)exec.run('target',['target'],()=>!inCaveInstance(p.c)&&bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     const attack=trackedAttack(target.id);
-    exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
+    exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return !inCaveInstance(p.c)&&t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
   }
   return {tick,retreat,travelStatus,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
     // The emergency scheduler executes BEFORE normal farmer.tick. Honor the

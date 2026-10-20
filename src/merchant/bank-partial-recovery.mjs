@@ -1,4 +1,5 @@
-import {fingerprint,protectedItem,variantCount} from '../core/policy.mjs';
+import {fingerprint,protectedItem} from '../core/policy.mjs';
+import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
 
 // W03: physical evidence for a persisted partial withdrawal. This module is
 // read-only and never schedules, clears or automatically approves an action.
@@ -89,8 +90,8 @@ export function classifyBankPartialRecord(r,{
   return {phase:'unobserved',reason:'live-bank-pack-not-observed',confirmed:false};
  const row=bank[r.pack],original=row[r.bankSlot],
   dest=inventory[r.dest],split=inventory[r.splitSlot],
-  localCount=variantCount(inventory,r.item),
-  bankCount=variantCount(row,r.item),
+  localCount=verifiedBankVariantCount(inventory,r.item),
+  bankCount=verifiedBankVariantCount(row,r.item),
   same=(i,q)=>!!i&&fingerprint(i)===fingerprint({...r.item,q});
  // Signed sums must match and unrelated stack positions must not be allowed
  // to stand in for the addressed bank/inventory source and destinations.

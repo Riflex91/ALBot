@@ -44,6 +44,29 @@ export class Executor {
       }
     }
   }
-  cancelResource(resource){if(this.frame)this.frame=this.frame.filter(j=>!j.resources.includes(resource));for(const [key,p] of this.pending)if(!p.value&&p.resources.includes(resource))this.pending.delete(key);}
-  invalidate(){this.frame=null;this.waiting.clear();this.generation++;for(const p of this.pending.values())if(p.value)p.onSettle('unknown');this.pending.clear();}
+  // Cancellation is a terminal action state, not an orphaned start. Never
+  // treat a route handoff as an error, apply a retry cooldown or call an
+  // obsolete async completion callback; this is observation only.
+  terminalCancel(key,p,result,reason){
+    this.onEvent('action.end',{key,result,outcome:result,
+      error:'',reason,elapsedMs:Math.max(0,Math.min(600000,this.now()-p.startedAt)),
+      pending:this.pending.size});
+  }
+  cancelResource(resource){
+    if(this.frame)this.frame=this.frame.filter(j=>!j.resources.includes(resource));
+    for(const [key,p] of this.pending){
+      if(p.value||!p.resources.includes(resource))continue;
+      this.pending.delete(key);
+      this.terminalCancel(key,p,'cancelled','resource-owner-released:'+resource);
+    }
+  }
+  invalidate(){
+    this.frame=null;this.waiting.clear();this.generation++;
+    for(const [key,p] of this.pending){
+      this.pending.delete(key);
+      this.terminalCancel(key,p,p.value?'unknown':'cancelled',
+        'runtime-generation-invalidated');
+      if(p.value)p.onSettle('unknown');
+    }
+  }
 }

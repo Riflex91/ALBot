@@ -69,3 +69,13 @@ Gruppenheilung, sichere Fluchtplanung sowie das echte Ingame-
 Livetestprotokoll stehen weiterhin aus. Persönliche ALBotConfig,
 Markt-/Verlustbudgets, Journale und separat signierter Release
 bleiben unverändert.
+
+## Integration mit signiertem Release 0.17
+
+Das inzwischen nach main gemergte allgemeine Multi-Pull-Sicherheitsmodul
+(PR #280) und sein signierter Release Sequence 17 bleiben erhalten.
+Dieser W12/N12-Cave-Guard ist ein separates, zusätzliches Gate; er ersetzt
+weder die globale Mehrfach-Pull-Prüfung noch die bestehende
+Gefahrennavigation. Die Cave-Grenze vermeidet weiterhin unbekannte
+Flucht- oder Navigationsschritte. Der neue Cave-Code ist erst nach eigener
+Release-Signierung im Ingame-Bootstrap verfügbar.

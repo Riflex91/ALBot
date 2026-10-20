@@ -1,3 +1,5 @@
+import {caveEntryPreflight,cavePartyObservation} from './cave-admission.mjs';
+
 // W12/N12/G06/G07: evidence from the OFFICIAL cave_info() visit response
 // and from the character's server-published cave snapshot. This adapter is
 // read-only: a visit, vote, reset clock or resumed session is NOT permission
@@ -152,10 +154,20 @@ export function createCaveEvidence(bot,{now=()=>Date.now()}={}){
   const live=bot.running?verifiedCaveSnapshot(p.c?.cave,{
    name:me.name,map:p.c?.map,now:time}):null;
   if(live){lastRun=live;lastRunAt=time;}
+  const currentVisit=fresh?{...visit,observedAt:visitAt}:null;
+  const observedParty=cavePartyObservation({
+   name:me.name,party:p.c?.party,partyMap:p.parent?.party});
+  const names=observedParty.verified?observedParty.names:null;
+  const localMembers=(names??[me.name]).map(n=>
+   n===me.name?p.c:bot.entity?.(n)).filter(Boolean);
+  const entryPreflight=caveEntryPreflight({
+   visit:currentVisit,realm,name:me.name,actor:p.c,
+   partyNames:names,members:localMembers,
+   allowedNames:bot.teamNames,priorRun:lastRun,now:time});
   return {version:1,mode:'read-only-cave-evidence',executable:false,
    canEnter:false,canResume:false,canVote:false,canExit:false,
-   realm,session,
-   visit:fresh?{...visit,observedAt:visitAt}:null,
+   realm,session,entryPreflight,
+   visit:currentVisit,
    visitPending:pending,visitError:error,
    live:live?{...live,observedAt:time}:null,
    lastObservedRun:lastRun?{run:lastRun.run,floor:lastRun.floor,

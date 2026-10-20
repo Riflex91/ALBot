@@ -1,12 +1,17 @@
 name: Temporary N12 multi-aggro artifact build on refreshed main
 on:
+  push:
+    branches: [codex/n12-cave-multi-threat-20261020]
   pull_request:
     branches: [main]
+concurrency:
+  group: n12-threat-bundle-refresh
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
   refresh-runtime:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/n12-cave-multi-threat-20261020' && github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/n12-cave-multi-threat-20261020'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

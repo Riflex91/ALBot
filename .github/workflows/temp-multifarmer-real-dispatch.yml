@@ -1,0 +1,45 @@
+name: Temporary true multi-farmer spawn CI
+on:
+  push:
+    branches:
+      - fix/20261020-genuine-multi-farmer-spawn-execution
+    paths:
+      - '.github/workflows/temp-multifarmer-real-dispatch.yml'
+permissions:
+  contents: write
+jobs:
+  verify-and-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/20261020-genuine-multi-farmer-spawn-execution
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Regression for actual three-farmer spawn
+        run: |
+          node --test test/20261020-shared-spawn-multi-farmer.test.mjs test/20261020-independent-farmer-one-shot.test.mjs test/20261020-follower-bounded-spawn.test.mjs
+      - name: Rebuild exact personal and public runtime packages
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+          npm run build:editor
+          npm test
+      - name: Synchronize generated source-aligned files only after successful regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: synchronize genuinely independent weak spawn farmer runtime'
+            git pull --rebase origin fix/20261020-genuine-multi-farmer-spawn-execution
+            git push origin HEAD:refs/heads/fix/20261020-genuine-multi-farmer-spawn-execution
+          fi

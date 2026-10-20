@@ -7,7 +7,7 @@ import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 import {provisionalImpactDamage,healCollisionDecision} from './impact-coordination.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
-import {verifiedFollowerAoeOneShot} from './team-readiness.mjs';
+import {verifiedFollowerAoeOneShot,verifiedFollowerAoeBoundedSpawn} from './team-readiness.mjs';
 // Poison is a per-cast reagent. Only verified boss profiles or an active,
 // currently observed boss/event objective may authorize an expensive arrow.
 export function poisonArrowCombatAllowed(G,target,activity=null,profile=null,now=Date.now()){
@@ -214,9 +214,14 @@ export function createSkills(bot){
       if(peers.length!==(bot.farmers??[]).length-1)return false;
       const claimed=new Set(peers.map(h=>h?.target).filter(x=>x!=null).map(String));
       if(liveTargets.some(e=>claimed.has(String(e.id))))return false;
-      return !!verifiedFollowerAoeOneShot(p.c,liveTargets,{
-        skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G})&&
-        bot.encounter?.approvePullSet?.(liveTargets)?.safe===true;
+      const remaining=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
+        m.target&&bot.teamNames.includes(m.target));
+      const proof=verifiedFollowerAoeOneShot(p.c,liveTargets,{
+        skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G})||
+        (!remaining.length&&verifiedFollowerAoeBoundedSpawn(p.c,liveTargets,{
+          skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G}));
+      return !!proof&&
+        bot.encounter?.approvePullSet?.([...remaining,...liveTargets])?.safe===true;
     };
     if(independentAimed&&!independentProof())return false;
     // A two-target 3shot is useful when its verified effective damage exceeds
@@ -394,6 +399,8 @@ export function createSkills(bot){
     const peers=(bot.farmers??[]).filter(n=>n!==p.c.name).map(n=>bot.transport?.fresh?.(n));
     if(peers.length!==(bot.farmers??[]).length-1)return false;
     const claimed=new Set(peers.map(h=>h?.target).filter(x=>x!=null).map(String));
+    const engaged=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
+      m.target&&bot.teamNames.includes(m.target));
     for(const id of ['5shot','3shot']){
       const skill=p.G.skills?.[id],maximum=Math.min(
         id==='3shot'?3:5,cfg.party.aoeMaxTargets??0);
@@ -403,21 +410,27 @@ export function createSkills(bot){
       const selected=bot.monsters().filter(m=>m?.id!=null&&
         m.type==='monster'&&!m.target&&!claimed.has(String(m.id))&&
         distance(p.c,m)<=range&&
-        bot.encounter.soloOneShot(m,skill)&&
+        (bot.encounter.soloOneShot(m,skill)||
+         !engaged.length&&bot.encounter.soloBoundedSpawn?.(m,skill))&&
         bot.allowed(m,{independentOneShotSkill:id}))
        .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
           String(a.id).localeCompare(String(b.id)))
        .slice(0,maximum);
-      if(selected.length<minimum||
-        !verifiedFollowerAoeOneShot(p.c,selected,{
-          skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G})||
-        bot.encounter?.approvePullSet?.(selected)?.safe!==true)continue;
+      if(selected.length<minimum)continue;
+      const exact=verifiedFollowerAoeOneShot(p.c,selected,{
+        skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G});
+      const bounded=!engaged.length&&verifiedFollowerAoeBoundedSpawn(p.c,selected,{
+        skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G});
+      if(!(exact||bounded)||
+         bot.encounter?.approvePullSet?.([...engaged,...selected])?.safe!==true)continue;
       if(use(id,selected[0],.2,600,selected.length,false,selected)){
         bot.target=selected[0];
-        bot.event?.('combat.independentOneShotAoE',{
+        bot.event?.(exact?'combat.independentOneShotAoE':
+          'combat.independentBoundedAoE',{
           skill:id,targets:selected.length,
           targetIds:selected.map(m=>m.id).join(','),
-          plan:plan.id,mode:'verified-aimed-lethal-group'});
+          plan:plan.id,mode:exact?'verified-aimed-lethal-group':
+             'verified-bounded-short-multitarget'});
         return true;
       }
     }

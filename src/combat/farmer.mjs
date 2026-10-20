@@ -408,10 +408,11 @@ export function createFarmer(bot){
   },attack.invoke,{delay:100,onSettle:attack.settle});
   return true;
 }
-// Independent low-risk cleanup at a reached, verified team spawn. Only
-// a single basic attack is issued; the encounter's exact one-shot proof is
-// rechecked at network dispatch. Never follow/chase or widen AoE admission.
-function independentOneShot(){
+// Independent low-risk cleanup at a reached shared spawn. Try an exact
+// one-shot first, but permit a conservatively proven short encounter when
+// a small harmless mob takes two to four strikes. Live admission is
+// rechecked at dispatch; never chase or bypass team risk limits.
+function independentSpawnEngagement(){
  if(me.name===bot.leader||!cfg.party.enabled||bot.strategy?.busy||
     bot.movement.order||bot.recovering||bot.journal||
     bot.inventoryBlocked||bot.logistics?.reserved)return false;
@@ -421,8 +422,10 @@ function independentOneShot(){
    .filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)?.target)
    .filter(x=>x!=null).map(String));
  const claimed=reserved();
+ const proof=m=>bot.encounter?.soloOneShot?.(m)||
+   bot.encounter?.soloBoundedSpawn?.(m);
  const eligible=m=>m?.id!=null&&!claimed.has(String(m.id))&&
-   distance(p.c,m)<=range&&bot.encounter?.soloOneShot?.(m)&&
+   distance(p.c,m)<=range&&proof(m)&&
    bot.allowed(m)&&p.call('can_attack',m)&&
    !p.call('is_on_cooldown','attack');
  const candidate=bot.monsters().filter(eligible)
@@ -433,21 +436,24 @@ function independentOneShot(){
    const live=bot.entity(id);
    return !!live&&!reserved().has(String(id))&&
      distance(p.c,live)<=range&&
-     bot.encounter?.soloOneShot?.(live)&&bot.allowed(live)&&
+     proof(live)&&bot.allowed(live)&&
      p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
  };
- bot.target=candidate;bot.reason='Eigenständiger sicherer One-Shot: '+candidate.mtype;
+ bot.target=candidate;const exact=!!bot.encounter?.soloOneShot?.(candidate);
+ bot.reason=(exact?'Eigenständiger One-Shot: ':'Eigenständiger sicherer Kurz-Kampf: ')+candidate.mtype;
  bot.skills.rotation(null);
  if(p.c.target!==id)
    exec.run('target',['target'],()=>{const live=bot.entity(id);
-     return !!live&&bot.encounter?.soloOneShot?.(live)&&
+     return !!live&&proof(live)&&
        bot.allowed(live)&&!reserved().has(String(id));
    },()=>p.call('change_target',bot.entity(id)),{delay:500});
  const attack=trackedAttack(id);
  if(exec.run('attack',['attack','mana'],check,attack.invoke,{
    delay:100,onSettle:attack.settle}))
-  bot.event?.('combat.independentOneShot',{target:id,monster:candidate.mtype,
-   mode:'single-basic-attack',plan:bot.teamPlan?.heartbeat?.()?.id});
+  bot.event?.(exact?'combat.independentOneShot':'combat.independentBoundedSpawn',{
+   target:id,monster:candidate.mtype,
+   mode:exact?'single-basic-attack':'bounded-short-neutral-fight',
+   plan:bot.teamPlan?.heartbeat?.()?.id});
  return true;
 }
 function recoverCohesion(now){
@@ -872,7 +878,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // mobs at the SAME verified spawn without waiting for the leader's focus.
     // Existing threats, travel and all uncertain hits retain normal gates.
     if(!storageHold&&bot.skills?.independentOneShotAoE?.())return;
-    if(!storageHold&&independentOneShot())return;
+    if(!storageHold&&independentSpawnEngagement())return;
     // Help an existing teammate fight BEFORE the ordinary shared farm march.
     // Otherwise the follower can walk away along the new endpoint while an
     // ally is still engaged. This never authorizes a new neutral pull.

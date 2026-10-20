@@ -71,8 +71,8 @@ export function leaderAssignedFarmTarget(character,leader,monsters,{
 // one-hit attack at the CURRENT shared farm spawn. For aimed-AoE casts,
 // every selected monster must independently pass this proof.
 // Unknown avoidance, damage, mechanic, or peer state fails closed.
-export function verifiedFollowerOneShot(actor,monster,{plan,leader,peers,
- realm,game,skill=null,now=Date.now(),maxDistance=140}={}){
+function verifiedFollowerSpawnTarget(actor,monster,{plan,leader,peers,
+ realm,game,now=Date.now(),maxDistance=140}={}){
  const meta=game?.monsters?.[monster?.mtype];
  const ownedPlan=leader?.farmPlan?.id??leader?.march?.plan;
  if(!actor||!monster||monster.type!=='monster'||monster.dead||monster.rip||
@@ -112,13 +112,19 @@ export function verifiedFollowerOneShot(actor,monster,{plan,leader,peers,
   avoidance:monster.avoidance??meta.avoidance,
   evasion:monster.evasion??meta.evasion,
   reflection:monster.reflection??meta.reflection};
- // 100% nominal accuracy is required. Probabilistic expected damage is NOT
- // proof of a one-shot if an enemy can dodge, evade or reflect.
+ // Reject unknown or nonzero dodge/evasion/reflection for both policies;
+ // neither a certain hit nor a bounded short fight may be invented.
  if(![target.avoidance??0,target.evasion??0,target.reflection??0]
     .every(x=>Number.isFinite(x)&&x===0)||
     target.s?.fullguard||target.s?.fullguardx||
     !Number.isFinite(target.armor??0)||
     !Number.isFinite(target.resistance??0))return null;
+ return target;
+}
+// An exact one-hit bound remains the fastest and strictest follower case.
+export function verifiedFollowerOneShot(actor,monster,options={}){
+ const target=verifiedFollowerSpawnTarget(actor,monster,options);
+ if(!target)return null;
  const estimate=outgoingDamageEstimate(actor,target,{
    skill,uncertainty:.25,fearFactor:.9});
  // The estimate already includes a 25% damage haircut; the additional
@@ -126,6 +132,33 @@ export function verifiedFollowerOneShot(actor,monster,{plan,leader,peers,
  return estimate.valid&&estimate.damage>=monster.hp*1.2?
   {damage:estimate.damage,hp:monster.hp,margin:estimate.damage/monster.hp}:null;
 }
+// A weak spawn need not be a guaranteed one-shot to be safe for a nearby
+// healthy Farmer. Require conservatively bounded hits, cast time and
+// *individual* HP exposure, in addition to all shared one-shot team gates.
+// Aggregate simultaneous team threat admission is checked in encounter.
+export function verifiedFollowerBoundedSpawn(actor,monster,options={}){
+ const target=verifiedFollowerSpawnTarget(actor,monster,options);
+ if(!target||!Number.isFinite(actor?.frequency)||actor.frequency<=0)
+  return null;
+ const meta=options.game?.monsters?.[monster.mtype];
+ if(!Number.isFinite(meta?.attack)||meta.attack<0||
+    !Number.isFinite(meta?.frequency)||meta.frequency<=0)return null;
+ const estimate=outgoingDamageEstimate(actor,target,{
+   uncertainty:.25,fearFactor:.9});
+ if(!estimate.valid||!(estimate.damage>0))return null;
+ const hits=Math.ceil(monster.hp/estimate.damage);
+ const seconds=hits/actor.frequency+0.5;
+ if(!Number.isSafeInteger(hits)||hits<1||hits>4||
+    !Number.isFinite(seconds)||seconds>6)return null;
+ // Worst-case every monster hit lands, with explicit burst uncertainty;
+ // no damage avoidance, uncast buffs, healing or crit credit is taken.
+ const exposure=(seconds+1)*meta.attack*meta.frequency*1.6;
+ if(!Number.isFinite(exposure)||!(actor.hp-exposure>=actor.max_hp*.65))
+  return null;
+ return {hits,seconds,damage:estimate.damage,exposure,
+   hp:monster.hp,marginHp:actor.hp-exposure-actor.max_hp*.65};
+}
+
 // Unlike a broad multi-pull allowance this authorizes only explicit aimed
 // 3shot/5shot monster IDs, all of which independently meet the same
 // one-hit proof. An ordinary area spell with bystanders is NOT eligible.

@@ -871,6 +871,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // Healthy assembled followers can clear individually provable one-hit
     // mobs at the SAME verified spawn without waiting for the leader's focus.
     // Existing threats, travel and all uncertain hits retain normal gates.
+    if(!storageHold&&bot.skills?.independentOneShotAoE?.())return;
     if(!storageHold&&independentOneShot())return;
     // Help an existing teammate fight BEFORE the ordinary shared farm march.
     // Otherwise the follower can walk away along the new endpoint while an

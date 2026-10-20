@@ -8,6 +8,7 @@ import {createCaveVoteEvidence} from './world/cave-vote.mjs';
 import {createCaveVoteJournal} from './world/cave-vote-journal.mjs';
 import {createCaveConsensus} from './world/cave-consensus.mjs';
 import {createCaveTeamCoordination,inCaveInstance} from './world/cave-team-coordination.mjs';
+import {caveCumulativeThreatBudget} from './world/cave-cumulative-threat.mjs';
 import {createCaveDefensiveCombat} from './world/cave-defensive-combat.mjs';
 import {createCavePriestHealing} from './world/cave-priest-healing.mjs';
 import {createCaveDirectCohesion} from './world/cave-direct-cohesion.mjs';

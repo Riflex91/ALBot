@@ -4,8 +4,14 @@ export function transientMovementInterruption(error){
  const code=String(error?.reason??error?.message??error??'').toLowerCase();
  return code==='interrupted'||code==='cancelled'||code==='canceled'||code==='superseded';
 }
+// Respect the caller's accepted arrival radius even during a native
+// movement animation. This prevents repeated identical follow requests.
+export function reachedMovementRadius(character,destination){
+ return !!destination&&Number.isFinite(destination.radius)&&
+   samePlace(character,destination)&&distance(character,destination)<=destination.radius;
+}
 export function createMovement(bot){
-  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,townQueued=false;
+  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,townQueued=false,moveSeq=0;
   // Only native smart-route failures quarantine a destination map, not normal
   // travel stops or a rejected non-movement action. Keep the cache bounded.
   const failedRoutes=new Map(),routeCooldownMs=300000;
@@ -31,7 +37,10 @@ export function createMovement(bot){
   const smartActive=()=>[p.root?.smart,p.parent?.smart].some(s=>s?.moving||s?.searching);
   // Native movement can be active even without a local ALBot order.
   const nativeBusy=()=>!!p.c?.moving||smartActive();
-  const stop=()=>{if(townQueued||p.c?.c?.town){try{Promise.resolve(p.call('stop','town')).catch(()=>{});}catch{}}townQueued=false;if(order||smartActive()||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
+  const stop=()=>{if(order)bot.event?.('movement.terminal',{
+    id:order.id,owner:order.owner,mode:order.mode??null,map:order.dest.map,
+    outcome:order.terminal??'cancelled'});
+   if(townQueued||p.c?.c?.town){try{Promise.resolve(p.call('stop','town')).catch(()=>{});}catch{}}townQueued=false;if(order||smartActive()||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner,scoutAdmission=null){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
     // An active Monsterhunt visit has exclusive ordinary travel ownership.
@@ -51,7 +60,7 @@ export function createMovement(bot){
        distance(p.c,d)>(owner==='scout'?95:45)||distance(p.c,d)<1||
        owner!=='scout'&&!/^zone_[a-f0-9]{24}_[0-7]$/.test(p.c.map)))
       return false;
-    if(arrived(p.c,{...d,radius:d.radius??20}))return true;
+    if(!order&&reachedMovementRadius(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
     if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
     // An asynchronous open_stand may not yet be reflected in character.stand.
@@ -113,7 +122,7 @@ export function createMovement(bot){
       if(!accepted)townQueued=false;return false;
      }
     }
-    const started=Date.now();order={dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
+    const started=Date.now();order={id:bot.session+':move:'+(++moveSeq),dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     // Geometry can change between scout admission and actual movement.
     // A failed last local check must NEVER turn a scout hop into smart_move.
@@ -135,7 +144,7 @@ export function createMovement(bot){
       (!blink||travelBlinkEligible(bot,d,owner))&&
       (!['scout','cave','cave-evade','cave-priest'].includes(owner)||boundedDirectDispatchSafe()),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:owner==='cave-evade'?1000:owner==='cave-priest'?900:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
     if(error?.transient==='interrupted'){
-     order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,
+     order=null;bot.event?.('movement.terminal',{id:token.id,owner,mode:token.mode,map:dest.map,outcome:'interrupted'});bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,
       reason:'Native smart route was cancelled externally; safe retry'});return;
     }
     if(state==='rejected'||state==='timeout'||state==='superseded'){
@@ -143,19 +152,19 @@ export function createMovement(bot){
  if(transientMovementInterruption(reason)||state==='superseded'){
   // Native smart_move rejects with 'interrupted' when an ordinary travel
   // handoff cancels it. The destination remains reachable; retry normally.
-  order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,reason});return;
+  order=null;bot.event?.('movement.terminal',{id:token.id,owner,mode:token.mode,map:dest.map,outcome:'interrupted'});bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,reason});return;
  }
- recordRouteFailure(owner,token.mode,dest,reason);stop();blockedUntil=Date.now()+3000;
+ recordRouteFailure(owner,token.mode,dest,reason);token.terminal='failed';stop();blockedUntil=Date.now()+3000;
  bot.reason='Weg fehlgeschlagen; neuer Versuch in 3 Sekunden';bot.event?.('movement.failed',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,reason});}}});
-    if(accepted)bot.event?.('movement.request',{owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
+    if(accepted)bot.event?.('movement.request',{id:token.id,owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }
-  function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.observations?.travel(order.origin,p.c.map,now-order.started);bot.event?.('movement.arrived',{owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
+  function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.observations?.travel(order.origin,p.c.map,now-order.started);bot.event?.('movement.arrived',{id:order.id,owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});order.terminal='arrived';stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
     // Native smart_move may spend >12 s on path search before coordinates
     // change; retain its ownership until the bounded 120 s deadline.
     const timedOut=now-order.started>120000;
     if(timedOut||(order.mode!=='smart_move'&&now-order.progress>12000)){
-      const failed=order;const reason=timedOut?'timeout':'no_progress';recordRouteFailure(failed.owner,failed.mode,failed.dest,reason);stop();blockedUntil=now+10000;
+      const failed=order;const reason=timedOut?'timeout':'no_progress';recordRouteFailure(failed.owner,failed.mode,failed.dest,reason);failed.terminal='failed';stop();blockedUntil=now+10000;
       bot.reason=timedOut?'Wegzeit überschritten; neuer Versuch in 10 Sekunden':'Weg ohne Fortschritt; neuer Versuch in 10 Sekunden';
       bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:timedOut?'timeout':'no_progress'});
     }

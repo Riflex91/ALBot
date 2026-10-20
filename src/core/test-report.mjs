@@ -1,3 +1,19 @@
+// Game-native promise rejections are sometimes plain objects rather than
+// Error instances. Preserve their structured reason in diagnostics instead
+// of recording the unhelpful "[object Object]".
+export function describeReportError(error){
+ const value=error?.message??error?.reason??error;
+ if(value==null)return '';
+ if(typeof value!=='object')return String(value);
+ const seen=new WeakSet();
+ try{return JSON.stringify(value,(key,item)=>{
+   if(item&&typeof item==='object'){
+    if(seen.has(item))return '[circular]';
+    seen.add(item);
+   }
+   return item;
+ })??String(value);}catch{return String(value);}
+}
 export function createTestReport(p,version){
   const events=[],incidents=[],counts={},actionStats={};let dropped=0,lastSample=0,lastSave=0,automaticDownload=false,provider=()=>({}),lastWriteError='',continuous=false,sequence=0,directory=null,writing=Promise.resolve(),writeBusy=false,queuedData=null,savedSequence=0,part=1,fileBytes=0,lastDecision='';
   const clean=value=>String(value??'').replace(/\b(?:US|CH)_[A-Za-z0-9]+\b/g,'[redacted]').replace(/((?:token|password|authorization|user_auth)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]').slice(0,1800);
@@ -40,7 +56,7 @@ export function createTestReport(p,version){
   async function chooseDirectory(){if(p.headless)return save();const win=pickerWindow();if(!win){p.log('Dieser Browser-Spielkontext erlaubt keine Ordnerauswahl. Testlog speichern verwenden; Speicherort in den Browser-Downloads einstellen.');return false;}try{directory=await win.showDirectoryPicker({id:'albot-testlogs',mode:'readwrite',startIn:'desktop'});event('log.directory',{name:directory.name});await queueWrite();return directory.name;}catch(e){lastWriteError=clean(e.message);p.log('Ordnerauswahl fehlgeschlagen: '+lastWriteError+'. Testlog speichern verwenden.');return false;}}
   return {event,text,document,setProvider:f=>provider=f,
     configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,getDirectory:()=>directory,
-    error(where,e){event('error',{where,name:e?.name,message:e?.message??e?.reason??e,stack:e?.stack});},
+    error(where,e){event('error',{where,name:e?.name??e?.reason?.name??'',message:describeReportError(e),code:e?.code??e?.reason?.code??null,stack:e?.stack??e?.reason?.stack??null});},
     sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,task:state.task,
       farmArea:state.farmArea,farmContext:state.farmContext,
       inventoryBlocked:state.inventoryBlocked,valueActionPending:state.valueActionPending,

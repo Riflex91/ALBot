@@ -40,6 +40,32 @@ export function followerCombatRendezvous(follower,leader,{
  return {move:d>trigger,reason:d>trigger?'leader-in-combat-out-of-reach':'already-near-leader',
   radius,distance:d};
 }
+// A follower may assist ONE already selected leader farm target, even before
+// the monster starts attacking back. This is not an independent neutral pull:
+// identity, approved species, shared plan, realm, freshness and distance must
+// all agree. Missing or stale evidence fails closed.
+export function leaderAssignedFarmTarget(character,leader,monsters,{
+ plan,realm,teamNames=[],maxDistance=280,now=Date.now()
+}={}){
+ const leaderPlan=leader?.farmPlan?.id??leader?.march?.plan;
+ if(!leader?.running||leader.rip||!leader.target||!plan?.id||
+    plan.id!==leaderPlan||plan.realm!==realm||
+    leader.realm!==realm||!plan.target||
+    (Number.isFinite(plan.expires)&&plan.expires<=now)||
+    !Number.isFinite(leader.received)||leader.received>now||
+    now-leader.received>4000||
+    !samePlace(character,leader)||
+    ![character?.x,character?.y,leader.x,leader.y].every(Number.isFinite))
+   return null;
+ return (monsters??[]).find(m=>m?.id!=null&&
+   String(m.id)===String(leader.target)&&
+   m.mtype===plan.target&&m.hp>0&&!m.dead&&
+   (!m.target||teamNames.includes(m.target))&&
+   samePlace(character,m)&&samePlace(leader,m)&&
+   Number.isFinite(m.x)&&Number.isFinite(m.y)&&
+   distance(character,m)<=maxDistance&&
+   distance(leader,m)<=maxDistance)??null;
+}
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;
  if(bot.account?.rotationPending?.())return {ready:false,reason:'account-rotation-draining'};

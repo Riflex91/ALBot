@@ -207,7 +207,9 @@ test('N12 final network-boundary recheck cancels changed risk after scheduler ac
  const f=fixture(),original=f.bot.monsters;let reads=0;
  f.bot.monsters=()=>{
   reads++;
-  if(reads===3)f.m2.x+=6;
+  // First proof, scheduler guard and actual invoke each read both the
+  // team snapshot and the triage monster list; mutate at invoke only.
+  if(reads===6)f.m2.x+=6;
   return original();
  };
  assert.equal(f.bot.cavePriest.tick(),true);

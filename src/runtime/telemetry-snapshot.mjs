@@ -7,10 +7,13 @@ const telemetryRealmId=value=>typeof value==='string'&&/^[a-zA-Z0-9_]{1,60}$/.te
 const telemetrySafeInt=(value,min,max)=>Number.isSafeInteger(value)&&value>=min&&value<=max;
 const telemetryUnknownRate=0; // EXP/h and Gold/h require separate trusted measured evidence.
 function telemetryInventorySlots(items,limit,exact=null){
+ // Adventure Land exposes opened bank packs as compact arrays. A visible
+ // pack with 0..42 entries still represents exactly 42 slots; missing trailing
+ // positions are empty only within that observed local pack, never remotely.
  if(!Array.isArray(items)||items.length>limit||
-    exact!==null&&items.length!==exact)return null;
+    exact!==null&&items.length>exact)return null;
  const out=[];
- for(let slot=0;slot<items.length;slot++){
+ for(let slot=0;slot<(exact??items.length);slot++){
   const entry=items[slot];
   if(entry===null||entry===undefined){out.push(null);continue;}
   const q=entry?.q??1,level=entry?.level??0;

@@ -17,7 +17,18 @@ export function validCaveLifecycleRecord(x){
   (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run))||
   (x.mode==='observed'&&x.phase!=='observed-run'))
   return false;
- if(x.phase==='prepared')return x.dispatchAt===null&&x.observed===null;
+ if(x.serverReply!==undefined&&x.serverReply!==null){
+  const reply=x.serverReply;
+  if(x.phase==='prepared'||!caveLifecycleTime(x.dispatchAt)||
+     !reply||!caveLifecycleHex(reply.run)||
+     (x.mode==='resume'&&reply.run!==x.run)||
+     !caveLifecycleTime(reply.at)||reply.at<x.dispatchAt||
+     !caveLifecycleTime(reply.expires)||reply.expires<=x.dispatchAt||
+     !Number.isSafeInteger(reply.level)||reply.level<1||reply.level>999)
+   return false;
+ }
+ if(x.phase==='prepared')return x.dispatchAt===null&&x.observed===null&&
+  (x.serverReply===undefined||x.serverReply===null);
  if(x.phase==='dispatch-unknown')
   return caveLifecycleTime(x.dispatchAt)&&x.dispatchAt>=x.createdAt&&
    x.observed===null;
@@ -49,6 +60,8 @@ export function caveLifecycleDisposition(record,{name,realm,live}={}){
   live.map===`zone_${live.run}_${live.floor}`){
   if(record.mode==='resume'&&live.run!==record.run)
    return {state:'conflict',blocked:true,reason:'resume-run-mismatch'};
+  if(record.serverReply&&live.run!==record.serverReply.run)
+   return {state:'conflict',blocked:true,reason:'server-reply-run-mismatch'};
   if(record.phase==='observed-run'&&live.run!==record.observed.run)
    return {state:'conflict',blocked:true,reason:'observed-run-mismatch'};
   return {state:'live-observed',blocked:true,reason:'current-server-run',
@@ -131,6 +144,80 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   if(!caveLifecycleTime(at)||at<record.createdAt)return false;
   return durable({...record,phase:'dispatch-unknown',dispatchAt:at});
  }
+ // The official cave_enter() Promise may resolve before an actual map
+ // change. A positive response is a distinct durable server reply; it does
+ // NOT prove that a character was transported, and never clears the journal.
+ function noteServerReply(reply){
+  if(closed||readFailed||writeFailed||!bot.running||
+   !validCaveLifecycleRecord(record)||
+   !['dispatch-unknown','observed-run'].includes(record.phase)||
+   !caveLifecycleTime(record.dispatchAt)||
+   record.name!==me.name||record.realm!==p.realm()||
+   record.session!==bot.session||record.serverReply)return false;
+  if(!reply||typeof reply!=='object'||
+   reply.success!==true||reply.failed===true||
+   (reply.place!==undefined&&reply.place!=='enter')||
+   !caveLifecycleHex(reply.run)||
+   (record.mode==='resume'&&reply.run!==record.run)||
+   !caveLifecycleTime(reply.expires)||
+   reply.expires<=record.dispatchAt||
+   !Number.isSafeInteger(reply.level)||reply.level<1||reply.level>999)return false;
+  const at=now();
+  if(!caveLifecycleTime(at)||at<record.dispatchAt)return false;
+  const next={...record,serverReply:{run:reply.run,
+   expires:reply.expires,level:reply.level,at}};
+  return validCaveLifecycleRecord(next)&&durable(next);
+ }
+ // Explicit one-shot send only. No scheduler calls this. The value action
+ // occupies Executor resources, consumes ordinary action-admission budget
+ // and cannot be retried after its dispatch-unknown record is committed.
+ function requestEntry(){
+  if(closed||!bot.running||readFailed||writeFailed||
+   typeof bot.exec?.dispatch!=='function'||
+   typeof p.has!=='function'||typeof p.call!=='function')return false;
+  const guard=()=>{
+   if(bot.journal||bot.inventoryBlocked||
+      bot.bank?.pending||bot.logistics?.reserved||
+      bot.teamTravel?.blocked||bot.lifecycleChanging||
+      bot.account?.rotationPending?.()||
+      bot.exec?.pending?.size>0)return false;
+   const state=status(),preflight=bot.cave?.status?.()?.entryPreflight;
+   if(state.state!=='prepared'||!state.blocked||
+      !validCaveLifecycleRecord(record)||
+      record.phase!=='prepared'||record.session!==bot.session||
+      record.realm!==p.realm()||
+      !preflight||preflight.localConditionsMet!==true||
+      preflight.requiresJournal!==true||
+      preflight.executable!==false||preflight.serverVerified!==false||
+      preflight.mode!==record.mode||
+      preflight.run!==record.run||
+      !Array.isArray(preflight.party)||
+      preflight.party.length!==record.party.length||
+      preflight.party.some((n,i)=>n!==record.party[i])||
+      bot.cave?.status?.()?.live)return false;
+   return true;
+  };
+  if(!guard())return false;
+  try{if(p.has('cave_enter')!==true)return false;}catch{return false;}
+  const mode=record.mode,expectedRun=record.run;
+  return bot.exec.dispatch('cave.enter.once',
+   ['lifecycle','movement','account'],guard,
+   ()=>{
+    // This durable write is the irreversible point. Even if p.call throws,
+    // the request may have reached the server and its outcome is unknown.
+    if(!markDispatchUnknown())throw Error('Cave dispatch not durably journaled');
+    const response=p.call('cave_enter');
+    return Promise.resolve(response).then(result=>{
+     noteServerReply(result);
+     return result;
+    });
+   },{value:true,timeout:25000,delay:1000,
+    observe:()=>{
+     const active=bot.cave?.status?.()?.live;
+     return !!active&&caveLifecycleHex(active.run)&&
+      (mode==='new'||active.run===expectedRun);
+    }});
+ }
  function sample(){
   if(closed||readFailed||writeFailed)return;
   const observed=live(),at=now();
@@ -152,6 +239,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   if(!validCaveLifecycleRecord(record)||record.realm!==p.realm()||
    record.name!==me.name||record.phase==='observed-run'||
    (record.mode==='resume'&&record.run!==observed.run)||
+   (record.serverReply&&record.serverReply.run!==observed.run)||
    at<record.createdAt)return;
   // Prepared may not have dispatched: only claim the actual server run
   // was observed, never that this particular intent caused it.
@@ -171,6 +259,6 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    live()!==null)return false;
   return durable(null);
  }
- return {prepare,markDispatchUnknown,sample,discardPrepared,status,
-  close(){closed=true;}};
+ return {prepare,markDispatchUnknown,requestEntry,sample,
+  discardPrepared,status,close(){closed=true;}};
 }

@@ -86,7 +86,7 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   // Restart those from the beginning; taken=true rows are never claimable.
   cursor=old?.version===2&&old.owner===owner&&old.realm===cursorRealm&&
    (old.cursor===null||typeof old.cursor==='string'&&
-    /^\\d{1,8}$/.test(old.cursor))?old.cursor:null,
+    /^\d{1,8}$/.test(old.cursor))?old.cursor:null,
   nextRead=0,reading=false,generation=0,
   queue=[],observed=[],reason='not-scanned';
  if(bot.journal?.kind==='mail.claim')cursor=null;

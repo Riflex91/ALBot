@@ -45,6 +45,7 @@ export function cavePriestHealPreflight(bot,{now=Date.now(),hostChecks=true}={})
   const heartbeat=memberName===c.name?c:bot.transport?.fresh?.(memberName);
   if(!visible||!heartbeat||visible.name!==memberName||
      visible.type==='monster'||visible.rip===true||
+     (memberName!==c.name&&visible.visible!==true)||
      visible.map!==team.map||
      (visible.in!==undefined&&visible.in!==team.map)||
      heartbeat.map!==team.map||
@@ -101,7 +102,7 @@ export function createCavePriestHealing(bot,{now=()=>Date.now()}={}){
  }
  function tick(){
   const first=proof(true);
-  if(!first.ready||typeof bot.exec?.run!=='function)return false;
+  if(!first.ready||typeof bot.exec?.run!=='function')return false;
   const {run,floor,targetName}=first;
   const guard=()=>{
    const p=proof(true);
@@ -120,10 +121,14 @@ export function createCavePriestHealing(bot,{now=()=>Date.now()}={}){
   const accepted=bot.exec.run('cave.priest.heal',['attack','mana'],
    guard,invoke,{delay:400,timeout:7000,waitForObservation:true,
     observe:()=>{
-     const current=proof(false);
-     return current.run===run&&current.floor===floor&&
-      (current.targetName===targetName&&
-       current.targetHp>first.targetHp);
+     const team=bot.caveTeam?.healStatus?.();
+     if(team?.ready!==true||team.run!==run||team.floor!==floor)
+      return false;
+     const c=bot.p.c;
+     const target=targetName===c.name?c:bot.entity?.(targetName);
+     return target?.name===targetName&&target.map===team.map&&
+      (target.in===undefined||target.in===team.map)&&
+      Number.isFinite(target.hp)&&target.hp>first.targetHp;
     }});
   if(accepted){
    attempts++;

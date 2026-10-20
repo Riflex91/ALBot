@@ -106,6 +106,7 @@ test('N12 a new choice can be prepared ONLY after observed previous vote',()=>{
  f.state.choice='scene-1';f.state.option='safe';
  f.state.live.choice.votes.P='safe';
  assert.equal(f.journal.sample(),true);
+ f.bot.exec.poll();
  f.state.choice='scene-2';f.state.option='other';
  assert.equal(f.journal.prepare('other'),true);
  const s=f.journal.status().journal;

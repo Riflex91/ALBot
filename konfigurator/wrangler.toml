@@ -1,6 +1,9 @@
 name = "albot-konfigurator"
 main = "./worker/index.mjs"
 compatibility_date = "2026-10-20"
+# Preserve per-account settings added through the Cloudflare dashboard across
+# CI/CD wrangler deploys; secrets remain configured separately in Cloudflare.
+keep_vars = true
 # Workers Static Assets are sent through the Worker, so Cloudflare Access
 # checks protect the HTML, CSS and JavaScript, not just the JSON API.
 [assets]

@@ -2,7 +2,7 @@ import {boundedInterceptPoint} from './intercept.mjs';
 import {potionChannelPolicy,rankRecoveryPotion} from './recovery-policy.mjs';
 import {distance,xy,samePlace,protectedItem,fingerprint} from '../core/policy.mjs';
 import {isNaturallyAggressive,isOwnAggressiveThreat} from './aggression.mjs';
-import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous} from './team-readiness.mjs';
+import {neutralPullReadiness,followerReassemblyDistance,followerCombatRendezvous,leaderAssignedFarmTarget} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure.mjs';
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
@@ -358,7 +358,8 @@ export function createFarmer(bot){
   // EXISTING team fight. This path never pulls an unattached monster.
   if(!leader?.running||leader.rip||!samePlace(p.c,leader))return false;
   const range=Math.max(5,(p.c.range??0)-Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
-  const enemy=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&m.target&&
+  const visible=bot.monsters();
+  const engaged=visible.filter(m=>m?.hp>0&&!m.dead&&m.target&&
     bot.teamNames.includes(m.target)&&bot.allowed(m)&&
     (bot.strategy?.safeTarget?.(m.mtype,m)!==false||bot.combatAssessment?.canDefend(m)===true)&&
     samePlace(p.c,m)&&
@@ -366,7 +367,23 @@ export function createFarmer(bot){
     distance(leader,m)<=cfg.party.followDistance*2).sort((a,b)=>
     Number(b.id===leader.target)-Number(a.id===leader.target)||
     distance(p.c,a)-distance(p.c,b))[0];
+  const assigned=engaged?null:leaderAssignedFarmTarget(p.c,leader,visible,{
+    plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
+    maxDistance:Math.max(range,cfg.party.followDistance*2)});
+  const shared=assigned&&bot.allowed(assigned)&&
+    bot.strategy?.safeTarget?.(assigned.mtype,assigned)!==false?assigned:null;
+  const enemy=engaged??shared;
   if(!enemy)return false;
+  const neutralShared=enemy===shared&&!enemy.target;
+  const stillAssigned=()=>!neutralShared||!!leaderAssignedFarmTarget(
+    p.c,bot.transport?.fresh?.(bot.leader),bot.monsters(),{
+      plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
+      maxDistance:Math.max(range,cfg.party.followDistance*2)
+    })?.id&&String(leaderAssignedFarmTarget(
+    p.c,bot.transport?.fresh?.(bot.leader),bot.monsters(),{
+      plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
+      maxDistance:Math.max(range,cfg.party.followDistance*2)
+    })?.id)===String(enemy.id);
   bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
   if(distance(p.c,enemy)>range){
    // Keep the admitted combat route until it finishes; repeated replanning
@@ -381,12 +398,12 @@ export function createFarmer(bot){
   }
   bot.navigation?.rangePosition?.(enemy);
   bot.skills.rotation(enemy);
-  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&
-    !!bot.entity(enemy.id)?.target,()=>p.call('change_target',enemy),{delay:500});
+  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&stillAssigned()&&
+    (!!bot.entity(enemy.id)?.target||neutralShared),()=>p.call('change_target',enemy),{delay:500});
   const attack=trackedAttack(enemy.id);
   exec.run('attack',['attack','mana'],()=>{
     const live=bot.entity(enemy.id);
-    return live&&live.target&&bot.teamNames.includes(live.target)&&
+    return live&&(live.target&&bot.teamNames.includes(live.target)||neutralShared&&stillAssigned())&&
       bot.allowed(live)&&(bot.strategy?.safeTarget?.(live.mtype,live)!==false||bot.combatAssessment?.canDefend(live)===true)&&
       distance(p.c,live)<=range&&p.call('can_attack',live)&&
       !p.call('is_on_cooldown','attack');

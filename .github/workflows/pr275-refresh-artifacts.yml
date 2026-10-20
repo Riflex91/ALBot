@@ -1,0 +1,45 @@
+name: Temporary PR275 latest-main artifact builder
+on:
+  push:
+    branches:
+      - codex/w10-stock-proof-main-20261020
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/w10-stock-proof-main-20261020
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Rebuild browser and headless bundles
+        run: npm run build
+      - name: Preserve personal config and sync browser runtime
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Rebuild editor package
+        run: npm run build:editor
+      - name: Verify runtime and regression suite
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          npm test
+      - name: Commit updated tracked generated artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/
+          if git diff --cached --quiet; then
+            echo "Artifacts already synchronized."
+          else
+            git commit -m 'build(W10): regenerate on Cave-isolation main'
+            git push origin HEAD:codex/w10-stock-proof-main-20261020
+          fi

@@ -31,7 +31,7 @@ test('bank evidence includes only fully observed local map packs with exactly 42
  assert.equal(rows[0].data.pack,'items0');
  assert.deepEqual(rows[0].data.slots[0],{name:'beewings',q:25,level:0});
  assert.deepEqual(observedBankTelemetry({...bank,map:'main'},'EUI',definitions),[]);
- assert.deepEqual(observedBankTelemetry(bank,'EUI',{}),[]);
+ assert.equal(observedBankTelemetry(bank,'EUI',{}).length,1); // known default bank pack
 });
 
 test('both read-only packet kinds pass real Worker ingest validation with private bearer token',async()=>{

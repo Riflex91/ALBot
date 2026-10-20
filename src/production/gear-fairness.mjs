@@ -77,3 +77,33 @@ export function crossRoleGearPriority(profile,cohort,{
   Math.min(12,Math.floor((now-lastImprovedAt)/172800000)):0;
  return Math.min(60,Math.round(gap*40)+vacancy+age);
 }
+
+
+// W05/W08: the optimizer already measures role-weighted item_properties and
+// discounts its marginal improvement by upgrade chance and cost. Compare ONLY
+// feasible alternatives for the SAME character; raw class scores or currency
+// cannot rank a tank directly against a priest. This bounded ordinal bonus is
+// planning evidence, never empirical post-equip performance or permission.
+// A sole candidate, ties, stale profiles and unverified optimizer rows add 0.
+export function measuredSlotUtilityPriority(goal,candidates,{profile,now=Date.now()}={}){
+ if(!freshGearEvidence(profile,now)||!Array.isArray(candidates)||
+    !candidates.includes(goal)||!goal||
+    typeof goal.character!=='string'||!goal.character||
+    !SLOT_KEYS.includes(goal.slot))return 0;
+ const valid=g=>g&&typeof g.character==='string'&&
+  g.character===goal.character&&SLOT_KEYS.includes(g.slot)&&
+  Number.isFinite(g.utility)&&g.utility>0&&
+  Number.isFinite(g.chance)&&g.chance>0&&g.chance<=1&&
+  Number.isFinite(g.estimatedCost)&&g.estimatedCost>=0;
+ if(!valid(goal))return 0;
+ const alternatives=candidates.filter(g=>valid(g));
+ // A duplicate slot does not establish a second independently actionable
+ // improvement, and must not arbitrarily inflate the first candidate.
+ if(alternatives.length<2||
+    new Set(alternatives.map(g=>g.slot)).size!==alternatives.length)
+  return 0;
+ const values=alternatives.map(g=>g.utility),low=Math.min(...values),
+  high=Math.max(...values),range=high-low;
+ if(!Number.isFinite(range)||range<=0)return 0;
+ return Math.min(12,Math.max(0,Math.round(12*(goal.utility-low)/range)));
+}

@@ -205,6 +205,22 @@ export async function handleRequest(request,env,ctx={},deps={}){
   const current=await github(env,path,'GET',null,fetcher);
   return current instanceof Response?current:json({ok:true,...current,published:false,applied:false});
  }
+ if(path==='/api/catalog'||path==='/api/runtime-info'){
+  const relative=path==='/api/catalog'?'editor/item-catalog.json':'dist/manifest.json';
+  const repository=asString(env.PUBLIC_RUNTIME_REPO)||'Riflex91/ALBot';
+  if(!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repository))return failure('Ungültiges Runtime-Repository',503);
+  const upstream=await fetcher('https://raw.githubusercontent.com/'+repository+'/main/'+relative,
+   {headers:{accept:'application/json'}});
+  if(!upstream.ok)return failure('Runtime-Informationen sind vorübergehend nicht erreichbar',502);
+  const data=await upstream.json();
+  if(path==='/api/catalog'){
+   if(!Array.isArray(data?.items)||data.items.length>2000||data.items.some(i=>
+      typeof i.id!=='string'||!/^[a-zA-Z0-9_]{1,100}$/.test(i.id)||
+      typeof i.name!=='string'||i.name.length>180))
+    return failure('Itemkatalog ist ungültig',502);
+  }
+  return json(data);
+ }
  if(path==='/api/characters')return readSnapshots(env,'character_snapshots');
  if(path==='/api/bank')return readSnapshots(env,'bank_snapshots');
  if(path.startsWith('/api/'))return failure('Schnittstelle unbekannt',404);

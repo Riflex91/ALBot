@@ -6,6 +6,11 @@ const hexRun=s=>typeof s==='string'&&/^[a-f0-9]{24}$/.test(s);
 const safeTime=n=>Number.isSafeInteger(n)&&n>0;
 const amount=n=>Number.isSafeInteger(n)&&n>=0;
 const label=s=>typeof s==='string'&&s.length>0&&s.length<=100;
+// A cave_info response is only a read. The server RPC can remain unresolved;
+// do not mistake an indefinitely pending request for a valid admission.
+const VISIT_REQUEST_TIMEOUT_MS=15000;
+const VISIT_REQUEST_COOLDOWN_MS=60000;
+const VISIT_EVIDENCE_TTL_MS=120000;
 
 export function verifiedCaveVisit(raw,{now=Date.now()}={}){
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||
@@ -79,6 +84,19 @@ export function createCaveEvidence(bot,{now=()=>Date.now()}={}){
  let lastRun=null,lastRunAt=0;
  const validContext=()=>!closed&&realm===p.realm()&&
   session===bot.session;
+ // Polling the local clock is read-only. Retire timed-out request tokens
+ // both on status/sample and on a late Promise resolution: no timer, no
+ // automatic retry and no old admission evidence can be resurrected.
+ function expirePending(at=now()){
+  if(!pending)return false;
+  if(!safeTime(at)||at<requestedAt||
+     at-requestedAt>=VISIT_REQUEST_TIMEOUT_MS){
+   pending=false;generation++;visit=null;visitAt=0;
+   error='request-timeout';
+   return true;
+  }
+  return false;
+ }
  const invalidate=()=>{
   const r=p.realm(),s=bot.session;
   if(r===realm&&s===session)return;
@@ -87,7 +105,7 @@ export function createCaveEvidence(bot,{now=()=>Date.now()}={}){
   lastRun=null;lastRunAt=0;
  };
  function sample(){
-  invalidate();
+  invalidate();expirePending();
   if(closed||!bot.running)return;
   const current=verifiedCaveSnapshot(p.c?.cave,{
    name:me.name,map:p.c?.map,now:now()});
@@ -95,35 +113,41 @@ export function createCaveEvidence(bot,{now=()=>Date.now()}={}){
  }
  function refreshVisit(){
   invalidate();
-  const at=now();
-  // No automatic cave API polling: callers explicitly opt into a bounded
-  // read. An unresolved call is NOT retried or assumed to have failed.
+  const at=now();expirePending(at);
+  // No automatic cave API polling: only an explicit request, no retry
+  // even after a timeout. An unresolved old request consumes its 60s
+  // cooldown and its eventual reply remains invalidated.
   if(closed||!bot.running||pending||
-     !Number.isSafeInteger(at)||at<=0||
-     requestedAt&&at-requestedAt<60000||
-     typeof p.has!=='function'||p.has('cave_info')!==true||
-     typeof p.call!=='function')return false;
+     !safeTime(at)||
+     requestedAt&&at-requestedAt<VISIT_REQUEST_COOLDOWN_MS||
+     typeof p.has!=='function'||typeof p.call!=='function')return false;
+  try{if(p.has('cave_info')!==true)return false;}
+  catch{return false;}
   const token=++generation;
   requestedAt=at;pending=true;error=null;
+  // A fresh query invalidates even a previously successful but possibly
+  // changed available/resume reading. Failures must not reveal old rights.
+  visit=null;visitAt=0;
   let answer;
   try{answer=p.call('cave_info');}
   catch{pending=false;error='request-failed';return false;}
   Promise.resolve(answer).then(data=>{
    if(!validContext()||token!==generation)return;
+   if(expirePending()||token!==generation)return;
    pending=false;
    const result=verifiedCaveVisit(data,{now:now()});
    if(!result){error='invalid-or-stale-visit';return;}
    visit=result;visitAt=now();error=null;
   },()=>{
-   if(validContext()&&token===generation){
-    pending=false;error='request-failed';
-   }
+   if(!validContext()||token!==generation)return;
+   if(expirePending()||token!==generation)return;
+   pending=false;error='request-failed';
   });
   return true;
  }
  function status(){
-  invalidate();
-  const time=now(),fresh=visit&&time-visitAt<=120000&&
+  invalidate();expirePending();
+  const time=now(),fresh=bot.running&&visit&&time-visitAt<=VISIT_EVIDENCE_TTL_MS&&
    time>=visitAt&&validContext();
   const live=bot.running?verifiedCaveSnapshot(p.c?.cave,{
    name:me.name,map:p.c?.map,now:time}):null;

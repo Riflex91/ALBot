@@ -15,7 +15,7 @@ export function validCaveLifecycleRecord(x){
   x.party.some(n=>!caveLifecycleText(n))||
   new Set(x.party).size!==x.party.length||!x.party.includes(x.name)||
   (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run))||
-  (x.mode==='observed'&&x.phase!=='observed-run')))
+  (x.mode==='observed'&&x.phase!=='observed-run'))
   return false;
  if(x.phase==='prepared')return x.dispatchAt===null&&x.observed===null;
  if(x.phase==='dispatch-unknown')

@@ -182,8 +182,9 @@ export function createEncounter(bot){
      bot.strategy?.busy||bot.recovering||
      bot.teamPlan?.wantsCombat?.()===false||
      typeof bot.free!=='function'||
-     bot.free()<=bot.cfg.farming.freeSlots||
-     bot.combatAssessment?.emergency?.().active)return null;
+     typeof bot.free!=='function'||
+     bot.free()<=(bot.cfg.farming?.freeSlots??0)||
+     bot.combatAssessment?.emergency?.()?.active)return null;
   const plan=bot.teamPlan?.heartbeat?.();
   if(!plan||bot.teamPlan?.target?.()!==m.mtype||
      bot.monsters().some(x=>x.hp>0&&x.target&&bot.teamNames.includes(x.target)))

@@ -37,6 +37,7 @@ function freshGearEvidence(profile,now){
  return !!profile&&profile.complete===true&&
   typeof profile.realm==='string'&&!!profile.realm&&
   typeof profile.class==='string'&&!!profile.class&&
+  Number.isSafeInteger(profile.level)&&profile.level>=1&&
   Number.isFinite(now)&&Number.isSafeInteger(profile.at)&&
   profile.at>0&&profile.at<=now&&
   now-profile.at<=MAX_GEAR_EVIDENCE_AGE_MS&&
@@ -44,8 +45,10 @@ function freshGearEvidence(profile,now){
   SLOT_KEYS.every(key=>{
    if(!Object.hasOwn(profile.slots,key))return false;
    const item=profile.slots[key];
-   return !item||typeof item==='object'&&!Array.isArray(item)&&
-    Number.isSafeInteger(item.level)&&item.level>=0&&item.level<=99;
+   return item===null||typeof item==='object'&&!Array.isArray(item)&&
+    typeof item.name==='string'&&item.name.length>0&&
+    item.name.length<=120&&Number.isSafeInteger(item.level)&&
+    item.level>=0&&item.level<=99;
   });
 }
 function roleCoverage(p,role){
@@ -62,7 +65,8 @@ export function crossRoleGearPriority(profile,cohort,{
  const own=roleCoverage(profile,role);
  // Freshness AND realm come from actual versioned per-character gear
  // snapshots. A remote or missing-realm cached profile is not evidence.
- if(!own||!Array.isArray(cohort)||!freshGearEvidence(profile,now))return 0;
+ if(!own||!SLOT_KEYS.includes(slot)||!SLOT_PRIORITIES[role]||
+    !Array.isArray(cohort)||!freshGearEvidence(profile,now))return 0;
  const values=cohort.filter(x=>freshGearEvidence(x?.profile,now)&&
   x.profile.realm===profile.realm)
   .map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);

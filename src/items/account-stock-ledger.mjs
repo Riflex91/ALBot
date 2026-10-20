@@ -1,4 +1,5 @@
 import {inventoryStockEvidence,reconcileStockEvidence} from './stock-evidence.mjs';
+import {previewAccountStockPolicy} from './account-stock-policy.mjs';
 // Phase 4 accounting is intentionally read-only. No combined remote snapshot
 // can authorize item transfers, upgrades, bank actions or liquidation.
 // The bank view is a SECOND physical source and must be verified as strictly
@@ -122,6 +123,7 @@ export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
  return {version:1,mode:'shadow-only',authority:'none',executable:false,
   owner,session,realm,at:now,teamComplete:team.complete,
   bankScope:bankCurrent?'verified-current-map':'unverified-or-not-visible',
+  coverage:{allBankPacks:false,reason:'off-map-bank-packs-not-authoritatively-observed'},
   transferUnresolved:unresolved,
   complete:team.complete&&!!bankCurrent&&!unresolved&&
    !invalidAggregate&&rows.size<=120,
@@ -145,5 +147,8 @@ export function createAccountStockLedger(bot){
    reserved:item=>bot.production?.reservedQuantity?.(item)??0,
    expected:peers.map(x=>x.name)});
  }
- return {snapshot};
+ return {snapshot,preview:(item,limits={})=>previewAccountStockPolicy({
+  ledger:snapshot(),item:typeof item==='string'?{name:item,level:0}:item,
+  ...limits
+ })};
 }

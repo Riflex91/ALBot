@@ -84,7 +84,7 @@ test('two-target 3shot needs a verified damage benefit and still respects explic
 test('encounter capacity no longer collapses on shared attack cooldown or temporary gear telemetry loss',()=>{
  const {bot}=archer();
  let advertised=true;bot.farmers=['R','P'];bot.teamNames=['R','P'];
- bot.transport.fresh=()=>({name:'P',class:'priest',level:48,running:true,hp:3300,max_hp:3405,mp:1400,max_mp:1710,
+ bot.transport.fresh=()=>({name:'P',class:'priest',level:48,running:true,hp:3300,max_hp:3405,mp:1400,max_mp:1710,map:'main',in:'main',x:12,y:0,stats:{attack:145,frequency:1,range:160,heal:500},combatSupport:{healReady:true,healRange:200},
   ...(advertised?{gear:{class:'priest',level:48,slots:{mainhand:{name:'staff',level:3}},stats:{attack:145}}}:{})});
  const encounter=createEncounter(bot);encounter.tick();const context=encounter.status().context;assert.equal(encounter.status().capacity,3);
  advertised=false;bot.p.c.attack=400;encounter.tick();assert.equal(encounter.status().context,context);assert.equal(encounter.status().capacity,3);
@@ -98,7 +98,7 @@ test('rotation drain blocks new pulls and preserves defense against already enga
 test('aggressive probe admits two in range without approving a distant third and retains known failure vetoes',()=>{
  const {bot,mobs}=archer();mobs[2].x=500;
  let encounter=createEncounter(bot);encounter.tick();
- assert.equal(encounter.status().capacity,2);
+ assert.equal(encounter.status().capacity,1,'solo multi-pull needs verified support');
  const context=encounter.status().context;
  bot.p.read=()=>({[context+':2']:{samples:1,failures:1}});
  encounter=createEncounter(bot);encounter.tick();assert.equal(encounter.status().capacity,1);

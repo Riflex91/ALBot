@@ -218,7 +218,7 @@ export function estimateThreatCapability({
 }
 
 export function createCombatAssessment(bot){
- const hits=[],now=()=>Date.now();let last=null,lastEmitted='',lastAt=0;
+ const hits=[],now=()=>Date.now(),lastHp=new Map();let last=null,lastEmitted='',lastAt=0;
  const team=()=>bot.farmers.map(name=>{
   if(name===bot.me.name){
    const c=bot.p.c;
@@ -274,6 +274,18 @@ export function createCombatAssessment(bot){
    const mob=bot.monsters().find(m=>m.target===target&&m.hp>0&&!m.dead);
    if(mob)hits.push({at:now(),monsterId:mob.id,kind:'healing',
     victim:target,actor,damage:d.heal});
+   const entity=bot.entity?.(target)??(bot.p.c?.name===target?bot.p.c:null);
+   const hpAfter=Number.isFinite(entity?.hp)?entity.hp:null;
+   const prior=lastHp.get(target);
+   const hpDelta=hpAfter!==null&&Number.isFinite(prior)?hpAfter-prior:null;
+   if(hpAfter!==null)lastHp.set(target,hpAfter);
+   bot.event?.('combat.healHitConfirmed',{healer:actor,victim:target,
+    serverHeal:d.heal,hpAfter,observedHpDelta:hpDelta,
+    // A snapshot delta can contain intervening damage; never present it
+    // as the exact heal amount or infer success from skill action completion.
+    observation:hpDelta===null?'heal-hit-only':'snapshot-delta-not-attributed'});
+   if(hpDelta!==null&&hpDelta>0)bot.event?.('combat.hpGainObserved',{
+    victim:target,delta:hpDelta,hpAfter,source:'consecutive-hp-snapshots'});
   }
   if(!finite(d?.damage,1,1000000)){
    while(hits.length>48||hits.length&&hits[0].at<now()-8000)hits.shift();
@@ -294,5 +306,5 @@ export function createCombatAssessment(bot){
   canDefend:m=>last?.viable===true&&last.monsterId===m?.id&&
    last.victim===m.target&&now()-last.at<1200,
   status:()=>({last,hits:hits.length}),
-  close:()=>{hits.length=0;last=null;}};
+  close:()=>{hits.length=0;lastHp.clear();last=null;}};
 }

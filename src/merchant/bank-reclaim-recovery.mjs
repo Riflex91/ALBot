@@ -1,4 +1,5 @@
-import {fingerprint,protectedItem,variantCount} from '../core/policy.mjs';
+import {fingerprint,protectedItem} from '../core/policy.mjs';
+import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
 
 // W03/W04/G11: one read-only proof over a durable bank-reclaim before-image.
 // No guess about missing bank packs or a checkpoint written by older code
@@ -99,7 +100,7 @@ export function inspectOffsiteBankReclaim(record,{
     record.dest>=inventory.length)
   return {eligible:false,reason:'durable-withdrawal-or-inventory-missing'};
  const item=inventory[record.dest];
- const count=variantCount(inventory,record.item);
+ const count=verifiedBankVariantCount(inventory,record.item);
  if(!item||fingerprint(item)!==record.sourcePrint||
     !safe(count)||count!==record.withdrawal.inventoryCount)
   return {eligible:false,reason:'offsite-source-slot-or-variant-count-changed'};
@@ -121,8 +122,8 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
   return {phase:'unobserved',reason:'addressed-local-bank-pack-unavailable',confirmed:false};
  const pack=bank[record.pack],source=pack[record.slot],
   target=inventory[record.dest];
- const count=variantCount(inventory,record.item),
-  bankCount=variantCount(pack,record.item);
+ const count=verifiedBankVariantCount(inventory,record.item),
+  bankCount=verifiedBankVariantCount(pack,record.item);
  if(!safe(count)||!safe(bankCount))
   return {phase:'ambiguous',reason:'invalid-observed-quantities',confirmed:false};
  const original=!!source&&fingerprint(source)===record.sourcePrint,

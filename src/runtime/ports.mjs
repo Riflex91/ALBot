@@ -125,6 +125,22 @@ export function createPorts(root){
     realm(){return String(parent.server_region??root.server_region??'')+String(parent.server_identifier??root.server_identifier??'');},
     log(message){try{this.call('game_log','ALBot: '+String(message).slice(0,220));}catch{root.console?.warn(message);}},
     read(key){try{return this.call('get',key);}catch{return null;}},
+    // The official get() catches storage/JSON failures and returns null.
+    // That behavior is acceptable for ordinary preferences, but would make
+    // an unresolved Cave admission or vote look absent after a restart.
+    // Read the SAME cstore_ storage used by set() without swallowing faults.
+    readCaveJournal(key){
+     if(typeof key!=='string'||!/^albot:cave-(?:lifecycle|vote):[A-Za-z0-9_]{1,100}$/.test(key))
+      throw Error('Invalid Cave journal key');
+     const storage=root.localStorage??parent.localStorage;
+     if(!storage||typeof storage.getItem!=='function')
+      throw Error('Strict Cave journal storage unavailable');
+     const raw=storage.getItem('cstore_'+key);
+     if(raw===null)return null;
+     if(typeof raw!=='string'||raw.length>65536)
+      throw Error('Invalid Cave journal storage payload');
+     return JSON.parse(raw);
+    },
     storageError:'',
     write(key,value){try{if(root.localStorage){root.localStorage.setItem('cstore_'+key,JSON.stringify(value));this.storageError='';return true;}const ok=this.call('set',key,value)===true;if(!ok)this.storageError='set() meldet Schreibfehler';return ok;}catch(e){this.storageError=String(e?.name)+': '+String(e?.message??e);return false;}},
     hook(name,handler){const old=root[name];const fn=function(...args){if(handler(...args)===true)return;if(typeof old==='function')return old.apply(this,args);};root[name]=fn;return ()=>{if(root[name]===fn)root[name]=old;};}

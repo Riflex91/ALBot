@@ -78,9 +78,27 @@ export function createGear(bot){
       data.realm!==peerRealm||!Number.isSafeInteger(evidenceAt)||
       evidenceAt<=0||evidenceAt>Date.now()||
       Date.now()-evidenceAt>604800000)continue;
-   const complete=gearSlots.every(slot=>Object.hasOwn(data.slots,slot));
-   const slots=Object.fromEntries(gearSlots.map(slot=>[slot,null]));
-   for(const [slot,i] of Object.entries(data.slots).slice(0,20))if(i&&typeof i.name==='string'&&p.G.items[i.name]&&Number.isInteger(i.level)&&i.level>=0&&i.level<=99)slots[slot]={name:i.name,level:i.level,stat_type:typeof i.stat_type==='string'?i.stat_type:'',p:typeof i.p==='string'?i.p:'',title:typeof i.title==='string'?i.title:'',l:!!i.l,b:!!i.b};
+   // Missing, malformed or unknown equipment is NOT proof of a vacant
+   // canonical slot. Do not turn a failed gear observation into an urgent
+   // weapon/armor delivery or synthetic cross-role catch-up score.
+   const complete=Number.isSafeInteger(data.level)&&data.level>=1&&
+    gearSlots.every(slot=>{
+     if(!Object.hasOwn(data.slots,slot))return false;
+     const i=data.slots[slot];
+     return i===null||!!i&&typeof i==='object'&&!Array.isArray(i)&&
+      typeof i.name==='string'&&i.name.length>0&&i.name.length<=120&&
+      !!p.G.items?.[i.name]&&Number.isSafeInteger(i.level)&&
+      i.level>=0&&i.level<=99;
+    });
+   if(!complete)continue;
+   const slots=Object.fromEntries(gearSlots.map(slot=>{
+    const i=data.slots[slot];
+    return [slot,i?{name:i.name,level:i.level,
+     stat_type:typeof i.stat_type==='string'?i.stat_type:'',
+     p:typeof i.p==='string'?i.p:'',
+     title:typeof i.title==='string'?i.title:'',
+     l:!!i.l,b:!!i.b}:null];
+   }));
    profiles[name]={class:data.class,level:data.level,slots,complete,session:peer?.session??bot.session,realm:peerRealm,stats:Object.fromEntries(Object.entries(data.stats??{}).filter(([k,v])=>["attack","frequency","armor","resistance","max_hp","max_mp","range","crit","apiercing","rpiercing"].includes(k)&&Number.isFinite(v)&&Math.abs(v)<1e9)),at:evidenceAt};
   }
   profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&Date.now()-x.at<7*86400000).slice(0,20));

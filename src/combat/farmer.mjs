@@ -8,6 +8,7 @@ import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 import {roadAggroTravelDecision,committedFarmTransit,createTransitBlockObserver,verifiedTransitBlock} from './transit-defense.mjs';
 import {mapGraph,mapHops} from '../world/knowledge.mjs';
+import {inCaveInstance} from '../world/cave-team-coordination.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
@@ -95,13 +96,17 @@ export function safeSquadConvergenceStep(character,anchor,monsters=[],canMove=()
  }
  return best;
 }
-export function chooseEmergencyFocus(monsters,members=[]){
+export function chooseEmergencyFocus(monsters,members=[],definitions={}){
  const health=new Map((members??[]).filter(m=>m&&typeof m.name==='string'&&
   Number.isFinite(m.hp)&&Number.isFinite(m.max_hp)&&m.max_hp>0)
   .map(m=>[m.name,m.hp/m.max_hp]));
  return (monsters??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
    health.has(m.target)).slice().sort((a,b)=>
    health.get(a.target)-health.get(b.target)||
+   ((definitions?.[b.mtype]?.attack??b.attack??0)*
+     (definitions?.[b.mtype]?.frequency??b.frequency??1)/Math.max(1,b.hp))-
+   ((definitions?.[a.mtype]?.attack??a.attack??0)*
+     (definitions?.[a.mtype]?.frequency??a.frequency??1)/Math.max(1,a.hp))||
    a.hp-b.hp||String(a.id).localeCompare(String(b.id)))[0]??null;
 }
 // Every transit tick can choose a nearby, fresh, injured teammate,
@@ -256,6 +261,16 @@ export function createFarmer(bot){
     }
     if(c.hp/c.max_hp<cfg.farming.restBelow)rest=true;
     if(rest&&c.hp/c.max_hp>=cfg.farming.resumeAbove)rest=false;
+    // Generated Cave floors have their OWN bound healer/defense executors.
+    // Do not run overworld rest's retreat(), roadTravel() or
+    // skills.rotation(null) here: all three can schedule ordinary farm
+    // movement/skills before the Cave-only branch in tick() gets control.
+    // Survival potions/regen above remain available, while a wounded Priest
+    // can still reach the Cave-specific single-target healing executor.
+    if(inCaveInstance(c)){
+      if(rest){bot.target=null;bot.reason='Cave: Schonung und Teamheilung';}
+      return false;
+    }
     // A Ranger already following a valid farm route can drink while moving.
     // Stopping that route at 40% HP to orbit a roadside bigbird repeatedly
     // separated both Rangers from the healer in captured live traces.
@@ -296,7 +311,7 @@ export function createFarmer(bot){
       (x,y)=>p.call('can_move_to',x,y),{
        now,realm:p.realm(),
        minimumGap:Math.max(120,Math.min(160,cfg.party.followDistance??160))
-      });
+      })??bot.navigation?.hazardPoint?.(anchor);
     if(!point)return false;
     if(existing&&!['kite','follow','farm','combat','cohesion','world'].includes(
        existing.owner))return false;
@@ -335,6 +350,7 @@ export function createFarmer(bot){
         return true;
       }
     }
+    if(bot.navigation?.hazardEscape?.(healer??null))return true;
     if(bot.navigation?.orbit(t))return true;
     const threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function helpEngagedTeamFight(leader){
@@ -441,6 +457,32 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
+    // Cave maps are generated instances, never ordinary farmspawns.
+    // Keep urgent life support, but isolate overworld combat and movement.
+    // Only dedicated, fully run-bound Cave executors may act here.
+    if(inCaveInstance(p.c)){
+      // Stop an already active direct Cave step when its exact evidence
+      // expires or a monster appears. Never fall through to smart_move.
+      if(bot.movement?.order?.owner==='cave'&&
+         bot.caveDirect?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
+      if(['farm','follow','cohesion','combat','world','regroup',
+          'quest-escort'].includes(bot.movement?.order?.owner))
+       bot.movement.stop();
+      bot.target=null;
+      const evidence=bot.caveTeam?.status?.();
+      // Only the dedicated Ranger basic-defense executor may issue an
+      // instance attack. It refuses neutral mobs, movement and skills and
+      // revalidates the exact team/monster at network dispatch.
+      const healed=bot.cavePriest?.tick?.()===true;
+      const defended=!healed&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!defended&&bot.caveDirect?.tick?.()===true;
+      bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
+       defended?'Cave: bestätigte Teamverteidigung angefordert':
+       cohesion?'Cave: sicherer Direktschritt zum Priest angefordert':
+       'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
+      return;
+    }
     const c=p.c,now=Date.now();
     const detachment=assessQuestDetachment(bot);
     const questVisitor=(bot.farmers??[]).find(n=>n!==me.name&&
@@ -527,7 +569,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
     const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
       bot.transport?.fresh?.(name)).filter(Boolean);
-    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
+    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster,p.G.monsters);
     const blocker=blockingMonster();
     if(blocker&&['farm','follow'].includes(bot.movement.order?.owner))bot.movement.stop();
     const danger=blocker??rescueFocus??threat;
@@ -553,12 +595,12 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
           if(!bot.movement.order)bot.movement.go(
            combatApproach(c,danger,range,(x,y)=>p.call('can_move_to',x,y)),'combat');
         }else{
-          if(p.c.target!==danger.id)exec.run('target',['target'],()=>bot.allowed(danger),
+          if(p.c.target!==danger.id)exec.run('target',['target'],()=>!inCaveInstance(p.c)&&bot.allowed(danger),
             ()=>p.call('change_target',danger),{delay:500});
           const attack=trackedAttack(danger.id);
           exec.run('attack',['attack','mana'],()=>{
             const live=bot.entity(danger.id);
-            return live&&bot.combatAssessment?.canDefend(live)===true&&
+            return !inCaveInstance(p.c)&&live&&bot.combatAssessment?.canDefend(live)===true&&
               bot.allowed(live)&&distance(p.c,live)<=range&&
               p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
           },attack.invoke,{delay:100,onSettle:attack.settle});
@@ -848,9 +890,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // in this tick, and passive mobs are not treated as emergency threats.
     if(d<=range&&cfg.farming.kiting)bot.navigation?.rangePosition?.(target);
     if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
-    if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
+    if(c.target!==target.id)exec.run('target',['target'],()=>!inCaveInstance(p.c)&&bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     const attack=trackedAttack(target.id);
-    exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
+    exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return !inCaveInstance(p.c)&&t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
   }
   return {tick,retreat,travelStatus,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
     // The emergency scheduler executes BEFORE normal farmer.tick. Honor the

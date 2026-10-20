@@ -85,7 +85,7 @@ test('gear catchup compares observed same-class equipment and never invents offl
  const names=['mainhand','offhand','helmet','chest','pants','shoes','gloves',
   'amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
  const observedAt=Date.now(),profile=(level,extra=[])=>({
-  class:'ranger',complete:true,realm:'EUI',at:observedAt,
+  class:'ranger',level:70,complete:true,realm:'EUI',at:observedAt,
   slots:Object.fromEntries(names.map(slot=>[slot,
    slot==='mainhand'||extra.includes(slot)?{name:slot,level}:null]))
  });

@@ -11,7 +11,21 @@ Stand: **19. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Aktueller signierter Release-Kanal (Sequence 15, 19.10.2026)
+## Aktueller signierter Release-Kanal (Sequence 16, 19.10.2026)
+
+| Feld | Beobachteter Wert |
+| --- | --- |
+| `sequence` | `16` |
+| `version` | `0.16.0-candidate` |
+| `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
+| `bytes` | `772611` |
+| `sha256` | `13473debb65a32253adccda4fbf967f5540b613a84fe57059747f7d7c5610950` |
+
+Release aus [PR #251](https://github.com/Riflex91/ALBot/pull/251), signiert mit [Workflow 39331939239](https://github.com/Riflex91/ALBot/actions/runs/39331939239). Nach bestandener Linux-/Windows-CI wurden 1.806/1.806 Offline-Tests, ECDSA-P-256-Signatur, SHA-256 und Bytezahl verifiziert. Quelländerungen: sichere Team-Konvergenz trotz aktiver Aggro und Fortsetzung der gemeinsamen Farmplan-Auswahl ohne gültigen Plan. Persönlicher Ingame-CODE, Loader-URL und Key unverändert; Spiel-Liveabnahme offen.
+
+### Vorheriger signierter Stand (Sequence 15)
+
+## Historischer signierter Release-Kanal (Sequence 15, 19.10.2026)
 
 | Feld | Beobachteter Wert |
 | --- | --- |

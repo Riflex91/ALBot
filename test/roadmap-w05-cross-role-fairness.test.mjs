@@ -133,3 +133,38 @@ test('W05 same-realm stale owner never gets a bonus from a fresh peer',()=>{
  assert.equal(gearCatchUpPriority({...weak,at:now-8*86400000},[strong],{now}),0);
  assert.equal(gearCatchUpPriority({...weak,realm:'USV'},[strong],{now}),0);
 });
+
+test('W05 malformed occupied item cannot masquerade as complete coverage or a vacancy',()=>{
+ const full=profile('ranger',Object.keys(slots));
+ const weak=profile('priest',[]);
+ const compare=peer=>crossRoleGearPriority(weak,[
+  {profile:weak,role:'healer'},{profile:peer,role:'dps'}
+ ],{role:'healer',slot:'mainhand',now});
+ assert.ok(compare(full)>0);
+ const invalid=[
+  {level:4}, {name:'',level:4},{name:'staff',level:null},
+  {name:'staff',level:-1},{name:'staff',level:1.5},
+  {name:'staff',level:NaN},[],false,undefined
+ ];
+ for(const item of invalid){
+  const peer={...full,slots:{...full.slots,mainhand:item}};
+  assert.equal(compare(peer),0,String(item?.name));
+  assert.equal(gearCatchUpPriority(weak,[{...peer,class:'priest'}],{now}),0);
+ }
+ assert.equal(compare({...full,level:NaN}),0);
+ assert.equal(compare({...full,level:0}),0);
+ assert.equal(compare({...full,slots:{...full.slots,mainhand:null}})>0,true);
+});
+
+test('W05 invalid target slots and unspecified role cannot earn invented vacancy credit',()=>{
+ const weak=profile('priest',[]);
+ const strong=profile('ranger',Object.keys(slots));
+ const cohort=[{profile:weak,role:'healer'},{profile:strong,role:'dps'}];
+ assert.ok(crossRoleGearPriority(weak,cohort,{role:'healer',slot:'mainhand',now})>0);
+ for(const slot of ['trade1','trade16','unknown','',null]){
+  assert.equal(crossRoleGearPriority(weak,cohort,{role:'healer',slot,now}),0);
+ }
+ for(const role of ['unspecified','farmer',null]){
+  assert.equal(crossRoleGearPriority(weak,cohort,{role,slot:'mainhand',now}),0);
+ }
+});

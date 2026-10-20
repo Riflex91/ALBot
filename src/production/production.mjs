@@ -11,7 +11,7 @@ import {planProduction} from './planner.mjs';
 import {findRecipe,recipeIngredients,recipeGridIngredients,matchRecipeSlots,planCraftStackMerge} from './recipes.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {defaultsFor,phaseOf} from '../../editor/lib/contract.mjs';
-import {prioritizeAdmittedProductionGoal,admittedProductionAction,deferNoOfferMarketPlan,firstEligibleProductionSlot} from '../merchant/production-priority.mjs';
+import {prioritizeAdmittedProductionGoal,prioritizeContinuingMaterialGoal,admittedProductionAction,deferNoOfferMarketPlan,firstEligibleProductionSlot} from '../merchant/production-priority.mjs';
 // Transient automatic send rules need an exact physical-variant binding.
 // The editable rule schema deliberately exposes only stat/p/title; acc, rid
 // and data cannot be expressed there and must never be silently widened.
@@ -697,6 +697,8 @@ export function createProduction(bot){
   return !(item&&rule&&e.remaining(rule)&&bot.market?.hasVisibleBuyOffer?.(item,{strict:true,rule}));
  }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
+  const continuingMaterialKey=goal&&plan[0]?.kind==='farm'&&materials.length?
+    goalKey(goal):null;
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
   const readyStock=[...p.c.items.filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep'),
    ...(bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep')];
@@ -712,7 +714,11 @@ export function createProduction(bot){
    keyOf:goalKey,scoreOf:g=>(g.priority??0)+(fastGear(g)?65:0),
    maxHoldMs:45000,maxPriorityDeficit:15
   });
-  for(const g of ordered){
+  const stable=prioritizeContinuingMaterialGoal(ordered,{
+   heldKey:continuingMaterialKey,heldAt,now:Date.now(),
+   keyOf:goalKey,scoreOf:g=>(g.priority??0)+(fastGear(g)?65:0),
+   maxHoldMs:90000,maxPriorityDeficit:10});
+  for(const g of stable){
    const wait=waiting.get(goalKey(g));
    // A visible ask is not an authorized material offer until its exact
    // acquisition rule still permits the current price and finite quantity.
@@ -754,7 +760,16 @@ export function createProduction(bot){
     continue;
    }
    marketDeferred.delete(goalKey(g));
-   planningReason=null;const objective=knowledgeFingerprint(goalKey(g));const previous=intent?.objective;if(previous&&previous!==objective)bot.event('production.cancel',{objective:previous,reason:'Bedarf/Ziel geändert'});persistIntent({objective,goal:goalKey(g),item:g.item,level:g.level,quantity:needed,recipient:g.recipient,realm:p.realm(),phase:'planned',at:Date.now(),definition:knowledgeFingerprint([p.G.items[g.item],p.G.craft]),steps:plan.slice(0,32),reservations:plan.reservations??[]});break;
+   planningReason=null;const objective=knowledgeFingerprint(goalKey(g));const previous=intent?.objective;
+   if(previous&&previous!==objective){
+    const admitted=admittedAt>0&&admittedGoalKey&&
+      previous===knowledgeFingerprint(admittedGoalKey);
+    bot.event(admitted?'production.cancel':'production.planReplaced',{
+      objective:previous,nextObjective:objective,
+      reason:admitted?'Zuvor angenommener Auftrag neu geplant':
+       'Nur unverbindlichen Material-/Beschaffungsplan ersetzt'});
+   }
+   persistIntent({objective,goal:goalKey(g),item:g.item,level:g.level,quantity:needed,recipient:g.recipient,realm:p.realm(),phase:'planned',at:Date.now(),definition:knowledgeFingerprint([p.G.items[g.item],p.G.craft]),steps:plan.slice(0,32),reservations:plan.reservations??[]});break;
   }
   if(!goal&&intent&&!bot.journal){const pending=goals().some(g=>g.recipient?(deliveries[goalKey(g)]?.quantity??0)<g.quantity:qty(g.item,g.level,g)<g.quantity);if(pending)persistIntent({...intent,phase:'waiting'});else{bot.event('production.intent.complete',{objective:intent.objective,reason:'Bedarf erfüllt oder ausdrücklich entfernt'});persistIntent(null);}}
   if(!goal||plan[0]?.kind!=='farm')materials=[];else updateMaterials();

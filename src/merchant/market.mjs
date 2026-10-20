@@ -1,5 +1,13 @@
 import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
+// A read-only Ponty survey is not an approved market purchase and should
+// not drive bank <-> market travel every minute. Active approved acquisition
+// demand receives a shorter bounded refresh; an idle survey is infrequent.
+export function pontyScanDue({now=Date.now(),last=0,approvedDemand=false}={}){
+ const interval=approvedDemand?120000:600000;
+ return Number.isFinite(now)&&Number.isFinite(last)&&now>=last&&
+   (last<=0||now-last>=interval);
+}
 export function createMarket(bot){
  const {p,cfg,exec}=bot,e=bot.economy;let secondhand=[],lastScan=0,scanGeneration=0;
  const marketProbes=new Map(),noOffers=new Map(),MARKET_REPROBE_MS=120000;
@@ -333,7 +341,12 @@ export function createMarket(bot){
   }
   if(!cfg.merchant.ponty)return false;
   const d=e.destination('secondhands');if(!d)return false;
-  if(Date.now()-lastScan>60000){if(!e.npcTravel(d,'Ponty'))return true;const token=++scanGeneration;
+  const approvedDemand=(cfg.items??[]).some(r=>r?.enabled===true&&
+    r.action==='marketBuy'&&typeof r.item==='string'&&
+    (typeof e.remaining!=='function'||e.remaining(r)))||
+    bot.production?.status?.()?.steps?.[0]?.kind==='marketBuy';
+  if(pontyScanDue({now:Date.now(),last:lastScan,approvedDemand})){
+   if(!e.npcTravel(d,'Ponty'))return true;const token=++scanGeneration;
    const accepted=exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{if(bot.running&&token===scanGeneration)secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});if(accepted)lastScan=Date.now();return accepted;}
   for(const i of secondhand){const item={...i};delete item.rid;const r=e.rules(item,'acquisition');if(r?.action!=='marketBuy'||!e.remaining(r)||!i.rid||!e.safe(i))continue;
    const factor=p.G.multipliers?.[p.G.items[i.name]?.cash?'secondhands_cash_mult':'secondhands_mult']??(p.G.items[i.name]?.cash?3:2);

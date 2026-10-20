@@ -83,12 +83,13 @@ export function verifiedCaveSnapshot(raw,{name,map,now=Date.now()}={}){
   }
   if(c.votes!==undefined&&c.votes!==null){
    if(typeof c.votes!=='object'||Array.isArray(c.votes))return null;
-   const result={};
-   for(const [voter,id] of Object.entries(c.votes)){
+   const entries=Object.entries(c.votes);
+   for(const [voter,id] of entries){
     if(!names.has(voter)||!label(id)||!ids.has(id))return null;
-    result[voter]=id;
    }
-   votes=result;
+   // Preserve original server vote keys without the __proto__ setter
+   // semantics of assigning arbitrary player names into {}.
+   votes=Object.fromEntries(entries);
   }
   choice={id:c.id,resolved:c.resolved,options,deadline,votes};
  }

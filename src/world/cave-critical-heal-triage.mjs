@@ -34,7 +34,7 @@ export function caveCriticalHealTriage(bot,{team,now=Date.now()}={}){
  if(targeted.length>3)
   return caveTriageDeny('unbounded-engaged-enemies',{
    ...scope,attackerCount:targeted.length});
- const members=[],counts=Object.fromEntries(names.map(n=>[n,0]));
+ const members=[],visibleMembers=[],counts=Object.fromEntries(names.map(n=>[n,0]));
  for(const n of names){
   const m=n===c.name?c:bot.transport?.fresh?.(n);
   if(!m||m.name!==n||m.rip===true||
@@ -47,7 +47,22 @@ export function caveCriticalHealTriage(bot,{team,now=Date.now()}={}){
       !caveTriageClock(m.received)||m.received>now||
       now-m.received>3000)))
    return caveTriageDeny('current-team-health-unconfirmed',{...scope,member:n});
-  members.push(m);
+  // The triage must be grounded in the same direct visibility that the
+  // single-heal executor uses. A peer heartbeat is not live heal-range
+  // authority and may disagree with a damaged/teleported character.
+  const v=n===c.name?c:bot.entity?.(n);
+  if(!v||v.name!==n||v.type==='monster'||v.rip===true||
+     (n!==c.name&&v.visible!==true)||
+     v.map!==team.map||(v.in!==undefined&&v.in!==team.map)||
+     !caveTriageFinite(v.hp)||!caveTriageFinite(v.max_hp)||
+     v.max_hp<=0||v.hp<=0||v.hp>v.max_hp||
+     !caveTriageFinite(v.x)||!caveTriageFinite(v.y)||
+     Math.hypot(v.x-m.x,v.y-m.y)>8||
+     Math.abs(v.hp/v.max_hp-m.hp/m.max_hp)>.08||
+     Math.hypot(v.x-c.x,v.y-c.y)>140)
+   return caveTriageDeny('visible-peer-state-unconfirmed',{
+    ...scope,attackerCount:targeted.length,member:n});
+  members.push(m);visibleMembers.push(v);
  }
  const ids=new Set(),raw=Object.fromEntries(names.map(n=>[n,{dps:0,peak:0}]));
  const monsterSignatures=[];
@@ -107,7 +122,8 @@ export function caveCriticalHealTriage(bot,{team,now=Date.now()}={}){
  const signature=[
   ...monsterSignatures.sort(),
   ...members.map(m=>[m.name,m.hp,m.max_hp,m.x,m.y,
-   m.name===c.name?(Number.isSafeInteger(m.targets)?m.targets:'-'):m.threats].join(':')).sort()
+   m.name===c.name?(Number.isSafeInteger(m.targets)?m.targets:'-'):m.threats].join(':')).sort(),
+  ...visibleMembers.map(m=>[m.name,m.hp,m.max_hp,m.x,m.y].join(':')).sort()
  ].join('|');
  return {...caveTriageDeny('multi-aggro-priority-observed',{
   ...scope,attackerCount:targeted.length}),

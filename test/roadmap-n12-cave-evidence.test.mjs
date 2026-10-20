@@ -152,3 +152,103 @@ test('N12 failed, unsupported and unknown visit responses grant no new action',a
  f.cave.close();
  assert.equal(f.cave.refreshVisit(),false);
 });
+
+test('N12 unresolved cave_info is retired after 15s without an API retry',async()=>{
+ let resolve;
+ const first=new Promise(r=>{resolve=r});
+ const f=fixture({answer:first});
+ try{
+  assert.equal(f.cave.refreshVisit(),true);
+  assert.equal(f.cave.status().visitPending,true);
+  fixture.clock=now+14999;
+  assert.equal(f.cave.status().visitPending,true);
+  fixture.clock=now+15000;
+  const expired=f.cave.status();
+  assert.equal(expired.visitPending,false);
+  assert.equal(expired.visit,null);
+  assert.equal(expired.visitError,'request-timeout');
+  assert.equal(f.cave.refreshVisit(),false,
+   'timeout is not permission for an early second cave_info call');
+  assert.deepEqual(f.calls,['cave_info']);
+  resolve(visit());await first;await Promise.resolve();
+  assert.equal(f.cave.status().visit,null,'late successful response cannot revive admission');
+  assert.equal(f.cave.status().visitError,'request-timeout');
+  assert.equal(f.calls.length,1);
+ }finally{fixture.clock=now;f.cave.close();}
+});
+
+test('N12 late first response cannot overwrite a later explicitly requested visit',async()=>{
+ let oldResolve;
+ const previous=new Promise(r=>{oldResolve=r});
+ const f=fixture({answer:previous});
+ try{
+  assert.equal(f.cave.refreshVisit(),true);
+  fixture.clock=now+61000;
+  let newResolve;
+  const replacement=new Promise(r=>{newResolve=r});
+  f.p.call=name=>{f.calls.push(name);return replacement;};
+  assert.equal(f.cave.refreshVisit(),true,
+   'the expired pending call is retired; only the new explicit request starts');
+  const pending=f.cave.status();
+  assert.equal(pending.visitPending,true);
+  assert.equal(pending.visit,null);
+  assert.equal(f.calls.length,2);
+  oldResolve(visit());await previous;await Promise.resolve();
+  assert.equal(f.cave.status().visit,null);
+  newResolve({...visit(),available:true,resume:null});
+  await replacement;await Promise.resolve();
+  assert.equal(f.cave.status().visit.available,true);
+  assert.equal(f.cave.status().visit.resume,null);
+ }finally{fixture.clock=now;f.cave.close();}
+});
+
+test('N12 a newer failed visit replaces old availability rather than retaining it',async()=>{
+ const f=fixture({answer:Promise.resolve({...visit(),available:true,resume:null})});
+ try{
+  assert.equal(f.cave.refreshVisit(),true);
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(f.cave.status().visit.available,true);
+  fixture.clock=now+60001;
+  f.p.call=name=>{f.calls.push(name);return Promise.reject(new Error('cave offline'));};
+  assert.equal(f.cave.refreshVisit(),true);
+  assert.equal(f.cave.status().visit,null,
+   'previously confirmed availability is revoked as the new query begins');
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(f.cave.status().visit,null);
+  assert.equal(f.cave.status().visitError,'request-failed');
+ }finally{fixture.clock=now;f.cave.close();}
+});
+
+test('N12 a late response expires even without interim status sampling',async()=>{
+ let resolve;
+ const response=new Promise(r=>{resolve=r}),f=fixture({answer:response});
+ try{
+  assert.equal(f.cave.refreshVisit(),true);
+  fixture.clock=now+20000;
+  resolve(visit());await response;await Promise.resolve();
+  assert.equal(f.cave.status().visit,null);
+  assert.equal(f.cave.status().visitError,'request-timeout');
+  assert.equal(f.cave.status().visitPending,false);
+ }finally{fixture.clock=now;f.cave.close();}
+});
+
+test('N12 capability errors, clock regression and rejected late reads are fail closed',async()=>{
+ const f=fixture();
+ f.p.has=()=>{throw Error('unsupported')};
+ assert.equal(f.cave.refreshVisit(),false);
+ assert.equal(f.cave.status().visitPending,false);
+ let reject;
+ const request=new Promise((_,r)=>{reject=r});
+ const g=fixture({answer:request});
+ try{
+  assert.equal(g.cave.refreshVisit(),true);
+  fixture.clock=now-1;
+  assert.equal(g.cave.status().visitError,'request-timeout',
+   'a regressed local clock cannot justify any pending visit');
+  reject(Error('offline'));
+  try{await request;}catch{}
+  await Promise.resolve();
+  assert.equal(g.cave.status().visit,null);
+  assert.equal(g.cave.status().visitError,'request-timeout');
+ }finally{fixture.clock=now;f.cave.close();g.cave.close();}
+});

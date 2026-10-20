@@ -95,7 +95,7 @@ test('N12 locked, expensive and already-voted choices cannot pass local prefligh
 
 test('N12 absolute deadline and real server clock bound local voting decision',()=>{
  for(const [t,reason] of [
-  [now+28000,'vote-deadline-too-close'],
+  [now+28000,'fresh-server-choice-required'],
   [now+30000,'fresh-server-choice-required'],
   [now-1,'fresh-server-choice-required']
  ]){

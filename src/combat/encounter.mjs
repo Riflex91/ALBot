@@ -1,4 +1,4 @@
-import {neutralPullReadiness,verifiedFollowerOneShot} from './team-readiness.mjs';
+import {neutralPullReadiness,verifiedFollowerOneShot,verifiedFollowerBoundedSpawn} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
@@ -197,9 +197,44 @@ export function createEncounter(bot){
   return verifiedFollowerOneShot(bot.p.c,m,{
     plan,leader,peers,realm:bot.p.realm(),game:bot.p.G,skill});
  }
+ // Independent local spawn cleanup is permitted for a healthy, verified
+ // follower after the exact one-shot path. Unlike ordinary multi-pull
+ // escalation it is bounded to one active enemy per follower and no more
+ // than three concurrent party threats, with live conservative team risk.
+ function soloBoundedSpawn(m,skill=null){
+  if(!m||m.target||bot.me?.role!=='farmer'||bot.me.name===bot.leader||
+     !bot.cfg.party?.enabled||!bot.running||bot.p.c.rip||
+     bot.p.parent?.is_pvp||bot.p.G.maps?.[bot.p.c.map]?.pvp||
+     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     bot.account?.rotationPending?.()||bot.teamTravel?.blocked||
+     bot.strategy?.busy||bot.recovering||
+     bot.teamPlan?.wantsCombat?.()===false||
+     typeof bot.free!=='function'||
+     bot.free()<=(bot.cfg.farming?.freeSlots??0)||
+     bot.combatAssessment?.emergency?.()?.active)return null;
+  const plan=bot.teamPlan?.heartbeat?.();
+  if(!plan||bot.teamPlan?.target?.()!==m.mtype||
+     bot.monsters().some(x=>x.hp>0&&x.target===bot.p.c.name))
+    return null;
+  if(bot.strategy?.safeTarget?.(m.mtype,m,true)!==true)return null;
+  const leader=bot.transport?.fresh?.(bot.leader);
+  const peers=(bot.farmers??[]).filter(n=>n!==bot.me.name)
+   .map(n=>bot.transport?.fresh?.(n));
+  if(peers.length!==(bot.farmers??[]).length-1)return null;
+  const proof=verifiedFollowerBoundedSpawn(bot.p.c,m,{
+    plan,leader,peers,realm:bot.p.realm(),game:bot.p.G,skill});
+  if(!proof)return null;
+  const engaged=bot.monsters().filter(x=>x.hp>0&&!x.dead&&
+    x.target&&bot.teamNames.includes(x.target));
+  if(engaged.length>=Math.min(3,bot.cfg.farming?.maxAggro??1))
+    return null;
+  if(engaged.length&&approvePullSet([...engaged,m]).safe!==true)
+    return null;
+  return proof;
+ }
  function permit(m){
   if(m.target)return true;
-  if(soloOneShot(m))return true;
+  if(soloOneShot(m)||soloBoundedSpawn(m))return true;
   const readiness=neutralPullReadiness(bot);
   if(!readiness.ready)return false;
   const detached=readiness.detachment;
@@ -254,5 +289,5 @@ export function createEncounter(bot){
   };
   return bot.exec.run('attack',['attack','mana'],guard,()=>bot.p.call('attack',bot.entity(candidate.id)),{delay:250});
  }
- return {tick,permit,soloOneShot,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
+ return {tick,permit,soloOneShot,soloBoundedSpawn,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
 }

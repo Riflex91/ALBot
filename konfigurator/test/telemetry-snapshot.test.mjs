@@ -37,7 +37,7 @@ test('bank evidence includes only fully observed local map packs with exactly 42
 test('both read-only packet kinds pass real Worker ingest validation with private bearer token',async()=>{
  const records=[];
  const env={INGEST_TOKEN:token,DB:{prepare(sql){return {bind(...args){return {
-  async run(){records.push({sql,args});return {success:true};}
+  async run(){records.push({sql,args});return {meta:{changes:1}};}
  };}};}}};
  const packets=[observedCharacterTelemetry(char,'EUI'),...observedBankTelemetry({
   ...char,map:'bank',bank:{items0:Array(42).fill(null)}},'EUI',{items0:['bank']})];

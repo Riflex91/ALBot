@@ -11,9 +11,10 @@
     "check:bootstrap:auto": "node scripts/build-auto-bootstrap.mjs --check",
     "verify:release": "node scripts/sign-release.mjs --check",
     "sign:release": "node scripts/sign-release.mjs --write",
-    "test": "node --test test/*.test.mjs editor/test/*.test.mjs",
+    "test": "node --test test/*.test.mjs editor/test/*.test.mjs konfigurator/test/*.test.mjs",
     "build:editor": "node editor/build.mjs",
-    "test:editor": "node --test editor/test/*.test.mjs"
+    "test:editor": "node --test editor/test/*.test.mjs",
+    "build:konfigurator": "node konfigurator/scripts/prepare.mjs"
   },
   "engines": {
     "node": ">=22.9"

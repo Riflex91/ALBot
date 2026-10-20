@@ -6,7 +6,7 @@ import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 // trade_offer only guarantees wanted NAME, MINIMUM level, optional p and q.
 // No automatic repost or presumption that an absent listing was filled.
 const G09_OFFER_SLOT=/^trade([1-9]|1[0-6])$/;
-const G09_ONE=i=>i?.q===undefined||i.q===1;
+const G09_OFFER_SINGLE=i=>i?.q===undefined||i.q===1;
 export function ownTradeOfferPlan(bot,slot){
  const {p,cfg,me}=bot,e=bot.economy,item=p.c.items?.[slot];
  if(me?.role!=='merchant'||!cfg.merchant?.enabled||
@@ -37,7 +37,7 @@ export function ownTradeOfferPlan(bot,slot){
  // initial support to fixed non-mutatable and non-stackable item definitions.
  if(!payMeta||payMeta.s||!wantMeta||wantMeta.s||
     wantMeta.upgrade||wantMeta.compound||wantMeta.stat||
-    !G09_ONE(item)||item.data||item.acc||item.src||
+    !G09_OFFER_SINGLE(item)||item.data||item.acc||item.src||
     item.acl||item.v||item.rid||item.giveaway||
     rule.wantItem===item.name||e.spare?.(slot,rule)<1||
     e.count?.({name:rule.wantItem,level:0})>=rule.wantTargetCount)
@@ -46,7 +46,7 @@ export function ownTradeOfferPlan(bot,slot){
  if(!Number.isSafeInteger(reserved)||reserved<0)return null;
  const available=p.c.items.filter(x=>
   x&&identity(x)===identity(item)&&e.safe(x)&&
-  G09_ONE(x)&&!x.data&&!x.acc&&!x.src&&!x.acl&&!x.v&&!x.rid).length;
+  G09_OFFER_SINGLE(x)&&!x.data&&!x.acc&&!x.src&&!x.acl&&!x.v&&!x.rid).length;
  if(available<rule.keep+rule.teamReserve+reserved+1)return null;
  const before=localVariantQuantity(p.c.items,item);
  const wanted={name:rule.wantItem,level:0};
@@ -138,10 +138,10 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
       (listing.title??'')!==(plan.item.title??'')||
       (listing.acc??'')!==(plan.item.acc??'')||
       JSON.stringify(listing.data)!==JSON.stringify(plan.item.data)||
-      !G09_ONE(listing)||listing.b||listing.giveaway||
+      !G09_OFFER_SINGLE(listing)||listing.b||listing.giveaway||
       listing.want?.name!==plan.wanted.name||
       (listing.want.level??0)!==0||
-      !G09_ONE(listing.want)||
+      !G09_OFFER_SINGLE(listing.want)||
       (listing.want.p??'')!==''||
       (listing.want.stat_type??'')!==''||
       (listing.want.title??'')!==''||
@@ -180,7 +180,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   return listing.rid===saved?.rid&&
    identity({...listing,rid:undefined})===saved.outgoing&&
    identity(listing.want)===saved.incoming&&
-   G09_ONE(listing)&&G09_ONE(listing.want)&&
+   G09_OFFER_SINGLE(listing)&&G09_OFFER_SINGLE(listing.want)&&
    !listing.b&&!listing.giveaway;
  }
  function observeSwap(data){

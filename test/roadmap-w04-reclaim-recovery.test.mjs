@@ -361,3 +361,30 @@ test('W04 invalid dispatch provenance cannot authorize sale or journal clearance
   assert.equal(context(recordWithBad).phase,'invalid');
  }
 });
+
+test('W04 reclaim journal and offsite NPC admission reject malformed quantity offsets',()=>{
+ const r=record(),inventory=empty(),bankPack=empty();
+ bankPack[27]={...item};
+ const inspect=()=>classifyBankReclaimRecord(r,{owner,realm,now,
+  inventory,bank:{items0:bankPack},map:'bank',packMap:()=> 'bank'});
+ inventory[2]={name:'ore',q:-2};inventory[3]={name:'ore',q:2};
+ assert.equal(inspect().phase,'ambiguous',
+  'the recorded unchanged source does not compensate negative carried stock');
+ inventory[2]=null;inventory[3]=null;
+ assert.equal(inspect().phase,'unchanged');
+ bankPack[27]=null;inventory[0]={...item};
+ inventory[2]={name:'ore',q:1.5};
+ inventory[3]={name:'ore',q:-1.5};
+ assert.equal(inspect().phase,'ambiguous',
+  'a physically invalid inventory cannot confirm a withdrawal');
+ inventory[2]=null;inventory[3]=null;
+ assert.equal(inspect().phase,'withdrawn');
+ const withReceipt=record({withdrawal:{at:now,realm,pack,slot:27,dest:0,
+  sourcePrint:r.sourcePrint,inventoryCount:10,bankCount:0}});
+ assert.equal(inspectOffsiteBankReclaim(withReceipt,{
+  owner,realm,now,inventory}).eligible,true);
+ inventory[2]={name:'ore',q:0};
+ assert.equal(inspectOffsiteBankReclaim(withReceipt,{
+  owner,realm,now,inventory}).eligible,false,
+  'an offsite NPC purchase/sale path cannot accept a malformed copy');
+});

@@ -248,6 +248,20 @@ export async function handleRequest(request,env,ctx={},deps={}){
  const result=await env.ASSETS.fetch(request);
  const headers=new Headers(result.headers);
  for(const [k,v] of Object.entries(secureHeaders))headers.set(k,v);
+ if(path==='/classic.html'){
+  // The original editor ships one validated inline script and stylesheet.
+  // Allow their exact build-time hashes, not blanket 'unsafe-inline'.
+  const manifestResponse=await env.ASSETS.fetch(new URL('/classic-csp.json',url));
+  if(!manifestResponse.ok)return failure('Werkstatt-Sicherheitsmanifest fehlt',503);
+  let hashes;try{hashes=await manifestResponse.json();}catch{return failure('Werkstatt-Sicherheitsmanifest ungültig',503);}
+  if(!/^[A-Za-z0-9+/]{43}=$/.test(hashes?.script??'')||
+     !/^[A-Za-z0-9+/]{43}=$/.test(hashes?.style??''))
+   return failure('Werkstatt-CSP-Hashes ungültig',503);
+  headers.set('content-security-policy',
+   "default-src 'none'; script-src 'self' 'sha256-"+hashes.script+
+   "'; style-src 'self' 'sha256-"+hashes.style+
+   "'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+ }
  return new Response(request.method==='HEAD'?null:result.body,{status:result.status,headers});
 }
 export default {fetch:handleRequest};

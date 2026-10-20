@@ -423,7 +423,8 @@ function independentOneShot(){
  const claimed=reserved();
  const eligible=m=>m?.id!=null&&!claimed.has(String(m.id))&&
    distance(p.c,m)<=range&&bot.encounter?.soloOneShot?.(m)&&
-   bot.allowed(m);
+   bot.allowed(m)&&p.call('can_attack',m)&&
+   !p.call('is_on_cooldown','attack');
  const candidate=bot.monsters().filter(eligible)
    .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
      String(a.id).localeCompare(String(b.id)))[0];

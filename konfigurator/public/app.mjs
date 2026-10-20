@@ -4,7 +4,7 @@ import {DASHBOARD_REFRESH_MS,SNAPSHOT_FRESH_MS} from './free-tier.mjs';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);if(cls)e.className=cls;return e;};
 const state={view:'dashboard',policy:{version:1,items:[]},sha:null,configured:false,dirty:false,saving:false,
- characters:[],bank:[],catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
+ characters:[],bank:[],telemetryErrors:{characters:null,bank:null},catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
 const fmt=x=>typeof x==='number'&&Number.isFinite(x)?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(x):'—';
 const age=t=>!Number.isFinite(t)?'unbekannt':Math.max(0,Math.floor((Date.now()-t)/1000))+' s';
 const fresh=t=>Number.isFinite(t)&&Date.now()-t<SNAPSHOT_FRESH_MS;
@@ -33,6 +33,19 @@ async function api(path,init={}){
  if(!response.ok)throw Error(body.error??'HTTP '+response.status);
  return body;
 }
+function acceptTelemetryResult(kind,outcome){
+ if(outcome.status==='rejected'){
+  state.telemetryErrors[kind]=String(outcome.reason?.message??outcome.reason).slice(0,180);
+  return;
+ }
+ const data=outcome.value;
+ if(data?.configured!==true||!Array.isArray(data?.rows)){
+  state.telemetryErrors[kind]='Telemetrie-API nicht verfuegbar oder ungueltige Antwort';
+  return;
+ }
+ state.telemetryErrors[kind]=null;
+ state[kind]=data.rows;
+}
 async function bootstrap(){
  const [health,policy,chars,bank,catalog]=await Promise.allSettled([
   api('/api/health'),api('/api/policy'),api('/api/characters'),api('/api/bank'),
@@ -43,8 +56,8 @@ async function bootstrap(){
   state.sha=policy.value.sha;
   state.configured=true;state.loaded=true;state.dirty=false;
  }else state.error=String(policy.reason?.message??policy.reason);
- if(chars.status==='fulfilled')state.characters=chars.value.rows??[];
- if(bank.status==='fulfilled')state.bank=bank.value.rows??[];
+ acceptTelemetryResult('characters',chars);
+ acceptTelemetryResult('bank',bank);
  if(catalog.status==='fulfilled')state.catalog=catalog.value.items??[];
  $('connection').textContent=state.configured?'● GitHub verbunden':'● Einrichtung ausstehend';
  $('connection').style.color=state.configured?'#64d9b3':'#f1bf71';
@@ -56,8 +69,8 @@ async function refreshLive(){
  refreshingLive=true;
  try{
  const [chars,bank]=await Promise.allSettled([api('/api/characters'),api('/api/bank')]);
- if(chars.status==='fulfilled')state.characters=chars.value.rows??[];
- if(bank.status==='fulfilled')state.bank=bank.value.rows??[];
+ acceptTelemetryResult('characters',chars);
+ acceptTelemetryResult('bank',bank);
  if(['dashboard','characters','bank'].includes(state.view))render();
  }finally{refreshingLive=false;}
 }
@@ -83,16 +96,18 @@ function addRow(body,cells){const tr=node('tr');for(const c of cells){const td=n
 function dashboard(){
  content.append(heading('Dashboard','Status deiner ALBot-Charaktere, Bank und Konfiguration.'));
  if(!state.configured)content.append(notice('Cloudflare Access und der private GitHub-Konfigurationsspeicher sind noch nicht verbunden. Bis zur Einrichtung bleibt die Weboberfläche read-only.'));
+ for(const [label,kind] of [['Charaktere','characters'],['Bank','bank']])
+  if(state.telemetryErrors[kind])content.append(notice(label+': Abruf fehlgeschlagen – '+state.telemetryErrors[kind]));
  const online=state.characters.filter(x=>fresh(x.observedAt)&&x.hp>0);
  const measured=state.characters.filter(x=>fresh(x.observedAt)&&x.ratesMeasured!==false);
  const gold=measured.reduce((n,x)=>n+(Number(x.goldPerHour)||0),0);
  const metrics=node('div',undefined,'grid metrics');metrics.append(
-  metric('Charaktere online',online.length+' / '+state.characters.length,'Status jünger als 5 Minuten'),
+  metric('Charaktere online',state.telemetryErrors.characters?'—':online.length+' / '+state.characters.length,'Status jünger als 5 Minuten'),
   metric('Gold pro Stunde',measured.length?fmt(gold):'—','Nur gemessene, frische Charakterdaten'),
-  metric('Bankfächer',fmt(state.bank.length),'Letzte beobachtete Snapshots'),
+  metric('Bankfächer',state.telemetryErrors.bank?'—':fmt(state.bank.length),'Letzte beobachtete Snapshots'),
   metric('Itemrichtlinien',fmt(state.policy.items.length),'GitHub · nicht automatisch aktiviert'));content.append(metrics);
  const grid=node('div',undefined,'grid two'),one=card('Aktivitätsübersicht'),two=card('Sicherheit & Synchronisierung');
- if(!state.characters.length)one.append(empty('Noch keine Live-Telemetrie','Charaktere erscheinen nach dem Einrichten der gesicherten Telemetrie-Schnittstelle.'));else{
+ if(!state.characters.length)one.append(empty(state.telemetryErrors.characters?'Charakterabfrage fehlgeschlagen':'Noch keine Live-Telemetrie',state.telemetryErrors.characters?'Fehler oben beachten. Falls der Relay-Upload erfolgreich war, /api/characters pruefen.':'Im Relay-Fenster zuerst Empfang aktivieren und einen erfolgreichen Upload bestaetigen. Danach das Dashboard neu laden.'));else{
   const t=table(['Name','Map / Realm','HP','Zuletzt']);
   for(const c of state.characters.slice(0,12))addRow(t.body,[c.name,c.map+' · '+c.realm,fmt(c.hp)+' / '+fmt(c.maxHp),fresh(c.observedAt)?pill('Live · '+age(c.observedAt),'ok'):pill('Veraltet · '+age(c.observedAt),'off')]);
   one.append(t.wrap);
@@ -113,6 +128,7 @@ function inventory(items){
 }
 function characters(){
  content.append(heading('Charaktere','Live-Werte, Inventare und zuletzt gemeldete Kartenpositionen.'));
+ if(state.telemetryErrors.characters)content.append(notice('Charakterdaten konnten nicht geladen werden: '+state.telemetryErrors.characters));
  if(!state.characters.length){content.append(empty('Keine Charakterdaten vorhanden','Beim Cloudflare-Setup richten wir die Telemetrieaufnahme ein. Bis dahin zeigen wir keine erfundenen Werte.'));return;}
  const grid=node('div',undefined,'character-grid');
  for(const c of state.characters){
@@ -138,6 +154,7 @@ function characters(){
 }
 function bank(){
  content.append(heading('Bank','Globale Bankübersicht nach zuletzt gemeldeten Fächern.'));
+ if(state.telemetryErrors.bank)content.append(notice('Bankdaten konnten nicht geladen werden: '+state.telemetryErrors.bank));
  content.append(notice('Bankdaten stammen aus Momentaufnahmen. Andere Maps können fehlen. Veraltete Bankfächer werden niemals als aktuelle Verkaufsgrundlage verwendet.'));
  if(!state.bank.length){content.append(empty('Bankbestand noch nicht erfasst','Beim Bankbesuch können später einzelne 42-Slot-Fächer übertragen werden. Ein fehlendes Fach bedeutet nicht, dass es leer ist.'));return;}
  const all=node('div',undefined,'stack');

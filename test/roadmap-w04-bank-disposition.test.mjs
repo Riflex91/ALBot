@@ -544,13 +544,19 @@ test('W04 null-quantity neighboring bank stack cannot fabricate surplus backing'
  for(let n=0;n<4;n++)bot.bank.preventiveDisposition();
  assert.equal(calls.length,0,'null neighboring q must not prove physical excess');
  assert.equal(bot.bank.pending,false);
- // Legal ordinary single items (q absent) remain supported.
- other[26]={name:'scroll0'};
- bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
- assert.equal(calls.at(-1)?.kind,'bank.retrieve');
- assert.equal(calls.at(-1)?.params.guard(),true);
- other[26]={name:'scroll0',q:null};
- assert.equal(calls.at(-1).params.guard(),false,
+ // A fresh scan with a genuinely absent q may use its single unit.
+ // Do not bypass the completed scan's existing 60-second cooldown.
+ const good=operatingBankFixture();
+ good.inv[1]={name:'scroll0',q:20};
+ good.bankPack[27]={name:'scroll0',q:80};
+ const sibling=blank();sibling[26]={name:'scroll0'};
+ good.bot.p.c.bank.items1=sibling;
+ for(let n=0;n<3;n++)good.bot.bank.preventiveDisposition();
+ assert.equal(good.bot.bank.preventiveDisposition(),true);
+ assert.equal(good.calls.at(-1)?.kind,'bank.retrieve');
+ assert.equal(good.calls.at(-1)?.params.guard(),true);
+ sibling[26]={name:'scroll0',q:null};
+ assert.equal(good.calls.at(-1).params.guard(),false,
   'late invalid quantity revokes a prepared staging withdrawal');
 });
 test('W04 invalid null source cannot enter reserve-staging journal',()=>{

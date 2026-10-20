@@ -72,7 +72,25 @@ export function verifiedCaveSnapshot(raw,{name,map,now=Date.now()}={}){
    options.push({id:o.id,goldCost:o.cost,amberCost:o.amber,
     available:o.unavailable===null||o.unavailable===undefined});
   }
-  choice={id:c.id,resolved:c.resolved,options};
+  // Earlier clients omitted these fields. Keep their snapshots usable
+  // for reading a Cave run, but NEVER claim that their vote is actionable.
+  // Current server snapshots provide both an absolute deadline and votes
+  // indexed by original party-member names.
+  let deadline=null,votes=null;
+  if(c.deadline!==undefined&&c.deadline!==null){
+   if(!safeTime(c.deadline))return null;
+   deadline=c.deadline;
+  }
+  if(c.votes!==undefined&&c.votes!==null){
+   if(typeof c.votes!=='object'||Array.isArray(c.votes))return null;
+   const result={};
+   for(const [voter,id] of Object.entries(c.votes)){
+    if(!names.has(voter)||!label(id)||!ids.has(id))return null;
+    result[voter]=id;
+   }
+   votes=result;
+  }
+  choice={id:c.id,resolved:c.resolved,options,deadline,votes};
  }
  return {run:raw.run,floor:raw.floor,map,
   serverTime:raw.server_time,remainingMs:raw.remaining_ms,

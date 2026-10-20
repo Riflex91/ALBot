@@ -61,7 +61,9 @@ export function verifiedCaveSnapshot(raw,{name,map,now=Date.now()}={}){
   const c=raw.choice;
   if(!c||typeof c!=='object'||!label(c.id)||
      typeof c.resolved!=='boolean'||!Array.isArray(c.options)||
-     c.options.length>16)return null;
+     c.options.length>16||
+     (c.danger!==undefined&&typeof c.danger!=='boolean')||
+     (c.kind!==undefined&&c.kind!==null&&!label(c.kind)))return null;
   const ids=new Set(),options=[];
   for(const o of c.options){
    if(!o||!label(o.id)||ids.has(o.id)||
@@ -91,7 +93,10 @@ export function verifiedCaveSnapshot(raw,{name,map,now=Date.now()}={}){
    // semantics of assigning arbitrary player names into {}.
    votes=Object.fromEntries(entries);
   }
-  choice={id:c.id,resolved:c.resolved,options,deadline,votes};
+  // Official cave_snapshot() derives 'danger' from its encounter group.
+  // FALSE is only an absence of this flag, not a proof of safety.
+  choice={id:c.id,resolved:c.resolved,options,deadline,votes,
+   danger:c.danger??null,kind:c.kind??null};
  }
  return {run:raw.run,floor:raw.floor,map,
   serverTime:raw.server_time,remainingMs:raw.remaining_ms,

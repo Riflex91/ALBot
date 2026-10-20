@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {scanBankDispositionWindow} from '../src/merchant/bank-disposition.mjs';
 import {createBank} from '../src/merchant/bank.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
+import {bankOperatingReserveNeed} from '../src/items/operating-stock.mjs';
 import {ITEM_RULE} from '../editor/lib/schema.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
 
@@ -402,4 +403,19 @@ test('W04 malformed same-variant bank quantities cannot authorize reserve reloca
  for(let i=0;i<3;i++)assert.equal(bot.bank.preventiveDisposition(),false);
  assert.equal(bot.bank.preventiveDisposition(),true);
  assert.equal(calls[0].kind,'bank.retrieve');
+});
+
+test('W02/W04 explicit capped keep uses sale floor, not just keep, for reserve staging',()=>{
+ const {bot,inv,bankPack,setRule}=operatingBankFixture();
+ const rule={...defaultsFor(ITEM_RULE),name:'Explicit bounded stock',
+  enabled:true,action:'keep',excessAction:'sell',item:'scroll0',
+  role:'all',keep:20,teamReserve:0,maxCount:100,batch:9999};
+ setRule(rule);inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:80};
+ bankPack[26]={name:'scroll0',q:30};
+ assert.deepEqual(bankOperatingReserveNeed(bot,bankPack[27]),{
+  floor:100,held:20,missing:80});
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(bot.bank.recoveryStatus().single.reserveStage.floor,100);
 });

@@ -76,7 +76,7 @@ test('N12 Cave basic Ranger defense targets only the existing Priest attacker',a
  assert.equal(f.bot.caveCombat.status().attempts,1);
  assert.equal(f.bot.caveCombat.tick(),false,'pending action cannot double-send');
  await Promise.resolve();f.bot.exec.poll();
- f.state.at+=301;
+ f.state.at+=3001;
  // The server snapshot is now stale; no automatic blind repeat.
  assert.equal(f.bot.caveCombat.tick(),false);
  assert.equal(attacks(f).length,1);
@@ -91,7 +91,7 @@ test('N12 neutral, off-floor or another team enemy is never a Cave attack target
   f=>{f.monster.hp=0},
   f=>{f.monster.dead=true},
   f=>{f.monster.invincible=true},
-  f=>{f.monster.id='other'},
+  f=>{f.bot.entity=()=>null},
   f=>{f.monster.x=170},
   f=>{f.state.focus=false}
  ]){

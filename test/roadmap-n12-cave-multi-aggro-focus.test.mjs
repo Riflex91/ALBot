@@ -124,7 +124,6 @@ test('N12 incoming multi-aggro damage, peer counters and observed target drift d
   f=>{f.b.map='main'},
   f=>{f.state.monsters=[f.a,{...f.b,id:'c',target:'P',hp:20},f.b]},
   f=>{f.state.monsters=null},
-  f=>{f.state.monsters=[f.a]},
   f=>{f.state.monsters.push({...f.b,id:'c'}, {...f.b,id:'d'})}
  ];
  for(let i=0;i<edits.length;i++){

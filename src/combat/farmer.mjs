@@ -456,8 +456,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // Only the dedicated Ranger basic-defense executor may issue an
       // instance attack. It refuses neutral mobs, movement and skills and
       // revalidates the exact team/monster at network dispatch.
-      const defended=bot.caveCombat?.tick?.()===true;
-      bot.reason=defended?'Cave: bestätigte Teamverteidigung angefordert':
+      const healed=bot.cavePriest?.tick?.()===true;
+      const defended=!healed&&bot.caveCombat?.tick?.()===true;
+      bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
+       defended?'Cave: bestätigte Teamverteidigung angefordert':
        'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
       return;
     }

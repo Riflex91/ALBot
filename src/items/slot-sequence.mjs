@@ -130,7 +130,10 @@ export function planPhysicalSlotSequence(items,steps,G,{
  const start=physicalInventoryCapacity(items,{inventorySize});
  if(!start||items.some(i=>i!==null&&i!==undefined&&
     (typeof i!=='object'||Array.isArray(i)||
-     typeof i.name!=='string'||!i.name||!positive(qty(i)))))
+     typeof i.name!=='string'||!i.name||!positive(qty(i))||
+     // An observed source cannot contain more than its game's stack limit.
+     // Unknown metadata permits only an ordinary unstacked single item.
+     qty(i)>stackLimit(G.items[i.name]))))
   return fail('invalid-inventory');
  const ids=new Set();
  for(const s of steps){

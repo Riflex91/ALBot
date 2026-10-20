@@ -60,6 +60,8 @@ export function caveLifecycleDisposition(record,{name,realm,live}={}){
   live.map===`zone_${live.run}_${live.floor}`){
   if(record.mode==='resume'&&live.run!==record.run)
    return {state:'conflict',blocked:true,reason:'resume-run-mismatch'};
+  if(record.serverReply&&live.run!==record.serverReply.run)
+   return {state:'conflict',blocked:true,reason:'server-reply-run-mismatch'};
   if(record.phase==='observed-run'&&live.run!==record.observed.run)
    return {state:'conflict',blocked:true,reason:'observed-run-mismatch'};
   return {state:'live-observed',blocked:true,reason:'current-server-run',
@@ -237,6 +239,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   if(!validCaveLifecycleRecord(record)||record.realm!==p.realm()||
    record.name!==me.name||record.phase==='observed-run'||
    (record.mode==='resume'&&record.run!==observed.run)||
+   (record.serverReply&&record.serverReply.run!==observed.run)||
    at<record.createdAt)return;
   // Prepared may not have dispatched: only claim the actual server run
   // was observed, never that this particular intent caused it.

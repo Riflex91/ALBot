@@ -149,7 +149,9 @@ export function cavePriestSupportPreflight(bot,{
   patient:patient.name,patientX:patient.v.x,patientY:patient.v.y,
   patientHp:patient.v.hp,patientThreats:patient.h.threats,
   ally:other.name,allyX:other.v.x,allyY:other.v.y,
-  allyHp:other.v.hp,monsterId:monster.id,
+  allyHp:other.v.hp,allyThreats:other.h.threats,
+  monsterId:monster.id,monsterType:monster.mtype,monsterRange:monster.range,
+  metaAttack:meta.attack,metaFrequency:meta.frequency,
   monsterHp:monster.hp,monsterX:monster.x,monsterY:monster.y,
   monsterTarget:monster.target,x:point.x,y:point.y,step};
 }
@@ -165,7 +167,8 @@ export function createCavePriestSupport(bot,{now=()=>Date.now()}={}){
   if(!first.ready)return false;
   const keys=['run','floor','map','priest','priestX','priestY',
    'priestHp','priestMp','patient','patientX','patientY','patientHp',
-   'patientThreats','ally','allyX','allyY','allyHp','monsterId',
+   'patientThreats','ally','allyX','allyY','allyHp','allyThreats',
+   'monsterId','monsterType','monsterRange','metaAttack','metaFrequency',
    'monsterHp','monsterX','monsterY','monsterTarget','x','y'];
   const admit=()=>{
    const current=proof(true,true);

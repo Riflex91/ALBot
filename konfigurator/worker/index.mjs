@@ -1,6 +1,8 @@
 import {validatePolicyDocument,EMPTY_POLICIES} from '../public/policy.mjs';
 import {FULL_DESCRIPTOR} from '../../src/config/full.mjs';
 import {importProfile,envelope} from '../../editor/lib/contract.mjs';
+import {storeTelemetry,MAX_STORED_CHARACTERS,MAX_STORED_BANK_PACKS,SNAPSHOT_READ_TTL_MS} from './telemetry-store.mjs';
+import {TELEMETRY_MIN_INTERVAL_MS} from '../public/free-tier.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -151,22 +153,19 @@ async function ingest(request,env){
  let d;try{d=JSON.parse(body);}catch{return failure('Ungültiges JSON');}
  const now=Date.now();
  if(d?.version!==1||!['character','bank'].includes(d.kind))return failure('Unbekanntes Telemetrieformat');
- if(d.kind==='character'){
-  if(!checkCharacter(d.data))return failure('Ungültige Charakterdaten');
-  const v=d.data;
-  await env.DB.prepare('INSERT INTO character_snapshots (name,updated_at,realm,map,payload) VALUES (?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET updated_at=excluded.updated_at,realm=excluded.realm,map=excluded.map,payload=excluded.payload')
-   .bind(v.name,now,v.realm,v.map,JSON.stringify(v)).run();
- }else{
-  if(!checkBank(d.data))return failure('Ungültige Bankdaten');
-  const v=d.data;
-  await env.DB.prepare('INSERT INTO bank_snapshots (key,updated_at,realm,map,payload) VALUES (?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET updated_at=excluded.updated_at,realm=excluded.realm,map=excluded.map,payload=excluded.payload')
-   .bind(v.realm+':'+v.pack,now,v.realm,v.map,JSON.stringify(v)).run();
- }
+ if(d.kind==='character'? !checkCharacter(d.data):!checkBank(d.data))
+  return failure('Ungültige '+(d.kind==='character'?'Charakter':'Bank')+'daten');
+ const result=await storeTelemetry(env.DB,d.kind,d.data,now);
+ if(!result.stored)return json({ok:false,error:'Telemetrie gedrosselt oder Tabellenlimit erreicht',
+   retryAfterSeconds:result.retryAfterSeconds},429,{'retry-after':String(result.retryAfterSeconds)});
  return json({ok:true,receivedAt:now});
 }
 async function readSnapshots(env,table){
  if(!env.DB)return json({ok:true,configured:false,rows:[]});
- const s=await env.DB.prepare('SELECT updated_at,payload FROM '+table+' ORDER BY updated_at DESC LIMIT 100').all();
+ const limit=table==='character_snapshots'?MAX_STORED_CHARACTERS:MAX_STORED_BANK_PACKS;
+ const s=await env.DB.prepare('SELECT updated_at,payload FROM '+table+
+  ' WHERE updated_at >= ? ORDER BY updated_at DESC LIMIT '+limit)
+  .bind(Date.now()-SNAPSHOT_READ_TTL_MS).all();
  const rows=[];
  for(const x of s.results??[])try{rows.push({observedAt:x.updated_at,...JSON.parse(x.payload)})}catch{}
  return json({ok:true,configured:true,rows});
@@ -239,7 +238,9 @@ export async function handleRequest(request,env,ctx={},deps={}){
   return json({ok:true,sha:write.sha,commit:write.commit,published:false,applied:false});
  }
  if(path==='/api/health')return json({ok:true,ready:!!(settings(env)&&env.GITHUB_TOKEN&&env.DB),
-  remoteRuntime:false,telemetryEnabled:!!(env.DB&&env.INGEST_TOKEN),
+  remoteRuntime:false,telemetryEnabled:!!(env.DB&&asString(env.INGEST_TOKEN).length>=32),
+  telemetryLimits:{minIntervalSeconds:TELEMETRY_MIN_INTERVAL_MS/1000,
+   maxCharacters:MAX_STORED_CHARACTERS,maxBankPacks:MAX_STORED_BANK_PACKS},
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
  if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);

@@ -1,6 +1,7 @@
 import {fingerprint,identity} from '../core/policy.mjs';
 import {gearCompatible} from './gear.mjs';
-import {variantCount,surplusQuantity} from '../core/policy.mjs';
+import {surplusQuantity} from '../core/policy.mjs';
+import {localVariantQuantity} from '../items/stock-policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 
 // Verified at source: a pscroll is consumed by the EXISTING upgrade handler.
@@ -96,7 +97,7 @@ export function destatCandidate(bot){
      cfg.production.gearTargets?.some(g=>g.enabled&&g.item===item.name&&
        g.level===(item.level??0))||
      !p.G.items[item.name]||!p.G.items[item.name].stat)continue;
-  const held=variantCount(p.c.items,item),
+  const held=localVariantQuantity(p.c.items,item),
    reserved=bot.production?.reservedQuantity?.(item);
   if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||
      surplusQuantity(held,reserved,rule.keep,rule.teamReserve)<1)
@@ -125,8 +126,10 @@ export function destatCandidate(bot){
      beforeValue<0||afterValue<0)continue;
   const loss=Math.max(0,beforeValue-afterValue);
   if(!Number.isSafeInteger(loss)||loss>rule.lossBudget)continue;
+  const scrollBefore=localVariantQuantity(p.c.items,output);
+  if(!Number.isSafeInteger(scrollBefore))continue;
   return {slot,item:{...item},rule,grade,needed,cost,loss,scrollName,
-   scrollMeta,output,d,held,scrollBefore:variantCount(p.c.items,output),
+   scrollMeta,output,d,held,scrollBefore,
    sourcePrint:fingerprint(item)};
  }
  return null;
@@ -235,8 +238,8 @@ export function createStatTailoring(bot){
     response.cost===plan.cost&&response.failed!==true&&
     response.success!==false&&p.c.gold===beforeGold-plan.cost&&
     fingerprint(p.c.items[plan.slot])===fingerprint(expected)&&
-    variantCount(p.c.items,plan.item)===plan.held-1&&
-    variantCount(p.c.items,plan.output)===plan.scrollBefore+plan.needed,
+    localVariantQuantity(p.c.items,plan.item)===plan.held-1&&
+    localVariantQuantity(p.c.items,plan.output)===plan.scrollBefore+plan.needed,
    details:{item:plan.item.name,variant:identity(plan.item),
     scroll:plan.scrollName,quantity:plan.needed,fee:plan.cost,
     riskVariant:identity(plan.item),before:plan.held},timeout:45000

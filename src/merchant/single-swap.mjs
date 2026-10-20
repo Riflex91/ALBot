@@ -29,6 +29,9 @@ export function exactSwapPaymentWant(want,item){
 }
 const swapCount=(items,item)=>{
  try{
+  if(!Array.isArray(items)||items.some(stock=>stock&&
+      identity(stock)===identity(item)&&!G09_SWAP_SINGLE(stock)))
+   return null;
   const n=localVariantQuantity(items,item);
   return Number.isSafeInteger(n)&&n>=0?n:null;
  }catch{return null;}

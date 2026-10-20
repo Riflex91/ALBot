@@ -375,15 +375,13 @@ export function createFarmer(bot){
   const enemy=engaged??shared;
   if(!enemy)return false;
   const neutralShared=enemy===shared&&!enemy.target;
-  const stillAssigned=()=>!neutralShared||!!leaderAssignedFarmTarget(
-    p.c,bot.transport?.fresh?.(bot.leader),bot.monsters(),{
-      plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
-      maxDistance:Math.max(range,cfg.party.followDistance*2)
-    })?.id&&String(leaderAssignedFarmTarget(
-    p.c,bot.transport?.fresh?.(bot.leader),bot.monsters(),{
-      plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
-      maxDistance:Math.max(range,cfg.party.followDistance*2)
-    })?.id)===String(enemy.id);
+  const stillAssigned=()=>{
+    if(!neutralShared)return true;
+    const current=leaderAssignedFarmTarget(p.c,bot.transport?.fresh?.(bot.leader),
+      bot.monsters(),{plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),
+      teamNames:bot.teamNames,maxDistance:Math.max(range,cfg.party.followDistance*2)});
+    return current!=null&&String(current.id)===String(enemy.id);
+  };
   bot.target=enemy;bot.reason='Sichere Gruppenhilfe: '+enemy.mtype;
   if(distance(p.c,enemy)>range){
    // Keep the admitted combat route until it finishes; repeated replanning

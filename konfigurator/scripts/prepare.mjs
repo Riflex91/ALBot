@@ -18,4 +18,7 @@ const digest=s=>createHash('sha256').update(s).digest('base64');
 const manifest={script:digest(scripts[0][1]),style:digest(styles[0][1])};
 await writeFile(fileURLToPath(new URL('../public/classic-csp.json',import.meta.url)),JSON.stringify(manifest));
 await writeFile(fileURLToPath(new URL('../public/classic.html',import.meta.url)),withCloud);
+const classicLegacy=await readFile(new URL('editor/Bot-Werkstatt-Klassisch.html',root),'utf8');
+if(!/^<!doctype html>/i.test(classicLegacy.trim()))throw Error('Klassische Referenzdatei ungültig.');
+await writeFile(fileURLToPath(new URL('../public/Bot-Werkstatt-Klassisch.html',import.meta.url)),classicLegacy);
 console.log('ALBot Konfigurator: klassische Vollkonfiguration als geschützte Assetkopie vorbereitet.');

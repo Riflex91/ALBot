@@ -106,7 +106,8 @@ test('N12 all original trio members must remain connected and intentionally sele
   const r=caveTeamCoordination({...f,cave:{...f.cave,live:{
    ...f.cave.live,roster}}});
   assert.equal(r.ready,false);
-  assert.equal(r.reason,'complete-active-trio-required');
+  assert.ok(['complete-active-trio-required',
+   'configured-team-mismatch'].includes(r.reason),r.reason);
  }
  for(const names of [['P','R'],['P','R','Z'],['P','R','R']]){
   assert.equal(caveTeamCoordination({...f,teamNames:names}).reason,

@@ -1,4 +1,8 @@
-# Aktuelles signiertes Release 0.17.0-candidate / Sequence 17 (20.10.2026)
+# Aktuelles signiertes Release 0.19.0-candidate / Sequence 19 (20.10.2026)
+
+[Workflow 39480451001](https://github.com/Riflex91/ALBot/actions/runs/39480451001) hat die geprüfte Gameplay-Basis `08d0322` (bis PR #308) mit dem bestehenden ECDSA-P-256-Key signiert: 886804 Bytes Runtime, SHA-256 `d83f93525c6afc18b790ec820eb27074860cd617eec6acd7748a47c68e4d44c7`. Die Runtime und das Manifest wurden gemeinsam im Bootstrap-Kanal veröffentlicht; Main-Release-Vertrag und gebaute Runtime sind darauf synchronisiert. Der V2-Loader, das persönliche `ALBotConfig` und Cloudflare-Free-Grenzen bleiben unverändert. Der getrennte Konfigurator-Fix #309 ist in `main`; Ingame-Liveabnahme steht noch aus.
+
+# Historisches signiertes Release 0.17.0-candidate / Sequence 17 (20.10.2026)
 PR [#280](https://github.com/Riflex91/ALBot/pull/280) nach Linux-/Windows-CI nach main gemergt (cb536198ea44da644aead77b9fcf0b78d85eb5ba). Release Sequence 17 wurde über [Workflow 39452100947](https://github.com/Riflex91/ALBot/actions/runs/39452100947) signiert veröffentlicht: 1.982/1.982 Offline-Tests, 828439 Bytes, SHA-256 d93a7b43e36d9631fafe5fe26821e9d4f79b7e18682123597d9be40a5d49e396, ECDSA-P-256-Signatur verifiziert, Runtime byteidentisch mit main. Enthält kumulative Multi-Pull-Gefahrprüfung, Heilerreichweiten-Gate, Notfall-Koordination, Gefahren-Ausweichpunkte, tatsächlich bestätigte Heal-Events. Bestehende persönliche ALBotConfig, Public Key und Manifest-/Runtime-URLs bleiben unverändert; die Spiel-Liveabnahme steht aus. Weitere Release-Signierung nur mit nächstem verpflichtenden Minor-Versionssprung.
 
 # Aktuelles signiertes Release 0.16.0-candidate / Sequence 16 (19.10.2026)

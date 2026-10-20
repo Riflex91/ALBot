@@ -11,7 +11,21 @@ Stand: **20. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das
 4. Aus dem **signierten Manifest-Feld `runtimeUrl`** wird die Runtime geladen; Downloadgröße, SHA-256 und Header `/* ALBot <version> ` werden kontrolliert, anschließend wird dieser Code mit indirektem `eval` ausgeführt.
 5. Der Bootstrap verlangt eine vorhandene `ALBot.status()`-Antwort und bei `general.autostart=true` den Zustand `running=true`.
 
-## Aktueller signierter Release-Kanal (Sequence 18, 20.10.2026)
+## Aktueller signierter Release-Kanal (Sequence 19, 20.10.2026)
+
+| Feld | Kryptografisch verifizierter Wert |
+| --- | --- |
+| `sequence` | `19` |
+| `version` | `0.19.0-candidate` |
+| `runtimeUrl` | `https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js` |
+| `bytes` | `886804` |
+| `sha256` | `d83f93525c6afc18b790ec820eb27074860cd617eec6acd7748a47c68e4d44c7` |
+
+Der [GitHub-Actions-Signierworkflow 39480451001](https://github.com/Riflex91/ALBot/actions/runs/39480451001) hat nach Linux-/Windows-Prüfung die Runtime mit dem bestehenden ECDSA-P-256-Schlüssel signiert und anschließend mit identischem SHA-256 und exakt `886804` Bytes geprüft. Der freigegebene Gameplay-Quellstand `08d0322` enthält insbesondere die Farmer-One-Shots (#302), Merchant-/Produktionsplan-Stabilisierung (#307) und vollständige Executor-Endereignisse (#308). Die unabhängige Konfigurator-Anzeigeänderung #309 verbleibt zusätzlich in `main`. Persönlicher CODE, unveränderter V2-Loader, Public Key, URLs und Cloudflare-Free-Grenzen wurden nicht geändert. Eine echte Game-Liveabnahme ist weiterhin offen.
+
+### Historischer Release: Sequence 18
+
+## Frueherer signierter Release-Kanal (Sequence 18, 20.10.2026)
 
 | Feld | Verifizierter Wert |
 | --- | --- |

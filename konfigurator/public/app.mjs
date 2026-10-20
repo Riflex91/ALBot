@@ -1,4 +1,5 @@
 import {defaultPolicy,validatePolicyDocument,previewGlobalItem} from './policy.mjs';
+import {DASHBOARD_REFRESH_MS,SNAPSHOT_FRESH_MS} from './free-tier.mjs';
 
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);if(cls)e.className=cls;return e;};
@@ -6,7 +7,7 @@ const state={view:'dashboard',policy:{version:1,items:[]},sha:null,configured:fa
  characters:[],bank:[],catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
 const fmt=x=>typeof x==='number'&&Number.isFinite(x)?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(x):'—';
 const age=t=>!Number.isFinite(t)?'unbekannt':Math.max(0,Math.floor((Date.now()-t)/1000))+' s';
-const fresh=t=>Number.isFinite(t)&&Date.now()-t<60000;
+const fresh=t=>Number.isFinite(t)&&Date.now()-t<SNAPSHOT_FRESH_MS;
 const itemName=id=>state.catalog.find(x=>x.id===id)?.name??id;
 const sourceNote='Die Daten sind ausschließlich zur Ansicht bestimmt. Bank-Snapshots sind keine Berechtigung, Items zu verkaufen.';
 const content=$('content');
@@ -49,12 +50,16 @@ async function bootstrap(){
  $('connection').style.color=state.configured?'#64d9b3':'#f1bf71';
  setSaveState();render();
 }
+let refreshingLive=false;
 async function refreshLive(){
- if(document.visibilityState==='hidden')return;
+ if(document.visibilityState==='hidden'||refreshingLive)return;
+ refreshingLive=true;
+ try{
  const [chars,bank]=await Promise.allSettled([api('/api/characters'),api('/api/bank')]);
  if(chars.status==='fulfilled')state.characters=chars.value.rows??[];
  if(bank.status==='fulfilled')state.bank=bank.value.rows??[];
  if(['dashboard','characters','bank'].includes(state.view))render();
+ }finally{refreshingLive=false;}
 }
 function save(){
  if(!state.configured||state.saving||!state.dirty)return;
@@ -81,7 +86,7 @@ function dashboard(){
  const online=state.characters.filter(x=>fresh(x.observedAt)&&x.hp>0);
  const gold=state.characters.filter(x=>fresh(x.observedAt)).reduce((n,x)=>n+(Number(x.goldPerHour)||0),0);
  const metrics=node('div',undefined,'grid metrics');metrics.append(
-  metric('Charaktere online',online.length+' / '+state.characters.length,'Status jünger als 60 Sekunden'),
+  metric('Charaktere online',online.length+' / '+state.characters.length,'Status jünger als 5 Minuten'),
   metric('Gold pro Stunde',fmt(gold),'Nur frische Charakterdaten'),
   metric('Bankfächer',fmt(state.bank.length),'Letzte beobachtete Snapshots'),
   metric('Itemrichtlinien',fmt(state.policy.items.length),'GitHub · nicht automatisch aktiviert'));content.append(metrics);
@@ -245,4 +250,4 @@ for(const b of document.querySelectorAll('[data-view]'))b.addEventListener('clic
 });
 $('menu-toggle').addEventListener('click',()=>document.body.classList.toggle('menu-open'));
 $('save').addEventListener('click',save);
-render();bootstrap();setInterval(refreshLive,20000);
+render();bootstrap();setInterval(refreshLive,DASHBOARD_REFRESH_MS);

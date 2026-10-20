@@ -41,13 +41,16 @@ export function createMovement(bot){
        !['quest','combat','kite'].includes(owner))return false;
     // N05's native movement must carry an explicit, re-evaluated admission
     // from the owning scout. A generic direct go('scout') has no authority.
-    if(owner==='scout'&&(typeof scoutAdmission!=='function'||nativeBusy()))return false;
+    if(['scout','cave'].includes(owner)&&
+       (typeof scoutAdmission!=='function'||nativeBusy()))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
     // A local N05 scout is a direct step, never general smart navigation.
     // Even an unexpected direct call cannot widen its map or travel budget.
-    if(owner==='scout'&&(!samePlace(p.c,d)||
+    if(['scout','cave'].includes(owner)&&(!samePlace(p.c,d)||
        !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
-       distance(p.c,d)>95||distance(p.c,d)<1))return false;
+       distance(p.c,d)>(owner==='cave'?45:95)||distance(p.c,d)<1||
+       owner==='cave'&&!/^zone_[a-f0-9]{24}_[0-7]$/.test(p.c.map)))
+      return false;
     if(arrived(p.c,{...d,radius:d.radius??20}))return true;
     if(order||townQueued||exec.pending.has('travel.town'))return false;
     if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
@@ -114,22 +117,23 @@ export function createMovement(bot){
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
     // Geometry can change between scout admission and actual movement.
     // A failed last local check must NEVER turn a scout hop into smart_move.
-    if(owner==='scout'&&!local){order=null;return false;}
-    const blink=owner!=='scout'&&local&&travelBlinkEligible(bot,d,owner),
+    if(['scout','cave'].includes(owner)&&!local){order=null;return false;}
+    const blink=!['scout','cave'].includes(owner)&&local&&travelBlinkEligible(bot,d,owner),
      landing=blink?blinkLandingPoint(d):null;
     if(blink)token.dest={...dest,x:landing.x,y:landing.y,radius:Math.max(8,dest.radius)};
     token.mode=blink?'blink':local?'move':'smart_move';
-    const scoutDispatchSafe=()=>{
+    const boundedDirectDispatchSafe=()=>{
       if(order!==token||token.mode!=='move'||nativeBusy()||!samePlace(p.c,d)||
          !Number.isFinite(p.c.x)||!Number.isFinite(p.c.y)||
-         distance(p.c,d)>95||distance(p.c,d)<1||
+         distance(p.c,d)>(owner==='cave'?45:95)||distance(p.c,d)<1||
+         owner==='cave'&&!/^zone_[a-f0-9]{24}_[0-7]$/.test(p.c.map)||
          !p.has('can_move_to')||p.call('can_move_to',d.x,d.y)!==true)return false;
       try{return scoutAdmission()===true;}catch{return false;}
     };
     const accepted=exec.run('move',['movement',...(blink?['mana']:[])],
      ()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&
       (!blink||travelBlinkEligible(bot,d,owner))&&
-      (owner!=='scout'||scoutDispatchSafe()),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
+      (!['scout','cave'].includes(owner)||boundedDirectDispatchSafe()),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
     if(error?.transient==='interrupted'){
      order=null;bot.event?.('movement.interrupted',{owner,mode:token.mode,map:dest.map,
       reason:'Native smart route was cancelled externally; safe retry'});return;
@@ -165,8 +169,8 @@ export function createMovement(bot){
       // Generic go() historically returns false even on accepted travel.
       // N05 MUST verify it actually owns a native route before consuming
       // the one-use scout proof or reporting a dispatched movement.
-      return owner==='scout'?
-        order!==prior&&order?.owner==='scout'&&order.mode==='move'&&
+      return ['scout','cave'].includes(owner)?
+        order!==prior&&order?.owner===owner&&order.mode==='move'&&
         order.dest.x===x&&order.dest.y===y:accepted;
     },
     farmLocation(type){const candidates=[];for(const [map,data] of Object.entries(p.G.maps)){if(data.ignore||data.instance||data.pvp)continue;for(const pack of data.monsters??[]){if(pack.type!==type)continue;const ranges=pack.boundaries??(pack.boundary?[[map,...pack.boundary]]:[]);for(const [m,x1,y1,x2,y2] of ranges)candidates.push({map:m,in:m,x:(x1+x2)/2,y:(y1+y2)/2,radius:45});}}return candidates.sort((a,b)=>(a.map===p.c.map?-100000:0)+distance(p.c,a)-((b.map===p.c.map?-100000:0)+distance(p.c,b)))[0];}

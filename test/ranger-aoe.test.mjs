@@ -23,7 +23,7 @@ function rangerFixture(teamCount,outsiders=0,maxTargets=5,{allowNeutral=false,ca
  const bot={p,cfg,exec:{run:(_key,_locks,guard,invoke)=>{if(!guard())return false;invoke();return true;}},
   teamNames:['Ranger1','Ranger2'],monsters:()=>mobs,entity:id=>mobs.find(m=>m.id===id),
   allowed:m=>!!m&&((!!m.target&&['Ranger1','Ranger2'].includes(m.target))||(allowNeutral&&!m.target&&m.mtype==='bee')),
-  teamPlan:{target:()=> 'bee',wantsCombat:()=>true,roles:()=>({})},encounter:{status:()=>({phase,capacity})},strategy:{safeTarget:()=>true},
+  teamPlan:{target:()=> 'bee',wantsCombat:()=>true,roles:()=>({})},encounter:{status:()=>({phase,capacity}),approvePullSet:()=>({safe:true})},strategy:{safeTarget:()=>true},
   allies:()=>[],event:()=>{},count:()=>0};
  return {skills:createSkills(bot),mobs,actions};
 }

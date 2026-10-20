@@ -19,7 +19,7 @@ function rogueFixture({skills={},targets=1,foreign=false,capacity=3,allowedNeutr
   entity:id=>mobs.find(m=>m.id===id),monsters:()=>mobs,
   allowed:m=>!!m&&(m.target==='My_Rogue'||!m.target&&allowedNeutral),
   teamPlan:{target:()=> 'bee',wantsCombat:()=>true,roles:()=>({})},
-  strategy:{safeTarget:()=>true},encounter:{status:()=>({phase:'BUILD',capacity})},
+  strategy:{safeTarget:()=>true},encounter:{status:()=>({phase:'BUILD',capacity}),approvePullSet:()=>({safe:true})},
   allies:()=>[],event(){},count:()=>0};
  return {c,mobs,calls,bot,rotation:createSkills(bot)};
 }

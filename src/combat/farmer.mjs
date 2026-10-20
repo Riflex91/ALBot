@@ -96,13 +96,17 @@ export function safeSquadConvergenceStep(character,anchor,monsters=[],canMove=()
  }
  return best;
 }
-export function chooseEmergencyFocus(monsters,members=[]){
+export function chooseEmergencyFocus(monsters,members=[],definitions={}){
  const health=new Map((members??[]).filter(m=>m&&typeof m.name==='string'&&
   Number.isFinite(m.hp)&&Number.isFinite(m.max_hp)&&m.max_hp>0)
   .map(m=>[m.name,m.hp/m.max_hp]));
  return (monsters??[]).filter(m=>m?.id&&m.hp>0&&!m.dead&&
    health.has(m.target)).slice().sort((a,b)=>
    health.get(a.target)-health.get(b.target)||
+   ((definitions?.[b.mtype]?.attack??b.attack??0)*
+     (definitions?.[b.mtype]?.frequency??b.frequency??1)/Math.max(1,b.hp))-
+   ((definitions?.[a.mtype]?.attack??a.attack??0)*
+     (definitions?.[a.mtype]?.frequency??a.frequency??1)/Math.max(1,a.hp))||
    a.hp-b.hp||String(a.id).localeCompare(String(b.id)))[0]??null;
 }
 // Every transit tick can choose a nearby, fresh, injured teammate,
@@ -307,7 +311,7 @@ export function createFarmer(bot){
       (x,y)=>p.call('can_move_to',x,y),{
        now,realm:p.realm(),
        minimumGap:Math.max(120,Math.min(160,cfg.party.followDistance??160))
-      });
+      })??bot.navigation?.hazardPoint?.(anchor);
     if(!point)return false;
     if(existing&&!['kite','follow','farm','combat','cohesion','world'].includes(
        existing.owner))return false;
@@ -346,6 +350,7 @@ export function createFarmer(bot){
         return true;
       }
     }
+    if(bot.navigation?.hazardEscape?.(healer??null))return true;
     if(bot.navigation?.orbit(t))return true;
     const threats=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name));if(!threats.length)threats.push(t);let ax=0,ay=0;for(const enemy of threats.slice(0,8)){const d=distance(c,enemy)||1,v=xy(enemy),weight=1/Math.max(20,d);ax+=(from.x-v.x)/d*weight;ay+=(from.y-v.y)/d*weight;}const len=Math.hypot(ax,ay)||1,dx=ax/len,dy=ay/len,step=Math.max(35,Math.min(90,(c.speed??40)*1.5));for(const [x,y] of [[dx,dy],[-dy,dx],[dy,-dx]]){const nx=from.x+x*step,ny=from.y+y*step;if(p.call('can_move_to',nx,ny)){if(bot.movement.order?.owner!=='kite')bot.movement.stop();bot.movement.local(nx,ny,'kite');return;}}bot.reason='Kein freier Rückzugsweg';}
   function helpEngagedTeamFight(leader){
@@ -452,12 +457,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
-    // Cave maps are generated instances, NOT approved overworld farmspawns.
-    // Preserve urgent recovery above, but never let ordinary target selection,
-    // independent follow routes or neutral farm pulls run here. The current
-    // Cave group evidence is diagnostic-only until an instanced combat
-    // executor has its own run/floor/roster and attack authorization contract.
+    // Cave maps are generated instances, never ordinary farmspawns.
+    // Keep urgent life support, but isolate overworld combat and movement.
+    // Only dedicated, fully run-bound Cave executors may act here.
     if(inCaveInstance(p.c)){
+      // Stop an already active direct Cave step when its exact evidence
+      // expires or a monster appears. Never fall through to smart_move.
+      if(bot.movement?.order?.owner==='cave'&&
+         bot.caveDirect?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
       if(['farm','follow','cohesion','combat','world','regroup',
           'quest-escort'].includes(bot.movement?.order?.owner))
        bot.movement.stop();
@@ -468,8 +476,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // revalidates the exact team/monster at network dispatch.
       const healed=bot.cavePriest?.tick?.()===true;
       const defended=!healed&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!defended&&bot.caveDirect?.tick?.()===true;
       bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
        defended?'Cave: bestätigte Teamverteidigung angefordert':
+       cohesion?'Cave: sicherer Direktschritt zum Priest angefordert':
        'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
       return;
     }
@@ -559,7 +569,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
     const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
       bot.transport?.fresh?.(name)).filter(Boolean);
-    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster);
+    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster,p.G.monsters);
     const blocker=blockingMonster();
     if(blocker&&['farm','follow'].includes(bot.movement.order?.owner))bot.movement.stop();
     const danger=blocker??rescueFocus??threat;

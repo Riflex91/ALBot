@@ -2,6 +2,72 @@ import {distance,xy,samePlace} from '../core/policy.mjs';
 import {isNaturallyAggressive} from './aggression.mjs';
 import {planOrbitalKite} from './orbital-kiting.mjs';
 import {committedFarmTransit} from './transit-defense.mjs';
+
+/**
+ * Bounded dynamic local avoidance. The native smart_move retains authority
+ * for static-world paths; this planner only chooses an immediately reachable
+ * short step and tests the entire direct segment against known live threats.
+ */
+export function planHazardStep({character,goal,monsters=[],definitions={},canMove=()=>false,
+ stepLengths=[75,50,30]}={}){
+ if(!character||![character.x,character.y].every(Number.isFinite))return null;
+ const dangerous=(monsters??[]).filter(m=>m?.hp>0&&!m.dead&&
+   samePlace(character,m)&&Number.isFinite(m.x)&&Number.isFinite(m.y)&&
+   (m.target||isNaturallyAggressive({monsters:definitions},m)));
+ if(!dangerous.length)return null;
+ const here={x:character.x,y:character.y};
+ const validGoal=goal&&samePlace(character,goal)&&
+   Number.isFinite(goal.x)&&Number.isFinite(goal.y);
+ let ax=0,ay=0;
+ for(const m of dangerous){
+  const dx=here.x-m.x,dy=here.y-m.y,d=Math.hypot(dx,dy)||1;
+  const weight=(definitions[m.mtype]?.attack??m.attack??20)*
+    (definitions[m.mtype]?.frequency??m.frequency??1)/Math.max(35,d*d/70);
+  ax+=dx/d*weight;ay+=dy/d*weight;
+ }
+ const retreatHeading=Math.atan2(ay,ax);
+ const targetHeading=validGoal?Math.atan2(goal.y-here.y,goal.x-here.x):retreatHeading;
+ let best=null;
+ for(const step of stepLengths){
+  for(const deviation of [0,Math.PI/6,-Math.PI/6,Math.PI/3,-Math.PI/3,
+   Math.PI/2,-Math.PI/2,Math.PI]){
+   const angle=targetHeading+deviation,x=here.x+Math.cos(angle)*step,
+    y=here.y+Math.sin(angle)*step;
+   if(!canMove(x,y))continue;
+   let exposure=0,rejected=false,clearanceGain=0;
+   for(const mob of dangerous){
+    const before=Math.hypot(here.x-mob.x,here.y-mob.y),
+     after=Math.hypot(x-mob.x,y-mob.y),
+     radius=(mob.range??definitions[mob.mtype]?.range??30)+45;
+    const dx=x-here.x,dy=y-here.y;
+    const u=Math.max(0,Math.min(1,((mob.x-here.x)*dx+
+     (mob.y-here.y)*dy)/Math.max(1,dx*dx+dy*dy)));
+    const nearest=Math.hypot(here.x+dx*u-mob.x,here.y+dy*u-mob.y);
+    // Never cut through an untouched danger zone; if already inside one,
+    // accept only routes that do not push further into the attacker.
+    if(before>=radius&&nearest<radius||before<radius&&after<before-3){
+     rejected=true;break;
+    }
+    const attack=(definitions[mob.mtype]?.attack??mob.attack??20)*
+     (definitions[mob.mtype]?.frequency??mob.frequency??1);
+    exposure+=attack/Math.max(15,nearest)*100;
+    clearanceGain+=(after-before)/Math.max(1,radius);
+   }
+   if(rejected)continue;
+   const newGap=validGoal?Math.hypot(x-goal.x,y-goal.y):0;
+   const oldGap=validGoal?distance(here,goal):0;
+   if(validGoal&&newGap>oldGap+10&&clearanceGain<.2)continue;
+   const score=exposure*10+newGap*.8-clearanceGain*80+
+    (validGoal&&newGap>=oldGap-5?1000:0)+
+    (step<50?8:0);
+   if(!best||score<best.score)best={map:character.map,
+    in:character.in??character.map,x,y,radius:8,score,
+    exposure:+exposure.toFixed(2)};
+  }
+ }
+ return best;
+}
+
 // Explicitly engaged monsters may be passive by species (for example when
 // a ranger pulled them). Only actual SELF-aggro authorizes evasive movement.
 // A verified speed advantage is necessary, but not sufficient to promise
@@ -34,6 +100,24 @@ export function createCombatNavigation(bot){
  // Genuine v3 Alpha31/Alpha33 orbital kiting: actively circle around an
  // engaged enemy within a safe firing band, including when already at range.
  // If too close, take a tangential spiral step; never stop attacking to kite.
+ function hazardPoint(goal=null){
+  const c=bot.p.c;
+  const active=bot.monsters().filter(m=>m.hp>0&&!m.dead&&samePlace(c,m));
+  return planHazardStep({character:c,goal,monsters:active,
+   definitions:bot.p.G.monsters,canMove:(x,y)=>bot.p.call('can_move_to',x,y)});
+ }
+ function hazardEscape(goal=null){
+  const owner=bot.movement.order?.owner;
+  if(owner&&!['combat','farm','follow','kite','cohesion','world','regroup'].includes(owner))
+   return false;
+  const point=hazardPoint(goal);if(!point)return false;
+  if(owner)bot.movement.stop();
+  bot.movement.local(point.x,point.y,'kite');
+  if(bot.movement.order?.owner!=='kite')return false;
+  bot.event?.('combat.hazardDetour',{x:point.x,y:point.y,
+   exposure:point.exposure,goal:goal?.name??null});
+  return true;
+ }
  function rangePosition(t){
   const c=bot.p.c;
   if(!bot.cfg.farming.kiting||!t||!samePlace(c,t))return false;
@@ -106,5 +190,5 @@ export function createCombatNavigation(bot){
   bot.event?.(step.mode==='spiral'?'combat.spiralEscape':'combat.orbitStep',lastOrbit);
   return true;
  }
- return {waypoint,rangePosition,permitted(m){for(const [id,t] of blocked)if(t<Date.now())blocked.delete(id);return !blocked.has(m.id);},blocked(m){if(blocked.size>64)blocked.clear();blocked.set(m.id,Date.now()+15000);bot.event('navigation.targetBlocked',{target:m.id,reason:'Kein freier lokaler Umweg'});},orbit(t){if(!bot.cfg.farming.orbit||!t||t.target!==bot.me.name)return false;if(rangePosition(t))return true;const point=waypoint(t,true);if(!point)return false;if(bot.movement.order?.owner==='kite')return true;if(bot.movement.order?.owner&&!['combat','follow','farm','world','cohesion'].includes(bot.movement.order.owner))return false;if(bot.movement.order)bot.movement.stop();return bot.movement.local(point.x,point.y,'kite')!==false;},status:()=>({blocked:blocked.size,orbitSteps,spiralSteps,orbitReversals,orbitBlocked,lastOrbit})};
+ return {waypoint,rangePosition,hazardPoint,hazardEscape,permitted(m){for(const [id,t] of blocked)if(t<Date.now())blocked.delete(id);return !blocked.has(m.id);},blocked(m){if(blocked.size>64)blocked.clear();blocked.set(m.id,Date.now()+15000);bot.event('navigation.targetBlocked',{target:m.id,reason:'Kein freier lokaler Umweg'});},orbit(t){if(!bot.cfg.farming.orbit||!t||t.target!==bot.me.name)return false;if(rangePosition(t))return true;const point=waypoint(t,true);if(!point)return false;if(bot.movement.order?.owner==='kite')return true;if(bot.movement.order?.owner&&!['combat','follow','farm','world','cohesion'].includes(bot.movement.order.owner))return false;if(bot.movement.order)bot.movement.stop();return bot.movement.local(point.x,point.y,'kite')!==false;},status:()=>({blocked:blocked.size,orbitSteps,spiralSteps,orbitReversals,orbitBlocked,lastOrbit})};
 }

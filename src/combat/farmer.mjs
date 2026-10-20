@@ -408,6 +408,47 @@ export function createFarmer(bot){
   },attack.invoke,{delay:100,onSettle:attack.settle});
   return true;
 }
+// Independent low-risk cleanup at a reached, verified team spawn. Only
+// a single basic attack is issued; the encounter's exact one-shot proof is
+// rechecked at network dispatch. Never follow/chase or widen AoE admission.
+function independentOneShot(){
+ if(me.name===bot.leader||!cfg.party.enabled||bot.strategy?.busy||
+    bot.movement.order||bot.recovering||bot.journal||
+    bot.inventoryBlocked||bot.logistics?.reserved)return false;
+ const range=Math.max(5,(p.c.range??0)-
+   Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
+ const reserved=()=>new Set((bot.farmers??[])
+   .filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)?.target)
+   .filter(x=>x!=null).map(String));
+ const claimed=reserved();
+ const eligible=m=>m?.id!=null&&!claimed.has(String(m.id))&&
+   distance(p.c,m)<=range&&bot.encounter?.soloOneShot?.(m)&&
+   bot.allowed(m);
+ const candidate=bot.monsters().filter(eligible)
+   .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
+     String(a.id).localeCompare(String(b.id)))[0];
+ if(!candidate)return false;
+ const id=candidate.id,check=()=>{
+   const live=bot.entity(id);
+   return !!live&&!reserved().has(String(id))&&
+     distance(p.c,live)<=range&&
+     bot.encounter?.soloOneShot?.(live)&&bot.allowed(live)&&
+     p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
+ };
+ bot.target=candidate;bot.reason='Eigenständiger sicherer One-Shot: '+candidate.mtype;
+ bot.skills.rotation(null);
+ if(p.c.target!==id)
+   exec.run('target',['target'],()=>{const live=bot.entity(id);
+     return !!live&&bot.encounter?.soloOneShot?.(live)&&
+       bot.allowed(live)&&!reserved().has(String(id));
+   },()=>p.call('change_target',bot.entity(id)),{delay:500});
+ const attack=trackedAttack(id);
+ if(exec.run('attack',['attack','mana'],check,attack.invoke,{
+   delay:100,onSettle:attack.settle}))
+  bot.event?.('combat.independentOneShot',{target:id,monster:candidate.mtype,
+   mode:'single-basic-attack',plan:bot.teamPlan?.heartbeat?.()?.id});
+ return true;
+}
 function recoverCohesion(now){
   if(me.name!==bot.leader)return false;
   const away=(bot.farmers??[]).filter(n=>n!==me.name).map(n=>{
@@ -826,6 +867,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        }
       }
     }
+    // Healthy assembled followers can clear individually provable one-hit
+    // mobs at the SAME verified spawn without waiting for the leader's focus.
+    // Existing threats, travel and all uncertain hits retain normal gates.
+    if(!storageHold&&independentOneShot())return;
     // Help an existing teammate fight BEFORE the ordinary shared farm march.
     // Otherwise the follower can walk away along the new endpoint while an
     // ally is still engaged. This never authorizes a new neutral pull.

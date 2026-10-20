@@ -60,15 +60,39 @@ export function createStoragePlanner(bot){
   if(m.e||m.quest||m.event||m.soulbound)return null;
   if((m.upgrade||m.compound||m.wtype)&&bot.intelligence?.gearUse?.(i)?.state!=='no-gear-use')return null;
   const evidence=replacement(i);if(!evidence)return null;
-  const required=Math.max(bot.production?.reservedQuantity?.(i)??0,...purposes.recipes.map(r=>r.quantity),0);
+  const reservations=[bot.production?.reservedQuantity?.(i)??0,
+   ...purposes.recipes.map(r=>r.quantity)];
+  // An unknown/overflowing reservation must never be interpreted as zero
+  // (Math.max with NaN would otherwise authorize a capacity sale).
+  if(reservations.some(n=>!Number.isSafeInteger(n)||n<0))return null;
+  const required=Math.max(0,...reservations);
   // Exact variants across BOTH stores satisfy the reserve; never count an
   // equipped, protected or speculative offline item as disposable backing.
   // A cached offsite bank fingerprint is advisory, not spend/sale authority.
   // Only current physical bank observation can back a reserve before selling.
   const verifiedBank=bot.bank?.observed===true&&p.c.map?.startsWith('bank');
-  const held=(p.c.items??[]).filter(x=>plain(x)&&identity(x)===identity(i)).reduce((n,x)=>n+(x.q??1),0)+
-   (verifiedBank?bankStock():[]).filter(r=>plain(r.item)&&identity(r.item)===identity(i)).reduce((n,r)=>n+(r.item.q??1),0);
-  const q=i.q??1,price=e.value(i);if(!Number.isSafeInteger(q)||q<1||held-q<required||!Number.isFinite(price)||price<0||price>(cfg.production.autoGearSellMaxValue??1000000))return null;
+  const count=(rows,extract)=>{
+   let units=0;
+   for(const row of rows){
+    const x=extract(row);
+    if(!plain(x)||identity(x)!==identity(i))continue;
+    // Only an absent q means an unstacked item. A malformed component
+    // cannot cancel against another stack or inflate the recipe backing.
+    const q=x.q===undefined?1:x.q;
+    if(!Number.isSafeInteger(q)||q<1||
+       !Number.isSafeInteger(units+q))return null;
+    units+=q;
+   }
+   return units;
+  };
+  const local=count(p.c.items??[],x=>x);
+  const bank=verifiedBank?count(bankStock(),r=>r.item):0;
+  if(local===null||bank===null||!Number.isSafeInteger(local+bank))
+   return null;
+  const held=local+bank,q=i.q===undefined?1:i.q,price=e.value(i);
+  if(!Number.isSafeInteger(q)||q<1||held-q<required||
+     !Number.isFinite(price)||price<0||
+     price>(cfg.production.autoGearSellMaxValue??1000000))return null;
   return {...defaultsFor(ITEM_RULE),name:'Lagerplanung: ersetzbar '+i.name,item:i.name,action:'sell',batch:q,maxCount:Math.max(held,1),minPrice:price,
    _autoDisposition:true,_capacitySale:true,replacement:evidence,keep:0,teamReserve:0};
  }

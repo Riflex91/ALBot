@@ -15,10 +15,13 @@ const preflight=(mode='new')=>({
 function fixture({store=new Map(),name='P',realm='EUI',
  session='s1',mode='new',write=true,read=true}={}){
  const writes=[],calls=[],state={at:time,live:null,preflight:preflight(mode)};
- const p={realm:()=>realm,read:key=>{
+ const readFromStore=key=>{
   if(!read)throw Error('storage read');
   return store.has(key)?structuredClone(store.get(key)):null;
- },write:(key,value)=>{
+ };
+ const p={realm:()=>realm,read:readFromStore,
+  readCaveJournal:readFromStore,
+  write:(key,value)=>{
   writes.push([key,value]);
   if(!write)return false;
   store.set(key,structuredClone(value));return true;
@@ -369,4 +372,42 @@ test('N12 server-generated run ID is accepted only for a new run, not a mismatch
  assert.equal(resume.lifecycle.status().journal.serverReply??null,null);
  assert.equal(resume.lifecycle.status().journal.phase,'dispatch-unknown');
  assert.equal(resume.lifecycle.requestEntry(),false);
+});
+
+test('N12 startup requires strict Cave journal reader; generic get fallback is insufficient',()=>{
+ const fixtureMissing=fixture();
+ // Existing adapter gets strict capability when constructed; verify the
+ // constructor never interprets a thrown strict raw read as empty journal.
+ const broken={
+  p:{...fixtureMissing.p,read:()=>null,
+   readCaveJournal:()=>{throw Error('malformed cave storage');}},
+  me:{name:'P'},running:true,session:'restart',
+  cave:{status:()=>({entryPreflight:preflight(),live:null})}
+ };
+ const journal=createCaveLifecycle(broken,{now:()=>time});
+ assert.equal(journal.status().state,'storage-uncertain');
+ assert.equal(journal.prepare(),false);
+ assert.equal(journal.requestEntry(),false);
+ assert.equal(journal.discardPrepared(),false);
+ const unsupported={
+  ...broken,p:{...fixtureMissing.p,read:()=>null,
+   readCaveJournal:undefined}
+ };
+ const noStrict=createCaveLifecycle(unsupported,{now:()=>time});
+ assert.equal(noStrict.status().state,'storage-uncertain');
+ assert.equal(noStrict.prepare(),false);
+});
+
+test('N12 strict read failure during dispatch checkpoint cannot cause a Cave call',()=>{
+ const f=readyOneShot(fixture());
+ assert.equal(f.lifecycle.prepare(),true);
+ // Generic get() would report no journal; strict read must report the
+ // actual corrupted/unavailable durable store instead.
+ f.p.read=()=>null;
+ f.p.readCaveJournal=()=>{throw Error('temporary storage read failure');};
+ assert.equal(f.lifecycle.requestEntry(),true,
+  'Executor accepts work but no server mutation runs');
+ assert.equal(f.calls.length,0);
+ assert.equal(f.lifecycle.status().state,'storage-uncertain');
+ assert.equal(f.lifecycle.requestEntry(),false);
 });

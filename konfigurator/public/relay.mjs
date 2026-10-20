@@ -1,4 +1,4 @@
-import {GAME_ORIGINS,RELAY_READY_TYPE,acceptRelayMessage,relayBucket} from './relay-protocol.mjs';
+import {GAME_ORIGINS,RELAY_READY_TYPE,RELAY_MESSAGE_TYPE,acceptRelayMessage,relayBucket} from './relay-protocol.mjs';
 import {TELEMETRY_MIN_INTERVAL_MS} from './free-tier.mjs';
 
 const $=id=>document.getElementById(id);
@@ -22,7 +22,12 @@ button.addEventListener('click',()=>{
 window.addEventListener('message',async event=>{
  if(!activated)return;
  const accepted=acceptRelayMessage(event,window.opener);
- if(!accepted)return;
+ if(!accepted){
+  if(event.data?.type===RELAY_MESSAGE_TYPE&&GAME_ORIGINS.includes(event.origin))
+   result.textContent='Spiel-Nachricht erkannt, aber Fensterzuordnung oder Datenformat ungültig.';
+  return;
+ }
+ result.textContent='Spiel-Snapshot empfangen. Prüfe Cloudflare-Speicherung …';
  const bucket=relayBucket(accepted.packet);
  if(!bucket)return;
  const now=Date.now();

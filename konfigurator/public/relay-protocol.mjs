@@ -6,9 +6,37 @@ export const GAME_ORIGINS=Object.freeze([
 export const RELAY_MESSAGE_TYPE='albot.telemetry.v1';
 export const RELAY_READY_TYPE='albot.relay.ready.v1';
 export const MAX_RELAY_MESSAGE_CHARS=32_768;
+// Adventure Land's CODE runner executes in a child frame of the game window.
+// The popup is opened via gameWindow.open(), so window.opener is the *parent*
+// game window, while postMessage's browser-controlled event.source is the
+// executing CODE frame. Accept only opener or its bounded descendants, never
+// an arbitrary tab or other window, and retain the exact game-origin check.
+// Cross-origin WindowProxy exposes frames/length but may throw in some
+// browsers; inspection must fail closed.
+export function isOpenerFrameSource(source,opener){
+ if(!source||!opener)return false;
+ if(source===opener)return true;
+ const visited=new Set([opener]);
+ const pending=[opener];
+ let inspected=0;
+ for(let at=0;at<pending.length&&inspected<128;at++){
+  let children,length;
+  try{children=pending[at].frames;length=children?.length;}catch{continue;}
+  if(!Number.isSafeInteger(length)||length<0||length>64)continue;
+  for(let n=0;n<length&&inspected<128;n++){
+   inspected++;
+   let child;
+   try{child=children[n];}catch{continue;}
+   if(!child||visited.has(child))continue;
+   if(child===source)return true;
+   visited.add(child);pending.push(child);
+  }
+ }
+ return false;
+}
 export function acceptRelayMessage(event,expectedSource){
- if(!expectedSource||!event||event.source!==expectedSource||
-    !GAME_ORIGINS.includes(event.origin))return null;
+ if(!event||!GAME_ORIGINS.includes(event.origin)||
+    !isOpenerFrameSource(event.source,expectedSource))return null;
  const incoming=event.data;
  if(!incoming||typeof incoming!=='object'||Array.isArray(incoming)||
     incoming.type!==RELAY_MESSAGE_TYPE)return null;

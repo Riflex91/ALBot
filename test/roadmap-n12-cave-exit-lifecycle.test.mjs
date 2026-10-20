@@ -12,7 +12,8 @@ const observed=(r=run,f=1)=>({
  }]});
 function fixture({store=new Map(),reply=()=>({exited:true}),
  realm='EUI',session='session-one',persist=true}={}){
- const calls=[],writes=[],state={time,live:observed(),visit:null};
+ const calls=[],writes=[],state={time,live:observed(),visit:null,
+  lastObservedRun:{run},acknowledged:[]};
  const c={name:'P',map:caveMap(),in:caveMap(),cave:{run}};
  const p={
   c,realm:()=>realm,
@@ -26,7 +27,14 @@ function fixture({store=new Map(),reply=()=>({exited:true}),
   call:name=>{calls.push(name);return reply();}
  };
  const bot={p,me:{name:'P'},session,running:true,
-  cave:{status:()=>({live:state.live,visit:state.visit})}};
+  cave:{
+   status:()=>({live:state.live,visit:state.visit,
+    lastObservedRun:state.lastObservedRun}),
+   acknowledgeConfirmedExit:r=>{
+    if(state.lastObservedRun&&state.lastObservedRun.run!==r)return false;
+    state.acknowledged.push(r);state.lastObservedRun=null;return true;
+   }
+  }};
  bot.exec=new Executor({now:()=>state.time,active:()=>bot.running,
   limit:3,admit:()=>true,onError:()=>{},onEvent:()=>{}});
  const life=createCaveLifecycle(bot,{now:()=>state.time});
@@ -71,6 +79,9 @@ test('N12 a one-shot explicit Cave exit is durably marked BEFORE the RPC',async(
  assert.equal(f.life.status().state,'empty');
  assert.equal(f.life.status().blocked,false);
  assert.equal(f.store.get('albot:cave-lifecycle:P'),null);
+ assert.deepEqual(f.state.acknowledged,[run]);
+ assert.equal(f.state.lastObservedRun,null,
+  'the old volatile run cannot block the next PRE-FLIGHT after a confirmed exit');
  assert.deepEqual(f.calls,['cave_exit']);
 });
 test('N12 rejected or thrown exit stays uncertain without automatic resend',async()=>{
@@ -211,4 +222,15 @@ test('N12 old Cave snapshots and corrupt exit journal never create discharge aut
   assert.equal(broken.life.requestExit(),false);
   assert.deepEqual(broken.calls,[]);
  }
+});
+
+test('N12 an unrelated last-observed Cave run cannot be cleared via an exit receipt',async()=>{
+ const f=fixture();f.life.sample();f.life.requestExit();
+ await Promise.resolve();await Promise.resolve();
+ f.exit();f.visit();
+ f.state.lastObservedRun={run:other};
+ assert.equal(f.life.confirmExit(),false);
+ assert.equal(f.life.status().blocked,true);
+ assert.equal(f.state.acknowledged.length,0);
+ assert.equal(f.store.get('albot:cave-lifecycle:P').exitRun,run);
 });

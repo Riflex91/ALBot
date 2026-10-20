@@ -453,7 +453,12 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
        bot.movement.stop();
       bot.target=null;
       const evidence=bot.caveTeam?.status?.();
-      bot.reason='Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
+      // Only the dedicated Ranger basic-defense executor may issue an
+      // instance attack. It refuses neutral mobs, movement and skills and
+      // revalidates the exact team/monster at network dispatch.
+      const defended=bot.caveCombat?.tick?.()===true;
+      bot.reason=defended?'Cave: bestätigte Teamverteidigung angefordert':
+       'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
       return;
     }
     const c=p.c,now=Date.now();

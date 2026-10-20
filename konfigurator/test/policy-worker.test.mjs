@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {defaultPolicy,validatePolicyDocument,previewGlobalItem,reviewEconomicSale} from '../public/policy.mjs';
 import {validateAccess,handleRequest} from '../worker/index.mjs';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -103,4 +104,58 @@ test('no cross-origin write even with valid Access JWT',async()=>{
   method:'PUT',headers:{'CF-Access-Jwt-Assertion':token,origin:'https://evil.invalid'},
   body:'{}'}),env,{}, {fetcher:async()=>new Response(JSON.stringify(certs))});
  assert.equal(put.status,403);
+});
+
+test('full ALBot profile can be fetched from private GitHub, with revision SHA',async()=>{
+ const {token,certs}=await credential();
+ const fixture=JSON.parse(await readFile(new URL('../../../profiles/full-team.json',import.meta.url),'utf8'));
+ const source=Buffer.from(JSON.stringify(fixture)).toString('base64');
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
+  ALLOWED_EMAIL:'user@example.com',CONFIG_REPO:'Riflex91/private-albot-config',
+  CONFIG_BRANCH:'main',GITHUB_TOKEN:'ghp_a_dummy_test_only'};
+ const fetcher=async url=>{
+  if(String(url).includes('/cdn-cgi/access/certs'))return new Response(JSON.stringify(certs));
+  if(String(url).includes('/contents/albot/profile.json'))return new Response(JSON.stringify({type:'file',sha:'a'.repeat(40),content:source}));
+  throw Error('unexpected endpoint '+url);
+ };
+ const req=new Request('https://albot.example.com/api/profile',{headers:{'CF-Access-Jwt-Assertion':token}});
+ const response=await handleRequest(req,env,{}, {fetcher});
+ assert.equal(response.status,200);
+ const body=await response.json();
+ assert.equal(body.sha,'a'.repeat(40));
+ assert.equal(body.document.schemaId,'albot.full/v1');
+ assert.ok(body.document.config.characters.length>=1);
+ assert.equal(body.applied,false);
+});
+test('profile write is rejected if GitHub SHA changed',async()=>{
+ const {token,certs}=await credential();
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
+  ALLOWED_EMAIL:'user@example.com',CONFIG_REPO:'Riflex91/private-albot-config',
+  GITHUB_TOKEN:'ghp_a_dummy_test_only'};
+ const fetcher=async url=>{
+  if(String(url).includes('/cdn-cgi/access/certs'))return new Response(JSON.stringify(certs));
+  return new Response('',{status:404});
+ };
+ const fixture=JSON.parse(await readFile(new URL('../../../profiles/full-team.json',import.meta.url),'utf8'));
+ const req=new Request('https://albot.example.com/api/profile',{method:'PUT',
+  headers:{'CF-Access-Jwt-Assertion':token,'origin':'https://albot.example.com','content-type':'application/json'},
+  body:JSON.stringify({sha:'a'.repeat(40),document:fixture})});
+ const response=await handleRequest(req,env,{}, {fetcher});
+ assert.equal(response.status,409);
+});
+test('classic editor receives hash-scoped CSP instead of unsafe-inline',async()=>{
+ const {token,certs}=await credential();
+ const sha='a'.repeat(43)+'=';
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
+  ALLOWED_EMAIL:'user@example.com',ASSETS:{async fetch(req){
+   if(String(req).includes('classic-csp.json'))return new Response(JSON.stringify({script:sha,style:sha}));
+   return new Response('<!doctype html><title>Classic</title>',{headers:{'content-type':'text/html'}});
+  }}};
+ const response=await handleRequest(new Request('https://albot.example.com/classic.html',{
+  headers:{'CF-Access-Jwt-Assertion':token}}),env,{},{
+  fetcher:async()=>new Response(JSON.stringify(certs))});
+ assert.equal(response.status,200);
+ const csp=response.headers.get('content-security-policy');
+ assert.ok(csp.includes("'sha256-"+sha+"'"));
+ assert.equal(csp.includes("'unsafe-inline'"),false);
 });

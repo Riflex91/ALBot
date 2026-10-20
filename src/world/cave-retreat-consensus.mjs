@@ -110,8 +110,14 @@ export function caveRetreatLocalProof(bot,{
      !caveRetreatNum(m.hp)||m.hp<=0||
      !caveRetreatNum(m.x)||!caveRetreatNum(m.y))
    return caveRetreatDeny('monster-identity-or-geometry-unverified',scope);
+  const meta=p.G?.monsters?.[m.mtype];
+  if(!meta||!caveRetreatNum(meta.attack)||meta.attack<=0||
+     meta.attack>100000||!caveRetreatNum(meta.frequency)||
+     meta.frequency<=0||meta.frequency>100)
+   return caveRetreatDeny('official-damage-definition-unverified',scope);
   ids.add(m.id);
-  monsterParts.push([m.id,m.target,m.mtype,m.hp,m.x,m.y].join(':'));
+  monsterParts.push([m.id,m.target,m.mtype,m.hp,m.x,m.y,
+   meta.attack,meta.frequency].join(':'));
  }
  const centroid={
   x:actors.reduce((sum,m)=>sum+m.x,0)/actors.length,
@@ -166,11 +172,12 @@ export function createCaveRetreatConsensus(bot,{now=()=>Date.now()}={}){
  function heartbeat(){
   const at=now(),r=caveRetreatLocalProof(bot,{now:at,nativeCheck:true});
   checks++;
-  if(r.ready!==true){lastVote=null;return null;}
+  if(r.ready!==true||typeof r.localKey!=='string'||
+     r.localKey.length>1300){lastVote=null;return null;}
   // Compact identity-scoped peer testimony. Only the receiving participant
   // can corroborate a peer's current position and matching enemy snapshot.
   const v={v:1,run:r.run,floor:r.floor,map:r.map,
-   at,dir:r.direction,threat:r.threatKey,
+   at,dir:r.direction,threat:r.threatKey,key:r.localKey,
    x:r.self.x,y:r.self.y,toX:r.self.toX,toY:r.self.toY};
   lastVote={...v,key:r.localKey};
   return v;
@@ -201,7 +208,7 @@ export function createCaveRetreatConsensus(bot,{now=()=>Date.now()}={}){
       at-peer.received>3000||
       !v||v.v!==1||v.run!==r.run||v.floor!==r.floor||
       v.map!==r.map||v.dir!==r.direction||
-      v.threat!==r.threatKey||
+      v.threat!==r.threatKey||v.key!==r.localKey||
       !caveRetreatTime(v.at)||v.at>at||at-v.at>2500||
       ![v.x,v.y,v.toX,v.toY,peer.x,peer.y].every(caveRetreatNum)||
       Math.hypot(v.x-peer.x,v.y-peer.y)>2||
@@ -217,7 +224,9 @@ export function createCaveRetreatConsensus(bot,{now=()=>Date.now()}={}){
   return {...deny('unanimous-native-retreat-evidence-only',{
    votes:votes.length,participants:votes.map(v=>v.name).sort(),
    threatKey:r.threatKey}),
-   ready:true,consensus:true,canMove:false};
+   ready:true,consensus:true,canMove:false,
+   proofKey:r.localKey,attestationAt:lastVote.at,
+   self:{...r.self}};
  }
  return {heartbeat,status};
 }

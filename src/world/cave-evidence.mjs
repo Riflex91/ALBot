@@ -42,10 +42,11 @@ export function verifiedCaveSnapshot(raw,{name,map,now=Date.now()}={}){
  const names=new Set(),roster=[];
  for(const m of raw.roster){
   if(!m||!label(m.name)||names.has(m.name)||
-     typeof m.left!=='boolean'||typeof m.disconnected!=='boolean')
+     (m.left!==undefined&&typeof m.left!=='boolean')||
+     typeof m.disconnected!=='boolean')
    return null;
   names.add(m.name);
-  roster.push({name:m.name,left:m.left,disconnected:m.disconnected});
+  roster.push({name:m.name,left:m.left===true,disconnected:m.disconnected});
  }
  if(!names.has(name)||roster.find(m=>m.name===name)?.left)return null;
  let choice=null;

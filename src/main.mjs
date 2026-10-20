@@ -86,6 +86,8 @@ import {LIVE_DESCRIPTOR} from './config/live-a.mjs';
 import {chooseRule,variantCount,protectedItem,distance,samePlace,fingerprint} from './core/policy.mjs';
 import {Executor} from './core/executor.mjs';
 import {createPorts} from './runtime/ports.mjs';
+import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/telemetry-snapshot.mjs';
+import {createGameRelaySender,GAME_RELAY_INTERVAL_MS} from './runtime/telemetry-relay-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
 import {createLogistics} from './items/logistics.mjs';
@@ -371,6 +373,26 @@ export function install(root){
        !!bot.logistics?.reserved||!!bot.gold?.reserved}));
   }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);bot.metrics.frame(elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),me.role==='farmer'&&bot.skillWakeups?
      bot.skillWakeups.nextDelay(cfg.general.combatTickMs):cfg.general.combatTickMs);}}
+  // The public runtime contains no secrets or automatic cloud connection.
+  // Access Relay requires a synchronous user click in the existing game panel,
+  // then another explicit confirmation in the signed-in popup.
+  let telemetryRelay=null,telemetryInterval=null;
+  if(!p.headless){
+    try{
+      const gameWindow=p.parent;
+      if(['https://adventure.land','https://www.adventure.land'].includes(gameWindow?.location?.origin)){
+        telemetryRelay=createGameRelaySender({
+          gameWindow,getCharacter:()=>p.c,getRealm:()=>p.realm(),
+          getBankDefinitions:()=>p.G?.bank_packs??{},role:me.role,
+          onReady:()=>{if(!disposed)telemetryRelay?.sendOnce();}
+        });
+      }
+    }catch(e){report.event('telemetry.unavailable',{reason:'unsupported-browser'});}
+  }
+  cleanup.push(()=>{
+    if(telemetryInterval!==null)root.clearInterval?.(telemetryInterval);
+    telemetryInterval=null;telemetryRelay?.disconnect();
+  });
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
       if(disposed)return false;if(bot.running)return true;
@@ -405,6 +427,23 @@ export function install(root){
     discardPreparedCaveVote:()=>bot.caveVoteJournal?.discardPrepared()??false,
     discardPreparedCaveEntry:()=>bot.caveLifecycle?.discardPrepared()??false,
     status:()=>({version:VERSION,elixir:bot.elixirs?.status?.()??null,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,actionAdmission:bot.admission.status(),lootDeparture:bot.lootDeparture.status(),lootReceipts:bot.lootReceipts?.status()??null,gearAllocationRecovery:bot.allocation?.recoveryStatus?.()??null,respawns:bot.respawns?.status()??null,cave:bot.cave?.status()??null,caveLifecycle:bot.caveLifecycle?.status()??null,caveVote:bot.caveVote?.status()??null,caveVoteJournal:bot.caveVoteJournal?.status()??null,caveConsensus:bot.caveConsensus?.status()??null,caveTeam:bot.caveTeam?.status()??null,caveMultiAggro:bot.caveMultiAggro?.status()??null,caveCriticalResponse:bot.caveCriticalResponse?.status()??null,caveRetreat:bot.caveRetreat?.status()??null,caveRetreatPrepare:bot.caveRetreatPrepare?.status()??null,caveRetreatWatchdog:bot.caveRetreatWatchdog?.status()??null,caveCombat:bot.caveCombat?.status()??null,caveCriticalTriage:bot.caveCriticalTriage?.status()??null,cavePriest:bot.cavePriest?.status()??null,cavePriestSupport:bot.cavePriestSupport?.status()??null,caveDirect:bot.caveDirect?.status()??null,caveEmergency:bot.caveEmergency?.status()??null,revivals:bot.revivals.status(),luckySlots:bot.luckySlots?.status()??null,swaps:bot.swaps?.status()??null,tradeOffers:bot.tradeOffers?.status()??null,statTailoring:bot.tailoring?.status()??null,rewardMail:bot.rewards?.status()??null,combatLife:bot.combatLife??null,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    telemetrySnapshot:()=>({
+      character:observedCharacterTelemetry(p.c,p.realm()),
+      bank:me.role==='merchant'?observedBankTelemetry(
+        p.c,p.realm(),p.G?.bank_packs??{}):[]
+    }),
+    telemetryStatus:()=>telemetryRelay?.status()??{connected:false,opened:false,
+      intervalMs:GAME_RELAY_INTERVAL_MS,unsupported:true},
+    openTelemetryRelay(){
+      if(disposed||!telemetryRelay||typeof root.setInterval!=='function')return false;
+      if(!telemetryRelay.open())return false;
+      if(telemetryInterval===null){
+        telemetryInterval=root.setInterval(()=>{
+          if(!disposed)telemetryRelay.sendOnce();
+        },GAME_RELAY_INTERVAL_MS);
+      }
+      return true;
+    },
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

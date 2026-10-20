@@ -1,4 +1,4 @@
-import {neutralPullReadiness} from './team-readiness.mjs';
+import {neutralPullReadiness,verifiedFollowerOneShot} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
@@ -174,8 +174,32 @@ export function createEncounter(bot){
   if(active&&mobs.length)active.peak=Math.max(active.peak??1,mobs.length);
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={target,adaptiveContext:bot.adaptive?.context(),key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0,peak:mobs.length};
  }
+ function soloOneShot(m,skill=null){
+  if(!m||m.target||bot.me?.role!=='farmer'||bot.me.name===bot.leader||
+     !bot.cfg.party?.enabled||!bot.running||bot.p.c.rip||
+     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     bot.account?.rotationPending?.()||bot.teamTravel?.blocked||
+     bot.strategy?.busy||bot.recovering||
+     bot.teamPlan?.wantsCombat?.()===false||
+     typeof bot.free!=='function'||
+     typeof bot.free!=='function'||
+     bot.free()<=(bot.cfg.farming?.freeSlots??0)||
+     bot.combatAssessment?.emergency?.()?.active)return null;
+  const plan=bot.teamPlan?.heartbeat?.();
+  if(!plan||bot.teamPlan?.target?.()!==m.mtype||
+     bot.monsters().some(x=>x.hp>0&&x.target&&bot.teamNames.includes(x.target)))
+    return null;
+  const leader=bot.transport?.fresh?.(bot.leader);
+  const peers=(bot.farmers??[]).filter(n=>n!==bot.me.name)
+   .map(n=>bot.transport?.fresh?.(n));
+  if(peers.length!==(bot.farmers??[]).length-1)return null;
+  if(bot.strategy?.safeTarget?.(m.mtype,m,true)!==true)return null;
+  return verifiedFollowerOneShot(bot.p.c,m,{
+    plan,leader,peers,realm:bot.p.realm(),game:bot.p.G,skill});
+ }
  function permit(m){
   if(m.target)return true;
+  if(soloOneShot(m))return true;
   const readiness=neutralPullReadiness(bot);
   if(!readiness.ready)return false;
   const detached=readiness.detachment;
@@ -230,5 +254,5 @@ export function createEncounter(bot){
   };
   return bot.exec.run('attack',['attack','mana'],guard,()=>bot.p.call('attack',bot.entity(candidate.id)),{delay:250});
  }
- return {tick,permit,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
+ return {tick,permit,soloOneShot,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
 }

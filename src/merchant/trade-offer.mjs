@@ -7,6 +7,14 @@ import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 // No automatic repost or presumption that an absent listing was filled.
 const G09_OFFER_SLOT=/^trade([1-9]|1[0-6])$/;
 const G09_OFFER_SINGLE=i=>i?.q===undefined||i.q===1;
+// In this explicit one-for-one path both sides are non-stackable. A q:2
+// copy is not two physical singles, even though it is a positive integer.
+const g09OfferCount=(items,variant)=>{
+ if(!Array.isArray(items)||items.some(i=>i&&
+     identity(i)===identity(variant)&&!G09_OFFER_SINGLE(i)))
+  return null;
+ return localVariantQuantity(items,variant);
+};
 export function ownTradeOfferPlan(bot,slot){
  const {p,cfg,me}=bot,e=bot.economy,item=p.c.items?.[slot];
  if(me?.role!=='merchant'||!cfg.merchant?.enabled||
@@ -48,9 +56,9 @@ export function ownTradeOfferPlan(bot,slot){
   x&&identity(x)===identity(item)&&e.safe(x)&&
   G09_OFFER_SINGLE(x)&&!x.data&&!x.acc&&!x.src&&!x.acl&&!x.v&&!x.rid).length;
  if(available<rule.keep+rule.teamReserve+reserved+1)return null;
- const before=localVariantQuantity(p.c.items,item);
+ const before=g09OfferCount(p.c.items,item);
  const wanted={name:rule.wantItem,level:0};
- const receiveBefore=localVariantQuantity(p.c.items,wanted);
+ const receiveBefore=g09OfferCount(p.c.items,wanted);
  if(!Number.isSafeInteger(before)||before<1||
     !Number.isSafeInteger(receiveBefore)||receiveBefore<0)return null;
  const room=capacityAfterConsumption(p.c.items,[{slot,quantity:1}],
@@ -145,7 +153,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
       (listing.want.p??'')!==''||
       (listing.want.stat_type??'')!==''||
       (listing.want.title??'')!==''||
-      localVariantQuantity(p.c.items,plan.item)!==plan.before-1)return null;
+      g09OfferCount(p.c.items,plan.item)!==plan.before-1)return null;
    return listing.rid;
   };
   return bot.economy.perform('market.tradeOffer',{

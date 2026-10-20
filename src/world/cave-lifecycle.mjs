@@ -66,6 +66,13 @@ export function caveLifecycleDisposition(record,{name,realm,live}={}){
   return {state:'corrupt',blocked:true,reason:'invalid-durable-record'};
  if(record.name!==name||record.realm!==realm)
   return {state:'scope-mismatch',blocked:true,reason:'owner-or-realm-changed'};
+ if(record.phase==='exit-dispatch-unknown'){
+  if(live?.run&&live.run!==record.exitRun)
+   return {state:'conflict',blocked:true,reason:'exit-run-mismatch'};
+  return {state:record.exitReply?'exit-reply-observed':'exit-outcome-unknown',
+   blocked:true,reason:record.exitReply?
+    'await-fresh-post-exit-info':'exit-outcome-unknown',run:record.exitRun};
+ }
  if(live&&caveLifecycleHex(live.run)&&
   Number.isSafeInteger(live.floor)&&live.floor>=0&&live.floor<=7&&
   live.map===`zone_${live.run}_${live.floor}`){
@@ -78,11 +85,6 @@ export function caveLifecycleDisposition(record,{name,realm,live}={}){
   return {state:'live-observed',blocked:true,reason:'current-server-run',
    run:live.run};
  }
- if(record.phase==='exit-dispatch-unknown')
-  return {state:record.exitReply?'exit-reply-observed':'exit-outcome-unknown',
-   blocked:true,reason:record.exitReply?
-    'await-fresh-post-exit-info':'exit-outcome-unknown',
-   run:record.exitRun};
  if(record.phase==='observed-run')
   return {state:'run-not-currently-visible',blocked:true,
    reason:'exit-not-proven',run:record.observed.run};
@@ -282,7 +284,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
     record.phase==='observed-run'&&
     record.realm===p.realm()&&record.name===me.name&&
     inside?.run===record.observed.run&&
-    p.c?.map===record.observed.map;
+    p.c?.map===inside.map;
   };
   if(!guard())return false;
   try{if(p.has('cave_exit')!==true)return false;}catch{return false;}

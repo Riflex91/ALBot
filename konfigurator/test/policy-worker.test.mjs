@@ -216,7 +216,7 @@ test('Access relay accepts only authenticated same-origin JSON, while legacy ing
  assert.equal(noJwt.status,401);
  const wrongType=await handleRequest(request('/api/relay-ingest',{'content-type':'text/plain'}),env,{}, {fetcher});
  assert.equal(wrongType.status,415);
- const oldRoute=await handleRequest(request('/api/ingest'),env,{}, {fetcher});
+ const oldRoute=await handleRequest(request('/api/ingest',{origin:'https://adventure.land'}),env,{}, {fetcher});
  assert.equal(oldRoute.status,401);
  assert.equal(writes.length,1);
 });

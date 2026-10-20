@@ -1,6 +1,6 @@
 import {neutralPullReadiness} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
-import {distance} from '../core/policy.mjs';
+import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
 
 /**

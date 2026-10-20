@@ -7,6 +7,7 @@ import {SUPPORTED_SKILLS} from '../config/live-a.mjs';
 import {FULL_SKILLS} from '../config/full.mjs';
 import {provisionalImpactDamage,healCollisionDecision} from './impact-coordination.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
+import {verifiedFollowerAoeOneShot} from './team-readiness.mjs';
 // Poison is a per-cast reagent. Only verified boss profiles or an active,
 // currently observed boss/event objective may authorize an expensive arrow.
 export function poisonArrowCombatAllowed(G,target,activity=null,profile=null,now=Date.now()){
@@ -107,7 +108,7 @@ export function createSkills(bot){
     if(target){if(!samePlace(c,target)||(!target.rip&&target.hp<=0))return false;const range=s.range??((c.range??0)*(s.range_multiplier??1)+(s.range_bonus??0));if(distance(c,target)>range)return false;if(s.no_self&&target.name===c.name)return false;}
     return true;
   }
-  function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false){
+  function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false,independentTargets=null){
     const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro',agitate:'aggro',huntersmark:'mark'}[id];if(!explicit&&role){let owner=roles?.[role];if(bot.capabilities){if(!owner||!bot.capabilities.available(owner,id,target))owner=(bot.farmers??[]).filter(n=>bot.capabilities.available(n,id,target)).sort()[0];}if(owner&&owner!==p.c.name)return false;}
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
     if(id==='heal'&&!explicit&&target&&healCollision(target).defer){
@@ -146,29 +147,37 @@ export function createSkills(bot){
     let extra,argsTarget=target;
     const multi=['3shot','5shot','fanofknives','cleave','stomp'].includes(id);
     const aimed=['3shot','5shot'].includes(id);
+    const independentAimed=aimed&&Array.isArray(independentTargets)&&
+      independentTargets.length>0&&bot.me?.role==='farmer'&&
+      bot.me?.name!==bot.leader&&p.c.ctype==='ranger';
+    const allowedTarget=e=>bot.allowed(e,independentAimed?
+      {independentOneShotSkill:id}:null);
     const visible=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
     // Targeted skills can initiate a controlled encounter: a neutral mob is
     // allowed only if the team plan, danger checks and planner all approve it.
     // Untargeted AoE must account for EVERY visible mob inside its effect area.
-    const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&bot.allowed(e));
+    const eligible=e=>!!(e.target&&bot.teamNames.includes(e.target)&&allowedTarget(e));
     // Skill target count is distinct from permission to pull NEW monsters.
     // Three already engaged party threats do not create a third new pull.
     const limit=Math.min(id==='3shot'?3:id==='5shot'?5:Infinity,maxTargets,cfg.party.aoeMaxTargets,aimed?Infinity:cfg.farming.maxAggro??Infinity);
     const engaged=visible.filter(eligible);
     const canPull=e=>!!(e&&!e.target&&bot.teamPlan?.target()&&e.mtype===bot.teamPlan.target()&&
-      bot.teamPlan.wantsCombat?.()!==false&&bot.allowed(e)&&bot.strategy?.safeTarget?.(e.mtype,e)!==false);
+      bot.teamPlan.wantsCombat?.()!==false&&allowedTarget(e)&&bot.strategy?.safeTarget?.(e.mtype,e)!==false);
     function extraAllowance(){
       const phase=bot.encounter?.status?.(),allEngaged=bot.monsters().filter(e=>e.target&&bot.teamNames.includes(e.target)).length;
       if(phase?.phase!=='BUILD')return 0;
       return Math.max(0,Math.min(limit-engaged.length,phase.capacity-allEngaged,
         (cfg.farming.maxAggro??1)-allEngaged));
     }
-    const additional=Math.floor(extraAllowance());
+    const additional=independentAimed?Math.min(limit,independentTargets.length):Math.floor(extraAllowance());
     // Already engaged, party-safe targets always occupy the first slots.
     // Extra targets require an explicit BUILD allowance; visible != safe.
-    const candidates=aimed?maximalSafeAimedTargets(engaged,
-      visible.filter(canPull).sort((a,b)=>distance(p.c,a)-distance(p.c,b)),
-      additional,limit):visible;
+    const candidates=aimed?(independentAimed?
+      independentTargets.map(t=>visible.find(e=>String(e.id)===String(t.id)))
+       .filter(Boolean):
+      maximalSafeAimedTargets(engaged,
+       visible.filter(canPull).sort((a,b)=>distance(p.c,a)-distance(p.c,b)),
+       additional,limit)):visible;
     const thirdTargetDiagnostics=()=>{
       if(id!=='3shot')return null;
       const phase=bot.encounter?.status?.(),plan=bot.teamPlan?.target?.();
@@ -194,6 +203,22 @@ export function createSkills(bot){
        maximumSafeTargets:candidates.length,skillCapacity:limit};
     };
     const selected=multi?candidates.slice(0,limit):[];
+    const independentProof=(liveTargets=selected)=>{
+      if(!independentAimed)return true;
+      if(liveTargets.length!==independentTargets.length||
+         liveTargets.some(e=>!e||e.target||!allowedTarget(e)))return false;
+      const plan=bot.teamPlan?.heartbeat?.();
+      const leader=bot.transport?.fresh?.(bot.leader);
+      const peers=(bot.farmers??[]).filter(n=>n!==p.c.name)
+        .map(n=>bot.transport?.fresh?.(n));
+      if(peers.length!==(bot.farmers??[]).length-1)return false;
+      const claimed=new Set(peers.map(h=>h?.target).filter(x=>x!=null).map(String));
+      if(liveTargets.some(e=>claimed.has(String(e.id))))return false;
+      return !!verifiedFollowerAoeOneShot(p.c,liveTargets,{
+        skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G})&&
+        bot.encounter?.approvePullSet?.(liveTargets)?.safe===true;
+    };
+    if(independentAimed&&!independentProof())return false;
     // A two-target 3shot is useful when its verified effective damage exceeds
     // the basic attack. Never pad the cast with an unauthorized third mob.
     if(id==='3shot'&&(limit<2||selected.length<2||selected.length===2&&(!(s.damage_multiplier>0)||!(aoeDamageScore(p.c,s,selected,selected[0])?.gain>0)))){
@@ -264,7 +289,7 @@ export function createSkills(bot){
     const guard=()=>ready(id,target,reserve)&&
       (id!=='poisonarrow'||(()=>{const live=bot.entity(target?.id);return !!live&&poisonArrowCombatAllowed(p.G,live,bot.strategy?.heartbeat?.(),bot.bosses?.profile?.(live.mtype));})())&&
       (id!=='revive'||(()=>{const live=bot.entity(target?.name??target?.id);return !!live&&live.rip&&live.hp>=live.max_hp&&reviveDeathKey(bot,live)===reviveKey&&bot.revivals?.canCast(live,reviveKey)!==false;})())&&
-      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||bot.allowed(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=extraAllowance()&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})&&
+      (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||allowedTarget(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=(independentAimed?additional:extraAllowance())&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})&&(!independentAimed||independentProof(selected.map(e=>bot.entity(e.id))))&&
       (neutralCount===0||bot.encounter?.approvePullSet?.(selected)?.safe===true)));
     if(!guard()){
       const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
@@ -356,6 +381,48 @@ export function createSkills(bot){
     const allies=bot.allies().filter(e=>!e.rip);const t=r.target==='enemy'?target:r.target==='self'?p.c:r.target==='leader'?bot.entity(bot.leader):allies.sort((a,b)=>r.target==='lowestHp'?a.hp/a.max_hp-b.hp/b.max_hp:a.mp/a.max_mp-b.mp/b.max_mp)[0];
     if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
   }return false;}
+  // Try an aimed multi-kill before ordinary single-target cleanup.
+  // This does not expose a general extra-pull budget to other skill paths.
+  function independentOneShotAoE(){
+    if(bot.me?.role!=='farmer'||bot.me.name===bot.leader||
+       !cfg.party.enabled||!bot.encounter?.soloOneShot||
+       bot.strategy?.busy||bot.recovering||bot.movement?.order||
+       bot.inventoryBlocked||bot.journal||bot.logistics?.reserved)
+       return false;
+    const plan=bot.teamPlan?.heartbeat?.(),leader=bot.transport?.fresh?.(bot.leader);
+    if(!plan?.id||bot.teamPlan?.target?.()!==plan.target)return false;
+    const peers=(bot.farmers??[]).filter(n=>n!==p.c.name).map(n=>bot.transport?.fresh?.(n));
+    if(peers.length!==(bot.farmers??[]).length-1)return false;
+    const claimed=new Set(peers.map(h=>h?.target).filter(x=>x!=null).map(String));
+    for(const id of ['5shot','3shot']){
+      const skill=p.G.skills?.[id],maximum=Math.min(
+        id==='3shot'?3:5,cfg.party.aoeMaxTargets??0);
+      const minimum=id==='3shot'?3:4;
+      if(!skill||maximum<minimum||!ready(id,null,.2))continue;
+      const range=(skill.range??p.c.range)-5;
+      const selected=bot.monsters().filter(m=>m?.id!=null&&
+        m.type==='monster'&&!m.target&&!claimed.has(String(m.id))&&
+        distance(p.c,m)<=range&&
+        bot.encounter.soloOneShot(m,skill)&&
+        bot.allowed(m,{independentOneShotSkill:id}))
+       .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
+          String(a.id).localeCompare(String(b.id)))
+       .slice(0,maximum);
+      if(selected.length<minimum||
+        !verifiedFollowerAoeOneShot(p.c,selected,{
+          skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G})||
+        bot.encounter?.approvePullSet?.(selected)?.safe!==true)continue;
+      if(use(id,selected[0],.2,600,selected.length,false,selected)){
+        bot.target=selected[0];
+        bot.event?.('combat.independentOneShotAoE',{
+          skill:id,targets:selected.length,
+          targetIds:selected.map(m=>m.id).join(','),
+          plan:plan.id,mode:'verified-aimed-lethal-group'});
+        return true;
+      }
+    }
+    return false;
+  }
   function rotation(t){
     if(p.c.ctype==='priest'){
       const crisis=bot.combatAssessment?.emergency?.();
@@ -455,5 +522,5 @@ export function createSkills(bot){
     };
     for(const [ok,id,target,delay] of choices[c.ctype]??[])if(ok&&use(id,target,.3,delay))return;
   }
-  return {ready,use,rescue,rotation,diagnostics};
+  return {ready,use,rescue,rotation,independentOneShotAoE,diagnostics};
 }

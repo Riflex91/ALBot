@@ -175,6 +175,9 @@ export function createTransport(bot){
       owner:me.name,session:bot.session,realm:p.realm()
      }),accountLossGuard:(()=>{const g=bot.lossGuard?.status();return g?.enabled?{blocked:g.blocked,trip:g.trip,resetAt:g.resetAt}:null;})(),bankGoldBalance:(me.name===cfg.party.merchant||c.map?.startsWith('bank'))&&Number.isSafeInteger(c.bank?.gold)&&c.bank.gold>=0?c.bank.gold:null,goldSurplus:bot.gold?.surplus()??0,monsterhunt:(()=>{const q=c.s?.monsterhunt;return q&&typeof q.id==='string'&&Number.isSafeInteger(q.c)&&q.c>=0?{id:q.id,c:q.c,...(Number.isFinite(q.ms)?{ms:Math.max(0,Math.floor(q.ms))}:{}),...(typeof q.sn==='string'?{sn:q.sn}:{})}:null;})(),huntObjective:me.name===bot.leader?bot.teamPlan?.orderedHunt?.()??null:null,squadQuestVisit:false,goldTransferPending:!!bot.gold?.reserved,goldTransferAt:bot.gold?.transferAt??0,target:bot.target?.id??null,free:bot.free(),achievementCarrier:carriedAchievementCarrier(c.items),storagePressure:me.role==='merchant'&&me.name===cfg.party.merchant&&(bot.merchant?.status?.()?.capacityRecovery===true||bot.free()<=(cfg.merchant?.minFreeSlots??4)),running:bot.running,reserved:!!bot.logistics?.reserved,journal:!!bot.journal||!!bot.bank?.pending,inventoryBlocked:!!bot.inventoryBlocked,threats:bot.monsters().filter(m=>m.target===me.name).length,pending:bot.exec.pending.size,lootSlots:bot.logistics?.pickupSlots?.()??0,
       travelBlock:bot.farmer?.travelStatus?.()??null,farmRejections:bot.strategy?.farmRejections?.()??[],
+      // Compact evidence only. Never relay a command; every Cave member
+      // attests its own direct native clearance and peers verify all three.
+      retreatVote:bot.caveRetreat?.heartbeat?.()??null,
       combatSupport:compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),potionReady()),
       potions:Object.fromEntries(['hpot0','mpot0'].map(id=>[id,
         (c.items??[]).reduce((n,i)=>n+(i?.name===id?(i.q??1):0),0)])),

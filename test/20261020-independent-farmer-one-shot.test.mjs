@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {verifiedFollowerOneShot,neutralPullReadiness} from '../src/combat/team-readiness.mjs';
+import {verifiedFollowerOneShot,verifiedFollowerAoeOneShot,neutralPullReadiness} from '../src/combat/team-readiness.mjs';
 
 const now=Date.now();
 const plan={id:'farm:bee:7',target:'bee',map:'main',in:'main',x:100,y:100,
@@ -73,4 +73,36 @@ test('existing normal neutral-pull gate still rejects followers',()=>{
  });
  assert.equal(denied.ready,false);
  assert.equal(denied.reason,'follower-cannot-pull');
+});
+
+test('verified ranger 3shot may finish three separately proven spawn monsters',()=>{
+ const skill={hostile:true,damage_multiplier:.8,range:300,mp:200};
+ const group=[monster,{...monster,id:'bee-9',x:132},
+  {...monster,id:'bee-10',x:135}];
+ const proof=verifiedFollowerAoeOneShot(actor,group,{
+  ...options,skillId:'3shot',skill});
+ assert.ok(proof);
+ assert.equal(proof.targets,3);
+ assert.ok(proof.minimumMargin>=1.2);
+});
+
+test('3shot and 5shot must prove every target, and cannot include duplicate or foreign targets',()=>{
+ const three={hostile:true,damage_multiplier:.8,range:300,mp:200};
+ const five={hostile:true,damage_multiplier:.65,range:300,mp:320};
+ const threeTargets=[monster,{...monster,id:'bee-9'},
+  {...monster,id:'bee-10'}];
+ const fourTargets=[...threeTargets,{...monster,id:'bee-11'}];
+ const prove=(targets,id,skill)=>
+  verifiedFollowerAoeOneShot(actor,targets,{...options,skillId:id,skill});
+ assert.equal(prove(threeTargets.slice(0,2),'3shot',three),null);
+ assert.ok(prove(fourTargets,'5shot',five));
+ assert.equal(prove(threeTargets,'5shot',five),null);
+ assert.equal(prove(threeTargets,'unknown',three),null);
+ assert.equal(prove([monster,{...monster},threeTargets[2]],'3shot',three),null);
+ assert.equal(prove([...threeTargets,{...monster,id:'bee-11'}],'3shot',three),null);
+ assert.equal(prove([monster,{...monster,id:'bee-9',hp:900},threeTargets[2]],'3shot',three),null);
+ assert.equal(prove([monster,{...monster,id:'bee-9',target:'OtherPlayer'},threeTargets[2]],'3shot',three),null);
+ assert.equal(prove(threeTargets,'3shot',{...three,damage_multiplier:0}),null);
+ assert.equal(prove(threeTargets,'3shot',{...three,hostile:false}),null);
+ assert.ok(prove(threeTargets,'3shot',three));
 });

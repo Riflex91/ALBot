@@ -568,12 +568,12 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
           if(!bot.movement.order)bot.movement.go(
            combatApproach(c,danger,range,(x,y)=>p.call('can_move_to',x,y)),'combat');
         }else{
-          if(p.c.target!==danger.id)exec.run('target',['target'],()=>bot.allowed(danger),
+          if(p.c.target!==danger.id)exec.run('target',['target'],()=>!inCaveInstance(p.c)&&bot.allowed(danger),
             ()=>p.call('change_target',danger),{delay:500});
           const attack=trackedAttack(danger.id);
           exec.run('attack',['attack','mana'],()=>{
             const live=bot.entity(danger.id);
-            return live&&bot.combatAssessment?.canDefend(live)===true&&
+            return !inCaveInstance(p.c)&&live&&bot.combatAssessment?.canDefend(live)===true&&
               bot.allowed(live)&&distance(p.c,live)<=range&&
               p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
           },attack.invoke,{delay:100,onSettle:attack.settle});
@@ -863,9 +863,9 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // in this tick, and passive mobs are not treated as emergency threats.
     if(d<=range&&cfg.farming.kiting)bot.navigation?.rangePosition?.(target);
     if(d>range){bot.reason='Unterwegs zu '+target.mtype;if(!bot.movement.order){const reachable=p.call('can_move_to',xy(target).x,xy(target).y),detour=!reachable&&bot.navigation?.waypoint(target);if(!reachable&&bot.navigation&&!detour){bot.navigation.blocked(target);bot.target=null;return;}bot.movement.go(detour||combatApproach(c,target,range,(x,y)=>p.call('can_move_to',x,y)),'combat');}}
-    if(c.target!==target.id)exec.run('target',['target'],()=>bot.allowed(target),()=>p.call('change_target',target),{delay:500});
+    if(c.target!==target.id)exec.run('target',['target'],()=>!inCaveInstance(p.c)&&bot.allowed(target),()=>p.call('change_target',target),{delay:500});
     const attack=trackedAttack(target.id);
-    exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
+    exec.run('attack',['attack','mana'],()=>{const t=bot.entity(target.id);return !inCaveInstance(p.c)&&t&&bot.allowed(t)&&p.call('can_attack',t)&&!p.call('is_on_cooldown','attack');},attack.invoke,{delay:100,onSettle:attack.settle});
   }
   return {tick,retreat,travelStatus,safety(){bot.recovering=false;if(recover()){bot.recovering=true;return true;}
     // The emergency scheduler executes BEFORE normal farmer.tick. Honor the

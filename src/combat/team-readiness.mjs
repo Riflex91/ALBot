@@ -126,7 +126,7 @@ export function verifiedFollowerOneShot(actor,monster,options={}){
  const target=verifiedFollowerSpawnTarget(actor,monster,options);
  if(!target)return null;
  const estimate=outgoingDamageEstimate(actor,target,{
-   skill,uncertainty:.25,fearFactor:.9});
+   skill:options.skill??null,uncertainty:.25,fearFactor:.9});
  // The estimate already includes a 25% damage haircut; the additional
  // 20% margin tolerates modest unmodelled damage variation.
  return estimate.valid&&estimate.damage>=monster.hp*1.2?

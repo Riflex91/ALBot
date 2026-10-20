@@ -200,3 +200,28 @@ test('W02/W04 protected quantity drift cannot create empty slots through remove 
  const good=[{name:'potion',q:4},{name:'potion',q:6},...fill(40)];
  assert.equal(proof(good,[merge('merge',0,1)]).feasible,true);
 });
+
+test('W03 observed source stacks respect per-item maximum before any slot proof',()=>{
+ for(const invalid of [
+   {name:'potion',q:11},{name:'ring',q:2},
+   {name:'ore',q:10000},{name:'unknown-material',q:2}
+ ]){
+  const result=proof([invalid,null,...fill(40)],
+   [withdraw('bank',{name:'ring'})]);
+  assert.equal(result.feasible,false,JSON.stringify(invalid));
+  assert.equal(result.reason,'invalid-inventory');
+  assert.equal(result.executable,false);
+ }
+ for(const valid of [
+   {name:'potion',q:10},{name:'ring'},
+   {name:'ore',q:9999},{name:'unknown-material'}
+ ]){
+  assert.equal(proof([valid,null,...fill(40)],
+   [withdraw('bank',{name:'ring'})]).feasible,true,
+   JSON.stringify(valid));
+ }
+ // Overflow changes slot availability, never raises the per-stack cap.
+ const overflow=[{name:'potion',q:11},...fill(43)];
+ assert.equal(proof(overflow,[remove('free',0,11)]).reason,
+  'invalid-inventory');
+});

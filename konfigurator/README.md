@@ -48,9 +48,23 @@ Die Browseroberfläche steht unter \`konfigurator/public/index.html\`, der Worke
 
 Für Hot-Reload muss künftig eine serverseitig signierte versionierte Konfiguration in einen allein lesbaren, bereinigten Clientkanal veröffentlicht werden. Der bestehende Ingame-Loader besitzt aktuell nur den verifizierten Runtime-Download mit persönlicher \`ALBotConfig\`. Weder GitHub-Commit noch Worker-Speichern alleine aktualisiert laufende Bots. Signaturvalidierung, Rollbackschutz, kompatible Schema-Migration, sichere Entscheidungspunkte und Charakter-ACK müssen vor Aktivierung implementiert und im Browser sowie Headless überprüft werden.
 
-## Betriebskosten
+## Verbindliche Betriebsregel: Cloudflare Free, keine Kosten
 
-Die Ausgabe einzelner Änderungs-Events und Charakter-Herzschläge im Bereich 15–30 Sekunden ist für vier Bots vorgesehen. Bankfächer werden nur nach tatsächlichen Bankbeobachtungen hochgeladen. Cloudflare-Free-Quoten sind anwendungs- und accountabhängig zu prüfen. Der derzeitige Code versendet **noch keine automatische Bot-Telemetrie**.
+- **Nur Workers Free, D1 Free und Zero Trust Access Free.** Kein bezahlter Tarif, keine nutzungsabhängigen Paid-Dienste und keine automatische Tarifumstellung für ALBot.
+- Workers Free: **100.000 Requests/Tag** (Account-Gesamtnutzung, UTC-Reset). Bei Überschreitung beendet Cloudflare die Worker-Verarbeitung; **kein Paid-Upgrade durchführen**. Für sicherheitskritische Routen fail-closed statt fail-open vorsehen.
+- D1 Free: **5.000.000 gelesene Zeilen/Tag**, **100.000 geschriebene Zeilen/Tag**, **5 GB gesamt**, **500 MB pro Datenbank**. Seit September 2026 lehnt D1 Free Zugriffe nach Überschreitung des Tageslimits bis Mitternacht UTC ab. Nie zum Fortsetzen automatisch upgraden.
+- Zero Trust Free nur innerhalb der kostenlosen Nutzergrenze verwenden. Die konkrete Tarifwahl und weitere Cloudflare-Produkte sind in der Kontoverwaltung zu prüfen.
+- **Dashboard**: höchstens ein Live-Abruf alle 60 Sekunden pro sichtbarer Instanz; nur zwei D1-Leseendpunkte; verborgene Tabs und überlappende Abrufe lösen keine neuen Anfragen aus.
+- **Geplanter privater Telemetrie-Client**: frühestens alle 120 Sekunden je Charakter, maximal ein Bankpack je Zyklus. Keine Abfrage bei jedem Game-Tick, keine dauerhaften geheimen Schlüssel im öffentlichen Browser-Code, keine automatischen Uploads ohne gesonderte private Einrichtung.
+- **Kapazitätsrechnung**: 12 Charaktere × 720 Meldungen/Tag = 8.640 Uploads, ein Bankpack/Zyklus 720 Uploads, ein dauerhaft geöffnetes Dashboard 2.880 Leseaufrufe/Tag, insgesamt etwa **12.240 Worker-Requests/Tag**. Das ist nur ein konservatives Szenario, kein accountweites Hard-Limit (andere Apps, Nutzer, automatisierte Zugriffe und statische Assets zählen ebenfalls).
+- Zielbudget für den ALBot-Konfigurator: **unter 20.000 Worker-Requests/Tag**. Das ist eine Betriebsregel, **kein programmatisch durchgesetztes globales Kontingent**. Cloudflare-Dashboard **Workers Analytics** und **D1 Metrics** regelmäßig kontrollieren. Wenn Quoten erschöpft sind: Updates pausieren, nicht bezahlen.
+- Auf einem echten Free-Konto entstehen bei Erreichen der dokumentierten Workers-/D1-Free-Limits keine automatischen Mehrkosten. **Die tatsächliche Nullkosten-Garantie erfordert, dass das Cloudflare-Konto im Free-Tarif bleibt und keine separaten kostenpflichtigen Produkte aktiviert.** Den Account-Tarif kann dieses Repository weder lesen noch erzwingen.
+
+Offizielle Cloudflare-Dokumentation:
+- https://developers.cloudflare.com/workers/platform/limits/
+- https://developers.cloudflare.com/d1/platform/pricing/
+- https://developers.cloudflare.com/d1/platform/limits/
+- https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/
 
 ## Profilimport und private Speicherung
 

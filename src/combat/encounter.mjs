@@ -174,7 +174,7 @@ export function createEncounter(bot){
   if(active&&mobs.length)active.peak=Math.max(active.peak??1,mobs.length);
   if(active&&mobs.length)active.key=context+':'+Math.max(Number(active.key.split(':').at(-1)),Math.min(max,mobs.length));if(mobs.length&&!active)active={target,adaptiveContext:bot.adaptive?.context(),key:context+':'+Math.max(1,Math.min(max,mobs.length)),at:Date.now(),xp:bot.p.c.xp??0,peak:mobs.length};
  }
- function soloOneShot(m){
+ function soloOneShot(m,skill=null){
   if(!m||m.target||bot.me?.role!=='farmer'||bot.me.name===bot.leader||
      !bot.cfg.party?.enabled||!bot.running||bot.p.c.rip||
      bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
@@ -193,7 +193,7 @@ export function createEncounter(bot){
   if(peers.length!==(bot.farmers??[]).length-1)return null;
   if(bot.strategy?.safeTarget?.(m.mtype,m,true)!==true)return null;
   return verifiedFollowerOneShot(bot.p.c,m,{
-    plan,leader,peers,realm:bot.p.realm(),game:bot.p.G});
+    plan,leader,peers,realm:bot.p.realm(),game:bot.p.G,skill});
  }
  function permit(m){
   if(m.target)return true;

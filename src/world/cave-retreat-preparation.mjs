@@ -5,7 +5,7 @@ const caveRetreatPrepareFinite=n=>Number.isFinite(n);
 const caveRetreatPrepareTime=n=>Number.isSafeInteger(n)&&n>0;
 const caveRetreatPrepareBlocked=(reason,details={})=>({
  version:1,mode:'cave-retreat-preparation',
- ready:false,prepared:false,phase:'caveRetreatPrepareBlocked',canMove:false,
+ ready:false,prepared:false,phase:'blocked',canMove:false,
  canAttack:false,canPull:false,canAoE:false,
  canHeal:false,executable:false,reason,...details
 });

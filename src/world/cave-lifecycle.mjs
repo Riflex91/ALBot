@@ -79,8 +79,15 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
  const {p,me}=bot;
  const key='albot:cave-lifecycle:'+me.name;
  let readFailed=false,writeFailed=false,closed=false;
+ // Only strict reads may prove a Cave attempt absent. The general
+ // compatibility get() deliberately converts corrupt storage into null.
+ const readJournal=()=>{
+  if(typeof p.readCaveJournal!=='function')
+   throw Error('Strict Cave journal reader unavailable');
+  return p.readCaveJournal(key);
+ };
  let record=null;
- try{const value=p.read(key);if(value!==null&&value!==undefined)
+ try{const value=readJournal();if(value!==null&&value!==undefined)
    record=value;}catch{readFailed=true;}
  const clone=x=>JSON.parse(JSON.stringify(x));
  const live=()=>bot.cave?.status?.()?.live??null;
@@ -100,12 +107,12 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   try{
    // Detect a second runner updating the same durable slot. This is not
    // a distributed CAS, but never knowingly overwrite a changed journal.
-   const current=p.read(key);
+   const current=readJournal();
    if(JSON.stringify(current??null)!==JSON.stringify(record)){
     writeFailed=true;return false;
    }
    if(p.write(key,next)!==true){writeFailed=true;return false;}
-   const saved=p.read(key);
+   const saved=readJournal();
    if(JSON.stringify(saved)!==JSON.stringify(next)){
     writeFailed=true;return false;
    }

@@ -461,17 +461,26 @@ test('W02/W04 purpose reservations dominate a lower explicit count cap',()=>{
 });
 
 test('W02/W04 malformed explicit cap or overflow cannot stage reserved items',()=>{
- for(const cap of [undefined,-1,NaN,1.5,Infinity,Number.MAX_SAFE_INTEGER]){
+ for(const cap of [undefined,-1,NaN,1.5,Infinity]){
   const {bot,inv,bankPack,setRule,calls}=operatingBankFixture();
   setRule({...defaultsFor(ITEM_RULE),enabled:true,action:'keep',
    excessAction:'sell',item:'scroll0',role:'all',
    keep:20,teamReserve:0,maxCount:cap,batch:9999});
   inv[1]={name:'scroll0',q:20};bankPack[27]={name:'scroll0',q:200};
-  if(cap===Number.MAX_SAFE_INTEGER)bot.production={
-   reservedQuantity:()=>10};
   assert.equal(bankOperatingReserveNeed(bot,bankPack[27]),null);
   bot.bank.preventiveDisposition();
   bot.bank.preventiveDisposition();
   assert.equal(calls.length,0);
  }
+});
+
+test('W02/W04 protection sum overflow does not create a usable bank floor',()=>{
+ const {bot,inv,bankPack,setRule,calls}=operatingBankFixture();
+ setRule({...defaultsFor(ITEM_RULE),enabled:true,action:'keep',
+  excessAction:'sell',item:'scroll0',role:'all',
+  keep:Number.MAX_SAFE_INTEGER,teamReserve:1,maxCount:10,batch:9999});
+ inv[1]={name:'scroll0',q:20};bankPack[27]={name:'scroll0',q:200};
+ assert.equal(bankOperatingReserveNeed(bot,bankPack[27]),null);
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ assert.equal(calls.length,0);
 });

@@ -10,12 +10,12 @@ const MAX_CHARS=32_768;
 const validTime=value=>Number.isSafeInteger(value)&&value>=0;
 export function createGameRelaySender({
  gameWindow,getCharacter,getRealm,getBankDefinitions,role='farmer',
- now=()=>Date.now(),relayUrl=ALBOT_RELAY_URL
+ now=()=>Date.now(),relayUrl=ALBOT_RELAY_URL,onReady=()=>{}
 }={}){
  if(!gameWindow||typeof gameWindow.addEventListener!=='function'||
     typeof gameWindow.removeEventListener!=='function'||
     typeof gameWindow.open!=='function'||
-    [getCharacter,getRealm,getBankDefinitions,now].some(x=>typeof x!=='function'))
+    [getCharacter,getRealm,getBankDefinitions,now,onReady].some(x=>typeof x!=='function'))
   throw Error('Game relay requires explicit browser and read-only data providers');
  const url=new URL(relayUrl),canonical=new URL(ALBOT_RELAY_URL);
  if(url.origin!==canonical.origin||url.pathname!=='/relay.html'||
@@ -29,7 +29,9 @@ export function createGameRelaySender({
  const listener=event=>{
   if(closed||!hasWindow()||event.source!==popup||
      event.origin!==url.origin||event.data?.type!==READY)return;
+  if(ready)return; // No duplicate handshakes or re-entry.
   ready=true;
+  try{onReady();}catch{}
  };
  gameWindow.addEventListener('message',listener);
  function open(){

@@ -533,3 +533,33 @@ test('W04 invalid offsite bank pack cannot provide or veto local reserve proof',
  assert.equal(calls[0].params.guard(),true,
   'bank_b is not on the observed local bank map and grants no backing');
 });
+
+
+test('W04 null-quantity neighboring bank stack cannot fabricate surplus backing',()=>{
+ const {bot,calls,inv,bankPack}=operatingBankFixture();
+ inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:80};
+ const other=blank();other[26]={name:'scroll0',q:null};
+ bot.p.c.bank.items1=other;
+ for(let n=0;n<4;n++)bot.bank.preventiveDisposition();
+ assert.equal(calls.length,0,'null neighboring q must not prove physical excess');
+ assert.equal(bot.bank.pending,false);
+ // Legal ordinary single items (q absent) remain supported.
+ other[26]={name:'scroll0'};
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ assert.equal(calls.at(-1)?.kind,'bank.retrieve');
+ assert.equal(calls.at(-1)?.params.guard(),true);
+ other[26]={name:'scroll0',q:null};
+ assert.equal(calls.at(-1).params.guard(),false,
+  'late invalid quantity revokes a prepared staging withdrawal');
+});
+test('W04 invalid null source cannot enter reserve-staging journal',()=>{
+ const {bot,calls,inv,bankPack}=operatingBankFixture();
+ inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:null};
+ const second=blank();second[26]={name:'scroll0',q:120};
+ bot.p.c.bank.items1=second;
+ for(let n=0;n<5;n++)bot.bank.preventiveDisposition();
+ assert.equal(calls.length,0);
+ assert.equal(bot.bank.pending,false);
+});

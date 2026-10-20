@@ -1,0 +1,259 @@
+name: One-off approved signed ALBot runtime sequence 18
+on:
+  push:
+    branches: [codex/certified-bootstrap-release18-20261020]
+permissions:
+  contents: write
+concurrency:
+  group: albot-signed-release-candidate
+  cancel-in-progress: false
+env:
+  SOURCE_COMMIT: 70598d2dc57b405aeb87b70b398745bb772db217
+  SIGNED_CHANNEL_COMMIT: 945c7cc9add802a8d91d6dee35cf4124529ff5d0
+  RELEASE_CHANNEL: codex/w00-w01-readonly-disposition-20261018
+jobs:
+  verify-linux:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 70598d2dc57b405aeb87b70b398745bb772db217
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Bump candidate minor exactly once, without committing or publishing
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const f='src/version.mjs';
+          if(fs.readFileSync(f,'utf8')!=="export const VERSION='0.17.0-candidate';\n")throw Error('Unexpected main source version');
+          fs.writeFileSync(f,"export const VERSION='0.18.0-candidate';\n");
+          NODE
+      - name: Build exact source and retain personal profile
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+          npm run check:bootstrap:auto
+          node scripts/verify-bootstrap-contract.mjs
+      - name: Full offline regression suite
+        run: npm test
+      - name: Build editor and Cloudflare-Free static worker
+        run: |
+          npm run build:editor
+          npm run build:konfigurator
+          node --check konfigurator/worker/index.mjs
+      - name: Pin verified runtime SHA-256 for atomic publisher
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const data=fs.readFileSync('dist/albot.runtime.js');
+          if(data.length<=0||data.length>8388608)throw Error('Signed runtime size constraint');
+          const hash=createHash('sha256').update(data).digest('hex');
+          fs.writeFileSync('seq18.expected.sha256',hash+'\n');
+          console.log(JSON.stringify({version:'0.18.0-candidate',bytes:data.length,sha256:hash}));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seq18-verified-runtime-hash
+          path: seq18.expected.sha256
+          retention-days: 2
+          if-no-files-found: error
+  verify-windows:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 70598d2dc57b405aeb87b70b398745bb772db217
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Bump only the candidate version
+        shell: pwsh
+        run: |
+          $file='src/version.mjs'
+          $current=[IO.File]::ReadAllText($file)
+          if($current.Trim() -ne "export const VERSION='0.17.0-candidate';") {throw 'Unexpected main source version'}
+          [IO.File]::WriteAllText($file,"export const VERSION='0.18.0-candidate';"+[Environment]::NewLine)
+      - name: Preserve personal CODE prefix for the exact Windows verification
+        shell: pwsh
+        run: |
+          npm.cmd run build
+          if($LASTEXITCODE -ne 0){throw 'Windows runtime build failed'}
+          node scripts/sync-personal-code.mjs --write
+          if($LASTEXITCODE -ne 0){throw 'Personal code sync failed'}
+          node scripts/sync-personal-code.mjs --check
+          if($LASTEXITCODE -ne 0){throw 'Personal code parity failed'}
+          npm.cmd run check:bootstrap:auto
+          if($LASTEXITCODE -ne 0){throw 'Auto-bootstrap personal/key drift'}
+      - name: Run exact Windows verification with pinned current signed release
+        shell: pwsh
+        run: ./scripts/VERIFY-U01-U07.ps1
+  publish:
+    needs: [verify-linux,verify-windows]
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 70598d2dc57b405aeb87b70b398745bb772db217
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          name: seq18-verified-runtime-hash
+          path: .
+      - name: Prove pinned main and channel, stage source without publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main "${RELEASE_CHANNEL}"
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
+          test "$(git rev-parse "origin/${RELEASE_CHANNEL}")" = "$SIGNED_CHANNEL_COMMIT"
+          git switch -C release-staging "origin/${RELEASE_CHANNEL}"
+          node scripts/sign-release.mjs --check
+          # Replace staged source in ONE local operation; live channel
+          # continues serving exactly the original signed sequence 17.
+          git read-tree --reset -u origin/main
+          git show "${SIGNED_CHANNEL_COMMIT}:dist/albot.release.json" > dist/albot.release.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {createPublicKey,verify} from 'node:crypto';
+          import {nextMinorReleaseVersion} from './scripts/release-version-policy.mjs';
+          import {releaseMessage} from './scripts/auto-bootstrap-support.mjs';
+          const old=JSON.parse(fs.readFileSync('dist/albot.release.json','utf8'));
+          if(old.sequence!==17||old.version!=='0.17.0-candidate')throw Error('Pinned release has changed');
+          const key=createPublicKey({key:JSON.parse(fs.readFileSync('release/public-key.json')),format:'jwk'});
+          if(!verify('sha256',Buffer.from(releaseMessage(old)),{key,dsaEncoding:'ieee-p1363'},Buffer.from(old.signature,'base64url')))throw Error('Previous published signing key mismatch');
+          const next=nextMinorReleaseVersion(old.version);
+          if(next!=='0.18.0-candidate')throw Error('Unexpected signed minor increment');
+          const versionFile='src/version.mjs';
+          if(fs.readFileSync(versionFile,'utf8')!=="export const VERSION='0.17.0-candidate';\n")throw Error('Current main version drift');
+          fs.writeFileSync(versionFile,"export const VERSION='0.18.0-candidate';\n");
+          NODE
+      - run: npm ci --ignore-scripts
+      - name: Rebuild the precisely approved candidate and preserve settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+          npm run check:bootstrap:auto
+          npm run build:editor
+          npm run build:konfigurator
+          npm test
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          const runtime=fs.readFileSync('dist/albot.runtime.js');
+          const actual=createHash('sha256').update(runtime).digest('hex');
+          const approved=fs.readFileSync('seq18.expected.sha256','utf8').trim();
+          if(actual!==approved)throw Error('Release bytes differ from Linux-verified runtime');
+          const cfg=s=>{
+           const a=s.indexOf('globalThis.ALBotConfig='),b=s.indexOf('/* ALBot ',a);
+           if(a<0||b<=a)throw Error('Personal configuration boundary not found');
+           return s.slice(a,b);
+          };
+          const pinned=execFileSync('git',['show',process.env.SIGNED_CHANNEL_COMMIT+':bot.js'],{encoding:'utf8'});
+          const main=execFileSync('git',['show',process.env.SOURCE_COMMIT+':bot.js'],{encoding:'utf8'});
+          const current=fs.readFileSync('bot.js','utf8');
+          if(cfg(pinned)!==cfg(main)||cfg(current)!==cfg(main))throw Error('Personal ALBotConfig changed during release');
+          if(execFileSync('git',['hash-object','release/public-key.json'],{encoding:'utf8'}).trim()!=='f4953470bdcec825972454fd11798da220176fed')
+            throw Error('Pinned public signing key drift');
+          if(execFileSync('git',['hash-object','dist/albot.bootstrap.auto.js'],{encoding:'utf8'}).trim()!=='f186b3c664a100d3dc9499a2c998d5e99cf2f97e')
+            throw Error('Installed bootstrap v2 loader would change');
+          fs.rmSync('seq18.expected.sha256');
+          console.log(JSON.stringify({approvedRuntimeSHA256:actual,personalConfigUnchanged:true,loaderUnchanged:true}));
+          NODE
+      - name: Sign with existing secret, never export or log private key
+        env:
+          ALBOT_RELEASE_SIGNING_KEY_PEM: ${{ secrets.ALBOT_RELEASE_SIGNING_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          npm run sign:release
+          npm run verify:release
+      - name: Publish-contract snapshot and release documentation
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const manifest=JSON.parse(fs.readFileSync('dist/albot.release.json','utf8'));
+          if(manifest.sequence!==18||manifest.version!=='0.18.0-candidate')
+            throw Error('New release must be exact sequence 18 and version 0.18');
+          const contractFile='bootstrap.contract.json';
+          const contract=JSON.parse(fs.readFileSync(contractFile,'utf8'));
+          const fields=['format','sequence','version','runtimeUrl','bytes','sha256'];
+          contract.inGameLoader.inspectedManifest=Object.fromEntries(fields.map(k=>[k,manifest[k]]));
+          contract.inGameLoader.note='Signiertes V2-Release Sequence 18 / 0.18.0-candidate am 20.10.2026 aus main 70598d2dc57b405aeb87b70b398745bb772db217 erstellt; ECDSA-P-256-Signatur und Runtime-SHA256 verifiziert. Der installierte Loader, persönliche Konfiguration, öffentliche Schlüssel und URLs sind unverändert; Ingame-Liveabnahme offen.';
+          fs.writeFileSync(contractFile,JSON.stringify(contract,null,2)+'\n');
+          const prev='## Aktueller signierter Release-Kanal (Sequence 17, 20.10.2026)';
+          const docFile='docs/BOOTSTRAP-VERTRAG.md';
+          let doc=fs.readFileSync(docFile,'utf8');
+          if(!doc.includes(prev))throw Error('Old signed channel documentation has changed');
+          const next=[
+           '## Aktueller signierter Release-Kanal (Sequence 18, 20.10.2026)',
+           '',
+           '| Feld | Kryptografisch verifizierter Wert |',
+           '| --- | --- |',
+           '| `sequence` | `18` |',
+           '| `version` | `0.18.0-candidate` |',
+           '| `runtimeUrl` | `'+manifest.runtimeUrl+'` |',
+           '| `bytes` | `'+manifest.bytes+'` |',
+           '| `sha256` | `'+manifest.sha256+'` |',
+           '',
+           'Basis: geprüfter main-Commit 70598d2dc57b405aeb87b70b398745bb772db217. Die Veröffentlichung',
+           'verwendet den bestehenden ECDSA-P-256-Schlüssel und einen',
+           'einzigen atomaren Git-Commit für Runtime und signiertes Manifest.',
+           'Persönliche ALBotConfig, fest installierter V2-Loader und',
+           'Release-URLs bleiben unverändert. Neue Cave-/Gruppenlogik aus',
+           'main wird ausgeliefert; reale Ingame-Live-Abnahme ist offen.',
+           '',
+           '### Historischer signierter Release-Kanal (Sequence 17, 20.10.2026)'
+          ].join('\n');
+          doc=doc.replace(prev,next);
+          fs.writeFileSync(docFile,doc);
+          const note='# Aktuelles signiertes Release 0.18.0-candidate / Sequence 18 (20.10.2026)\n'+
+           'Aus main 70598d2dc57b405aeb87b70b398745bb772db217 mit vollständiger Linux-/Windows-Prüfung und GitHub-Actions-Signatur veröffentlicht. ECDSA-P-256-SHA-256, exakt signierte Bytes und Versionssprung +0.1 verifiziert; '+manifest.bytes+
+           ' Bytes Runtime, SHA-256 '+manifest.sha256+'. Unveränderter Bootstrap-V2-Loader und persönliche ALBotConfig; neue Game-Liveabnahme noch offen.\n\n';
+          for(const file of ['AGENTS.md','README.md']){
+           const text=fs.readFileSync(file,'utf8');
+           fs.writeFileSync(file,note+text);
+          }
+          NODE
+          node scripts/verify-bootstrap-contract.mjs
+          npm run verify:release
+      - name: Publish EXACTLY ONE signed fast-forward merge commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          for file in dist/albot.runtime.js dist/albot.release.json bot.js src/version.mjs bootstrap.contract.json; do
+            git diff --cached --name-only | grep -Fxq "$file" || { echo "Required release file absent: $file"; exit 1; }
+          done
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
+          test "$(git rev-parse "origin/${RELEASE_CHANNEL}")" = "$SIGNED_CHANNEL_COMMIT"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$SOURCE_COMMIT"
+          test "$(git ls-remote origin "refs/heads/${RELEASE_CHANNEL}" | cut -f1)" = "$SIGNED_CHANNEL_COMMIT"
+          TREE=$(git write-tree)
+          COMMIT=$(printf 'release(bootstrap): publish approved signed 0.18.0-candidate sequence 18 from main %s\n\nECDSA-P-256 verified, Linux/Windows approved, ALBotConfig and pinned V2 loader unchanged.\n' "$SOURCE_COMMIT" | git commit-tree "$TREE" -p "$SIGNED_CHANNEL_COMMIT" -p "$SOURCE_COMMIT")
+          echo "Atomic signed release commit: $COMMIT"
+          git push origin "$COMMIT:refs/heads/${RELEASE_CHANNEL}"
+          test "$(git ls-remote origin "refs/heads/${RELEASE_CHANNEL}" | cut -f1)" = "$COMMIT"
+          echo "Signed sequence 18 published atomically to pinned Bootstrap V2 channel."

@@ -1,4 +1,6 @@
 import {validatePolicyDocument,EMPTY_POLICIES} from '../public/policy.mjs';
+import {FULL_DESCRIPTOR} from '../../src/config/full.mjs';
+import {importProfile,envelope} from '../../editor/lib/contract.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -69,14 +71,21 @@ async function github(env,path,method='GET',body=null,fetcher=fetch){
  const token=asString(env.GITHUB_TOKEN);
  if(!token||token.length<10)return failure('GitHub-Token fehlt in Worker-Secrets',503);
  const s=settings(env);if(!s)return failure('Privates GitHub-Konfigurationsrepository fehlt',503);
- const u=new URL('https://api.github.com/repos/'+s.repository+'/contents/'+s.path);
+ const isProfile=path==='/api/profile';
+ const profilePath=asString(env.PROFILE_PATH)||'albot/profile.json';
+ if(isProfile&&(!/^[a-zA-Z0-9._/-]{1,180}$/.test(profilePath)||
+    profilePath.includes('..')||profilePath===s.path||
+    profilePath.startsWith('/')||profilePath.endsWith('/')))
+  return failure('Privater Profilpfad ist ungültig',503);
+ const u=new URL('https://api.github.com/repos/'+s.repository+'/contents/'+
+  (isProfile?profilePath:s.path));
  if(method==='GET')u.searchParams.set('ref',s.branch);
  const r=await fetcher(u.href,{method,headers:{
   authorization:'Bearer '+token,accept:'application/vnd.github+json',
   'x-github-api-version':'2022-11-28','user-agent':'ALBot-Konfigurator-Worker',
   ...(body?{'content-type':'application/json'}:{})},
   ...(body?{body:JSON.stringify(body)}:{})});
- if(r.status===404&&method==='GET')return {missing:true,sha:null,document:EMPTY_POLICIES};
+ if(r.status===404&&method==='GET')return {missing:true,sha:null,document:isProfile?null:EMPTY_POLICIES};
  if(!r.ok){
   const code=r.status===409||r.status===422?409:r.status===401||r.status===403?502:502;
   return failure(r.status===409||r.status===422?
@@ -88,9 +97,13 @@ async function github(env,path,method='GET',body=null,fetcher=fetch){
  try{
   if(data.type!=='file'||typeof data.sha!=='string'||typeof data.content!=='string')
    return failure('Ungültiger GitHub-Dateieintrag',502);
-  const document=JSON.parse(unb64(data.content));
-  const errors=validatePolicyDocument(document);
-  if(errors.length)return failure('Konfiguration auf GitHub ist ungültig: '+errors[0],502);
+  let document=JSON.parse(unb64(data.content));
+  if(isProfile){
+   document=envelope(FULL_DESCRIPTOR,importProfile(FULL_DESCRIPTOR,document));
+  }else{
+   const errors=validatePolicyDocument(document);
+   if(errors.length)return failure('Konfiguration auf GitHub ist ungültig: '+errors[0],502);
+  }
   return {sha:data.sha,document,missing:false};
  }catch{return failure('GitHub-Konfiguration kann nicht gelesen werden',502);}
 }
@@ -173,26 +186,33 @@ export async function handleRequest(request,env,ctx={},deps={}){
  if(!['GET','HEAD','PUT'].includes(request.method))return failure('Methode nicht erlaubt',405);
  if(request.method==='PUT'){
   if(request.headers.get('origin')!==url.origin)return failure('Ungültige Request-Herkunft',403);
-  if(path!=='/api/policy')return failure('Keine Schreibschnittstelle',405);
+  if(!['/api/policy','/api/profile'].includes(path))return failure('Keine Schreibschnittstelle',405);
+  const limit=path==='/api/profile'?850000:100000;
   const size=Number(request.headers.get('content-length')??0);
-  if(size>100000)return failure('Konfiguration zu groß',413);
+  if(size>limit)return failure('Konfiguration zu groß',413);
   let value;try{
    const raw=await request.text();
-   if(raw.length>100000)return failure('Konfiguration zu groß',413);
+   if(raw.length>limit)return failure('Konfiguration zu groß',413);
    value=JSON.parse(raw);
   }catch{return failure('Ungültige Konfiguration');}
   if(!value||typeof value!=='object'||!('sha' in value)||
      value.sha!==null&&!(typeof value.sha==='string'&&/^[a-f0-9]{40}$/.test(value.sha)))
    return failure('Versionskennung fehlt');
-  const errors=validatePolicyDocument(value.document);
-  if(errors.length)return failure(errors.join('; '),422);
+  let document=value.document;
+  if(path==='/api/profile'){
+   try{document=envelope(FULL_DESCRIPTOR,importProfile(FULL_DESCRIPTOR,document));}
+   catch(e){return failure('Ungültiges ALBot-Profil: '+String(e.message).slice(0,240),422);}
+  }else{
+   const errors=validatePolicyDocument(document);
+   if(errors.length)return failure(errors.join('; '),422);
+  }
   const current=await github(env,path,'GET',null,fetcher);
   if(current instanceof Response)return current;
   if(current.sha!==value.sha)return failure('Die Konfiguration wurde zwischenzeitlich verändert. Bitte neu laden.',409);
   const s=settings(env);
   const write=await github(env,path,'PUT',{
    message:'config: update ALBot item policy from authenticated Konfigurator',
-   branch:s.branch,content:b64(JSON.stringify(value.document,null,2)+'\n'),
+   branch:s.branch,content:b64(JSON.stringify(document,null,2)+'\n'),
    ...(current.sha?{sha:current.sha}:{})
   },fetcher);
   if(write instanceof Response)return write;
@@ -201,7 +221,7 @@ export async function handleRequest(request,env,ctx={},deps={}){
  if(path==='/api/health')return json({ok:true,ready:!!(settings(env)&&env.GITHUB_TOKEN&&env.DB),
   remoteRuntime:false,telemetryEnabled:!!(env.DB&&env.INGEST_TOKEN),
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
- if(path==='/api/policy'){
+ if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);
   return current instanceof Response?current:json({ok:true,...current,published:false,applied:false});
  }

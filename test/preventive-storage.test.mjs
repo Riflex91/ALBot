@@ -205,3 +205,63 @@ test('unverified bank stock cannot authorize NPC sale by inflating safety reserv
  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
   'offsite stock must not count toward reserves for irreversible sale');
 });
+
+test('W02 capacity-sale admission rejects invalid physical source quantities',()=>{
+ for(const q of [null,0,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
+  const f=fixture();
+  f.c.items[0]={name:'junk',level:0,q};
+  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,String(q));
+ }
+ const valid=fixture();
+ valid.c.items[0]={name:'junk',level:0};
+ assert.equal(valid.planner.lowQualityRule(valid.c.items[0])?.action,'sell',
+  'an absent q is still one valid ordinary item');
+});
+
+test('W02 no malformed sibling stack may mask insufficient recipe/production reserves',()=>{
+ for(const q of [null,0,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER]){
+  const f=fixture();
+  f.c.items[0]={name:'junk',level:0};
+  f.c.items[1]={name:'junk',level:0,q};
+  f.setReserve(1);
+  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,String(q));
+ }
+ const valid=fixture();
+ valid.c.items[0]={name:'junk',level:0};
+ valid.c.items[1]={name:'junk',level:0,q:2};
+ valid.setReserve(1);
+ assert.equal(valid.planner.lowQualityRule(valid.c.items[0])?.action,'sell');
+});
+
+test('W02 stale, fractional or invalid local bank backing never permits capacity liquidation',()=>{
+ for(const q of [null,0,-1,0.5,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER]){
+  const f=fixture();
+  f.c.items[0]={name:'junk',level:0};
+  f.setReserve(1);
+  f.c.map='bank';f.bot.bank.observed=true;
+  f.stock.push({pack:'items0',slot:1,item:{name:'junk',level:0,q}});
+  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,String(q));
+ }
+ const f=fixture();
+ f.c.items[0]={name:'junk',level:0};
+ f.setReserve(1);
+ f.c.map='bank';f.bot.bank.observed=true;
+ f.stock.push({pack:'items0',slot:1,item:{name:'junk',level:0,q:2}});
+ assert.equal(f.planner.lowQualityRule(f.c.items[0])?.action,'sell');
+ f.bot.bank.observed=false;
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
+  'offsite/cached bank items do not provide liquidation backing');
+});
+
+test('W02 uncertain reservations cannot turn NaN comparisons into authority to sell',()=>{
+ for(const reserve of [null,-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
+  const f=fixture();f.c.items[0]={name:'junk',level:0};
+  f.bot.production.reservedQuantity=()=>reserve;
+  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,String(reserve));
+ }
+ const f=fixture();
+ f.c.items[0]={name:'junk',level:0};
+ f.G.craft={out:{items:[[1,'junk']]}};
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
+  'known recipe demand cannot be sold from its only local stack');
+});

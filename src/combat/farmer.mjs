@@ -452,12 +452,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
-    // Cave maps are generated instances, NOT approved overworld farmspawns.
-    // Preserve urgent recovery above, but never let ordinary target selection,
-    // independent follow routes or neutral farm pulls run here. The current
-    // Cave group evidence is diagnostic-only until an instanced combat
-    // executor has its own run/floor/roster and attack authorization contract.
+    // Cave maps are generated instances, never ordinary farmspawns.
+    // Keep urgent life support, but isolate overworld combat and movement.
+    // Only dedicated, fully run-bound Cave executors may act here.
     if(inCaveInstance(p.c)){
+      // Stop an already active direct Cave step when its exact evidence
+      // expires or a monster appears. Never fall through to smart_move.
+      if(bot.movement?.order?.owner==='cave'&&
+         bot.caveDirect?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
       if(['farm','follow','cohesion','combat','world','regroup',
           'quest-escort'].includes(bot.movement?.order?.owner))
        bot.movement.stop();
@@ -468,8 +471,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // revalidates the exact team/monster at network dispatch.
       const healed=bot.cavePriest?.tick?.()===true;
       const defended=!healed&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!defended&&bot.caveDirect?.tick?.()===true;
       bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
        defended?'Cave: bestätigte Teamverteidigung angefordert':
+       cohesion?'Cave: sicherer Direktschritt zum Priest angefordert':
        'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
       return;
     }

@@ -25,9 +25,14 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: Build the exact runtime to be signed
-        run: npm run build
-      - name: Run all offline regressions before release
+      - name: Build the exact runtime and synchronize personal CODE before testing
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+      - name: Run all offline regressions against synchronized release code
         run: npm test
       - name: Preserve all personalized settings
         shell: bash

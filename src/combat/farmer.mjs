@@ -422,7 +422,7 @@ function independentSpawnEngagement(){
    .filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)?.target)
    .filter(x=>x!=null).map(String));
  const claimed=reserved();
- const proof=m=>proof(m)||
+ const proof=m=>bot.encounter?.soloOneShot?.(m)||
    bot.encounter?.soloBoundedSpawn?.(m);
  const eligible=m=>m?.id!=null&&!claimed.has(String(m.id))&&
    distance(p.c,m)<=range&&proof(m)&&

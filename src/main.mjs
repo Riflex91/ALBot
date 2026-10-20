@@ -84,6 +84,7 @@ import {LIVE_DESCRIPTOR} from './config/live-a.mjs';
 import {chooseRule,variantCount,protectedItem,distance,samePlace,fingerprint} from './core/policy.mjs';
 import {Executor} from './core/executor.mjs';
 import {createPorts} from './runtime/ports.mjs';
+import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/telemetry-snapshot.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
 import {createLogistics} from './items/logistics.mjs';
@@ -403,6 +404,9 @@ export function install(root){
     discardPreparedCaveVote:()=>bot.caveVoteJournal?.discardPrepared()??false,
     discardPreparedCaveEntry:()=>bot.caveLifecycle?.discardPrepared()??false,
     status:()=>({version:VERSION,elixir:bot.elixirs?.status?.()??null,profile:cfg.general.name,running:bot.running,supplyOnly,accountGold:bot.lossGuard?.status()??null,onlineSupplyFarmers:me.role==='merchant'?onlineSupplyFarmers(bot).map(x=>x.name):[],environment:p.headless?'headless':'browser',ipc:p.ipc,name:me.name,role:me.role,reason:bot.reason,task:bot.task(),target:bot.target?.id??null,pending:exec.pending.size,actionAdmission:bot.admission.status(),lootDeparture:bot.lootDeparture.status(),lootReceipts:bot.lootReceipts?.status()??null,gearAllocationRecovery:bot.allocation?.recoveryStatus?.()??null,respawns:bot.respawns?.status()??null,cave:bot.cave?.status()??null,caveLifecycle:bot.caveLifecycle?.status()??null,caveVote:bot.caveVote?.status()??null,caveVoteJournal:bot.caveVoteJournal?.status()??null,caveConsensus:bot.caveConsensus?.status()??null,caveTeam:bot.caveTeam?.status()??null,caveMultiAggro:bot.caveMultiAggro?.status()??null,caveCriticalResponse:bot.caveCriticalResponse?.status()??null,caveRetreat:bot.caveRetreat?.status()??null,caveCombat:bot.caveCombat?.status()??null,caveCriticalTriage:bot.caveCriticalTriage?.status()??null,cavePriest:bot.cavePriest?.status()??null,cavePriestSupport:bot.cavePriestSupport?.status()??null,caveDirect:bot.caveDirect?.status()??null,caveEmergency:bot.caveEmergency?.status()??null,revivals:bot.revivals.status(),luckySlots:bot.luckySlots?.status()??null,swaps:bot.swaps?.status()??null,tradeOffers:bot.tradeOffers?.status()??null,statTailoring:bot.tailoring?.status()??null,rewardMail:bot.rewards?.status()??null,combatLife:bot.combatLife??null,skillDiagnostics:bot.skills?.diagnostics?.()??{},inventoryBlocked:bot.inventoryBlocked,achievementCarrier:carriedAchievementCarrier(p.c.items),journal:bot.journal?structuredClone(bot.journal):null,gameParty:p.c.party??null,teamLeader:bot.leader,selectedFarmers:[...bot.farmers]}),
+    // Explicit read-only handoff; no scheduled network traffic or credentials.
+    telemetrySnapshot:()=>({character:observedCharacterTelemetry(p.c,p.realm()),
+      bank:me.role==='merchant'?observedBankTelemetry(p.c,p.realm(),p.G?.bank_packs??{}):[]}),
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),
     exportTeamCheck(){const check=this.teamCheck();return saveTeamCheck(p,check);},

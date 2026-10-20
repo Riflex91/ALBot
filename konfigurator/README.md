@@ -81,3 +81,11 @@ Ein Ingame-Browser sendet bei \`POST /api/ingest\` mit \`Authorization\` einen C
 Das neue Modul `src/runtime/telemetry-snapshot.mjs` stellt validierte Read-only-Snapshot-Bausteine bereit. **Es ist noch nicht in die signierte Ingame-Runtime eingebunden**, weil der bestehende Bootstrap-Vertrag ausschließlich signierte, gemeinsam freigegebene Runtime-Artefakte erlaubt. Die Methode `ALBot.telemetrySnapshot()` ist daher noch nicht aktiv. Die Modulfunktionen erzeugen stattdessen defensive Kopien von aktuellen Charakterdaten und ausschließlich lokal beobachteten, vollständigen Bankpacks. Sie **sendet keine Requests**, enthält **keinen Token** und verändert weder Inventar noch Bank noch Item-Entscheidungen. Bank-Pakete sind keine Vollständigkeitsbeweise für den Account. Noch nicht nachgewiesene EXP-/Gold-Raten tragen `ratesMeasured:false`; das Dashboard zeigt dafür ein Strichsymbol statt einer erfundenen Zahl.
 
 Diese Daten werden später von einem separaten **privaten** Transport/Relay an `/api/ingest` übertragen, frühestens alle 120 Sekunden je Charakter und maximal ein Bankpack je Intervall. Zugangsschlüssel dürfen nicht im veröffentlichten GitHub-Runtime-Code liegen. Bis eine sichere private Übertragung eingerichtet und getestet ist, entstehen durch diese neue Funktion **null zusätzliche Cloudflare-Requests**.
+
+## Harte D1-Limits fuer kostenlosen Betrieb
+
+Der Worker speichert pro Charakter hoechstens alle 120 Sekunden einen Snapshot. Fuer Bankpacks gilt dieselbe Drosselung global, unabhaengig vom Pack. Es duerfen maximal 12 Charaktere und 24 Bankpacks vorhanden sein. Weitere oder zu schnelle Schreibversuche werden mit HTTP 429 (Retry-After: 120) abgewiesen. Bei gesperrten Uploads darf der private Client keine schnellen Wiederholungen ausloesen.
+
+Dashboard-API-Antworten schliessen Snapshots aus, die aelter als sieben Tage sind. Alte Daten verbleiben maximal innerhalb der festen Tabellenobergrenzen. Fuer die neue Logik ist keine D1-Migration und kein kostenpflichtiger Cloudflare-Dienst erforderlich.
+
+Diese Drossel begrenzt D1-Schreiboperationen, nicht die Anzahl eingehender Worker-Requests oder fremde Cloudflare-Account-Nutzung. Workers Free muss weiterhin aktiv bleiben; echte Accountkosten und alle weiteren Produkte sind im Billing-Dashboard zu kontrollieren.

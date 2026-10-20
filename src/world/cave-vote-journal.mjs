@@ -142,6 +142,7 @@ export function createCaveVoteJournal(bot,{now=()=>Date.now()}={}){
      record.realm!==p.realm()||record.reply||
      !r||typeof r!=='object'||Array.isArray(r)||
      r.choice!==record.choiceId||r.vote!==record.optionId||
+     r.failed===true||r.success===false||
      typeof r.resolved!=='boolean')return false;
   const at=now();
   if(!caveVoteJournalTime(at)||at<record.dispatchAt)return false;

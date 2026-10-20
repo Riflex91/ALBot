@@ -1,3 +1,4 @@
+import {caveCumulativeThreatBudget} from './cave-cumulative-threat.mjs';
 // W12/N12: a Cave Ranger may defend an ALREADY engaged teammate with
 // one basic attack only. All instance, roster, Priest, threat and range
 // evidence is revalidated immediately before the game API call.

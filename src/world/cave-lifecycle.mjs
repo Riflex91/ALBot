@@ -318,10 +318,15 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
      v.observedAt<=record.exitReply.at||
      v.serverTime<record.exitReply.at||
      v.observedAt>at||at-v.observedAt>30000||
-     state.live||p.c?.map!=='main'||
+     state.live||
+     state.lastObservedRun&&state.lastObservedRun.run!==record.exitRun||
+     p.c?.map!=='main'||
      p.c?.cave!==null&&p.c?.cave!==undefined||
      p.c?.in!==undefined&&p.c.in!=='main')return false;
-  return durable(null);
+  const completedRun=record.exitRun;
+  if(!durable(null))return false;
+  bot.cave?.acknowledgeConfirmedExit?.(completedRun);
+  return true;
  }
  function sample(){
   if(closed||readFailed||writeFailed)return;

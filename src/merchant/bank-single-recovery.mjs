@@ -1,4 +1,5 @@
-import {fingerprint,protectedItem,variantCount} from '../core/policy.mjs';
+import {fingerprint,protectedItem} from '../core/policy.mjs';
+import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
 
 // Single full-stack bank withdrawal. This read-only evidence check never
 // treats a stale/off-map pack as empty, and is not an account-wide lock.
@@ -47,7 +48,7 @@ export function classifyBankSingleRecord(r,{
     bank[r.pack].length>42)
   return {phase:'unobserved',reason:'addressed-bank-pack-not-current'};
  const pack=bank[r.pack],source=pack[r.slot],dest=inventory[r.dest];
- const carried=variantCount(inventory,r.item),bankCount=variantCount(pack,r.item);
+ const carried=verifiedBankVariantCount(inventory,r.item),bankCount=verifiedBankVariantCount(pack,r.item);
  if(!singleSafe(carried)||!singleSafe(bankCount))
   return {phase:'ambiguous',reason:'invalid-observed-quantities'};
  if(!dest&&source&&fingerprint(source)===r.sourcePrint&&

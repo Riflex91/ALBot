@@ -143,3 +143,24 @@ test('W03 single transfer blocks overlapping bank retrieve and partial journal',
  assert.equal(f.bot.bank.singlePending,true);
  assert.equal(f.bot.inventoryBlocked,true,'uncertain dispatch must quarantine');
 });
+
+test('W03 single journal does not accept cancellation of malformed sibling stack quantities',()=>{
+ const initial=record(),sent=dispatched(initial);
+ const inventory=blank(),pack=blank();pack[7]={...item};
+ inventory[2]={name:'ore',q:-1};inventory[3]={name:'ore',q:1};
+ const inspect=r=>classifyBankSingleRecord(r,{owner,realm,inventory,
+  bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+ assert.equal(inspect(initial).phase,'ambiguous',
+  'negative and positive copies cannot masquerade as zero carried stock');
+ inventory[2]={name:'ore',q:.5};inventory[3]={name:'ore',q:.5};
+ assert.equal(inspect(initial).phase,'ambiguous',
+  'fractional copies cannot masquerade as one legitimate stack');
+ inventory[2]=null;inventory[3]=null;
+ assert.equal(inspect(initial).phase,'prepared-unchanged');
+ pack[7]=null;inventory[0]={...item};
+ inventory[2]={name:'ore',q:0};inventory[3]=null;
+ assert.equal(inspect(sent).phase,'ambiguous',
+  'zero-unit sibling invalidates the dispatched completion receipt');
+ inventory[2]=null;
+ assert.equal(inspect(sent).phase,'withdrawn');
+});

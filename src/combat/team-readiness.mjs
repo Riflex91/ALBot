@@ -67,12 +67,12 @@ export function leaderAssignedFarmTarget(character,leader,monsters,{
    distance(character,m)<=maxDistance&&
    distance(leader,m)<=maxDistance)??null;
 }
-// The ordinary leader-only neutral-pull gate can be relaxed for one single
-// verified one-hit basic attack at the CURRENT shared farm spawn. This is a
-// conservative independent action, never a multi-pull, spell or raid permit.
+// The ordinary leader-only neutral-pull gate is relaxed for a verified
+// one-hit attack at the CURRENT shared farm spawn. For aimed-AoE casts,
+// every selected monster must independently pass this proof.
 // Unknown avoidance, damage, mechanic, or peer state fails closed.
 export function verifiedFollowerOneShot(actor,monster,{plan,leader,peers,
- realm,game,now=Date.now(),maxDistance=140}={}){
+ realm,game,skill=null,now=Date.now(),maxDistance=140}={}){
  const meta=game?.monsters?.[monster?.mtype];
  const ownedPlan=leader?.farmPlan?.id??leader?.march?.plan;
  if(!actor||!monster||monster.type!=='monster'||monster.dead||monster.rip||
@@ -120,11 +120,30 @@ export function verifiedFollowerOneShot(actor,monster,{plan,leader,peers,
     !Number.isFinite(target.armor??0)||
     !Number.isFinite(target.resistance??0))return null;
  const estimate=outgoingDamageEstimate(actor,target,{
-   uncertainty:.25,fearFactor:.9});
+   skill,uncertainty:.25,fearFactor:.9});
  // The estimate already includes a 25% damage haircut; the additional
  // 20% margin tolerates modest unmodelled damage variation.
  return estimate.valid&&estimate.damage>=monster.hp*1.2?
   {damage:estimate.damage,hp:monster.hp,margin:estimate.damage/monster.hp}:null;
+}
+// Unlike a broad multi-pull allowance this authorizes only explicit aimed
+// 3shot/5shot monster IDs, all of which independently meet the same
+// one-hit proof. An ordinary area spell with bystanders is NOT eligible.
+export function verifiedFollowerAoeOneShot(actor,targets,{
+ skillId,skill,...options
+}={}){
+ const max=skillId==='3shot'?3:skillId==='5shot'?5:0;
+ const min=skillId==='3shot'?3:skillId==='5shot'?4:Infinity;
+ if(!Array.isArray(targets)||targets.length<min||targets.length>max||
+    !skill||!Number.isFinite(skill.damage_multiplier)||
+    skill.damage_multiplier<=0||skill.hostile!==true)return null;
+ const ids=targets.map(m=>String(m?.id??''));
+ if(ids.some(id=>!id)||new Set(ids).size!==ids.length)return null;
+ const proofs=targets.map(m=>verifiedFollowerOneShot(actor,m,{
+    ...options,skill}));
+ if(proofs.some(p=>!p))return null;
+ return {targets:targets.length,ids,damage:proofs.reduce((n,p)=>n+p.damage,0),
+   minimumMargin:Math.min(...proofs.map(p=>p.margin))};
 }
 export function neutralPullReadiness(bot){
  const {cfg,p,me}=bot;

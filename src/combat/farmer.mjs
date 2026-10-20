@@ -8,6 +8,7 @@ import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 import {roadAggroTravelDecision,committedFarmTransit,createTransitBlockObserver,verifiedTransitBlock} from './transit-defense.mjs';
 import {mapGraph,mapHops} from '../world/knowledge.mjs';
+import {inCaveInstance} from '../world/cave-team-coordination.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
 // never be pulled through this exception.
@@ -441,6 +442,20 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.logistics.handoffActive){bot.reason='Itemübergabe bestätigen';bot.movement.stop();return;}
     if(bot.gold?.reserved||bot.journal?.kind?.startsWith("gold.")){bot.reason="Goldübergabe bestätigen";bot.movement.stop();return;}
     if(recover()){bot.recovering=true;return;}
+    // Cave maps are generated instances, NOT approved overworld farmspawns.
+    // Preserve urgent recovery above, but never let ordinary target selection,
+    // independent follow routes or neutral farm pulls run here. The current
+    // Cave group evidence is diagnostic-only until an instanced combat
+    // executor has its own run/floor/roster and attack authorization contract.
+    if(inCaveInstance(p.c)){
+      if(['farm','follow','cohesion','combat','world','regroup',
+          'quest-escort'].includes(bot.movement?.order?.owner))
+       bot.movement.stop();
+      bot.target=null;
+      const evidence=bot.caveTeam?.status?.();
+      bot.reason='Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');
+      return;
+    }
     const c=p.c,now=Date.now();
     const detachment=assessQuestDetachment(bot);
     const questVisitor=(bot.farmers??[]).find(n=>n!==me.name&&

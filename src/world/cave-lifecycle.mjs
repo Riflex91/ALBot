@@ -15,7 +15,7 @@ export function validCaveLifecycleRecord(x){
   x.party.some(n=>!caveLifecycleText(n))||
   new Set(x.party).size!==x.party.length||!x.party.includes(x.name)||
   (x.mode==='new'?x.run!==null:!caveLifecycleHex(x.run))||
-  (x.mode==='observed'&&x.phase!=='observed-run'))
+  (x.mode==='observed'&&!['observed-run','exit-dispatch-unknown'].includes(x.phase)))
   return false;
  if(x.serverReply!==undefined&&x.serverReply!==null){
   const reply=x.serverReply;
@@ -306,7 +306,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
      !validCaveLifecycleRecord(record)||
      record.phase!=='exit-dispatch-unknown'||
      record.realm!==p.realm()||record.name!==me.name||
-     !record.exitReply||record.exitSession!==bot.session||
+     !record.exitReply||
      bot.exec?.pending?.size>0||
      bot.journal||bot.inventoryBlocked)return false;
   const state=bot.cave?.status?.(),v=state?.visit;
@@ -342,7 +342,8 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    return;
   }
   if(!validCaveLifecycleRecord(record)||record.realm!==p.realm()||
-   record.name!==me.name||record.phase==='observed-run'||
+   record.name!==me.name||
+   ['observed-run','exit-dispatch-unknown'].includes(record.phase)||
    (record.mode==='resume'&&record.run!==observed.run)||
    (record.serverReply&&record.serverReply.run!==observed.run)||
    at<record.createdAt)return;

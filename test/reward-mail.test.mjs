@@ -192,7 +192,7 @@ test('W10/W13 exact server receipt plus q:null physical item never confirms clai
 function durableMailFixture({saved=null,mail=[{...row}],next='40'}={}){
  const key='albot:reward-mail-cursor:A',data=new Map(),tasks=[],requests=[];
  if(saved!==null)data.set(key,saved);
- let realm='EUI',pending=null;
+ let realm='EUI',pending=null,at=1000000;
  const c={name:'A',items:[null,null],isize:2,gold:100,c:{}};
  const p={c,G,realm:()=>realm,has:()=>true,
   read:k=>data.get(k)??null,
@@ -212,8 +212,8 @@ function durableMailFixture({saved=null,mail=[{...row}],next='40'}={}){
    return true;}},
   economy:{perform:(kind,options)=>{pending={kind,...options};return true;}}};
  const flush=async()=>{while(tasks.length)await Promise.all(tasks.splice(0));};
- return {bot,p,c,data,mail,requests,flush,make:()=>createRewardMail(bot,{now:()=>1000000}),
-  changeRealm:x=>{realm=x;},get pending(){return pending;},key};
+ return {bot,p,c,data,mail,requests,flush,make:()=>createRewardMail(bot,{now:()=>at}),
+  advance:ms=>{at+=ms;},changeRealm:x=>{realm=x;},get pending(){return pending;},key};
 }
 test('W13/G03 durable page hold survives restart with still-claimable first reward',async()=>{
  const f=durableMailFixture(),first=f.make();
@@ -253,7 +253,7 @@ test('W13/G03 cursor advances only after every same-page claim becomes server-ta
  restarted.tick();await f.flush();
  assert.equal(f.data.get(f.key).cursor,'40');
  assert.equal(restarted.status().cursor,'40');
- restarted.tick();await f.flush();
+ f.advance(5001);restarted.tick();await f.flush();
  assert.equal(f.requests.at(-1),'40');
  assert.equal(f.data.get(f.key).cursor,null,
   'empty final page commits the wrap to the initial cursor');

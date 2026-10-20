@@ -159,3 +159,24 @@ test('classic editor receives hash-scoped CSP instead of unsafe-inline',async()=
  assert.ok(csp.includes("'sha256-"+sha+"'"));
  assert.equal(csp.includes("'unsafe-inline'"),false);
 });
+
+test('ingest CORS preflight is narrowly scoped to Adventure Land',async()=>{
+ const allowed=await handleRequest(new Request('https://albot.example.com/api/ingest',{
+  method:'OPTIONS',headers:{origin:'https://adventure.land',
+   'access-control-request-method':'POST','access-control-request-headers':'authorization,content-type'}
+ }),{});
+ assert.equal(allowed.status,204);
+ assert.equal(allowed.headers.get('access-control-allow-origin'),'https://adventure.land');
+ const blocked=await handleRequest(new Request('https://albot.example.com/api/ingest',{
+  method:'OPTIONS',headers:{origin:'https://untrusted.example'}
+ }),{});
+ assert.equal(blocked.status,403);
+});
+test('CORS permission does not replace telemetry token authentication',async()=>{
+ const response=await handleRequest(new Request('https://albot.example.com/api/ingest',{
+  method:'POST',headers:{origin:'https://adventure.land','content-type':'application/json'},
+  body:JSON.stringify({version:1,kind:'character',data:{name:'bad'}})
+ }),{DB:{}});
+ assert.equal(response.status,401);
+ assert.equal(response.headers.get('access-control-allow-origin'),'https://adventure.land');
+});

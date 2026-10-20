@@ -99,6 +99,16 @@ Der Endpunkt verlangt immer eine kryptografisch gepruefte Access-JWT, `Origin` g
 Das Relay zeigt eine lokale 120-Sekunden-Versuchsdrossel und besitzt keine Retry-Schleife oder Hintergrundabfragen. Es benoetigt keinen geheimen API-Schluessel im Spielcode, keine neue Datenbank und keinen kostenpflichtigen Cloudflare-Dienst. Ohne bewusst gestartetes Spielfenster und Benutzeraktivierung uebertraegt es nichts. Ein separat freigegebener Game-Sender sowie ein echter Browser-Livetest stehen noch aus; die signierte Ingame-Runtime wird durch diese Aenderung nicht veraendert.
 
 
+## Geplanter Opt-in in der signierten Runtime 0.18.0-candidate
+
+Die neue Runtime-Quelle bindet Snapshot und Sender jetzt in `src/main.mjs` und `scripts/build.mjs` ein. Die Freigabe erfolgt nur ueber den bestehenden signierten Bootstrap-Kanal. Ein GitHub-Merge allein aktualisiert keine laufenden Game-Sessions.
+
+Im offiziellen Adventure-Land-Browser mit aktivierter UI erscheint danach der Button **Telemetrie verbinden**. Erst dessen direkter Klick darf das Relay-Popup oeffnen. Im geschuetzten Popup muss der Nutzer anschliessend **Empfang ausdruecklich aktivieren** bestaetigen. Erst nach dessen ursprungsgeprueftem Ready-Handshake sendet der Bot einen ersten Snapshot. Danach maximal ein Charakter- und bei Merchant-Betrieb ein lokal beobachteter Bankpack-Snapshot alle 120 Sekunden.
+
+Keine Verbindung bei Start, keine automatischen Popups, keine versteckten Credentials, keine Remote-Config-Uebernahme und kein Relay im Headless-Modus. Ein Popup oder Origin-Fehler deaktiviert Telemetrie, nicht den Spielbot. Entladen der Runtime schliesst nur Listener/Timer der eigenen Verbindung, nicht das Browser-Popup des Nutzers. Ein Web-Relay ohne laufenden Sender schreibt nichts nach D1.
+
+**Abnahmegrenze:** Das Erzeugen und Pruefen des v0.18-Quellpakets ist noch keine signierte Veroeffentlichung. Erst die unabhaengige Release-Signatur mit neuer Sequenz, kryptografischer Kanalpruefung und ein echter Browser-Livetest belegen eine spielseitig nutzbare Funktion. Niemals Unsigned-Code oder einen unbekannten CDN-Stand im vorhandenen CODE-Slot ausfuehren.
+
 ## Spiel-Sender (Staging, noch nicht im signierten Release)
 
 Das quelloffene, rein lesende Modul `src/runtime/telemetry-relay-sender.mjs` bietet `createGameRelaySender`. Es sammelt mithilfe des bereits vorbereiteten Snapshot-Moduls ausschließlich aktuell sichtbare Charakter- und Bankdaten. Der Sendekanal ist `window.postMessage` an die fest definierte HTTPS-Adresse `/relay.html`, niemals ein direkter HTTP-Aufruf aus Adventure Land.

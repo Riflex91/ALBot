@@ -123,3 +123,22 @@ test('W10 stale or missing peer heartbeat cannot be turned into complete aggrega
   'only actual local and separately verified bank rows remain visible');
  assert.ok(view.reasons.some(x=>x.startsWith('Ranger:')));
 });
+
+test('W02 current-map bank variants reject unsafe acc/rid identifiers',()=>{
+ const bank=liveBank();
+ assert.equal(verifiedAccountBankView(bank,{
+  owner,session,realm,map,now:at,ttlMs:10000}),true);
+ for(const field of ['acc','rid'])for(const value of [
+  -1,0.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'x'.repeat(81)
+ ]){
+  const corrupt={...bank,rows:structuredClone(bank.rows),
+   packs:structuredClone(bank.packs)};
+  corrupt.rows[0].item[field]=value;
+  assert.equal(verifiedAccountBankView(corrupt,{
+   owner,session,realm,map,now:at,ttlMs:10000}),false,
+   field+':'+String(value));
+  const result=account({bank:corrupt,inventory:[]});
+  assert.equal(result.complete,false);
+  assert.equal(result.variants.some(row=>row.item.name==='ore'),false);
+ }
+});

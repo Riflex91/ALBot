@@ -48,8 +48,11 @@ test('W05/W08 stale and malformed measured evidence has no scheduling credit',()
   {utility:NaN},{utility:Infinity},{utility:-1},{utility:0},
   {chance:0},{chance:2},{chance:NaN},
   {estimatedCost:-1},{estimatedCost:Infinity},{slot:'trade1'}
- ])assert.equal(measuredSlotUtilityPriority({...a,...change},
-  [{...a,...change},b],{profile:profile(),now}),0);
+ ]){
+  const invalid={...a,...change};
+  assert.equal(measuredSlotUtilityPriority(invalid,[invalid,b],
+   {profile:profile(),now}),0,JSON.stringify(change));
+ }
  const outsider=goal('M','gloves',1000,{chance:NaN});
  assert.equal(measuredSlotUtilityPriority(a,[a,b,outsider],
   {profile:profile(),now}),12,

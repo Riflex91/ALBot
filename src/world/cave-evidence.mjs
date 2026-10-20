@@ -175,7 +175,19 @@ export function createCaveEvidence(bot,{now=()=>Date.now()}={}){
    reason:live?'observed-current-instance':
     lastRun?'no-current-instance-proof':'no-current-instance-proof'};
  }
- return {sample,refreshVisit,status,close(){
+ // Only the durable Cave lifecycle may call this AFTER proving a positive
+ // exit response plus newer no-resume cave_info, and AFTER it has cleared
+ // the durable journal. The caller supplies the exact exited run ID.
+ function acknowledgeConfirmedExit(run){
+  invalidate();
+  if(closed||!bot.running||!hexRun(run)||
+     verifiedCaveSnapshot(p.c?.cave,{
+      name:me.name,map:p.c?.map,now:now()}))return false;
+  if(lastRun&&lastRun.run!==run)return false;
+  lastRun=null;lastRunAt=0;
+  return true;
+ }
+ return {sample,refreshVisit,status,acknowledgeConfirmedExit,close(){
   closed=true;generation++;pending=false;
  }};
 }

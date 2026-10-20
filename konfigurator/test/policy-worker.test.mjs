@@ -108,7 +108,7 @@ test('no cross-origin write even with valid Access JWT',async()=>{
 
 test('full ALBot profile can be fetched from private GitHub, with revision SHA',async()=>{
  const {token,certs}=await credential();
- const fixture=JSON.parse(await readFile(new URL('../../../profiles/full-team.json',import.meta.url),'utf8'));
+ const fixture=JSON.parse(await readFile(new URL('../../profiles/full-team.json',import.meta.url),'utf8'));
  const source=Buffer.from(JSON.stringify(fixture)).toString('base64');
  const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
   ALLOWED_EMAIL:'user@example.com',CONFIG_REPO:'Riflex91/private-albot-config',
@@ -136,7 +136,7 @@ test('profile write is rejected if GitHub SHA changed',async()=>{
   if(String(url).includes('/cdn-cgi/access/certs'))return new Response(JSON.stringify(certs));
   return new Response('',{status:404});
  };
- const fixture=JSON.parse(await readFile(new URL('../../../profiles/full-team.json',import.meta.url),'utf8'));
+ const fixture=JSON.parse(await readFile(new URL('../../profiles/full-team.json',import.meta.url),'utf8'));
  const req=new Request('https://albot.example.com/api/profile',{method:'PUT',
   headers:{'CF-Access-Jwt-Assertion':token,'origin':'https://albot.example.com','content-type':'application/json'},
   body:JSON.stringify({sha:'a'.repeat(40),document:fixture})});

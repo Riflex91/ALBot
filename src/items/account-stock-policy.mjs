@@ -1,14 +1,14 @@
 // Read-only account-wide item target preview.
 // Existing physical evidence covers only current visible bank maps; it is
 // deliberately not a sale permit even when its local "complete" flag is true.
-const fields=['stat_type','p','title','acc','rid','data'];
-const validInt=n=>Number.isSafeInteger(n)&&n>=0&&n<=10000000;
-function key(item){
+const accountPreviewFields=['stat_type','p','title','acc','rid','data'];
+const accountPreviewValidInt=n=>Number.isSafeInteger(n)&&n>=0&&n<=10000000;
+function accountPreviewKey(item){
  if(!item||typeof item!=='object'||typeof item.name!=='string'||
-    !/^[A-Za-z0-9_]{1,100}$/.test(item.name)||!validInt(item.level??0)||
+    !/^[A-Za-z0-9_]{1,100}$/.test(item.name)||!accountPreviewValidInt(item.level??0)||
     (item.level??0)>99)return null;
  const values=[];
- for(const field of fields){
+ for(const field of accountPreviewFields){
   const v=item[field];
   if(v===undefined||v===null){values.push(null);continue;}
   if(['acc','rid'].includes(field)&&
@@ -31,7 +31,7 @@ export function previewAccountStockPolicy({
   quantity:null,protectedFloor:null,provisionalExcess:0,
   targetCount,maximum:maxCount,scope:'account'};
  const invalid=reason=>({...base,status:'invalid',reason});
- const wanted=key(item);
+ const wanted=accountPreviewKey(item);
  if(!wanted)return invalid('invalid-or-opaque-item-variant');
  if(![keep,targetCount,maxCount,teamReserve,additionalReservations].every(validInt)||
     keep+teamReserve>maxCount||targetCount<keep+teamReserve||
@@ -39,7 +39,7 @@ export function previewAccountStockPolicy({
  if(!ledger||ledger.mode!=='shadow-only'||ledger.executable!==false||
     !Array.isArray(ledger.variants)||ledger.variants.length>120)
   return {...base,status:'unverified',reason:'missing-stock-ledger'};
- const rows=ledger.variants.filter(row=>key(row?.item)===wanted);
+ const rows=ledger.variants.filter(row=>accountPreviewKey(row?.item)===wanted);
  if(rows.length>1)return invalid('duplicate-account-variant');
  const row=rows[0];
  if(row&&![row.quantity,row.protectedUnits,row.reservedUnits].every(validInt))

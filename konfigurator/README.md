@@ -75,3 +75,9 @@ Nach der Cloudflare-Einrichtung die Seite \`/classic.html\` öffnen. Falls im pr
 ## Browser-Telemetrie und Cloudflare Access
 
 Ein Ingame-Browser sendet bei \`POST /api/ingest\` mit \`Authorization\` einen CORS-Preflight (\`OPTIONS\`). Deshalb darf nur dieser **exakte Pfad** außerhalb der Login-Weiterleitung liegen. Seine eigentliche \`POST\`-Verarbeitung besitzt eine unabhängige, konstante Bearer-Token-Prüfung. Vom Worker antwortet der Pfad auf Preflight nur für \`https://adventure.land\`; jeder andere Origin erhält 403. Falls Adventure Land aus einer anderen origin ausgeführt wird, erst nach Prüfung \`INGEST_ALLOWED_ORIGIN\` konfigurieren. Das ist keine Erlaubnis für fremde Websites und keine Garantie, dass ein Token im öffentlich sichtbaren Code geheim bleibt. Der spätere private Browser-/Headless-Adapter muss Schlüssel getrennt vom öffentlichen Runtime-Repository halten.
+
+## Read-only Telemetrie-Snapshot (Stufe 1)
+
+Die öffentliche ALBot-Runtime bietet jetzt `ALBot.telemetrySnapshot()`. Die Methode liefert eine defensive Kopie mit `character` (aktueller Charakter oder null) und `bank` (nur tatsächlich auf der aktuellen Bank-Map sichtbare vollständige Packs). Sie **sendet keine Requests**, enthält **keinen Token** und verändert weder Inventar noch Bank noch Item-Entscheidungen. Bank-Pakete sind keine Vollständigkeitsbeweise für den Account. Noch nicht nachgewiesene EXP-/Gold-Raten tragen `ratesMeasured:false`; das Dashboard zeigt dafür ein Strichsymbol statt einer erfundenen Zahl.
+
+Diese Daten werden später von einem separaten **privaten** Transport/Relay an `/api/ingest` übertragen, frühestens alle 120 Sekunden je Charakter und maximal ein Bankpack je Intervall. Zugangsschlüssel dürfen nicht im veröffentlichten GitHub-Runtime-Code liegen. Bis eine sichere private Übertragung eingerichtet und getestet ist, entstehen durch diese neue Funktion **null zusätzliche Cloudflare-Requests**.

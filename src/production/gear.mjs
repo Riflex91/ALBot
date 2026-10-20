@@ -1,4 +1,4 @@
-import {gearCatchUpPriority,crossRoleGearPriority} from './gear-fairness.mjs';
+import {gearCatchUpPriority,crossRoleGearPriority,measuredSlotUtilityPriority} from './gear-fairness.mjs';
 import {identity} from '../core/policy.mjs';
 export function gearScore(stats,role,ctype=''){
  const weights=role==='tank'?{hp:.01,armor:1,resistance:1,vit:2,vitality:2}:role==='healer'?{attack:2,int:3,mp:.02,frequency:100,armor:.3,resistance:.3,hp:.004,speed:.2}:role==='economy'?{gold:10,luck:10,speed:2,mp:.01,armor:.1,resistance:.1,hp:.002}:{attack:2,apiercing:.3,rpiercing:.3,str:1,dex:1,int:1,frequency:100,crit:2,armor:.2,resistance:.2,hp:.002,mp:.001,speed:.2};
@@ -130,6 +130,7 @@ export function createGear(bot){
   }
  }return result.slice(0,20);}
  function targets(){
+  const optimized=bot.intelligence?.targets()??[];
   const fairness=g=>{
    const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
    if(!member)return 0;
@@ -150,9 +151,10 @@ export function createGear(bot){
    return Math.min(75,gearCatchUpPriority(profile,sameRole,{now:Date.now()})+
     crossRoleGearPriority(profile,cohort,{
      role:classify(member,profile),slot:g.slot,
-     lastImprovedAt:last||null}));
+     lastImprovedAt:last||null})+
+    measuredSlotUtilityPriority(g,optimized,{profile,now:Date.now()}));
   };
-  const automatic=(bot.intelligence?.targets()??[]).map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
+  const automatic=optimized.map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
   const result=[...automatic,...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
   // Prefer a server-compatible, non-protected weapon already in Merchant
   // inventory. A +3 staff held in stock must beat buying/delivering +0.

@@ -1,9 +1,9 @@
 {
   "format": "albot-release-v1",
-  "sequence": 20,
-  "version": "0.20.0-candidate",
+  "sequence": 21,
+  "version": "0.21.0-candidate",
   "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-  "bytes": 889872,
-  "sha256": "8536530772f67b2cbe44e72108522f6c636bddb2e24e27457b20a53aa87a2ad8",
-  "signature": "4HtnJOpj_U5BD55PATQPv61TpTXuHvy5waWeqHMmz8hg-TS78q45e0Cb_alumiEFW9F4vxX9whI31ocbj5A26w"
+  "bytes": 893872,
+  "sha256": "ca9c89221b67a438746929d6f0ef9c412bc465ce28b1bcbfae6a8f940e45ca93",
+  "signature": "xu_m56nWP7gdeWHAEf0vmhz5uoI7Fr6TzGaWz1ok3iN34anyCI91iZUMqLzi-FWmkt33R90-pFttPXbeUzspnA"
 }

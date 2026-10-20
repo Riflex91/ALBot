@@ -98,3 +98,11 @@ Der Endpunkt verlangt immer eine kryptografisch gepruefte Access-JWT, `Origin` g
 
 Das Relay zeigt eine lokale 120-Sekunden-Versuchsdrossel und besitzt keine Retry-Schleife oder Hintergrundabfragen. Es benoetigt keinen geheimen API-Schluessel im Spielcode, keine neue Datenbank und keinen kostenpflichtigen Cloudflare-Dienst. Ohne bewusst gestartetes Spielfenster und Benutzeraktivierung uebertraegt es nichts. Ein separat freigegebener Game-Sender sowie ein echter Browser-Livetest stehen noch aus; die signierte Ingame-Runtime wird durch diese Aenderung nicht veraendert.
 
+
+## Spiel-Sender (Staging, noch nicht im signierten Release)
+
+Das quelloffene, rein lesende Modul `src/runtime/telemetry-relay-sender.mjs` bietet `createGameRelaySender`. Es sammelt mithilfe des bereits vorbereiteten Snapshot-Moduls ausschließlich aktuell sichtbare Charakter- und Bankdaten. Der Sendekanal ist `window.postMessage` an die fest definierte HTTPS-Adresse `/relay.html`, niemals ein direkter HTTP-Aufruf aus Adventure Land.
+
+Sicherheitsvertrag: Der Benutzer muss das Relay-Popup aus einer direkten Benutzeraktion oeffnen und dort den Empfang anklicken. Der Sender akzeptiert den Ready-Handshake nur vom exakt geoeffneten Popup und der festen Cloudflare-Domain. Ohne beides wird kein Snapshot gesendet. Wiederholte Aufrufe sind lokal auf mindestens 120 Sekunden begrenzt; der Merchant sendet hoechstens ein beobachtetes Bankpack je Intervall. Es wird kein Token gespeichert, keine Spielaktion ausgefuehrt und kein Retry-Timer gestartet.
+
+**Noch nicht aktiv im Spiel:** Der neue Sender ist weder in `src/main.mjs` installiert noch in `scripts/build.mjs` enthalten. Ein spaeterer signierter Release mit echten Adventure-Land-Browsertests ist weiterhin erforderlich. Ein automatischer Betrieb darf erst danach behauptet werden. Cloudflare Free und die vorhandene D1-Datenbank genuegen.

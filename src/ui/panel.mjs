@@ -30,6 +30,16 @@ export function createPanel(bot,api){
   doc.addEventListener('pointercancel',onUp);
 
   for(const [label,action] of [['Start',()=>api.start()],['Pause',()=>api.pause()],['STOP',()=>api.stop()],...(bot.cfg.general.testLogging&&api.logCapabilities().directory?[['Testordner wählen',()=>api.chooseLogDirectory()]]:[]),['Testlog speichern',async()=>{const result=await api.saveTestReport();bot.p.log?.(result.overwritten?'Testlog überschrieben: '+result.filename:result.notice??'Testlog nicht gespeichert');}]]){const b=doc.createElement('button');b.textContent=label;b.onclick=action;node.append(b);}
+  if(typeof api.openTelemetryRelay==='function'){
+    const relayButton=doc.createElement('button');
+    relayButton.textContent='Telemetrie verbinden';
+    relayButton.title='Opt-in: Cloudflare-Access-Relay oeffnen. Erst nach Klick im Popup werden maximal alle 120 Sekunden Daten gesendet. Keine Ingame-Aktion.';
+    relayButton.onclick=()=>{
+      if(api.openTelemetryRelay()!==true)
+        bot.p.log?.('Telemetrie-Relay nur im offiziellen Adventure-Land-Browser verfuegbar');
+    };
+    node.append(relayButton);
+  }
   if(bot.cfg.general.testLogging){
    const button=doc.createElement('button');button.textContent='Party/Kampf prüfen + speichern';
    button.title='Speichert Party- und Kampfstatistik in dieselbe JSON-Datei. Bei unterstütztem Browser wird die bestehende Datei überschrieben. Keine Spielaktion.';

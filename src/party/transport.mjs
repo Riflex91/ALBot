@@ -188,6 +188,7 @@ export function createTransport(bot){
       // Compact evidence only. Never relay a command; every Cave member
       // attests its own direct native clearance and peers verify all three.
       retreatVote:bot.caveRetreat?.heartbeat?.()??null,
+      retreatPrepare:bot.caveRetreatPrepare?.heartbeat?.()??null,
       combatSupport:compactCombatSupport(c,p.G,bot.capabilities?.snapshot(),potionReady()),
       potions:Object.fromEntries(['hpot0','mpot0'].map(id=>[id,
         (c.items??[]).reduce((n,i)=>n+(i?.name===id?(i.q??1):0),0)])),

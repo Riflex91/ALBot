@@ -196,7 +196,7 @@ test('N12 at native attack boundary new critical threat also aborts',()=>{
   observations++;
   // Multiple independent observations occur at preflight, scheduling,
   // and before invoke. Change only when the final proof is evaluated.
-  if(observations===4)f.roster.P.hp=60;
+  if(observations===11)f.roster.P.hp=60;
   return original();
  };
  assert.equal(f.bot.caveCombat.tick(),true);

@@ -102,6 +102,7 @@ test('N12 deterministic victim focus when both Rangers observe same current trio
  assert.equal(first.focus.id,'b','smaller remaining safety margin first');
  // Switch to the other active Ranger with the same shared observations.
  // Its own native aggro count must reflect the same server state.
+ Object.assign(f.c,{running:true,realm:'EUI',received:at});
  f.p.c={...f.members.R2,ctype:'ranger',cave:{run},range:150,targets:1};
  f.bot.me.name='R2';
  f.bot.transport.fresh=name=>name==='R1'?f.c:name==='P'?f.members.P:null;
@@ -121,7 +122,7 @@ test('N12 incoming multi-aggro damage, peer counters and observed target drift d
   f=>{f.p.G.monsters.shade.attack=NaN},
   f=>{f.b.id='a'},
   f=>{f.b.map='main'},
-  f=>{f.state.monsters=[f.a,{...f.b,id:'c',target:'stranger',hp:20},f.b]},
+  f=>{f.state.monsters=[f.a,{...f.b,id:'c',target:'P',hp:20},f.b]},
   f=>{f.state.monsters=null},
   f=>{f.state.monsters=[f.a]},
   f=>{f.state.monsters.push({...f.b,id:'c'}, {...f.b,id:'d'})}

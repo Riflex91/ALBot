@@ -4,7 +4,7 @@
 const caveLifecycleHex=s=>typeof s==='string'&&/^[a-f0-9]{24}$/.test(s);
 const caveLifecycleText=(s,max=100)=>typeof s==='string'&&s.length>0&&s.length<=max;
 const caveLifecycleTime=n=>Number.isSafeInteger(n)&&n>0;
-const caveLifecyclePhase=new Set(['prepared','dispatch-unknown','observed-run']);
+const caveLifecyclePhase=new Set(['prepared','dispatch-unknown','observed-run','exit-dispatch-unknown']);
 
 export function validCaveLifecycleRecord(x){
  if(!x||typeof x!=='object'||Array.isArray(x)||x.version!==1||
@@ -32,6 +32,17 @@ export function validCaveLifecycleRecord(x){
  if(x.phase==='dispatch-unknown')
   return caveLifecycleTime(x.dispatchAt)&&x.dispatchAt>=x.createdAt&&
    x.observed===null;
+ if(x.phase==='exit-dispatch-unknown'&&
+    (!caveLifecycleTime(x.exitAt)||!caveLifecycleText(x.exitSession,120)||
+     !caveLifecycleHex(x.exitRun)||!x.observed||
+     x.exitRun!==x.observed.run||x.exitAt<x.observed.at))
+  return false;
+ if(x.exitReply!==undefined&&x.exitReply!==null){
+  const reply=x.exitReply;
+  if(x.phase!=='exit-dispatch-unknown'||reply.exited!==true||
+     !caveLifecycleTime(reply.at)||reply.at<x.exitAt)
+   return false;
+ }
  // An observed live run need not have been caused by OUR prepared intent.
  // Preserve null dispatchAt until an actual cave_enter send is journaled.
  if(x.dispatchAt!==null&&
@@ -67,6 +78,11 @@ export function caveLifecycleDisposition(record,{name,realm,live}={}){
   return {state:'live-observed',blocked:true,reason:'current-server-run',
    run:live.run};
  }
+ if(record.phase==='exit-dispatch-unknown')
+  return {state:record.exitReply?'exit-reply-observed':'exit-outcome-unknown',
+   blocked:true,reason:record.exitReply?
+    'await-fresh-post-exit-info':'exit-outcome-unknown',
+   run:record.exitRun};
  if(record.phase==='observed-run')
   return {state:'run-not-currently-visible',blocked:true,
    reason:'exit-not-proven',run:record.observed.run};
@@ -225,6 +241,86 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
       (mode==='new'||active.run===expectedRun);
     }});
  }
+ // Cave exit is a distinct irreversible RPC. A physical outside map or
+ // disconnect alone never clears a run or its admission history.
+ function markExitUnknown(){
+  if(closed||!bot.running||readFailed||writeFailed||
+     !validCaveLifecycleRecord(record)||record.phase!=='observed-run'||
+     record.realm!==p.realm()||record.name!==me.name)return false;
+  const observed=live(),at=now();
+  if(!observed||observed.run!==record.observed.run||
+     !caveLifecycleTime(at)||at<record.observed.at)return false;
+  return durable({...record,phase:'exit-dispatch-unknown',
+   exitAt:at,exitSession:bot.session,exitRun:observed.run,
+   exitReply:null});
+ }
+ function noteExitReply(response){
+  if(closed||!bot.running||readFailed||writeFailed||
+     !validCaveLifecycleRecord(record)||
+     record.phase!=='exit-dispatch-unknown'||
+     record.name!==me.name||record.realm!==p.realm()||
+     record.exitSession!==bot.session||record.exitReply||
+     !response||typeof response!=='object'||Array.isArray(response)||
+     response.exited!==true)return false;
+  const at=now();
+  if(!caveLifecycleTime(at)||at<record.exitAt)return false;
+  return durable({...record,exitReply:{exited:true,at}});
+ }
+ function requestExit(){
+  if(closed||!bot.running||readFailed||writeFailed||
+     typeof bot.exec?.dispatch!=='function'||
+     typeof p.has!=='function'||typeof p.call!=='function')return false;
+  const guard=()=>{
+   if(bot.journal||bot.inventoryBlocked||
+      bot.bank?.pending||bot.logistics?.reserved||
+      bot.teamTravel?.blocked||bot.lifecycleChanging||
+      bot.account?.rotationPending?.()||
+      bot.exec?.pending?.size>0)return false;
+   const state=status(),inside=live();
+   return state.state==='live-observed'&&state.blocked&&
+    validCaveLifecycleRecord(record)&&
+    record.phase==='observed-run'&&
+    record.realm===p.realm()&&record.name===me.name&&
+    inside?.run===record.observed.run&&
+    p.c?.map===record.observed.map;
+  };
+  if(!guard())return false;
+  try{if(p.has('cave_exit')!==true)return false;}catch{return false;}
+  const expected=record.observed.run;
+  return bot.exec.dispatch('cave.exit.once',
+   ['lifecycle','movement','account'],guard,()=>{
+    if(!markExitUnknown())throw Error('Cave exit dispatch not durably journaled');
+    return Promise.resolve(p.call('cave_exit')).then(result=>{
+     noteExitReply(result);return result;
+    });
+   },{value:true,timeout:25000,delay:1000,observe:()=>false});
+ }
+ // Clearing is a separate EXPLICIT decision, never an executor success
+ // callback. It requires a positive exit RPC result plus an independently
+ // refreshed cave_info reply AFTER that acknowledgement. We do not infer
+ // exit from a missing local cave state, paused clock or disconnect.
+ function confirmExit(){
+  if(closed||!bot.running||readFailed||writeFailed||
+     !validCaveLifecycleRecord(record)||
+     record.phase!=='exit-dispatch-unknown'||
+     record.realm!==p.realm()||record.name!==me.name||
+     !record.exitReply||record.exitSession!==bot.session||
+     bot.exec?.pending?.size>0||
+     bot.journal||bot.inventoryBlocked)return false;
+  const state=bot.cave?.status?.(),v=state?.visit;
+  const at=now();
+  if(!caveLifecycleTime(at)||!v||
+     v.resume!==null||typeof v.available!=='boolean'||
+     !caveLifecycleTime(v.observedAt)||
+     !caveLifecycleTime(v.serverTime)||
+     v.observedAt<=record.exitReply.at||
+     v.serverTime<record.exitReply.at||
+     v.observedAt>at||at-v.observedAt>30000||
+     state.live||p.c?.map!=='main'||
+     p.c?.cave!==null&&p.c?.cave!==undefined||
+     p.c?.in!==undefined&&p.c.in!=='main')return false;
+  return durable(null);
+ }
  function sample(){
   if(closed||readFailed||writeFailed)return;
   const observed=live(),at=now();
@@ -266,6 +362,6 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    live()!==null)return false;
   return durable(null);
  }
- return {prepare,markDispatchUnknown,requestEntry,sample,
-  discardPrepared,status,close(){closed=true;}};
+ return {prepare,markDispatchUnknown,requestEntry,requestExit,
+  confirmExit,sample,discardPrepared,status,close(){closed=true;}};
 }

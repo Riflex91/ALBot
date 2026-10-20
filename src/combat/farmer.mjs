@@ -408,14 +408,36 @@ export function createFarmer(bot){
   },attack.invoke,{delay:100,onSettle:attack.settle});
   return true;
 }
-// Independent low-risk cleanup at a reached shared spawn. Try an exact
-// one-shot first, but permit a conservatively proven short encounter when
-// a small harmless mob takes two to four strikes. Live admission is
-// rechecked at dispatch; never chase or bypass team risk limits.
+// The leader owns the approved FARM PLAN, never a monopoly on attacks.
+// Followers own distinct local neutral targets once they reach the plan.
+// A strictly bounded short/one-hit proof is preferred, but it is no longer
+// the sole gateway: live low-threat admission is independently available.
+let lastFollowerSpawnAudit=0;
 function independentSpawnEngagement(){
- if(me.name===bot.leader||!cfg.party.enabled||bot.strategy?.busy||
-    bot.movement.order||bot.recovering||bot.journal||
-    bot.inventoryBlocked||bot.logistics?.reserved)return false;
+ if(me.name===bot.leader||!cfg.party.enabled)return false;
+ const plan=bot.teamPlan?.heartbeat?.();
+ const engagedFarm=plan&&plan.realm===p.realm()&&
+   samePlace(p.c,plan)&&distance(p.c,plan)<225;
+ const diagnostic=(code,visible=[])=>{
+   const now=Date.now();
+   if(!engagedFarm||now-lastFollowerSpawnAudit<10000)return;
+   lastFollowerSpawnAudit=now;
+   bot.event?.('combat.followerSpawnAudit',{
+     code,plan:plan.id,monster:plan.target,
+     movement:bot.movement.order?.owner??null,
+     available:visible.length,
+     samples:visible.slice(0,5).map(m=>{
+       const assessment=bot.encounter?.sharedSpawnAssessment?.(m);
+       return String(m.id)+':'+(assessment?.reason??'unavailable')+
+         ':range='+Math.round(distance(p.c,m));
+     }).join('|')
+   });
+ };
+ if(bot.strategy?.busy||bot.movement.order||bot.recovering||
+    bot.journal||bot.inventoryBlocked||bot.logistics?.reserved){
+   diagnostic('operational-hold');
+   return false;
+ }
  const range=Math.max(5,(p.c.range??0)-
    Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
  const reserved=()=>new Set((bot.farmers??[])
@@ -423,15 +445,21 @@ function independentSpawnEngagement(){
    .filter(x=>x!=null).map(String));
  const claimed=reserved();
  const proof=m=>bot.encounter?.soloOneShot?.(m)||
-   bot.encounter?.soloBoundedSpawn?.(m);
+   bot.encounter?.soloBoundedSpawn?.(m)||
+   bot.encounter?.soloSharedSpawn?.(m);
+ const visible=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
+   !m.target&&m.mtype===plan?.target);
  const eligible=m=>m?.id!=null&&!claimed.has(String(m.id))&&
    distance(p.c,m)<=range&&proof(m)&&
    bot.allowed(m)&&p.call('can_attack',m)&&
    !p.call('is_on_cooldown','attack');
- const candidate=bot.monsters().filter(eligible)
+ const candidate=visible.filter(eligible)
    .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
      String(a.id).localeCompare(String(b.id)))[0];
- if(!candidate)return false;
+ if(!candidate){
+  diagnostic(visible.length?'no-admitted-in-range-target':'no-visible-neutral-spawn',visible);
+  return false;
+ }
  const id=candidate.id,check=()=>{
    const live=bot.entity(id);
    return !!live&&!reserved().has(String(id))&&
@@ -439,21 +467,26 @@ function independentSpawnEngagement(){
      proof(live)&&bot.allowed(live)&&
      p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
  };
- bot.target=candidate;const exact=!!bot.encounter?.soloOneShot?.(candidate);
- bot.reason=(exact?'Eigenständiger One-Shot: ':'Eigenständiger sicherer Kurz-Kampf: ')+candidate.mtype;
+ const exact=!!bot.encounter?.soloOneShot?.(candidate);
+ const bounded=!exact&&!!bot.encounter?.soloBoundedSpawn?.(candidate);
+ bot.target=candidate;
+ bot.reason='Eigener sicherer Spawnkampf: '+candidate.mtype;
  bot.skills.rotation(null);
  if(p.c.target!==id)
-   exec.run('target',['target'],()=>{const live=bot.entity(id);
-     return !!live&&proof(live)&&
-       bot.allowed(live)&&!reserved().has(String(id));
+   exec.run('target',['target'],()=>{
+     const live=bot.entity(id);
+     return !!live&&proof(live)&&bot.allowed(live)&&
+       !reserved().has(String(id));
    },()=>p.call('change_target',bot.entity(id)),{delay:500});
  const attack=trackedAttack(id);
  if(exec.run('attack',['attack','mana'],check,attack.invoke,{
    delay:100,onSettle:attack.settle}))
-  bot.event?.(exact?'combat.independentOneShot':'combat.independentBoundedSpawn',{
-   target:id,monster:candidate.mtype,
-   mode:exact?'single-basic-attack':'bounded-short-neutral-fight',
-   plan:bot.teamPlan?.heartbeat?.()?.id});
+  bot.event?.(exact?'combat.independentOneShot':
+    bounded?'combat.independentBoundedSpawn':'combat.independentSharedSpawn',{
+    target:id,monster:candidate.mtype,
+    mode:exact?'one-shot':bounded?'short-bounded':'shared-low-threat',
+    plan:plan?.id,range:Math.round(distance(p.c,candidate))});
+ else diagnostic('attack-dispatch-denied',[candidate]);
  return true;
 }
 function recoverCohesion(now){

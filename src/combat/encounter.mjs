@@ -1,4 +1,4 @@
-import {neutralPullReadiness,verifiedFollowerOneShot,verifiedFollowerBoundedSpawn} from './team-readiness.mjs';
+import {neutralPullReadiness,verifiedFollowerOneShot,verifiedFollowerBoundedSpawn,assessFollowerSharedSpawn} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
@@ -232,9 +232,44 @@ export function createEncounter(bot){
     return null;
   return proof;
  }
+ // A shared farming plan is a destination and species contract, not a
+ // leader-exclusive combat target. Every assembled, healthy farmer may
+ // independently handle one sufficiently harmless nearby normal monster.
+ // Keep this separate from the legacy one-hit gate and adaptive group
+ // multi-pull state, whose exact-kill and phase assumptions are different.
+ function sharedSpawnAssessment(m){
+  const deny=reason=>({allowed:false,reason});
+  if(!m||bot.me?.role!=='farmer'||bot.me.name===bot.leader||
+     !bot.cfg.party?.enabled||!bot.running||bot.p.c.rip||
+     bot.p.parent?.is_pvp||bot.p.G.maps?.[bot.p.c.map]?.pvp)
+   return deny('not-active-overworld-follower');
+  if(bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     bot.account?.rotationPending?.()||bot.teamTravel?.blocked||
+     bot.strategy?.busy||bot.recovering||
+     bot.combatAssessment?.emergency?.()?.active||
+     bot.teamPlan?.wantsCombat?.()===false||
+     bot.free?.()<=(bot.cfg.farming?.freeSlots??0))
+   return deny('follower-operational-hold');
+  const plan=bot.teamPlan?.heartbeat?.();
+  if(!plan||bot.teamPlan?.target?.()!==m.mtype)
+   return deny('monster-not-current-farm-species');
+  if(bot.strategy?.safeTarget?.(m.mtype,m,true)!==true)
+   return deny('strategy-declines-monster');
+  const engaged=bot.monsters().filter(x=>x?.hp>0&&!x.dead&&
+   x.target&&bot.teamNames.includes(x.target));
+  if(engaged.some(x=>x.target===bot.p.c.name))
+   return deny('follower-already-under-attack');
+  if(engaged.length>=Math.min(3,bot.cfg.farming?.maxAggro??1))
+   return deny('team-threat-capacity-reached');
+  return assessFollowerSharedSpawn(bot.p.c,m,{
+   plan,leader:bot.transport?.fresh?.(bot.leader),
+   realm:bot.p.realm(),game:bot.p.G
+  });
+ }
+ function soloSharedSpawn(m){return sharedSpawnAssessment(m).allowed===true;}
  function permit(m){
   if(m.target)return true;
-  if(soloOneShot(m)||soloBoundedSpawn(m))return true;
+  if(soloOneShot(m)||soloBoundedSpawn(m)||soloSharedSpawn(m))return true;
   const readiness=neutralPullReadiness(bot);
   if(!readiness.ready)return false;
   const detached=readiness.detachment;
@@ -289,5 +324,5 @@ export function createEncounter(bot){
   };
   return bot.exec.run('attack',['attack','mana'],guard,()=>bot.p.call('attack',bot.entity(candidate.id)),{delay:250});
  }
- return {tick,permit,soloOneShot,soloBoundedSpawn,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
+ return {tick,permit,soloOneShot,soloBoundedSpawn,soloSharedSpawn,sharedSpawnAssessment,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
 }

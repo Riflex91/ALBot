@@ -220,7 +220,10 @@ export function createSkills(bot){
         skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G})||
         (!remaining.length&&verifiedFollowerAoeBoundedSpawn(p.c,liveTargets,{
           skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G}));
-      return !!proof&&
+      const shared=!remaining.length&&liveTargets.length>=
+        (id==='3shot'?3:4)&&liveTargets.every(m=>
+          bot.encounter?.soloSharedSpawn?.(m)===true);
+      return !!(proof||shared)&&
         bot.encounter?.approvePullSet?.([...remaining,...liveTargets])?.safe===true;
     };
     if(independentAimed&&!independentProof())return false;
@@ -411,7 +414,8 @@ export function createSkills(bot){
         m.type==='monster'&&!m.target&&!claimed.has(String(m.id))&&
         distance(p.c,m)<=range&&
         (bot.encounter.soloOneShot(m,skill)||
-         !engaged.length&&bot.encounter.soloBoundedSpawn?.(m,skill))&&
+         !engaged.length&&(bot.encounter.soloBoundedSpawn?.(m,skill)||
+           bot.encounter.soloSharedSpawn?.(m)))&&
         bot.allowed(m,{independentOneShotSkill:id}))
        .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
           String(a.id).localeCompare(String(b.id)))
@@ -421,16 +425,20 @@ export function createSkills(bot){
         skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G});
       const bounded=!engaged.length&&verifiedFollowerAoeBoundedSpawn(p.c,selected,{
         skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G});
-      if(!(exact||bounded)||
+      const shared=!engaged.length&&selected.every(m=>
+        bot.encounter?.soloSharedSpawn?.(m)===true);
+      if(!(exact||bounded||shared)||
          bot.encounter?.approvePullSet?.([...engaged,...selected])?.safe!==true)continue;
       if(use(id,selected[0],.2,600,selected.length,false,selected)){
         bot.target=selected[0];
         bot.event?.(exact?'combat.independentOneShotAoE':
-          'combat.independentBoundedAoE',{
+          bounded?'combat.independentBoundedAoE':
+          'combat.independentSharedSpawnAoE',{
           skill:id,targets:selected.length,
           targetIds:selected.map(m=>m.id).join(','),
           plan:plan.id,mode:exact?'verified-aimed-lethal-group':
-             'verified-bounded-short-multitarget'});
+             bounded?'verified-bounded-short-multitarget':
+             'verified-low-threat-shared-spawn'});
         return true;
       }
     }

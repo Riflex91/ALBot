@@ -121,3 +121,33 @@ test('G12 additional server response fields cannot replace missing item effects'
  f.tailoring.destatTick();await f.operation.call();
  assert.equal(f.operation.observe(),false);
 });
+
+test('G12 malformed same-variant stacks cannot camouflage de-stat reserves',()=>{
+ for(const quantity of [0,null,-1,1.5,Infinity,NaN]){
+  const f=fixture();
+  f.items[1].q=quantity;
+  assert.equal(destatCandidate(f.bot),null,
+   'invalid sibling quantity must not be accepted: '+String(quantity));
+ }
+ const f=fixture();
+ f.items.push(null);f.p.c.isize=5;
+ f.items[2]={name:'staff',level:0,stat_type:'str',q:-1};
+ f.items[3]={name:'staff',level:0,stat_type:'str',q:1};
+ assert.equal(destatCandidate(f.bot),null,
+  'a net-zero invalid pair must not authorize a mutation');
+ f.items[2]=null;f.items[3]=null;
+ assert.ok(destatCandidate(f.bot),'valid ordinary implicit unit stacks remain usable');
+});
+
+test('G12 invalid returned-scroll baseline cannot become a value receipt',()=>{
+ const f=fixture();
+ f.items[2]={name:'strscroll',level:0,q:null};
+ assert.equal(destatCandidate(f.bot),null,
+  'explicit null output quantity is not an empty / one-unit baseline');
+ f.items[2]=null;
+ assert.ok(destatCandidate(f.bot));
+ assert.equal(f.tailoring.destatTick(),true);
+ f.items[1].q=0;
+ assert.equal(f.operation.guard(),false,
+  'post-plan corruption of sibling inventory invalidates queued destat');
+});

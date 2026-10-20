@@ -7,10 +7,12 @@ import {caveRetreatLocalProof,createCaveRetreatConsensus}
 import {fitHeartbeat} from '../src/party/transport.mjs';
 import {createCaveRetreatPreparation,caveRetreatPreparationPreflight}
  from '../src/world/cave-retreat-preparation.mjs';
+import {createCaveRetreatWatchdog,caveRetreatArrivalEvidence}
+ from '../src/world/cave-retreat-watchdog.mjs';
 
 const when=1770000000000,run='a'.repeat(24),map=`zone_${run}_1`;
 function fixture(){
- const names=['R1','R2','P'],events=[],calls=[],votes={},prepared={},
+ const names=['R1','R2','P'],events=[],calls=[],votes={},prepared={},aborts={} ,
  state={now:when,clear:true,monsters:[],paused:false};
  const members={
   R1:{name:'R1',ctype:'ranger',class:'ranger',map,in:map,cave:{run},
@@ -50,7 +52,8 @@ function fixture(){
    movement:{order:null,nativeBusy:()=>false},
    transport:{fresh:other=>other===name?null:{
     ...members[other],retreatVote:votes[other]??null,
-    retreatPrepare:prepared[other]??null}},
+    retreatPrepare:prepared[other]??null,
+    retreatAbort:aborts[other]??null}},
    entity:other=>members[other]?{
     ...members[other],visible:true,type:'character'}:null,
    monsters:()=>state.monsters,
@@ -68,6 +71,7 @@ function fixture(){
    now:()=>state.now});
   bot.caveRetreat=createCaveRetreatConsensus(bot,{now:()=>state.now});
   bot.caveRetreatPrepare=createCaveRetreatPreparation(bot,{now:()=>state.now});
+  bot.caveRetreatWatchdog=createCaveRetreatWatchdog(bot,{now:()=>state.now});
   bots[name]=bot;
  }
  function publish(){
@@ -80,8 +84,12 @@ function fixture(){
    prepared[name]=bots[name].caveRetreatPrepare.heartbeat();
   return prepared;
  }
+ function arm(){
+  publish();publishPrepared();
+  for(const name of names)aborts[name]=bots[name].caveRetreatWatchdog.heartbeat();
+ }
  return {bots,members,names,monsters,state,calls,events,votes,
-  prepared,publish,publishPrepared};
+  prepared,aborts,publish,publishPrepared,arm};
 }
 const movementCalls=f=>f.calls.filter(([,kind])=>
  kind==='move'||kind==='smart_move'||kind==='town'||
@@ -409,4 +417,189 @@ test('N12 fitting a large heartbeat retains both compact safety receipts',()=>{
  assert.deepEqual(packed.retreatPrepare,prep);
  assert.equal(packed.advice,undefined);
  assert.ok(JSON.stringify(packed).length<=1500);
+});
+
+test('N12 read-only Cave watchdog only arms after unanimous two-round preparation',()=>{
+ const f=fixture(),first=f.bots.R1.caveRetreatWatchdog.status();
+ assert.equal(first.ready,false);
+ assert.equal(first.canMove,false);
+ assert.equal(f.bots.R1.caveRetreatWatchdog.heartbeat(),null);
+ f.arm();
+ for(const name of f.names){
+  const st=f.bots[name].caveRetreatWatchdog.status();
+  assert.equal(st.ready,true,st.reason);
+  assert.equal(st.phase,'staged');
+  assert.equal(st.executable,false);
+  assert.equal(st.canMove,false);
+  assert.equal(st.canAttack,false);
+  assert.deepEqual(st.participants,['P','R1','R2']);
+ }
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 a changed Cave encounter latches an abort with original proof identity',()=>{
+ const f=fixture();f.arm();
+ const expected=f.bots.R1.caveRetreatPrepare.status().proofKey;
+ f.monsters[0].hp--;
+ assert.equal(f.bots.R1.caveRetreatWatchdog.status().ready,false);
+ f.aborts.R1=f.bots.R1.caveRetreatWatchdog.heartbeat();
+ assert.equal(f.aborts.R1.v,1);
+ assert.equal(f.aborts.R1.proof,expected);
+ assert.equal(f.aborts.R1.reason,'unanimous-preparation-no-longer-valid');
+ assert.equal(f.bots.R1.caveRetreatWatchdog.status().phase,'aborted');
+ assert.equal(f.bots.R1.caveRetreatWatchdog.status().canMove,false);
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 one verified peer abort stops all remaining staged participants',()=>{
+ const f=fixture();f.arm();
+ f.aborts.R2={v:1,actor:'R2',run,floor:1,
+  proof:f.bots.R1.caveRetreatPrepare.status().proofKey,
+  at:when,reason:'native-route-lost'};
+ assert.equal(f.bots.R1.caveRetreatWatchdog.status().reason,
+  'peer-aborted-retreat');
+ f.aborts.R1=f.bots.R1.caveRetreatWatchdog.heartbeat();
+ assert.equal(f.aborts.R1.reason,'peer-aborted-retreat');
+ assert.equal(f.bots.P.caveRetreatWatchdog.status().reason,
+  'peer-aborted-retreat');
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 attacker, peer and movement drift rejects the staged Cave checkpoint',()=>{
+ const edits=[
+  f=>{f.members.P.hp--},
+  f=>{f.members.R1.x+=5},
+  f=>{f.monsters[1].x-=5},
+  f=>{f.state.monsters.push({id:'c',type:'monster',
+   mtype:'shade',map,in:map,x:20,y:0,hp:80,dead:false,target:null})},
+  f=>{f.state.now=when+2600},
+  f=>{f.bots.R1.journal={kind:'gold'}},
+  f=>{f.bots.R1.movement.order={owner:'farm',mode:'smart_move'}},
+  f=>{f.members.R2.received=when-3200},
+  f=>{f.state.paused=true},
+  f=>{f.members.R1.moving=true}
+ ];
+ for(let i=0;i<edits.length;i++){
+  const f=fixture();f.arm();edits[i](f);
+  const r=f.bots.R1.caveRetreatWatchdog.status();
+  assert.equal(r.ready,false,'case '+i+': '+r.reason);
+  assert.equal(r.canMove,false);
+  assert.equal(f.bots.R1.caveRetreatWatchdog.heartbeat()?.v,1);
+  assert.deepEqual(movementCalls(f),[]);
+ }
+});
+
+test('N12 read-only watchdog status never issues native checks after arm',()=>{
+ const f=fixture();f.arm();
+ const n=f.calls.length;
+ for(let i=0;i<5;i++){
+  const status=f.bots.R1.caveRetreatWatchdog.status();
+  assert.equal(status.ready,true);
+ }
+ assert.equal(f.calls.length,n,'status is pure and cannot issue can_move_to');
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 arrival proof requires three independent dispatch receipts and bounded native endpoints',()=>{
+ const f=fixture();f.arm();
+ const proof=f.bots.R1.caveRetreatPrepare.status().proofKey;
+ const waypoints=f.names.map(name=>({name,...f.votes[name]}));
+ const observations=waypoints.map(w=>({
+  name:w.name,run,floor:1,map,in:map,
+  running:true,rip:false,hp:55,received:when+100,
+  x:w.toX,y:w.toY,
+  retreatDispatch:{v:1,owner:'cave-retreat',proof,
+   run,floor:1,map,at:when+30,
+   x:w.x,y:w.y,toX:w.toX,toY:w.toY}
+ }));
+ const args={proof,run,floor:1,map,participants:f.names,
+  waypoints,observations,now:when+100,startedAt:when};
+ const arrival=caveRetreatArrivalEvidence(args);
+ assert.equal(arrival.ready,true,arrival.reason);
+ assert.equal(arrival.phase,'arrived');
+ assert.equal(arrival.complete,true);
+ assert.deepEqual(arrival.arrived,['P','R1','R2']);
+ assert.equal(arrival.canMove,false);
+ assert.equal(arrival.executable,false);
+ observations[0].x=waypoints[0].x;
+ const pending=caveRetreatArrivalEvidence(args);
+ assert.equal(pending.ready,true,pending.reason);
+ assert.equal(pending.complete,false);
+ assert.equal(pending.phase,'observing');
+ assert.deepEqual(pending.waiting,['R1']);
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 arrival evidence denies any forged, missing or cross-floor native receipt',()=>{
+ const f=fixture();f.arm();
+ const proof=f.bots.R1.caveRetreatPrepare.status().proofKey;
+ const waypoints=f.names.map(name=>({name,...f.votes[name]}));
+ const source=waypoints.map(w=>({
+  name:w.name,run,floor:1,map,in:map,
+  running:true,hp:100,received:when+100,
+  x:w.toX,y:w.toY,
+  retreatDispatch:{v:1,owner:'cave-retreat',proof,
+   run,floor:1,map,at:when+30,
+   x:w.x,y:w.y,toX:w.toX,toY:w.toY}
+ }));
+ const edits=[
+  xs=>{xs[1].retreatDispatch=null},
+  xs=>{xs[1].retreatDispatch.owner='farm'},
+  xs=>{xs[1].retreatDispatch.proof='forged'},
+  xs=>{xs[1].retreatDispatch.map='main'},
+  xs=>{xs[1].retreatDispatch.toX+=3},
+  xs=>{xs[1].retreatDispatch.at=when-1},
+  xs=>{xs[1].x+=35},
+  xs=>{xs[1].map='main'},
+  xs=>{xs[1].floor=2},
+  xs=>{xs[1].received=when-3001},
+  xs=>{xs[1].hp=0},
+  xs=>{xs[1].name=xs[0].name}
+ ];
+ for(let i=0;i<edits.length;i++){
+  const observations=structuredClone(source);edits[i](observations);
+  const report=caveRetreatArrivalEvidence({
+   proof,run,floor:1,map,participants:f.names,
+   waypoints,observations,now:when+100,startedAt:when});
+  assert.equal(report.complete,false,'variant '+i+' '+report.reason);
+  assert.equal(report.ready,false);
+  assert.equal(report.canMove,false);
+ }
+ assert.deepEqual(movementCalls(f),[]);
+});
+
+test('N12 arrival deadline, stale heartbeat and wrong original roster fail closed',()=>{
+ const f=fixture();f.arm();
+ const proof=f.bots.R1.caveRetreatPrepare.status().proofKey;
+ const waypoints=f.names.map(name=>({name,...f.votes[name]}));
+ const source=waypoints.map(w=>({
+  name:w.name,run,floor:1,map,in:map,
+  hp:100,running:true,received:when+6100,
+  x:w.toX,y:w.toY,
+  retreatDispatch:{v:1,owner:'cave-retreat',proof,run,
+   floor:1,map,at:when+20,x:w.x,y:w.y,toX:w.toX,toY:w.toY}
+ }));
+ const args={proof,run,floor:1,map,participants:f.names,
+  waypoints,observations:source,now:when+6100,startedAt:when};
+ assert.equal(caveRetreatArrivalEvidence(args).ready,false);
+ assert.equal(caveRetreatArrivalEvidence({...args,
+  now:when+100,observations:source.slice(0,2)}).ready,false);
+ assert.equal(caveRetreatArrivalEvidence({...args,
+  now:when+100,participants:['R1','R1','P']}).ready,false);
+ assert.equal(caveRetreatArrivalEvidence({...args,
+  now:when+100,startedAt:null}).ready,false);
+});
+
+test('N12 a bounded heartbeat preserves the peer safety abort over optional diagnostics',()=>{
+ const f=fixture();f.arm();
+ f.monsters[0].hp--;
+ const abort=f.bots.R1.caveRetreatWatchdog.heartbeat();
+ const packet=fitHeartbeat({items:[],materials:[],name:'R1',
+  map,realm:'EUI',retreatAbort:abort,retreatPrepare:null,
+  advice:'x'.repeat(2400),performance:{blob:'y'.repeat(3200)}},1000);
+ assert.ok(packet);
+ assert.deepEqual(packet.retreatAbort,abort);
+ assert.equal(packet.advice,undefined);
+ assert.ok(JSON.stringify(packet).length<=1000);
+ assert.deepEqual(movementCalls(f),[]);
 });

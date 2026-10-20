@@ -301,3 +301,92 @@ test('W13/G04 realm switch resets held cursor and discards in-flight old-page re
  assert.equal(f.data.get(f.key).realm,'USI');
  assert.equal(mail.status().cursor,null);
 });
+
+test('W13/G03 current-page v2 checkpoint recovers taken mail on later page directly',async()=>{
+ const pendingRow={...row,taken:true,can_take:false};
+ const f=durableMailFixture({saved:{
+  version:2,owner:'A',realm:'EUI',cursor:'40'}});
+ const attachment=rewardMailAttachment(row,'A',G);
+ f.bot.journal={kind:'mail.claim',mailId:row.id,owner:'A',realm:'EUI',
+  attachment,beforeInventory:[null,null].map(fingerprint),beforeGold:100};
+ f.bot.inventoryBlocked=true;
+ f.p.c.items=[attachment,null];
+ f.bot.endValue=result=>{
+  assert.equal(result,'confirmed');f.bot.journal=null;
+ };
+ f.p.readRewardMailPage=async cursor=>{
+  f.requests.push(cursor);
+  return cursor==='40'?{mail:[pendingRow],more:false}:
+   {mail:[{...row,id:'ML_cave:other:0'}],more:true,cursor:'40'};
+ };
+ const handler=f.make();handler.tick();await f.flush();
+ assert.deepEqual(f.requests,['40'],
+  'versioned held page resumes at the exact page owning the claim');
+ assert.equal(f.bot.journal,null);
+ assert.equal(f.pending,null);
+ assert.equal(handler.status().queued,0);
+});
+
+test('W13/G03 legacy later-page recovery scans past earlier mail without consuming it',async()=>{
+ const f=durableMailFixture({saved:{cursor:'40'}}),attachment=
+  rewardMailAttachment(row,'A',G);
+ const other={...row,id:'ML_cave:unclaimed:0'};
+ const taken={...row,taken:true,can_take:false};
+ f.bot.journal={kind:'mail.claim',mailId:row.id,owner:'A',realm:'EUI',
+  attachment,beforeInventory:[null,null].map(fingerprint),beforeGold:100};
+ f.bot.inventoryBlocked=true;
+ f.p.c.items=[attachment,null];
+ f.bot.endValue=result=>{
+  assert.equal(result,'confirmed');f.bot.journal=null;
+ };
+ f.p.readRewardMailPage=async cursor=>{
+  f.requests.push(cursor);
+  return cursor===null?{mail:[other],more:true,cursor:'40'}:
+   {mail:[taken],more:false};
+ };
+ const handler=f.make();handler.tick();await f.flush();
+ assert.deepEqual(f.requests,[null]);
+ assert.equal(handler.status().queued,0,
+  'a pending value journal prohibits claiming other pages');
+ assert.deepEqual(f.data.get(f.key),{
+  version:2,owner:'A',realm:'EUI',cursor:null,recoveryScan:true
+ });
+ assert.equal(f.pending,null);
+ handler.close();
+ const resumed=f.make();
+ resumed.tick();await f.flush();
+ assert.deepEqual(f.requests,[null,null],
+  'restart must restart the recovery sweep without losing earlier mail');
+ f.advance(5001);resumed.tick();await f.flush();
+ assert.deepEqual(f.requests,[null,null,'40']);
+ assert.equal(f.bot.journal,null,'exact taken plus physical delta resolves old claim');
+ assert.equal(f.pending,null,'recovery must never dispatch the old claim again');
+ assert.equal(f.data.get(f.key).cursor,null);
+ resumed.tick();await f.flush();
+ assert.deepEqual(f.requests,[null,null,'40',null]);
+ assert.equal(resumed.status().queued,1,
+  'after settlement the unrelated earlier attachment remains claimable');
+ resumed.tick();
+ assert.equal(f.pending.details.mailId,other.id);
+});
+
+test('W13/G03 a matching journal with no physical delta never unlocks or reclaims',async()=>{
+ const f=durableMailFixture({saved:{cursor:'40'}}),taken={
+  ...row,taken:true,can_take:false};
+ f.bot.journal={kind:'mail.claim',mailId:row.id,owner:'A',realm:'EUI',
+  attachment:rewardMailAttachment(row,'A',G),
+  beforeInventory:[null,null].map(fingerprint),beforeGold:100};
+ f.bot.inventoryBlocked=true;
+ f.p.readRewardMailPage=async cursor=>{
+  f.requests.push(cursor);
+  return cursor===null?{mail:[],more:true,cursor:'40'}:
+   {mail:[taken],more:false};
+ };
+ const mail=f.make();mail.tick();await f.flush();
+ f.advance(5001);mail.tick();await f.flush();
+ assert.equal(f.bot.journal.kind,'mail.claim');
+ assert.equal(f.bot.inventoryBlocked,true);
+ assert.equal(mail.status().queued,0);
+ assert.equal(f.pending,null);
+ assert.equal(f.data.get(f.key).cursor,null);
+});

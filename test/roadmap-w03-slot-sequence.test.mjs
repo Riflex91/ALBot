@@ -149,3 +149,54 @@ test('W03/G01: exchange capacity uses signed headroom, not overflow holes',()=>{
  assert.equal(forecast.worstOutputSlots,1);
  assert.equal(forecast.worstFree,-1);
 });
+
+test('W02/W04 malformed initial stock cannot certify a physical slot chain',()=>{
+ for(const q of [null,0,-1,.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1]){
+  const items=[{name:'ore',q},null,...fill(40)];
+  const result=proof(items,[withdraw('bank',{name:'ring'})]);
+  assert.equal(result.feasible,false,String(q));
+  assert.equal(result.reason,'invalid-inventory');
+  assert.equal(result.executable,false);
+ }
+ assert.equal(proof([{name:'ore'},null,...fill(40)],
+  [withdraw('bank',{name:'ring'})]).feasible,true,
+  'only an absent q may represent an unstacked ordinary item');
+});
+
+test('W02/W04 bank staging rejects false single-unit source quantities',()=>{
+ const items=[null,...fill(41)];
+ for(const q of [null,0,-1,1.5,NaN]){
+  const result=proof(items,[{...withdraw('bank',{name:'ring',q}),
+   quantity:1}]);
+  assert.equal(result.feasible,false,String(q));
+  assert.equal(result.reason,'no-proven-physical-sequence');
+ }
+ assert.equal(proof(items,[withdraw('bank',{name:'ring',q:1})]).feasible,true);
+ assert.equal(proof(items,[withdraw('bank',{name:'ring'})]).feasible,true);
+});
+
+test('W02/W04 receive and production outputs cannot silently normalize contradicting stack q',()=>{
+ const items=[null,...fill(41)];
+ for(const q of [null,0,-1,2,NaN]){
+  const receiveResult=proof(items,[receive('gift',{name:'potion',q},1)]);
+  assert.equal(receiveResult.feasible,false,String(q));
+  const produced=proof([{name:'ore',q:1},...fill(41)],[{
+   id:'craft',kind:'produce',permitted:true,deterministic:true,
+   inputs:[{slot:0,quantity:1}],
+   outputs:[{item:{name:'ring',q},quantity:1}]
+  }]);
+  assert.equal(produced.feasible,false,String(q));
+ }
+ assert.equal(proof(items,[receive('gift',{name:'potion'},1)]).feasible,true);
+ assert.equal(proof(items,[receive('gift',{name:'potion',q:1},1)]).feasible,true);
+});
+
+test('W02/W04 protected quantity drift cannot create empty slots through remove or merge',()=>{
+ for(const q of [null,-1,.5]){
+  const items=[{name:'potion',q},{name:'potion',q:5},...fill(40)];
+  assert.equal(proof(items,[remove('remove',0)]).feasible,false);
+  assert.equal(proof(items,[merge('merge',0,1)]).feasible,false);
+ }
+ const good=[{name:'potion',q:4},{name:'potion',q:6},...fill(40)];
+ assert.equal(proof(good,[merge('merge',0,1)]).feasible,true);
+});

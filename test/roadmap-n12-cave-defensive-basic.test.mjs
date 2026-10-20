@@ -232,3 +232,21 @@ test('N12 immediate network-boundary recheck aborts a monster switching victims'
  assert.equal(attacks(f).length,0);
  assert.equal(f.bot.caveCombat.status().last.focusId,'angry');
 });
+
+test('N12 critically injured Cave Ranger rests without overworld retreat or neutral pull',()=>{
+ const f=fixture(),stops=[];
+ f.c.hp=15;
+ f.bot.cfg.farming.hpBelow=0;
+ f.bot.cfg.farming.restBelow=.2;
+ f.bot.movement={order:{owner:'farm'},
+  stop:()=>stops.push('stop'),
+  go:()=>{throw Error('normal retreat cannot navigate generated Cave floor')}};
+ f.bot.skills={rotation:()=>{throw Error('overworld recovery skills not authorized')}};
+ f.bot.target={id:'old-farm-target'};
+ createFarmer(f.bot).tick();
+ assert.deepEqual(stops,['stop']);
+ assert.equal(f.bot.target,null);
+ assert.equal(attacks(f).length,0,
+  'team combat readiness is denied below 70% own Ranger HP');
+ assert.match(f.bot.reason,/^Cave-Gruppe:/);
+});

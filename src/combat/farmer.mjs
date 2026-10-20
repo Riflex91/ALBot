@@ -257,6 +257,16 @@ export function createFarmer(bot){
     }
     if(c.hp/c.max_hp<cfg.farming.restBelow)rest=true;
     if(rest&&c.hp/c.max_hp>=cfg.farming.resumeAbove)rest=false;
+    // Generated Cave floors have their OWN bound healer/defense executors.
+    // Do not run overworld rest's retreat(), roadTravel() or
+    // skills.rotation(null) here: all three can schedule ordinary farm
+    // movement/skills before the Cave-only branch in tick() gets control.
+    // Survival potions/regen above remain available, while a wounded Priest
+    // can still reach the Cave-specific single-target healing executor.
+    if(inCaveInstance(c)){
+      if(rest){bot.target=null;bot.reason='Cave: Schonung und Teamheilung';}
+      return false;
+    }
     // A Ranger already following a valid farm route can drink while moving.
     // Stopping that route at 40% HP to orbit a roadside bigbird repeatedly
     // separated both Rangers from the healer in captured live traces.

@@ -224,3 +224,23 @@ test('N12 Cave Priest status never heals or exposes mutable character entity',()
  assert.equal(s.attempts,0);
  assert.equal(heals(f).length,0);
 });
+
+test('N12 critically injured Cave Priest still heals self without overworld rest movement',()=>{
+ const f=fixture(),stops=[],actions=[];
+ f.c.hp=10;
+ // No consumable needed: specifically exercise the below-rest HP branch
+ // rather than the ordinary potion/regen resource decision.
+ f.bot.cfg.farming.hpBelow=0;
+ f.bot.cfg.farming.restBelow=.2;
+ f.bot.movement={order:{owner:'follow'},
+  stop:()=>stops.push('stop'),
+  go:()=>{throw Error('overworld retreat forbidden in Cave')}};
+ f.bot.skills={rotation:()=>{throw Error('normal rest skill rotation forbidden')}};
+ f.bot.target={id:'overworld-neutral'};
+ createFarmer(f.bot).tick();
+ assert.deepEqual(stops,['stop']);
+ assert.equal(f.bot.target,null);
+ assert.equal(heals(f).length,1,'Cave-specific Priest path remains reachable');
+ assert.equal(heals(f)[0][1],f.c,'own critical HP outranks an injured Ranger');
+ assert.equal(f.bot.reason,'Cave: gezielte Priest-Heilung angefordert');
+});

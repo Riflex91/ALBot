@@ -1,16 +1,18 @@
-import {identity,fingerprint,variantCount,samePlace,distance} from '../core/policy.mjs';
+import {identity,fingerprint,samePlace,distance} from '../core/policy.mjs';
+import {localVariantQuantity} from '../items/stock-policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 
 // G09 first executable increment: take an explicitly approved 1-for-1
 // non-stackable offer. No inferred selling of production inputs, no speculative
 // travel, no own-account swaps and no stand posting.
 const G09_SLOT=/^trade([1-9]|1[0-6])$/;
+const G09_ONE=i=>i?.q===undefined||i.q===1;
 const G09_EXACT=v=>({
  name:v?.name,level:v?.level??0,stat_type:v?.stat_type??'',
  p:v?.p??'',title:v?.title??'',acc:v?.acc??'',data:v?.data
 });
 const G09_SAFE_SINGLE=(item,meta,e,listing=false)=>!!item&&
- e?.safe?.(item)===true&&!!meta&&!meta.s&&(item.q??1)===1&&
+ e?.safe?.(item)===true&&!!meta&&!meta.s&&G09_ONE(item)&&
  !item.acl&&!item.v&&!item.giveaway&&!item.bound&&
  !item.data&&!item.acc&&(!item.rid||listing)&&!item.src;
 // Only server-advertised want attributes we can compare to the actual
@@ -21,13 +23,13 @@ export function exactSwapPaymentWant(want,item){
     !item||typeof item.name!=='string'||!item.name||
     Object.keys(want).some(k=>!G09_WANT_FIELDS.has(k)))return false;
  return want.name===item.name&&(want.level??0)===(item.level??0)&&
-  (want.q??1)===1&&(want.stat_type??'')===(item.stat_type??'')&&
+  G09_ONE(want)&&(want.stat_type??'')===(item.stat_type??'')&&
   (want.p??'')===(item.p??'')&&
   (want.title??'')===(item.title??'');
 }
 const swapCount=(items,item)=>{
  try{
-  const n=variantCount(items,item);
+  const n=localVariantQuantity(items,item);
   return Number.isSafeInteger(n)&&n>=0?n:null;
  }catch{return null;}
 };

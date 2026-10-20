@@ -184,9 +184,15 @@ export function mutationPreservesOperationalGear(bot,inputSlots,{now=Date.now()}
   people.push({class:gear.class,level:gear.level,slots:gear.slots});
  }
  if(!people.length)return pass();
- const items=bot.p.c.items,usable=(i,person)=>!!i&&
-  bot.economy?.safe?.(i)===true&&
-  gearCompatible(bot.p.G,person,i,'mainhand');
+ const items=bot.p.c.items,usable=(i,person)=>{
+  // An omitted q means one ordinary weapon. A stated q must prove one
+  // physical unstacked item: zero, null, fractions and synthetic stacks
+  // cannot stand in for an operable spare mainhand.
+  const q=i?.q===undefined?1:i.q;
+  return !!i&&Number.isSafeInteger(q)&&q===1&&
+   bot.economy?.safe?.(i)===true&&
+   gearCompatible(bot.p.G,person,i,'mainhand');
+ };
  // Compare maximum one-to-one cover, so a weapon cannot be promised to
  // multiple unarmed farmers merely because all can equip the same item.
  const maximum=exclude=>{

@@ -252,3 +252,29 @@ test('W03 invalid or reordered dispatch history is not admissible',()=>{
   assert.equal(validateBankPartialRecord(invalid,{owner,realm,now}).valid,false);
  }
 });
+
+test('W03 partial journal refuses split/return confirmation with invalid quantity components',()=>{
+ const r=checkpoint();
+ const inventory=blank(),pack=blank();
+ const inspect=()=>classifyBankPartialRecord(r,{owner,realm,now,inventory,
+  bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+ pack[7]={...material};
+ inventory[2]={name:'beewing',q:-1};
+ inventory[3]={name:'beewing',q:1};
+ assert.equal(inspect().phase,'ambiguous','invalid zero-sum must not prove original');
+ inventory[2]=null;inventory[3]=null;
+ assert.equal(inspect().phase,'original');
+ pack[7]=null;inventory[0]={name:'beewing',q:31};
+ inventory[1]={name:'beewing',q:100};
+ inventory[2]={name:'beewing',q:.5};
+ inventory[3]={name:'beewing',q:-.5};
+ assert.equal(inspect().phase,'ambiguous','split not proven by net-zero fractions');
+ inventory[2]=null;inventory[3]=null;
+ assert.equal(inspect().phase,'split');
+ inventory[0]=null;pack[7]={name:'beewing',q:31};
+ inventory[2]={name:'beewing',q:null};
+ assert.equal(inspect().phase,'ambiguous',
+  'an explicitly null quantity is not an implicit one-unit stack');
+ inventory[2]=null;
+ assert.equal(inspect().phase,'returned');
+});

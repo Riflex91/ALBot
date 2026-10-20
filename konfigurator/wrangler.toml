@@ -1,0 +1,21 @@
+name = "albot-konfigurator"
+main = "./worker/index.mjs"
+compatibility_date = "2026-10-20"
+# Workers Static Assets are sent through the Worker, so Cloudflare Access
+# checks protect the HTML, CSS and JavaScript, not just the JSON API.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+CONFIG_BRANCH = "main"
+CONFIG_PATH = "albot/item-policies.json"
+PUBLIC_RUNTIME_REPO = "Riflex91/ALBot"
+
+# AFTER creating a Cloudflare D1 database, add the real database_id:
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "albot-konfigurator"
+# database_id = "<YOUR_CLOUDFLARE_D1_DATABASE_ID>"
+# Never commit a real GitHub token, Access secret or Ingest token here.

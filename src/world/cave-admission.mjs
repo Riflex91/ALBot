@@ -37,33 +37,35 @@ export function caveEntryPreflight({visit,realm,name,actor,partyNames,
  if(!actor||actor.name!==name||actor.map!=='main'||
     actor.in!==undefined&&actor.in!=='main'||actor.cave)
   return deny('not-at-main-map',mode,{run});
- if(actor.rip===true||actor.hp<=0||actor.dc===true||
-    actor.moving===true||actor.targets!==0)
+ if(actor.rip===true||!Number.isFinite(actor.hp)||actor.hp<=0||
+    actor.dc===true||actor.moving===true||actor.targets!==0)
   return deny('actor-not-idle-and-alive',mode,{run});
  if(!Number.isFinite(actor.x)||!Number.isFinite(actor.y)||
     Math.hypot(actor.x-816,actor.y-1200)>160)
   return deny('not-at-cave-keeper',mode,{run});
- if(!Array.isArray(partyNames)||partyNames.length<1||
-    partyNames.length>3||new Set(partyNames).size!==partyNames.length||
-    !partyNames.includes(name)||partyNames.some(n=>!boundedName(n)))
+ // The server's generated_return() checks generated_admission(player,[player]),
+ // even when that player is still in a party. Only a NEW run recruits the
+ // complete currently online party. Preserve that critical distinction.
+ const rosterNames=mode==='resume'?[name]:partyNames;
+ if(!Array.isArray(rosterNames)||rosterNames.length<1||
+    rosterNames.length>3||new Set(rosterNames).size!==rosterNames.length||
+    !rosterNames.includes(name)||rosterNames.some(n=>!boundedName(n)))
   return deny('party-roster-not-proven',mode,{run});
- if(mode==='resume'&&partyNames.length!==1)
-  return deny('resume-requires-solo-admission',mode,{run});
- if(!Array.isArray(members)||members.length!==partyNames.length||
-    new Set(members.map(m=>m?.name)).size!==members.length)
+ if(!Array.isArray(members)||new Set(members.map(m=>m?.name)).size!==members.length||
+    (mode==='new'&&members.length!==rosterNames.length))
   return deny('party-members-not-observed',mode,{run});
  const selected=new Set(Array.isArray(allowedNames)?allowedNames:[]);
- for(const memberName of partyNames){
+ for(const memberName of rosterNames){
   if(!selected.has(memberName))return deny('unselected-party-member',mode,{run,member:memberName});
   const m=members.find(p=>p?.name===memberName);
-  if(!m||m.rip===true||m.hp<=0||m.dc===true||
+  if(!m||m.rip===true||!Number.isFinite(m.hp)||m.hp<=0||m.dc===true||
      m.moving===true||m.targets!==0||m.map!=='main'||
      m.in!==undefined&&m.in!=='main'||
      !Number.isFinite(m.x)||!Number.isFinite(m.y)||
      Math.hypot(m.x-816,m.y-1200)>160)
     return deny('party-member-not-admissible',mode,{run,member:memberName});
  }
- return {...BASE,mode,run,party:[...partyNames],
+ return {...BASE,mode,run,party:[...rosterNames],
   localConditionsMet:true,reason:'local-preflight-only'};
 }
 
@@ -73,7 +75,8 @@ export function caveEntryPreflight({visit,realm,name,actor,partyNames,
 export function cavePartyObservation({name,party,partyMap}={}){
  if(!boundedName(name))return {verified:false,reason:'invalid-identity'};
  if(!party){
-  if(partyMap&&typeof partyMap==='object'&&Object.keys(partyMap).length>1)
+  if(partyMap&&typeof partyMap==='object'&&
+     Object.keys(partyMap).some(n=>n!==name))
    return {verified:false,reason:'contradictory-party-observation'};
   return {verified:true,names:[name]};
  }

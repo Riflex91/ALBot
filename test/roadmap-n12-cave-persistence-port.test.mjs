@@ -66,3 +66,16 @@ test('N12 rejected keys cannot read other personal localStorage settings',()=>{
   assert.throws(()=>f.p.readCaveJournal(rejected),/Invalid Cave journal key/);
  }
 });
+
+test('N12 strict Cave vote namespace is durable and corrupt vote JSON fails closed',()=>{
+ const f=storageFixture(),vote='albot:cave-vote:P';
+ assert.equal(f.p.readCaveJournal(vote),null);
+ const record={version:1,name:'P',phase:'dispatch-unknown',
+  choiceId:'scene-1',optionId:'safe'};
+ assert.equal(f.p.write(vote,record),true);
+ assert.deepEqual(f.p.readCaveJournal(vote),record);
+ f.data.set('cstore_'+vote,'not-json');
+ assert.throws(()=>f.p.readCaveJournal(vote),SyntaxError);
+ for(const invalid of ['albot:cave-vote:../P','albot:cave-vote:','albot:cave-vote:P/other'])
+  assert.throws(()=>f.p.readCaveJournal(invalid),/Invalid Cave journal key/);
+});

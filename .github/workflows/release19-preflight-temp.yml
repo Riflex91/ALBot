@@ -1,0 +1,137 @@
+name: Temporary signed ALBot 0.19 preflight on Linux and Windows
+on:
+  push:
+    branches: [codex/bootstrap-v019-release-preflight-20261020]
+permissions:
+  contents: write
+concurrency:
+  group: albot-release19-preflight
+  cancel-in-progress: true
+env:
+  VERIFIED_MAIN: 08d032299dd633c036409a6288d069b9e4b88ba0
+jobs:
+  linux:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/bootstrap-v019-release-preflight-20261020
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build exact 0.19 runtime and preserve user's CODE settings
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run check:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          node scripts/verify-bootstrap-channel.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Run complete offline tests
+        run: npm test
+      - name: Build editor and Free-safe configurator
+        run: |
+          npm run build:editor
+          npm run build:konfigurator
+          node --check konfigurator/worker/index.mjs
+      - name: Preserve personal config, public key and actual installed loader behavior
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {execFileSync} from 'node:child_process';
+          import {readFileSync} from 'node:fs';
+          import {createPublicKey,verify} from 'node:crypto';
+          import {releaseMessage} from './scripts/auto-bootstrap-support.mjs';
+          const old=execFileSync('git',['show',process.env.VERIFIED_MAIN+':bot.js'],{encoding:'utf8'});
+          const live=readFileSync('bot.js','utf8');
+          const cfg=s=>{const a=s.indexOf('globalThis.ALBotConfig='),b=s.indexOf('/* ALBot ',a);if(a<0||b<a)throw Error('Personal profile missing');return s.slice(a,b)};
+          if(cfg(old)!==cfg(live))throw Error('Personal configuration changed');
+          const prior=JSON.parse(readFileSync('dist/albot.release.json','utf8'));
+          if(prior.sequence!==18||prior.version!=='0.18.0-candidate')throw Error('Signed previous sequence not retained');
+          const key=createPublicKey({key:JSON.parse(readFileSync('release/public-key.json','utf8')),format:'jwk'});
+          if(!verify('sha256',Buffer.from(releaseMessage(prior)),{key,dsaEncoding:'ieee-p1363'},Buffer.from(prior.signature,'base64url')))throw Error('Previous signature invalid');
+          const before=execFileSync('git',['show',process.env.VERIFIED_MAIN+':dist/albot.bootstrap.auto.js'],{encoding:'utf8'});
+          const after=readFileSync('dist/albot.bootstrap.auto.js','utf8');
+          const stripHeader=x=>x.slice(x.indexOf('\n')+1);
+          if(stripHeader(before)!==stripHeader(after))throw Error('Pinned bootstrap loader body changed');
+          const keyBlob=execFileSync('git',['hash-object','release/public-key.json'],{encoding:'utf8'}).trim();
+          if(keyBlob!=='f4953470bdcec825972454fd11798da220176fed')throw Error('Pinned public key changed');
+          console.log('Release 19 preflight safe: previous signed sequence 18 intact, loader only version header changed, personal config and EC key identical');
+          NODE
+  windows:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/bootstrap-v019-release-preflight-20261020
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Prepare Windows 0.19 runtime and signed bootstrap metadata
+        shell: pwsh
+        run: |
+          npm.cmd run build
+          if($LASTEXITCODE -ne 0){throw 'Build failed'}
+          node scripts/sync-personal-code.mjs --write
+          if($LASTEXITCODE -ne 0){throw 'CODE settings sync failed'}
+          npm.cmd run build:bootstrap:auto
+          if($LASTEXITCODE -ne 0){throw 'Bootstrap loader version sync failed'}
+          npm.cmd run check:bootstrap:auto
+          if($LASTEXITCODE -ne 0){throw 'Bootstrap public key or config mismatch'}
+      - name: Execute unchanged Windows acceptance suite
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/VERIFY-U01-U07.ps1
+  stage-verified-code:
+    needs: [linux,windows]
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/bootstrap-v019-release-preflight-20261020
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Generate the same version-19 files verified on both OS
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run check:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          npm run build:editor
+          node scripts/verify-bootstrap-contract.mjs
+          npm test
+      - name: Persist exact tested source-aligned artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(release19): align Linux/Windows-approved runtime editor and V2 loader'
+            git push origin HEAD:codex/bootstrap-v019-release-preflight-20261020
+          fi

@@ -1,0 +1,40 @@
+name: Temporary merchant forensics source sync
+on:
+  push:
+    branches:
+      - fix/20261020-forensics-merchant-production-stability
+    paths:
+      - '.github/workflows/temp-merchant-forensics-sync.yml'
+permissions:
+  contents: write
+jobs:
+  source-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/20261020-forensics-merchant-production-stability
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build and run targeted and full regression tests
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          node scripts/sync-personal-code.mjs --check
+          npm run build:editor
+          node --test test/20261020-merchant-production-forensics.test.mjs
+          npm test
+      - name: Commit only tracked generated runtime artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -u -- bot.js dist/ editor/
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='ALBot CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build: sync merchant forensics verified runtime artifacts'
+          git pull --rebase origin fix/20261020-forensics-merchant-production-stability
+          git push origin HEAD:refs/heads/fix/20261020-forensics-merchant-production-stability

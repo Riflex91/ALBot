@@ -167,7 +167,7 @@ test('leader fills 3shot with safe third neutral bee when encountered size is ap
    party:{enabled:true,aoe:true,aoeMaxTargets:5},skills:[]},
   me:{name:'Ranger',role:'farmer'},leader:'Ranger',teamNames:['Ranger'],
   farmers:['Ranger'],teamPlan:{roles:()=>({}),target:()=> 'bee',wantsCombat:()=>true},
-  encounter:{status:()=>({phase:'BUILD',capacity:3})},
+  encounter:{status:()=>({phase:'BUILD',capacity:3}),approvePullSet:()=>({safe:true})},
   strategy:{safeTarget:()=>true},monsters:()=>mobs,
   entity:id=>mobs.find(m=>m.id===id),allowed:()=>true,
   exec:{run:(_id,_locks,guard,fn)=>guard()?!!(fn(),true):false},

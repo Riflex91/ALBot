@@ -105,7 +105,8 @@ export function caveDirectCohesionPreflight(bot,{
   }catch{return caveDirectDeny('native-direct-clearance-unavailable',scope);}
  }
  return {...caveDirectDeny('bounded-direct-cohesion-ready',scope),
-  ready:true,canMove:true,x,y,step,priest:priest.name};
+  ready:true,canMove:true,x,y,step,priest:priest.name,
+  priestX:visible.x,priestY:visible.y};
 }
 export function createCaveDirectCohesion(bot,{now=()=>Date.now()}={}){
  let attempts=0,last=null;
@@ -124,7 +125,9 @@ export function createCaveDirectCohesion(bot,{now=()=>Date.now()}={}){
   const admit=()=>{
    const r=proof(true,true);
    return r.ready&&r.run===first.run&&r.floor===first.floor&&
-    r.priest===first.priest&&r.x===first.x&&r.y===first.y;
+    r.priest===first.priest&&
+    r.priestX===first.priestX&&r.priestY===first.priestY&&
+    r.x===first.x&&r.y===first.y;
   };
   const accepted=bot.movement?.local?.(
    first.x,first.y,'cave',admit)===true;

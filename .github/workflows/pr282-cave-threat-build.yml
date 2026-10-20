@@ -1,0 +1,40 @@
+name: Temporary N12 multi-aggro artifact build on refreshed main
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  refresh-runtime:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'codex/n12-cave-multi-threat-20261020' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/n12-cave-multi-threat-20261020
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Isolated regression: cumulative threat
+        run: node --test test/roadmap-n12-cave-cumulative-threat.test.mjs test/roadmap-n12-cave-defensive-basic.test.mjs
+      - name: Full suite on latest main
+        run: npm test
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - run: node scripts/sync-personal-code.mjs --check
+      - name: Commit freshly built artifacts
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/
+          if git diff --cached --quiet; then
+            echo 'No artifact drift.'
+          else
+            git commit -m 'build(N12): regenerate cumulative cave threat bundles on newest main'
+            git push origin HEAD:codex/n12-cave-multi-threat-20261020
+          fi

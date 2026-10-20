@@ -14,8 +14,8 @@ function physicalStockKey(item){
   const value=item[field];
   if(value===undefined||value===null)continue;
   if((field==='acc'||field==='rid')&&
-     (typeof value==='string'||typeof value==='number'&&
-      Number.isFinite(value)))continue;
+     (typeof value==='string'&&value.length<=80||
+      Number.isSafeInteger(value)&&value>=0))continue;
   if(typeof value!=='string'||value.length>(field==='data'?120:80))
    return null;
  }

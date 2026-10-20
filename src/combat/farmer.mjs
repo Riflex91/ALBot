@@ -466,6 +466,11 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       if(bot.movement?.order?.owner==='cave'&&
          bot.caveDirect?.status?.({forDispatch:true})?.ready!==true)
        bot.movement.stop();
+      // A running emergency hop has an independent, monster-bound proof.
+      // Losing that proof stops native movement before any other Cave work.
+      if(bot.movement?.order?.owner==='cave-evade'&&
+         bot.caveEmergency?.status?.({forDispatch:true})?.ready!==true)
+       bot.movement.stop();
       if(['farm','follow','cohesion','combat','world','regroup',
           'quest-escort'].includes(bot.movement?.order?.owner))
        bot.movement.stop();
@@ -475,9 +480,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // instance attack. It refuses neutral mobs, movement and skills and
       // revalidates the exact team/monster at network dispatch.
       const healed=bot.cavePriest?.tick?.()===true;
-      const defended=!healed&&bot.caveCombat?.tick?.()===true;
-      const cohesion=!healed&&!defended&&bot.caveDirect?.tick?.()===true;
+      // Guarded local separation outranks Ranger attacks, not Priest
+      // healing. A running emergency hop also blocks new attacks.
+      const evasive=!healed&&(
+       bot.movement?.order?.owner==='cave-evade'||
+       bot.caveEmergency?.tick?.()===true);
+      const defended=!healed&&!evasive&&bot.caveCombat?.tick?.()===true;
+      const cohesion=!healed&&!evasive&&!defended&&bot.caveDirect?.tick?.()===true;
       bot.reason=healed?'Cave: gezielte Priest-Heilung angefordert':
+       evasive?'Cave: abgesicherter Direktschritt aus Nahkampfdruck':
        defended?'Cave: bestätigte Teamverteidigung angefordert':
        cohesion?'Cave: sicherer Direktschritt zum Priest angefordert':
        'Cave-Gruppe: '+(evidence?.reason??'Instanz gesperrt');

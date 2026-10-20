@@ -84,10 +84,11 @@ function dashboard(){
  content.append(heading('Dashboard','Status deiner ALBot-Charaktere, Bank und Konfiguration.'));
  if(!state.configured)content.append(notice('Cloudflare Access und der private GitHub-Konfigurationsspeicher sind noch nicht verbunden. Bis zur Einrichtung bleibt die Weboberfläche read-only.'));
  const online=state.characters.filter(x=>fresh(x.observedAt)&&x.hp>0);
- const gold=state.characters.filter(x=>fresh(x.observedAt)).reduce((n,x)=>n+(Number(x.goldPerHour)||0),0);
+ const measured=state.characters.filter(x=>fresh(x.observedAt)&&x.ratesMeasured!==false);
+ const gold=measured.reduce((n,x)=>n+(Number(x.goldPerHour)||0),0);
  const metrics=node('div',undefined,'grid metrics');metrics.append(
   metric('Charaktere online',online.length+' / '+state.characters.length,'Status jünger als 5 Minuten'),
-  metric('Gold pro Stunde',fmt(gold),'Nur frische Charakterdaten'),
+  metric('Gold pro Stunde',measured.length?fmt(gold):'—','Nur gemessene, frische Charakterdaten'),
   metric('Bankfächer',fmt(state.bank.length),'Letzte beobachtete Snapshots'),
   metric('Itemrichtlinien',fmt(state.policy.items.length),'GitHub · nicht automatisch aktiviert'));content.append(metrics);
  const grid=node('div',undefined,'grid two'),one=card('Aktivitätsübersicht'),two=card('Sicherheit & Synchronisierung');
@@ -125,7 +126,7 @@ function characters(){
    bar.append(inner);section.append(row,bar);
   }
   const stats=node('div',undefined,'char-stats');
-  for(const [key,val] of [['EXP/h',fmt(c.expPerHour)],['Gold/h',fmt(c.goldPerHour)]]){
+  for(const [key,val] of [['EXP/h',c.ratesMeasured===false?'—':fmt(c.expPerHour)],['Gold/h',c.ratesMeasured===false?'—':fmt(c.goldPerHour)]]){
    const v=node('div',undefined,'char-stat');v.append(node('span',key,'muted'),node('strong',val));stats.append(v);
   }section.append(stats);
   const map=node('div',undefined,'coord');map.append(node('span',c.map,'coord-label'),node('div',undefined,'coord-pin'),node('span','X '+fmt(c.x)+' / Y '+fmt(c.y),'coord-text'));

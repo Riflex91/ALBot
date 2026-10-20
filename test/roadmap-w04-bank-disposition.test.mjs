@@ -484,3 +484,51 @@ test('W02/W04 protection sum overflow does not create a usable bank floor',()=>{
  bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
  assert.equal(calls.length,0);
 });
+
+test('W04 full reserve dispatch rejects late oversized neighboring local pack',()=>{
+ const {bot,calls,inv,bankPack}=operatingBankFixture();
+ inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:80};
+ const other=blank();other[26]={name:'scroll0',q:20};
+ bot.p.c.bank.items1=other;
+ for(let n=0;n<3;n++)assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.retrieve');
+ assert.equal(calls[0].params.guard(),true);
+ other.push({name:'unrelated',q:1});
+ assert.equal(bankPack[27].q,80,'addressed source is still unchanged');
+ assert.equal(calls[0].params.guard(),false,
+  'an invalid 43-slot neighbor is not valid excess backing');
+ assert.equal(calls.length,1,'no second bank operation is prepared');
+});
+
+test('W04 partial reserve dispatch rechecks every currently observed local pack size',()=>{
+ const {bot,calls,inv,bankPack,api}=partialReserveFixture();
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.partial.retrieve');
+ assert.equal(calls[0].params.guard(),true);
+ const malformed=Array(43).fill(null);
+ bot.p.c.bank.items1=malformed;
+ assert.equal(calls[0].params.guard(),false,
+  'a malformed neighboring pack cannot back a partial reserve stage');
+ assert.equal(bankPack[27].q,200);
+ assert.deepEqual(api,[]);
+ malformed.pop();
+ assert.equal(calls[0].params.guard(),true,
+  'an ordinary valid empty 42-slot local pack is acceptable');
+});
+
+test('W04 invalid offsite bank pack cannot provide or veto local reserve proof',()=>{
+ const {bot,calls,inv,bankPack}=operatingBankFixture();
+ inv[1]={name:'scroll0',q:20};
+ bankPack[27]={name:'scroll0',q:80};
+ const local=blank();local[26]={name:'scroll0',q:20};
+ bot.p.c.bank.items1=local;
+ for(let n=0;n<3;n++)bot.bank.preventiveDisposition();
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].params.guard(),true);
+ bot.p.c.bank.items2=Array(43).fill({name:'scroll0',q:9999});
+ assert.equal(calls[0].params.guard(),true,
+  'bank_b is not on the observed local bank map and grants no backing');
+});

@@ -3,6 +3,7 @@ import {FULL_DESCRIPTOR} from '../../src/config/full.mjs';
 import {importProfile,envelope} from '../../editor/lib/contract.mjs';
 import {storeTelemetry,MAX_STORED_CHARACTERS,MAX_STORED_BANK_PACKS,SNAPSHOT_READ_TTL_MS} from './telemetry-store.mjs';
 import {TELEMETRY_MIN_INTERVAL_MS} from '../public/free-tier.mjs';
+import {latestBankPackViews} from './bank-view.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -168,7 +169,8 @@ async function readSnapshots(env,table){
   .bind(Date.now()-SNAPSHOT_READ_TTL_MS).all();
  const rows=[];
  for(const x of s.results??[])try{rows.push({observedAt:x.updated_at,...JSON.parse(x.payload)})}catch{}
- return json({ok:true,configured:true,rows});
+ return json({ok:true,configured:true,
+  rows:table==='bank_snapshots'?latestBankPackViews(rows):rows});
 }
 const secureHeaders={
  'x-frame-options':'DENY','x-content-type-options':'nosniff',

@@ -1,3 +1,15 @@
+## Fortschritt W12/N12 — eng begrenzte Cave-Pre-Dispatch-Recovery (21.10.2026)
+
+Ein nach Sessionwechsel verbliebener, garantiert noch nicht versendeter Cave-`prepared`-Checkpoint blockiert die nächste tatsächliche Berechtigungsprüfung nicht dauerhaft: Nur eine danach frische `cave_info`-Antwort, dieselbe Run-/Rosteridentität, Current-Realm-Prüfung und freie Wert-/Vote-/Crypt-Journale ermöglichen lokales Journal-Reset. Die schon implementierte Server-Dispatch-Unbekannt- und Exit-Recovery bleiben strikt gesperrt. Kein erfundener Cave-Exit, keine Erhöhung täglicher Versuche und keine neue API. Vollständiger W12/N12-/W14-Livebetrieb weiterhin offen.
+
+## Fortschritt W10/W13 — physische Lootquittung (21.10.2026)
+
+Die passive Chest-/Inventardelta-Korrelation validiert jetzt alle aktuellen Bestandszeilen gegen reale Stackgrenzen, schützt vor einer veralteten Game-Definition und verweigert unbestätigte eigene Loot- oder readonly-Nutzungsbelege. Sie führt keine zusätzliche Loot-Aktion und keine neue Waren-/Gear-Disposition aus. Die vollständige Rollen-Lootmission und ihr echter W14-Livetest bleiben offen.
+
+## W02: Stacklimit bei vorbeugender Disposition (21.10.2026)
+
+Die vorhandene reversible Lager-/Bankstrategie erhält einen echten `G.items[name].s`-Nachweis für alle tatsächlich zur Verlustfreigabe gezählten lokalen und aktuellen Bankstapel. Ein q:2-Gegenstand ohne Stackfähigkeit kann deshalb nicht länger als zwei physische Quellen die letzte Produktionsreserve schützen. Echt vorhandene Einzelkopien behalten ihre Wirkung. Langzeit-/Liveabnahme bleibt offen.
+
 ## W06/G09 – Materialquoten ohne Überlauf / ohne Phantomarbeit (21.10.2026)
 
 Der bestehende Quotenplan stoppt weitere Farming-Aufträge, wenn die kontoweite Addition physisch gemeldeter Mengen den sicheren Integerbereich überschreitet oder Peer-/Roster-Evidenz unzuverlässig wird. Bereits vorhandene Mengen werden nicht als null gerundet. Der bestehende Produktions- und Versandpfad wird nicht dupliziert; Markt-Tausch und Live-Belege sind weiterhin offen.

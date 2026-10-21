@@ -1,3 +1,15 @@
+## 21.10.2026 — W12/N12 Cave-Recovery vor dem tatsächlichen Dispatch
+
+Der bestehende Cave-Lifecycle räumt nach Sitzungswechsel einen dauerhaft `prepared`-Checkpoint jetzt ausschließlich dann automatisch weg, wenn **noch kein** `cave_enter` dispatch-unknown erreicht wurde und eine frische, nach dem alten Checkpoint gelesene `cave_info`-Antwort genau die aktuelle neue Eintrittserlaubnis oder denselben serverseitig resumierbaren Run bestätigt. Realm, ursprüngliche bis zu drei Teilnehmer, lokal geprüfter Eintrittskontext und konfliktfreie Journale/Executor müssen identisch bleiben. Unsichere oder bereits versendete Eintritte werden nicht neu gestartet. Tests in `test/roadmap-n12-cave-durable-lifecycle.test.mjs`. Crypt-/Cave-Live-End-to-End einschließlich Loot, Vote und Exit weiterhin offen.
+
+## 21.10.2026 — W10/W13 physisch gültige Lootquittungen und Hinweise
+
+Der vorhandene `createOwnLootReceipts`-Pfad beweist einen Loot-Erhalt nur aus Inventarständen, deren jede belegte Position das echte `G.items[name].s`-Limit einhält. `q:null`, nicht stapelbare Mehrfacheinträge, unbekannte Itemdefinitionen und übergroße Potionstapel können keine physische Lootquittung oder nachgelagerte readonly-Gear-/Produktionshinweise mehr begründen. Ein Versionswechsel der G-Itemdefinitionen zwischen Vorher-/Nachher-Snapshot widerruft die physische Bestätigung. Gültige Einzelitems und tatsächlich passende Potion-Merges werden weiterhin bestätigt. Regressionen in `test/roadmap-w10-w13-own-loot-receipts.test.mjs`. Mehrspieler-Lootmission, serverseitiger Eigentumsnachweis und W14-Live-Abnahme bleiben offen.
+
+## 21.10.2026 — W02: reale Stackgrenzen bei vorbeugendem Lagerverkauf
+
+Die bestehende `createStoragePlanner`-Kapazitätsdisposition akzeptiert als physische Rezept-/Produktionsreserve nur noch einzelne Inventar- oder aktuell beobachtete Bankstapel mit den realen `G.items[name].s`-Grenzen. Für Gegenstände ohne gültiges Stackmerkmal gilt nur eine physische Einzelkopie pro Slot; übergroße Bank- oder Inventarstapel legitimieren keinen NPC-Verkauf. Vorhandene gebundene Bank-/Rezeptevidenz und Value-Executor bleiben unverändert. Tests in `test/preventive-storage.test.mjs`. Gesamtübergreifende Langzeit-W02-/W03- und Live-Abnahme offen.
+
 ## 21.10.2026 — W06/G09 sichere accountweite Materialquoten
 
 Die bestehende 0.24-Materialarbeit bleibt aktiv. `planMaterialQuotas` verweigert allerdings jede neue Farmzuteilung, wenn die Addition gültiger, einzeln belegter Farmerbestände keinen sicheren Integer mehr ergibt, ein frischer Peerabruf fehlschlägt oder Peer-/Roster-/Reservegrenzen ungültig sind. Die ursprünglichen Quoten bei gültiger Online-Gruppe sind unverändert. Tests: `test/material-quotas-active-farmers.test.mjs` und `test/heartbeat-material-progress.test.mjs`. Dies ist keine vollständige Markt-/Tauschbeschaffung oder Account-Liveabnahme.

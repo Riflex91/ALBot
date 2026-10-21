@@ -1,0 +1,41 @@
+name: Temporary W12 Cave source artifact sync
+on:
+  push:
+    branches: [codex/w12-n12-cave-prepared-recovery-20261021]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: ${{ github.repository == 'Riflex91/ALBot' && github.ref == 'refs/heads/codex/w12-n12-cave-prepared-recovery-20261021' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Integrate latest main and rebuild source-aligned runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff -X theirs origin/main
+          if git ls-files -u | grep .; then echo "Unresolved conflict" >&2;exit 1;fi
+          grep -q "reconcileStalePrepared" src/world/cave-lifecycle.mjs
+          npm ci --ignore-scripts
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          git add -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/manifest.json dist/albot.settings.json dist/albot.bootstrap.auto.js editor/Bot-Werkstatt.html editor/albot.settings.json profiles/full-solo.json profiles/full-team.json
+          git commit -m "build(W12/N12): regenerate main-aligned Cave lifecycle runtime"
+          git push origin "HEAD:codex/w12-n12-cave-prepared-recovery-20261021"

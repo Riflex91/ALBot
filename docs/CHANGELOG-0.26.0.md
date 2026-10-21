@@ -15,7 +15,7 @@ Im Quellcode war dennoch ein konkreter Fehler nachvollziehbar: targets -> estima
 - planning.gear.advance und regelmäßige transport.heartbeat werden gesondert gemessen; economicIntelligence.planning zeigt Zustand, Fertigstellungszeit und Revision.
 
 ## Abnahme und Grenzen
-2.291 Offline-Tests bestanden, einschließlich acht neuer Regressionen: lazy/atomare Generationen mit 100 Craft-Kandidaten, 40-Sekunden-Zeitsprung ohne Reentranz, Cachefrist ab Abschluss, Invalidierung, Farmer-Suchvermeidung, Verkaufsschutz, passive Geardiagnose, kleines Logsampling und einmaliger Exchange-Katalogscan. Die vorhandene W01-Erklärungsprüfung verweigert jetzt ausdrücklich einen Aufruf des Reservierungsplaners.
+2.297 Offline-Tests nach Integration des aktuellen Main bestanden, einschließlich acht neuer Regressionen: lazy/atomare Generationen mit 100 Craft-Kandidaten, 40-Sekunden-Zeitsprung ohne Reentranz, Cachefrist ab Abschluss, Invalidierung, Farmer-Suchvermeidung, Verkaufsschutz, passive Geardiagnose, kleines Logsampling und einmaliger Exchange-Katalogscan. Die vorhandene W01-Erklärungsprüfung verweigert jetzt ausdrücklich einen Aufruf des Reservierungsplaners.
 
 4 ms ist ein kooperatives Budget zwischen Arbeitsschritten, keine harte Unterbrechung eines einzelnen synchronen Spiel-API-/Beschaffungsaufrufs und keine garantierte Obergrenze des gesamten Bot-Ticks. Production-Routen bleiben zusätzlich durch die bestehende Knotenzahl/Rezursionstiefe begrenzt. Es gibt noch keinen gemessenen 0.26-Livedurchlauf im Spiel. Bei weiteren Ausreißern zuerst die neuen Modulmetriken und planning.state prüfen; keine Kampf-/Inventarschutzregeln lockern.
 

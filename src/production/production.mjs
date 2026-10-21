@@ -53,6 +53,20 @@ export function finishedGearDeliveryStock(items,g,explicit=()=>null,safe=()=>tru
  }
  return Math.max(0,count-protectedUnits);
 }
+// Keep the same recipient authorized by the generated, epoch-cached send
+// rule. Never recompute the physical winner using a changing goal order.
+export function physicalGearAllowanceFromSelectedRule(rules,items,item,to,explicit=()=>null,safe=()=>true){
+ if(!Array.isArray(rules)||!Array.isArray(items)||!item||!to)return 0;
+ const rule=rules.find(r=>r._autoGearDelivery===true&&
+  r.enabled!==false&&r.action==='send'&&r.recipient===to&&
+  r.item===item.name&&r.minLevel===(item.level??0)&&
+  r.maxLevel===(item.level??0)&&
+  (!r._autoExactVariant||r._autoExactVariant===identity(item)));
+ if(!rule)return 0;
+ return Math.min(1,rule.batch??1,finishedGearDeliveryStock(items,{
+  item:item.name,level:item.level??0,recipient:to,gearSlot:'verified-send'
+ },explicit,safe));
+}
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.
 export function pendingDeliveryRuleNeeds(goals,delivered,sender,available=()=>Infinity){
@@ -1080,16 +1094,9 @@ export function createProduction(bot){
   // the same within this decision epoch. Recomputing goals() here can
   // silently move the sole item to another farmer without changing the
   // cached send rule, leaving both transfer allowances at zero.
-  const rule=effectiveRules().find(r=>r._autoGearDelivery===true&&
-   r.enabled!==false&&r.action==='send'&&r.recipient===to&&
-   r.item===item.name&&r.minLevel===(item.level??0)&&
-   r.maxLevel===(item.level??0)&&
-   (!r._autoExactVariant||r._autoExactVariant===identity(item)));
-  if(!rule)return 0;
-  return Math.min(1,rule.batch??1,
-   finishedGearDeliveryStock(p.c.items,{
-    item:item.name,level:item.level??0,recipient:to,gearSlot:'verified-send'
-   },i=>e.explicit(i),i=>e.safe(i)&&matchesOutput(i)));
+  return physicalGearAllowanceFromSelectedRule(effectiveRules(),
+   p.c.items,item,to,i=>e.explicit(i),
+   i=>e.safe(i)&&matchesOutput(i));
  }
  function canRecordDelivery(item,to){
   if(unsafeDeliveryHistory)return false;

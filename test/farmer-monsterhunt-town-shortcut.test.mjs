@@ -52,10 +52,16 @@ test('short monsterhunt NPC trip stays on foot when Town would save less than th
  }finally{Date.now=previous;}
 });
 
-test('farmer Town shortcut is quest-only and is never used for farm/combat/world/cohesion/logistics',()=>{
+test('farmer Town shortcut permits measured farm/follower trips, never combat or unrelated movement',()=>{
  const previous=Date.now;Date.now=()=>40000;
  try{
-  for(const owner of ['farm','combat','world','cohesion','logistics','economy']){
+  for(const owner of ['farm','follow','quest-escort','regroup']){
+   const f=fixture({owner});f.movement.go(npc,owner);
+   assert.equal(f.calls.some(x=>x.name==='town'),true,owner);
+   assert.equal(f.movement.order,null,owner);
+   f.movement.stop();
+  }
+  for(const owner of ['combat','world','cohesion','logistics','economy','kite']){
    const f=fixture({owner});f.movement.go(npc,owner);
    assert.equal(f.calls.some(x=>x.name==='town'),false,owner);
    assert.equal(f.movement.order?.mode,'smart_move',owner);

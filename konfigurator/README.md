@@ -1,5 +1,14 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Aktueller Stand (21.10.2026)
+
+Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die spätere Runtime 0.32 benötigt eine separate Ingame-Abnahme. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.
+
+Die neue Startseite zeigt ausschließlich **empfangene**, nach Datenalter eingeordnete Telemetrie. Ein Snapshot innerhalb der letzten fünf Minuten ist kein beweiskräftiger Online-Status; fehlende Bankfächer bedeuten nicht, dass sie leer sind oder dass der komplette Bankbestand bekannt ist. Bei D1-/API-Fehlern dürfen alte Caches keine scheinbar aktuellen Zähler erzeugen. Die automatische Übertragung benötigt das private Ingame-CODE-Token, **niemals eine Eingabe im Konfigurator**. Ein Relay-Fenster ist lediglich ein optionaler Ausweichweg.
+
+**Konfigurationsänderungen:** Globale Itemrichtlinien und das Classic-Profil werden weiterhin nur versioniert in einem privaten GitHub-Repository gespeichert. Es gibt **noch keine** sichere signierte Veröffentlichung von Benutzerkonfigurationen in die laufende Spiel-Runtime. Keine Verkaufs-, Transfer- oder Spieleingriffsberechtigung aus D1-Telemetrie oder diesen neuen Ansichten ableiten.
+
+
 ## Sicherheit und Funktionsstand
 
 - Die neue Oberfläche bietet Dashboard, Charakterstatus mit Inventar und schematischer Positionsdarstellung, Bankfächer und globale Itemrichtlinien.

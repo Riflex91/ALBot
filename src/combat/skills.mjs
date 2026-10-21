@@ -387,6 +387,24 @@ export function createSkills(bot){
     const allies=bot.allies().filter(e=>!e.rip);const t=r.target==='enemy'?target:r.target==='self'?p.c:r.target==='leader'?bot.entity(bot.leader):allies.sort((a,b)=>r.target==='lowestHp'?a.hp/a.max_hp-b.hp/b.max_hp:a.mp/a.max_mp-b.mp/b.max_mp)[0];
     if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
   }return false;}
+  // Independently chosen aimed targets are still owned by the user's
+  // enabled skill rules. Resolve and validate the SAME effective rule that
+  // use() checks, rather than passing explicit=false (which unconditionally
+  // vetoes it). No rule is silently rewritten, enabled or bypassed.
+  function independentAimedRule(id,target,targetCount){
+    const rule=cfg.skills.find(r=>r.enabled&&r.skill===id&&
+      (!r.character||r.character===p.c.name)&&
+      (r.class==='auto'||r.class===p.c.ctype));
+    if(!rule)return {allowed:true,explicit:false,reserve:.2,everyMs:600};
+    if(rule.target!=='enemy'||!matches(rule.conditions??[],bot.measure(target))||
+       targetCount<(rule.minTargets??1)||
+       targetCount>(rule.maxTargets??(id==='3shot'?3:5))||
+       !Number.isFinite(rule.minMp)||rule.minMp<0||rule.minMp>1||
+       !Number.isFinite(rule.everyMs)||rule.everyMs<0)
+      return {allowed:false,reason:'configured-aimed-rule-not-satisfied'};
+    return {allowed:true,explicit:true,
+      reserve:rule.minMp,everyMs:rule.everyMs};
+  }
   // Autonomous aimed Ranger combat is a complete skill-specific decision:
   // not leader-only, not dependent on adaptive BUILD capacity, and NEVER
   // an untargeted area attack. Use exactly the chosen live IDs and repeat
@@ -430,7 +448,10 @@ export function createSkills(bot){
         if(!grant.safe)continue;
         const damage=aoeDamageScore(p.c,skill,selected,selected[0]);
         if(!damage?.gain||damage.gain<=0)continue;
-        if(use(id,selected[0],.2,600,selected.length,false,selected)){
+        const rule=independentAimedRule(id,selected[0],selected.length);
+        if(!rule.allowed)continue;
+        if(use(id,selected[0],rule.reserve,rule.everyMs,
+          selected.length,rule.explicit,selected)){
           bot.target=selected[0];
           bot.event?.('combat.independentSharedSpawnAoE',{
            skill:id,targets:selected.length,plan:plan.id,

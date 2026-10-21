@@ -573,7 +573,7 @@ test('G09 post refuses competing durable intent before any trade_offer call',asy
  const f=fixture();
  assert.equal(f.maker.post(0,f.rule),true);
  f.writes.set('albot:trade-offer:v1:M',{by:'other-owner',state:'unknown'});
- await assert.rejects(f.pending.call(),/Barter intent persistence failed/);
+ assert.throws(()=>f.pending.call(),/Barter intent persistence failed/);
  assert.equal(f.calls.length,0);
  assert.equal(f.maker.status().state,'storage-uncertain');
  assert.deepEqual(f.writes.get('albot:trade-offer:v1:M'),
@@ -588,7 +588,7 @@ test('G09 unacknowledged written intent cannot be reissued when read-back fails'
   reads++;
   return reads===1?null:{different:'unproven'};
  };
- await assert.rejects(f.pending.call(),/Barter intent persistence failed/);
+ assert.throws(()=>f.pending.call(),/Barter intent persistence failed/);
  assert.equal(f.calls.length,0);
  assert.equal(f.maker.status().state,'storage-uncertain');
  assert.equal(f.maker.post(0,f.rule),false);

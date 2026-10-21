@@ -177,3 +177,98 @@ test('W12/N12 Cave journal drift revokes a previously prepared Crypt dispatch',(
    'the final Executor guard must repeat the conflict proof');
  }
 });
+
+test('W12/N11 reboot safely retires only a same-key never-dispatched Crypt preparation',()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ assert.equal(c.prepare(),true);
+ const original=f.memory.get(f.key);
+ assert.equal(original.phase,'prepared');
+ f.bot.session='M-session-2';
+ const resumed=f.lifecycle();
+ assert.equal(resumed.status().state,'prepared');
+ assert.equal(resumed.sample(),true);
+ assert.equal(f.memory.get(f.key),null,
+  'a durable clean checkpoint retires the old pre-dispatch intent');
+ assert.equal(resumed.status().state,'empty');
+ assert.deepEqual(f.calls,[],'recovery does not invoke enter()');
+ assert.equal(resumed.prepare(),true,
+  'fresh explicit preparation is possible after the clean recovery');
+ assert.equal(resumed.requestEntry(),true);
+ assert.equal(f.calls.length,0,'even new preparation cannot enter without executor dispatch');
+});
+
+test('W12/N11 changed or missing key never clears the old prepared checkpoint',()=>{
+ for(const changed of [
+  item=>{item.q=null;},
+  item=>{item.name='otherkey';},
+  item=>{item.l=true;},
+  (_item,items)=>{items[0]=null;},
+  (_item,items)=>{items[1]={name:'cryptkey'};}
+ ]){
+  const f=cryptFixture(),c=f.lifecycle();
+  assert.equal(c.prepare(),true);
+  const before=structuredClone(f.memory.get(f.key));
+  f.bot.session='new-session';
+  changed(f.items[0],f.items);
+  const resumed=f.lifecycle();
+  assert.equal(resumed.sample(),false);
+  assert.deepEqual(f.memory.get(f.key),before);
+  assert.equal(resumed.status().blocked,true);
+  assert.deepEqual(f.calls,[]);
+ }
+});
+
+test('W12/N11 dispatched entry cannot be auto-cleared on reboot even if key is unchanged',async()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ c.prepare();c.requestEntry();
+ await f.intents[0].invoke();
+ const saved=structuredClone(f.memory.get(f.key));
+ f.bot.session='restarted';
+ const resumed=f.lifecycle();
+ assert.equal(resumed.sample(),false);
+ assert.deepEqual(f.memory.get(f.key),saved);
+ assert.equal(resumed.status().state,'dispatch-unknown');
+ assert.equal(resumed.requestEntry(),false);
+ assert.deepEqual(f.calls,[['enter','crypt']]);
+});
+
+test('W12/N11 reboot clears no pre-dispatch journal on scope, safety, or storage drift',()=>{
+ for(const kind of ['realm','inside','journal','bank','executor','storage','same-session']){
+  const f=cryptFixture(),c=f.lifecycle();
+  c.prepare();
+  if(kind!=='same-session')f.bot.session='new-session';
+  if(kind==='realm')f.p.realm=()=> 'USI';
+  if(kind==='inside'){f.p.c.map='crypt';f.p.c.in='another-instance';}
+  if(kind==='journal')f.bot.journal={kind:'pending'};
+  if(kind==='bank')f.bot.bank.pending=true;
+  if(kind==='executor')f.bot.exec.pending.set('pending',true);
+  if(kind==='storage')f.writeOk(false);
+  const resumed=f.lifecycle();
+  assert.equal(resumed.sample(),false,kind);
+  assert.equal(resumed.status().blocked,true,kind);
+  assert.equal(f.memory.get(f.key)?.phase,'prepared',kind);
+ }
+});
+
+test('W12/N11 no-key join preparation can recover only outside and on a new session',()=>{
+ const f=cryptFixture({hasKey:false}),c=f.lifecycle();
+ assert.equal(c.prepare('join','friend-crypt'),true);
+ f.bot.session='session-after-reboot';
+ const resumed=f.lifecycle();
+ assert.equal(resumed.sample(),true);
+ assert.equal(resumed.status().state,'empty');
+ assert.equal(resumed.prepare('join','friend-crypt'),true);
+ assert.deepEqual(f.calls,[]);
+});
+
+test('W12/N11 competing strict journal mutation prevents clearing prepared entry',()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ c.prepare();f.bot.session='new-session';
+ const resumed=f.lifecycle();
+ const change={...f.memory.get(f.key),at:1700000000001};
+ f.memory.set(f.key,change);
+ assert.equal(resumed.sample(),false);
+ assert.deepEqual(f.memory.get(f.key),change);
+ assert.equal(resumed.status().state,'storage-uncertain');
+ assert.deepEqual(f.calls,[]);
+});

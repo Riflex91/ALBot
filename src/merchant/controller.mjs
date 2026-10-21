@@ -902,6 +902,11 @@ export function createMerchant(bot){
    bot.movement.stop();bot.event?.('gold.standaloneCancelled',{
     reason:'Goldüberschuss nur während einer Item- oder Versorgungsfahrt abholen'});
   }
+  // Keep a short physical handoff window before routine depot/bank travel.
+  if(bot.logistics?.onSiteServiceWindow?.()){
+   bot.reason='Lieferfenster vor Ort: Itemangebote und Empfang prüfen';
+   return;
+  }
   // Keep the admitted depot cycle intact across normal background work.
   if(depot&&depotTick())return;
   // Cast first at the arrived position: logistics.travel() can initiate
@@ -1077,7 +1082,7 @@ export function createMerchant(bot){
   // Stand usage is now demand-driven by market.list/market.wishlist.
  }
  return {tick,confirmedExchange,preparePickup,prepareGoldPickup:peer=>preparePickup(peer,true),prepareDeparture,activateStand,potionSupplyActive:()=>teamSupply()?.active===true,
-  claimService:service.claim,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':
+  claimService:service.claim,finishService:service.finish,serviceTarget:service.current,status:()=>({...tasks.status(),trackerAcquisition:trackerAcquisition.status(),capacityRecovery,capacityState:capacityRecovery?'RELIEVE_PRESSURE':
    capacityBlock?'SAFE_MARGIN_BLOCKED':'NORMAL',
    capacityBlock:capacityBlock?{reason:capacityBlock.reason,free:capacityBlock.free,
     requiredFree:Math.max(8,(cfg.merchant.minFreeSlots??4)+4),retryAt:capacityBlock.until}:null,

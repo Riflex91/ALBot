@@ -1,5 +1,5 @@
 import {runtimeConditionGate,currentConditionEvidence} from '../core/action-admission.mjs';
-import {distance,samePlace} from '../core/policy.mjs';
+import {distance,samePlace,xy} from '../core/policy.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 
@@ -87,10 +87,9 @@ function verifiedFollowerSpawnTarget(actor,monster,{plan,leader,peers,
     !Number.isFinite(leader.received)||leader.received>now||
     now-leader.received>4000||!Array.isArray(peers)||!peers.length||
     !samePlace(actor,plan)||!samePlace(monster,plan)||
-    !samePlace(leader,plan)||!Number.isFinite(actor.x)||
-    !Number.isFinite(actor.y)||!Number.isFinite(monster.x)||
-    !Number.isFinite(monster.y)||distance(actor,plan)>85||
-    distance(leader,plan)>maxDistance||
+    !samePlace(leader,plan)||
+    !sharedSpawnPositionEvidence(actor,leader,monster,plan,{
+      maxAnchorGap:maxDistance,maxSupportGap:maxDistance*2}).allowed||
     distance(actor,monster)>maxDistance||
     !Number.isFinite(actor.hp)||!(actor.max_hp>0)||
     actor.hp/actor.max_hp<.85||
@@ -99,8 +98,11 @@ function verifiedFollowerSpawnTarget(actor,monster,{plan,leader,peers,
  if(!peers.every(peer=>peer?.running&&!peer.rip&&
     peer.realm===realm&&samePlace(peer,plan)&&
     Number.isFinite(peer.received)&&peer.received<=now&&
-    now-peer.received<=4000&&Number.isFinite(peer.x)&&
-    Number.isFinite(peer.y)&&distance(peer,plan)<=maxDistance&&
+    now-peer.received<=4000&&combatPosition(peer)&&
+    (verifiedFarmSpawnRectangle(plan)?
+      distanceFromFarmRectangle(combatPosition(peer),
+       verifiedFarmSpawnRectangle(plan))<=maxDistance:
+      distance(peer,plan)<=maxDistance)&&
     Number.isFinite(peer.hp)&&peer.max_hp>0&&
     peer.hp/peer.max_hp>=.85&&Number.isFinite(peer.mp)&&
     peer.max_mp>0&&peer.mp/peer.max_mp>=.15&&
@@ -163,11 +165,10 @@ export function verifiedFollowerBoundedSpawn(actor,monster,options={}){
 // complete, finite (real_x, real_y) pair, otherwise one complete (x, y)
 // pair. Never combine one real coordinate with one stale raw coordinate.
 export function combatPosition(entity){
- if(Number.isFinite(entity?.real_x)&&Number.isFinite(entity?.real_y))
-  return {x:entity.real_x,y:entity.real_y,source:'real'};
- if(Number.isFinite(entity?.x)&&Number.isFinite(entity?.y))
-  return {x:entity.x,y:entity.y,source:'raw'};
- return null;
+ const point=xy(entity);
+ if(!Number.isFinite(point.x)||!Number.isFinite(point.y))return null;
+ return {...point,source:Number.isFinite(entity?.real_x)&&
+   Number.isFinite(entity?.real_y)?'real':'raw'};
 }
 export function verifiedFarmSpawnRectangle(plan){
  if(!Array.isArray(plan?.bounds))return null;

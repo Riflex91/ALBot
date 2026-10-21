@@ -253,7 +253,32 @@ export function parseLiveReport(text){
  const snapshots=records.filter(x=>x.type==='snapshot'&&x.format==='albot-test-report');
  const latest=snapshots.at(-1);
  if(!latest)throw Error('JSONL contains no test-report snapshot');
- const session=records.find(x=>x.type==='session');
+ // One JSONL file may contain periodic snapshots, but never two
+ // contradictory process identities: their events cannot form one W14 run.
+ const sessions=records.filter(x=>x?.type==='session');
+ const session=sessions[0];
+ const pinned=['started','character','version','environment','realm','gameVersion'];
+ const differs=(a,b,key)=>a?.[key]!=null&&b?.[key]!=null&&
+  a[key]!==b[key];
+ for(const snapshot of snapshots){
+  if(pinned.some(k=>differs(snapshot,latest,k)))
+   throw Error('Conflicting JSONL snapshot session');
+ }
+ if(session){
+  if(typeof session.time==='string'&&
+     typeof latest.started==='string'&&session.time!==latest.started)
+   throw Error('Conflicting JSONL session start');
+  for(const candidate of sessions){
+   if((session.time!=null&&candidate.time!=null&&
+        candidate.time!==session.time)||
+      ['character','version','environment'].some(k=>
+       differs(session,candidate,k)))
+    throw Error('Conflicting JSONL session header');
+  }
+  if(['character','version','environment'].some(k=>
+      differs(session,latest,k)))
+   throw Error('Conflicting JSONL header and snapshot');
+ }
  const uniq=new Map();
  for(const e of records)if(e&&Number.isSafeInteger(e.seq)&&e.seq>0&&
    typeof e.type==='string'&&e.type!=='snapshot'&&e.type!=='session'){

@@ -21,7 +21,7 @@ import {createCavePriestHealing} from './world/cave-priest-healing.mjs';
 import {createCavePriestSupport} from './world/cave-priest-support.mjs';
 import {createCaveDirectCohesion} from './world/cave-direct-cohesion.mjs';
 import {createCaveEmergencyDirect} from './world/cave-emergency-direct.mjs';
-import {createLootDeparture} from './items/loot-departure.mjs';
+import {createLootDeparture,createLootBacklog} from './items/loot-departure.mjs';
 import {createOwnLootReceipts} from './items/loot-receipts.mjs';
 import {createActionAdmission} from './core/action-admission.mjs';
 import {beginCombatLife} from './combat/recovery-policy.mjs';
@@ -266,7 +266,7 @@ export function install(root){
   bot.admission=createActionAdmission(bot);
   const publicCall=p.call.bind(p);p.call=(name,...args)=>{if(name==='loot')bot.lootReceipts?.beforeLoot?.(args[0]);bot.admission.record(name,args);return publicCall(name,...args);};
   const exec=new Executor({admit:(key,resources)=>bot.admission.allow(key,resources),retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
-  bot.revivals=createRevivalClaims(bot);bot.lootReceipts=createOwnLootReceipts(bot);bot.lootDeparture=createLootDeparture(bot);bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
+  bot.revivals=createRevivalClaims(bot);bot.lootReceipts=createOwnLootReceipts(bot);bot.lootDeparture=createLootDeparture(bot);bot.lootBacklog=createLootBacklog(bot);bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.luckySlots=createLuckySlotEvidence(bot);bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.swaps=createSingleSwap(bot);bot.tradeOffers=createOwnTradeOffer(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.tailoring=createStatTailoring(bot);bot.merchant=createMerchant(bot);bot.supplyForecast=createSupplyForecast(bot);bot.accountStock=createAccountStockLedger(bot);bot.services=createServices(bot);bot.objectives=createObjectives(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
@@ -300,11 +300,14 @@ export function install(root){
     exec.run('party.request',['party'],()=>bot.running&&!p.c.party&&bot.account?.active()!==false&&!!bot.transport.fresh(target)?.running,()=>p.call('send_party_request',target),{delay:30000});
   }
   function publish(){try{const text=(bot.running?'ALBot ':'PAUSE ')+bot.reason.slice(0,50);if(text!==lastPublished){lastPublished=text;p.call('set_message',text);}}catch{}panel?.render();}
-  function halt(reason){bot.lootDeparture?.reset();bot.lootReceipts?.close();bot.cloud.close();bot.learning.flush(true);bot.impactIntents?.close();bot.combatAssessment?.close();bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.tailoring?.close();bot.market?.close();bot.merchant?.close();bot.supplyForecast?.close();bot.skillWakeups?.close();bot.potionReceipts?.close();bot.rewards?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.bosses?.close();bot.adaptive?.flush(true);bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.luckySlots?.close();bot.respawns?.close();bot.cave?.close();bot.caveLifecycle?.close();bot.cryptLifecycle?.close();bot.caveVoteJournal?.close();bot.objectives?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason}); /* Export only on explicit user command. */}
+  function halt(reason){bot.lootBacklog?.reset();bot.lootDeparture?.reset();bot.lootReceipts?.close();bot.cloud.close();bot.learning.flush(true);bot.impactIntents?.close();bot.combatAssessment?.close();bot.running=false;generation++;clearTimeout(timer);timer=null;bot.movement.stop();exec.invalidate();bot.gold?.close();bot.logistics.close();bot.economy?.close();bot.production?.close();bot.tailoring?.close();bot.market?.close();bot.merchant?.close();bot.supplyForecast?.close();bot.skillWakeups?.close();bot.potionReceipts?.close();bot.rewards?.close();bot.services?.interrupt();bot.strategy?.close();bot.teamPlan?.close();bot.encounter?.close();bot.bosses?.close();bot.adaptive?.flush(true);bot.priority?.close();bot.recovery?.close();bot.threats?.close();bot.allocation?.close();bot.content?.close();bot.behavior?.close();bot.account?.close();bot.progression?.close();bot.observations?.close();bot.luckySlots?.close();bot.respawns?.close();bot.cave?.close();bot.caveLifecycle?.close();bot.cryptLifecycle?.close();bot.caveVoteJournal?.close();bot.objectives?.close();bot.teamTravel?.close();bot.target=null;bot.reason=reason;publish();bot.report(reason);report.event('stop',{reason}); /* Export only on explicit user command. */}
   bot.pause=(reason='Pause')=>halt(reason);
   const warningTimes=new Map();let retryAfter=0;function runtimeWarning(where,e){bot.reason='Hinweis: '+(e?.message??e);retryAfter=now()+3000;const key=where+':'+bot.reason;if(now()-(warningTimes.get(key)??0)>30000){if(warningTimes.size>=64)warningTimes.clear();warningTimes.set(key,now());report.error(where,e);report.event('runtime.warning',{where,reason:bot.reason,continued:true,retryMs:3000,valueActionsBlocked:bot.inventoryBlocked});bot.report(bot.reason);}}
   function tick(gen){if(disposed||!bot.running||gen!==generation)return;const tickStarted=now();try{
     if(!p.c||!p.G){runtimeWarning('state','Spielzustand fehlt');return;}
+    // Observe transient bank contents while the merchant can actually see them.
+    // Retained snapshots are sent later under the Worker's 120-second rate limit.
+    if(telemetryAuto?.observeBank())void telemetryAuto.sendOnce();
     // The bank snapshot may arrive after the original action timed out. Only
     // exact, pinned source/destination evidence can release the value lock.
     if(bot.inventoryBlocked&&(['bank.gold','bank.store','gather.fishing','gather.mining','exchange','gold.send','gold.receive','buy','market.buy','ponty.buy','elixir.equip','sell','market.sell'].includes(bot.journal?.kind)))bot.recovery?.reconcile();
@@ -332,6 +335,8 @@ export function install(root){
        !!bot.logistics?.reserved||!!bot.gold?.reserved,
       moving:!!bot.movement.order||!!bot.movement.townActive
     });
+    // Collect visible loot outside the combat early-return paths.
+    bot.lootBacklog?.tick();
     if(bot.priority){bot.priority.run([
      {id:'recovery',kind:'emergency',exclusive:true,run:()=>bot.farmer.safety()},
      {id:'elixir',kind:'safety',guard:()=>economyDue&&!bot.recovering,run:()=>bot.elixirs.tick()},

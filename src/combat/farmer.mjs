@@ -158,7 +158,7 @@ export function potionResource(c,threshold=300){
  return hp>threshold?'hp':mp>threshold?'mp':null;
 }
 export function createFarmer(bot){
-  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastLoot=0,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
+  const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   let lastRoadAggroAt=0;
   const observeTransitBlock=createTransitBlockObserver();
@@ -433,6 +433,10 @@ function independentSpawnEngagement(){
        actorSource:pos?.actor?.source??null,
        leaderSource:pos?.leader?.source??null,
        monsterSource:pos?.monster?.source??null,
+       areaKind:pos?.areaKind??null,
+       adjacentKey:pos?.adjacentKey??null,
+       primaryTargetGap:fmt(pos?.primaryTargetGap),
+       adjacentCount:pos?.adjacentCount??null,
        raw:pos?.monsterRaw??null,real:pos?.monsterReal??null};
    });
    bot.event?.('combat.followerSpawnAudit',{
@@ -498,7 +502,9 @@ function independentSpawnEngagement(){
     bounded?'combat.independentBoundedSpawn':'combat.independentSharedSpawn',{
     target:id,monster:candidate.mtype,
     mode:exact?'one-shot':bounded?'short-bounded':'shared-low-threat',
-    plan:plan?.id,range:Math.round(distance(p.c,candidate))});
+    plan:plan?.id,range:Math.round(distance(p.c,candidate)),
+    areaKind:bot.encounter?.sharedSpawnAssessment?.(candidate)?.position?.areaKind??'primary',
+    adjacentKey:bot.encounter?.sharedSpawnAssessment?.(candidate)?.position?.adjacentKey??null});
  else diagnostic('attack-dispatch-denied',[candidate]);
  return true;
 }
@@ -824,7 +830,6 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(bot.account&&!bot.account.active()){bot.reason='Bereitschaft: andere Farmer gewählt';bot.target=null;return;}
     if(bot.strategy?.busy&&bot.monsters().some(m=>m.target===c.name))bot.strategy.interruptQuest?.();
     if(bot.strategy?.busy||bot.movement.order?.owner==='economy'){bot.skills.rotation(null);return;}
-    if(cfg.farming.loot&&!bot.inventoryBlocked&&!bot.logistics.reserved&&bot.free()>cfg.farming.freeSlots&&now-lastLoot>=cfg.farming.lootEveryMs){lastLoot=now;exec.run('loot',['inventory'],()=>bot.free()>cfg.farming.freeSlots,()=>tolerate('loot','openning',()=>p.call('loot')),{delay:cfg.farming.lootEveryMs});}
     if(!cfg.farming.enabled){bot.reason='Farmen ausgeschaltet';bot.skills.rotation(null);return;}
     if((p.parent.is_pvp||p.G.maps[c.map]?.pvp)&&!cfg.farming.pvp){bot.pause('PvP-Karte nicht freigegeben');return;}
     // Loot requires strictly MORE than the configured free-slot reserve.
@@ -919,6 +924,16 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         bot.reason='Kampfwaffe anlegen: '+candidate.item.name;return;
        }
       }
+    }
+    // Keep existing emergency/engaged-team defense unblocked, but do not
+    // start another voluntary neutral pull while nearby chests accumulate.
+    if(bot.lootBacklog?.shouldYieldPull?.()){
+      bot.target=null;
+      bot.reason='Beute-Rückstand abbauen';
+      if(['farm','follow'].includes(bot.movement.order?.owner))
+        bot.movement.stop();
+      bot.skills.rotation(null);
+      return;
     }
     // Healthy assembled followers can clear individually provable one-hit
     // mobs at the SAME verified spawn without waiting for the leader's focus.

@@ -458,6 +458,8 @@ export function createSkills(bot){
            targetIds:selected.map(m=>m.id).join(','),
            mode:'verified-bounded-aimed-multitarget',
            exposure:grant.exposure??null,
+           adjacentCount:selected.filter(m=>
+             bot.encounter?.aimedSpawnAssessment?.(m)?.position?.areaKind==='adjacent').length,
            projectedGain:Math.round(damage.gain)});
           return true;
         }

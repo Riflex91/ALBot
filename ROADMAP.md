@@ -1,4 +1,8 @@
-**0.23.0-candidate: Rotationsfrist, verbindliche Materialarbeit, Markt-Fallback und Crafting-Gearziele.** [Implementierung, Regressionen und Livegrenzen](docs/CHANGELOG-0.23.0.md). Die signierte Veröffentlichung erfolgt separat über den bestehenden V2-Kanal.
+**0.23.0-candidate: dauerhafte Rotation und Material-/Craftingaufträge.** [Implementierung und Tests](docs/CHANGELOG-0.23.0.md).
+
+# W02/W04: Physisch gültige Betriebs- und Bankreservemengen (21.10.2026)
+
+Der vorhandene, bereits persistente W04-Bank-Reserve-Staging-/Single-/Partial-Recovery-Pfad bleibt unverändert. Vor dem Einstieg in denselben Pfad gelten für den konkreten Bankquellstack und für alle passenden getragenen Vorratsvarianten nun die echten Mengenobergrenzen aus `G.items[name].s`; ungültige `q:null`, Bruchteile, Mehrfach-Phantomkopien und übergroße Stapel dürfen weder Vorrat verkaufen noch eine Zwischenentnahme legitimieren. Dieselbe reine physische Bestandsprüfung sperrt automatisch abgeleitete Betriebsvorratsverkäufe. Positiv-/Negativregressionen `test/operating-stock.test.mjs`. **Weiter offen:** vollständig accountweite endliche Bedarfs-/Slotfolgen, deren belastbare Langzeitrecovery und W14-Livebelege. Kein neuer Wertexecutor, Spielaufruf, signiertes Release oder persönliches Konfigupdate.
 
 # W14: Sitzungsbindung innerhalb von JSONL-Liveberichten (21.10.2026)
 

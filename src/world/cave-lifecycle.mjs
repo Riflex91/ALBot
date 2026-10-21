@@ -374,8 +374,8 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
      record.mode==='resume'&&
       (v.resume?.run!==record.run||
        typeof v.resume?.server!=='string'||
-       v.resume.server.replace(/\\s+/g,'').toUpperCase()!==
-        p.realm().replace(/\\s+/g,'').toUpperCase()))return false;
+       v.resume.server.replace(/\s+/g,'').toUpperCase()!==
+        p.realm().replace(/\s+/g,'').toUpperCase()))return false;
   // durable() re-reads the strict journal and refuses a competing write.
   // This performs no cave_enter, cave_exit, vote or currency mutation.
   return durable(null);

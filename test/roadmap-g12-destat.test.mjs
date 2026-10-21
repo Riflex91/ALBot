@@ -151,3 +151,53 @@ test('G12 invalid returned-scroll baseline cannot become a value receipt',()=>{
  assert.equal(f.operation.guard(),false,
   'post-plan corruption of sibling inventory invalidates queued destat');
 });
+
+
+test('G12 invalid loss budget or multi-unit batch never enters a value journal',()=>{
+ for(const loss of [null,undefined,NaN,Infinity,-Infinity,-1,'200']){
+  const f=fixture();f.rule.lossBudget=loss;
+  assert.equal(destatCandidate(f.bot),null,'invalid exposure '+String(loss));
+  assert.equal(f.tailoring.destatTick(),false);
+  assert.equal(f.operation,null);
+ }
+ for(const batch of [0,2,5,1.5]){
+  const f=fixture();f.rule.batch=batch;
+  assert.equal(destatCandidate(f.bot),null,
+   'de-statting one exact gear unit needs one-unit authorization');
+ }
+ assert.ok(destatCandidate(fixture().bot),
+  'finite approved rule still admits the original mutation');
+});
+
+test('G12 nonstackable synthetic source never funds de-stat reserve',()=>{
+ for(const qty of [2,3,0,null,1.5,NaN,Infinity]){
+  for(const position of [0,1]){
+   const f=fixture();
+   f.items[position].q=qty;
+   assert.equal(destatCandidate(f.bot),null,
+    'invalid physically witnessed staff at '+position+':'+String(qty));
+  }
+ }
+ const f=fixture();
+ f.items[0].q=1;f.items[1].q=1;
+ assert.ok(destatCandidate(f.bot),
+  'two distinct actual single staffs still preserve the reserve');
+});
+
+test('G12 malformed returned scroll baseline blocks planning and false settlement',async()=>{
+ for(const quantity of [null,-1,0,1.5,NaN,Infinity,10000]){
+  const f=fixture();
+  f.items[2]={name:'strscroll',q:quantity};
+  assert.equal(destatCandidate(f.bot),null,
+   'invalid source inventory quantity cannot be a refund baseline');
+ }
+ const f=fixture();
+ assert.equal(f.tailoring.destatTick(),true);
+ await f.operation.call();
+ assert.equal(f.operation.observe(),true);
+ f.items[2].q=11;
+ assert.equal(f.operation.observe(),false,
+  'unobserved extra refund cannot satisfy the exact returned-scroll contract');
+ f.items[2].q=10;
+ assert.equal(f.operation.observe(),true);
+});

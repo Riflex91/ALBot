@@ -77,10 +77,14 @@ export function createStoragePlanner(bot){
    for(const row of rows){
     const x=extract(row);
     if(!plain(x)||identity(x)!==identity(i))continue;
-    // Only an absent q means an unstacked item. A malformed component
-    // cannot cancel against another stack or inflate the recipe backing.
-    const q=x.q===undefined?1:x.q;
-    if(!Number.isSafeInteger(q)||q<1||
+    // Only an absent q denotes a singleton. Validate each matching
+    // physical row against the actual game stack contract as well as the
+    // account-wide sum: an overstack is not spare bank/recipe backing.
+    const meta=p.G.items?.[x.name],
+     max=meta?.s===true?9999:
+      Number.isSafeInteger(meta?.s)&&meta.s>1?meta.s:1,
+     q=x.q===undefined?1:x.q;
+    if(!meta||!Number.isSafeInteger(q)||q<1||q>max||
        !Number.isSafeInteger(units+q))return null;
     units+=q;
    }
@@ -90,8 +94,10 @@ export function createStoragePlanner(bot){
   const bank=verifiedBank?count(bankStock(),r=>r.item):0;
   if(local===null||bank===null||!Number.isSafeInteger(local+bank))
    return null;
-  const held=local+bank,q=i.q===undefined?1:i.q,price=e.value(i);
-  if(!Number.isSafeInteger(q)||q<1||held-q<required||
+  const held=local+bank,q=i.q===undefined?1:i.q,price=e.value(i),
+   max=m.s===true?9999:
+    Number.isSafeInteger(m.s)&&m.s>1?m.s:1;
+  if(!Number.isSafeInteger(q)||q<1||q>max||held-q<required||
      !Number.isFinite(price)||price<0||
      price>(cfg.production.autoGearSellMaxValue??1000000))return null;
   return {...defaultsFor(ITEM_RULE),name:'Lagerplanung: ersetzbar '+i.name,item:i.name,action:'sell',batch:q,maxCount:Math.max(held,1),minPrice:price,

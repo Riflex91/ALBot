@@ -1,5 +1,5 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
-import {gearCompatible} from './gear.mjs';
+import {gearCompatible,merchantSelfEquipDecision} from './gear.mjs';
 import {purposeReservations} from './purpose-allocation.mjs';
 import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} from './helpers.mjs';
 import {estimateRoutes} from './costs.mjs';
@@ -372,7 +372,16 @@ export function createProduction(bot){
     ...(exact?{_autoExactVariant:variantKey}:{}),recipient:g.recipient});
   }
   for(const g of goals()){
-   if(g.gearSlot&&(!g.recipient||g.recipient===bot.me.name))extra.push({...generated('equip',{name:g.item,level:g.level},g.quantity,g),slot:g.gearSlot});
+   if(!g.gearSlot||g.recipient&&g.recipient!==bot.me.name)continue;
+   // A Merchant's autonomous self-equip rule cannot compete with a farmer
+   // for the same finished physical copy. This is an early scheduling gate;
+   // gear.equip checks live evidence again before a delayed dispatch.
+   if(me.role==='merchant'){
+    const owned=(p.c.items??[]).filter(i=>i?.name===g.item&&
+     (i.level??0)===g.level&&e.safe(i));
+    if(!owned.some(i=>merchantSelfEquipDecision(bot,i).allowed))continue;
+   }
+   extra.push({...generated('equip',{name:g.item,level:g.level},g.quantity,g),slot:g.gearSlot});
   }
   // Receiving characters derive only their explicitly configured gear demand.
   for(const g of cfg.production.gearTargets??[])if(g.enabled&&g.character===bot.me.name&&!(p.c.slots?.[g.slot]?.name===g.item&&(p.c.slots[g.slot].level??0)>=g.level))extra.push({...generated('equip',{name:g.item,level:g.level},1,g),slot:g.slot});

@@ -13,14 +13,14 @@ export function createPorts(root){
   const directSave=()=>rotationCode!==null&&rotationCode.length>0&&!!find('upload_code');
   // Value-bearing journals must never use the game's forgiving get(),
   // which maps a corrupted serialized record to an apparently empty slot.
-  const strictJournalValue=key=>{
+  const strictJournalValue=(key,category='Cave')=>{
    const storage=root.localStorage??parent.localStorage;
    if(!storage||typeof storage.getItem!=='function')
-    throw Error('Strict journal storage unavailable');
+    throw Error('Strict '+category+' journal storage unavailable');
    const raw=storage.getItem('cstore_'+key);
    if(raw===null)return null;
    if(typeof raw!=='string'||raw.length>65536)
-    throw Error('Invalid strict journal storage payload');
+    throw Error('Invalid '+category+' journal storage payload');
    return JSON.parse(raw);
   };
   return {root,parent,headless,ipc,h,
@@ -144,7 +144,7 @@ export function createPorts(root){
     readCaveJournal(key){
      if(typeof key!=='string'||!/^albot:(?:cave-(?:lifecycle|vote)|crypt-lifecycle):[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid Cave journal key');
-     return strictJournalValue(key);
+     return strictJournalValue(key,'trade offer');
     },
     readTradeOfferJournal(key){
      // Same cstore_ key used by the normal set() port, but never convert
@@ -152,7 +152,7 @@ export function createPorts(root){
      if(typeof key!=='string'||
         !/^albot:trade-offer:v1:[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid trade offer journal key');
-     return strictJournalValue(key);
+     return strictJournalValue(key,'Cave');
     },
     readCryptJournal(key){
      // Reuse strict journal read semantics; a corrupt key cannot be

@@ -1,3 +1,7 @@
+## Fortschritt W03/G01 — physische Source-/Slot-Integrität (21.10.2026)
+
+Der vorhandene gemeinsame Kapazitätsprüfer unterscheidet jetzt konsequent fehlendes `q` von `q:null`; die W03-Slotfolgensuche schließt leere Ausgangspositionen aus. Diese Änderungen verhindern eine Phantomfreigabe bei Einkauf, Produktion, Transfer und Reward-Mail, sind aber **keine** serverbestätigte mehrstufige Inventar-Recovery. Vollständige W03- und W14-Liveabnahme bleiben offen.
+
 # Autonomie-Abgleich und Umsetzung 0.10.11-candidate
 
 Verglichener Main: [2d0ce11243c273a6445765d9c28a4c760f20e0e2](https://github.com/Riflex91/ALBot/commit/2d0ce11243c273a6445765d9c28a4c760f20e0e2), 18.10.2026. Umsetzungs-PR: [#167](https://github.com/Riflex91/ALBot/pull/167). Fachliche Grundlage: die Implementierungsroadmap, der Tiefenvergleich und die KI-Übergabe vom 18.10.2026. Diese Dateien wurden gelesen; sie erteilen selbst keine neuen Berechtigungen. Der Benutzer hat Umsetzung und automatischen Merge nach Main ausdrücklich beauftragt.

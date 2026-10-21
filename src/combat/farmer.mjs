@@ -502,7 +502,9 @@ function independentSpawnEngagement(){
     bounded?'combat.independentBoundedSpawn':'combat.independentSharedSpawn',{
     target:id,monster:candidate.mtype,
     mode:exact?'one-shot':bounded?'short-bounded':'shared-low-threat',
-    plan:plan?.id,range:Math.round(distance(p.c,candidate))});
+    plan:plan?.id,range:Math.round(distance(p.c,candidate)),
+    areaKind:bot.encounter?.sharedSpawnAssessment?.(candidate)?.position?.areaKind??'primary',
+    adjacentKey:bot.encounter?.sharedSpawnAssessment?.(candidate)?.position?.adjacentKey??null});
  else diagnostic('attack-dispatch-denied',[candidate]);
  return true;
 }

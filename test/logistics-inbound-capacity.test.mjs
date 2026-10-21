@@ -104,3 +104,12 @@ test('W13 stack-sized gear offer never leaves a partial physical gear claim',()=
  assert.equal(f.bot.journal,null);
  assert.equal(f.messages.length,0);
 });
+
+test('W03 malformed receiver stock does not admit a new transfer into a free slot',()=>{
+ const inventory=[{...potion,q:null},...Array(40).fill({name:'other'}),null];
+ assert.equal(physicalReceiveCapacity(inventory,potion,meta),0);
+ inventory[0].q=9998;
+ assert.equal(physicalReceiveCapacity(inventory,potion,meta),10000);
+ inventory[0].q=9999;
+ assert.equal(physicalReceiveCapacity(inventory,potion,meta),9999);
+});

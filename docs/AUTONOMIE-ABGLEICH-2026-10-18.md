@@ -1,3 +1,7 @@
+## W12/N11 — vor Dispatch sicherer Crypt-Restart (21.10.2026)
+
+Bei Sessionwechsel kann das vorhandene Crypt-Journal eine eindeutig noch nicht versendete `prepared`-Absicht nach strengem Realm-/Slot-/Fingerprint-/Keybestand- und Guard-Abgleich automatisch, dauerhaft und **ohne Spielaufruf** freigeben. Jeder unsichere Dispatch-/Instanzzustand bleibt blockiert. Dies löst ausschließlich den ersten eingrenzbaren Recovery-Schritt, nicht den gesamten Crypt-Run oder dessen Exit-/Loot-Belege.
+
 ## Fortschritt W03/G01 — physische Source-/Slot-Integrität (21.10.2026)
 
 Der vorhandene gemeinsame Kapazitätsprüfer unterscheidet jetzt konsequent fehlendes `q` von `q:null`; die W03-Slotfolgensuche schließt leere Ausgangspositionen aus. Diese Änderungen verhindern eine Phantomfreigabe bei Einkauf, Produktion, Transfer und Reward-Mail, sind aber **keine** serverbestätigte mehrstufige Inventar-Recovery. Vollständige W03- und W14-Liveabnahme bleiben offen.

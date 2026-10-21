@@ -1,3 +1,7 @@
+## 21.10.2026 — W10/W13 physisch gültige Lootquittungen und Hinweise
+
+Der vorhandene `createOwnLootReceipts`-Pfad beweist einen Loot-Erhalt nur aus Inventarständen, deren jede belegte Position das echte `G.items[name].s`-Limit einhält. `q:null`, nicht stapelbare Mehrfacheinträge, unbekannte Itemdefinitionen und übergroße Potionstapel können keine physische Lootquittung oder nachgelagerte readonly-Gear-/Produktionshinweise mehr begründen. Ein Versionswechsel der G-Itemdefinitionen zwischen Vorher-/Nachher-Snapshot widerruft die physische Bestätigung. Gültige Einzelitems und tatsächlich passende Potion-Merges werden weiterhin bestätigt. Regressionen in `test/roadmap-w10-w13-own-loot-receipts.test.mjs`. Mehrspieler-Lootmission, serverseitiger Eigentumsnachweis und W14-Live-Abnahme bleiben offen.
+
 ## 21.10.2026 — W02: reale Stackgrenzen bei vorbeugendem Lagerverkauf
 
 Die bestehende `createStoragePlanner`-Kapazitätsdisposition akzeptiert als physische Rezept-/Produktionsreserve nur noch einzelne Inventar- oder aktuell beobachtete Bankstapel mit den realen `G.items[name].s`-Grenzen. Für Gegenstände ohne gültiges Stackmerkmal gilt nur eine physische Einzelkopie pro Slot; übergroße Bank- oder Inventarstapel legitimieren keinen NPC-Verkauf. Vorhandene gebundene Bank-/Rezeptevidenz und Value-Executor bleiben unverändert. Tests in `test/preventive-storage.test.mjs`. Gesamtübergreifende Langzeit-W02-/W03- und Live-Abnahme offen.

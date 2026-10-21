@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 23,
-      "version": "0.23.0-candidate",
+      "sequence": 24,
+      "version": "0.24.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 910699,
-      "sha256": "97b67cbfb5b8e3a5115867c6501c2ae2967d80976070d0bf3b5b95e38eba7be5"
+      "bytes": 916442,
+      "sha256": "56c2562496381ffdade50567fc33900cd15a9ad97453536cef5d98bb01f933f2"
     },
     "observedLoadedUrl": null,
-    "note": "Signierte Runtime Sequenz 23 / 0.23.0-candidate am 21.10.2026 nach PR #351/#354 über GitHub Actions 39637306083 erfolgreich veröffentlicht. Der unabhängige Ranger 3shot-Pfad berücksichtigt vorhandene aktivierte Skill-Regeln mit Bedingungen, Manareserve, Ausführungsintervall und Zielgrenzen. Zuvor bereits gemergte W02/W04-Korrekturen bleiben erhalten. 5shot ist für die derzeitigen Level-61-Ranger noch nicht verfügbar. V2-Bootstrap-Logik, EC-Schlüssel und persönliche Konfiguration unverändert; Erfolg im Live-Spiel erneut anhand von Logs zu prüfen."
+    "note": "Sequence 24 / 0.24.0-candidate am 21.10.2026 nach PR #355 (main 2ac84396ac482ebd12824f9d3338159528cd344d), Linux-/Windows-CI 39637823327 und Signierworkflow 39638036784 veroeffentlicht. 2274 Offline-Tests; ECDSA-P-256, SHA-256 und Bytezahl verifiziert; Runtime byteidentisch mit main. V2-Loader, Key, URLs und persoenliche Konfiguration unveraendert. Game-Liveabnahme offen."
   }
 }

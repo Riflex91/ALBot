@@ -69,7 +69,9 @@ export function merchantSelfEquipDecision(bot,item,{now=Date.now()}={}){
   // Only current-session, realm-bound, complete gear evidence can EXCLUDE
   // farmer demand. A fresh heartbeat cannot refresh stale equipment.
   if(!member||!peer?.running||peer.rip===true||peer.realm!==p.realm()||
-     !peer.session||!profile?.complete||profile.session!==peer.session||
+     !peer.session||!profile?.complete||typeof profile.class!=='string'||!profile.class||
+     !Number.isSafeInteger(profile.level)||profile.level<1||
+     profile.session!==peer.session||
      profile.realm!==peer.realm||!Number.isSafeInteger(profile.at)||
      profile.at>now||now-profile.at>120000||
      !profile.slots||slots.some(slot=>!Object.hasOwn(profile.slots,slot)))

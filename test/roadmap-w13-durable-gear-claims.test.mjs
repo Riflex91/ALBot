@@ -173,3 +173,44 @@ test('W13 a previously reserved gear claim cannot be reused in another realm',()
  assert.equal(f.allocation.reserve(j),false);
  assert.equal(f.allocation.status()[0].state,'reserved');
 });
+
+
+test('W05/W13 explicit null or synthetic multi-unit equipment never backs another claim',()=>{
+ for(const q of [null,0,-1,0.5,2,3,NaN,Infinity,
+  Number.MAX_SAFE_INTEGER+1]){
+  const f=fixture({inventory:[{name:'staff',level:3,stat_type:'int',q}]});
+  assert.equal(unclaimedGearUnits([],f.items,f.item),0,
+   'not a physical single: '+String(q));
+  assert.equal(f.allocation.offer(f.item,'Priest'),false);
+  assert.equal(f.allocation.guard(f.job()),false);
+  assert.equal(f.allocation.reserve(f.job()),false);
+ }
+});
+test('W05/W13 two independent staff slots still back exactly two one-unit claims',()=>{
+ const f=fixture({inventory:[{name:'staff',level:3,stat_type:'int'},
+  {name:'staff',level:3,stat_type:'int',q:1}]});
+ const key=identity(f.item),first={id:'old',state:'unresolved',
+  variant:key,quantity:1};
+ assert.equal(unclaimedGearUnits([first],f.items,f.item),1);
+ assert.equal(unclaimedGearUnits([first, {...first,id:'other'}],
+  f.items,f.item),0);
+ assert.equal(unclaimedGearUnits([first],f.items,f.item,
+  {excludeId:'old'}),2);
+});
+test('W05/W13 reserved gear cannot be dispatched after physical singleton drift',()=>{
+ const f=fixture(),job=f.job();
+ assert.equal(f.allocation.reserve(job),true);
+ assert.equal(f.allocation.guard(job),true);
+ f.items[0].q=2;
+ assert.equal(f.allocation.guard(job),false);
+ assert.equal(f.allocation.reserve(job),false);
+ assert.equal(f.allocation.status()[0].state,'reserved',
+  'a malformed observation does not silently erase the durable claim');
+});
+test('W05/W13 malformed unrelated variant metadata fails allocation closed',()=>{
+ const f=fixture();
+ const other={name:'corrupt',data:{}};other.data.self=other.data;
+ assert.equal(unclaimedGearUnits([],[...f.items,other],f.item),0);
+ assert.equal(unclaimedGearUnits([],[...f.items,{name:'corrupt',data:1n}],
+  f.item),0);
+});

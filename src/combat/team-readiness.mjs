@@ -159,12 +159,74 @@ export function verifiedFollowerBoundedSpawn(actor,monster,options={}){
    hp:monster.hp,marginHp:actor.hp-exposure-actor.max_hp*.65};
 }
 
-// Ordinary low-threat shared-spawn autonomy is NOT a one-shot proof.
-// The leader chooses a map/species; nearby followers may select distinct
-// live monsters of that species. Restrict *each* independent engagement by
-// its measured risk rather than requiring an infallible killing blow.
-// Return a concrete denial code for live diagnosis; never silently turn
-// missing evidence into an approval.
+// World/server positions are not interchangeable scalar fields. Use one
+// complete, finite (real_x, real_y) pair, otherwise one complete (x, y)
+// pair. Never combine one real coordinate with one stale raw coordinate.
+export function combatPosition(entity){
+ if(Number.isFinite(entity?.real_x)&&Number.isFinite(entity?.real_y))
+  return {x:entity.real_x,y:entity.real_y,source:'real'};
+ if(Number.isFinite(entity?.x)&&Number.isFinite(entity?.y))
+  return {x:entity.x,y:entity.y,source:'raw'};
+ return null;
+}
+export function verifiedFarmSpawnRectangle(plan){
+ if(!Array.isArray(plan?.bounds))return null;
+ const [map,minX,minY,maxX,maxY]=plan.bounds;
+ if(map!==plan.map||![minX,minY,maxX,maxY].every(Number.isFinite)||
+    !(maxX>minX&&maxY>minY)||maxX-minX>3500||maxY-minY>3500||
+    !Number.isFinite(plan.x)||!Number.isFinite(plan.y)||
+    plan.x<minX||plan.x>maxX||plan.y<minY||plan.y>maxY)
+  return null;
+ return {map,minX,minY,maxX,maxY};
+}
+export function distanceFromFarmRectangle(point,rect){
+ if(!point||!rect)return Infinity;
+ return Math.hypot(Math.max(rect.minX-point.x,point.x-rect.maxX,0),
+   Math.max(rect.minY-point.y,point.y-rect.maxY,0));
+}
+// Geometry evidence is shared by admission and the live diagnostic; no
+// separate untested distance interpretation is permitted in logging.
+// Canonical bounds are verified against the selected spawn identity by
+// teamPlan.target()/valid() before combat uses this area.
+export function sharedSpawnPositionEvidence(actor,leader,monster,plan,{
+ maxAnchorGap=190,maxSupportGap=285
+}={}){
+ const own=combatPosition(actor),lead=combatPosition(leader),
+   mob=combatPosition(monster),anchor=combatPosition(plan);
+ const observed={actor:own,leader:lead,monster:mob,anchor,
+   actorRaw:[actor?.x??null,actor?.y??null],
+   actorReal:[actor?.real_x??null,actor?.real_y??null],
+   leaderRaw:[leader?.x??null,leader?.y??null],
+   leaderReal:[leader?.real_x??null,leader?.real_y??null],
+   monsterRaw:[monster?.x??null,monster?.y??null],
+   monsterReal:[monster?.real_x??null,monster?.real_y??null]};
+ if(!own||!lead||!mob||!anchor)
+  return {allowed:false,reason:'missing-physical-position',...observed};
+ const rect=plan?.bounds===undefined||plan?.bounds===null?
+   null:verifiedFarmSpawnRectangle(plan);
+ if(plan?.bounds!=null&&!rect)
+  return {allowed:false,reason:'invalid-spawn-rectangle',...observed};
+ const pointDistance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+ const distanceToArea=p=>rect?distanceFromFarmRectangle(p,rect):
+   pointDistance(p,anchor);
+ const actorGap=distanceToArea(own),
+   leaderGap=distanceToArea(lead),
+   targetGap=distanceToArea(mob),
+   teamGap=pointDistance(own,lead);
+ const evidence={...observed,rect,actorGap,leaderGap,
+  targetGap,teamGap};
+ const actorLimit=rect?Math.min(95,maxAnchorGap):maxAnchorGap;
+ const leaderLimit=rect?Math.min(95,maxAnchorGap):maxAnchorGap;
+ const targetLimit=rect?65:maxAnchorGap;
+ if(actorGap>actorLimit)return {allowed:false,reason:'actor-outside-spawn',...evidence};
+ if(leaderGap>leaderLimit)return {allowed:false,reason:'leader-outside-spawn',...evidence};
+ if(targetGap>targetLimit)return {allowed:false,reason:'target-outside-spawn',...evidence};
+ if(teamGap>maxSupportGap)return {allowed:false,reason:'team-support-gap',...evidence};
+ return {allowed:true,reason:'verified-shared-spawn-position',...evidence};
+}
+// The leader chooses species+spawn; all selected farmers may fight separate
+// low-threat monsters inside the source's actual verified spawn rectangle.
+// A circle around the centroid is only used when the source has no bounds.
 export function assessFollowerSharedSpawn(actor,monster,{
  plan,leader,realm,game,now=Date.now(),maxAnchorGap=190
 }={}){
@@ -183,12 +245,9 @@ export function assessFollowerSharedSpawn(actor,monster,{
     !Number.isFinite(leader.received)||leader.received>now||
     now-leader.received>4000)
    return deny('leader-or-spawn-proof-stale');
- if(![actor.x,actor.y,leader.x,leader.y,monster.x,monster.y]
-    .every(Number.isFinite)||
-    distance(actor,plan)>maxAnchorGap||
-    distance(leader,plan)>maxAnchorGap||
-    distance(actor,leader)>maxAnchorGap*1.3)
-   return deny('outside-assembled-spawn');
+ const position=sharedSpawnPositionEvidence(actor,leader,monster,plan,{
+   maxAnchorGap});
+ if(!position.allowed)return position;
  if(!Number.isFinite(actor.hp)||!(actor.max_hp>0)||
     actor.hp/actor.max_hp<.75||
     !Number.isFinite(actor.mp)||!(actor.max_mp>0)||
@@ -197,15 +256,12 @@ export function assessFollowerSharedSpawn(actor,monster,{
    return deny('actor-not-combat-ready');
  const meta=game?.monsters?.[monster.mtype];
  if(!meta||meta.boss||meta.cooperative||meta.stationary||
-    meta.explosion||meta.aura||
+    meta.respawn_as||meta.spawns||meta.explosion||meta.aura||
     Object.keys(meta.abilities??{}).length>0||
     !(meta.hp>0)||!Number.isFinite(meta.hp)||
     !Number.isFinite(meta.attack)||meta.attack<0||
     !(meta.frequency>0)||!Number.isFinite(meta.frequency))
    return deny('monster-mechanics-unverified');
- // Exceptional live mutants or special states need the existing dedicated
- // leader/risk path. Dodge chance is NOT by itself a reason to prohibit a
- // low-threat fight: the exposure model below assumes very low net DPS.
  if(monster.hp>Math.max(meta.hp*2,actor.attack*12)||
     monster.s?.fullguard||monster.s?.fullguardx)
    return deny('unbounded-health-or-guard');
@@ -218,13 +274,59 @@ export function assessFollowerSharedSpawn(actor,monster,{
  const effectiveHitFloor=actor.attack*.30;
  const seconds=Math.min(12,Math.max(3,monster.hp/Math.max(1,effectiveHitFloor)*2+2));
  const exposure=meta.attack*meta.frequency*seconds*1.65;
- // This is a low-THREAT proof, not a guaranteed damage / exact-time claim.
- // Leave most of each farmer's HP intact even without future heals/potions.
  if(!Number.isFinite(exposure)||meta.attack*meta.frequency>actor.max_hp*.045||
     actor.hp-exposure<actor.max_hp*.65)
    return deny('bounded-personal-survival-failed');
  return {allowed:true,reason:'verified-low-threat-spawn',exposure,seconds,
-  planId:plan.id,monsterId:monster.id??null};
+  planId:plan.id,monsterId:monster.id??null,position};
+}
+// An aimed 3shot/5shot is an explicit set of distinct server-target IDs.
+// Verify *every* neutral target and the combined worst-case exposure, without
+// claiming predicted hits or future heal. Other targets already engaged by
+// the team are accounted for separately by the encounter's aggregate gate.
+export function verifiedLowThreatAimedSet(actor,targets,{
+ skillId,skill,plan,leader,realm,game,now=Date.now()
+}={}){
+ const deny=reason=>({allowed:false,reason});
+ const maximum=skillId==='3shot'?3:skillId==='5shot'?5:0,
+   minimum=skillId==='3shot'?2:skillId==='5shot'?4:Infinity;
+ if(!Array.isArray(targets)||targets.length<minimum||
+    targets.length>maximum||skill?.hostile!==true||
+    !Number.isFinite(skill?.damage_multiplier)||skill.damage_multiplier<=0)
+  return deny('invalid-aimed-skill-or-count');
+ const ids=targets.map(m=>String(m?.id??''));
+ if(ids.some(x=>!x)||new Set(ids).size!==ids.length)
+  return deny('duplicate-or-missing-aimed-id');
+ const proof=targets.map(m=>assessFollowerSharedSpawn(actor,m,{
+  plan,leader,realm,game,now}));
+ const invalid=proof.findIndex(x=>!x.allowed);
+ if(invalid!==-1)return {allowed:false,reason:'unapproved-aimed-target',
+  target:ids[invalid],targetReason:proof[invalid].reason};
+ if(!Number.isFinite(actor.frequency)||actor.frequency<=0)
+  return deny('missing-actor-frequency');
+ let exposure=0;
+ for(const [index,monster] of targets.entries()){
+  const meta=game.monsters[monster.mtype];
+  const estimate=outgoingDamageEstimate(actor,{
+   ...meta,...monster,
+   armor:monster.armor??meta.armor,
+   resistance:monster.resistance??meta.resistance,
+   avoidance:monster.avoidance??meta.avoidance,
+   evasion:monster.evasion??meta.evasion,
+   reflection:monster.reflection??meta.reflection
+  },{skill,uncertainty:.25,fearFactor:.9});
+  if(!estimate.valid||!(estimate.damage>0))
+   return {allowed:false,reason:'unknown-aimed-damage',target:ids[index]};
+  const hits=Math.ceil(monster.hp/estimate.damage);
+  // Even when a skill could kill immediately, budget two retaliatory
+  // attack intervals plus one buffer against dodge/latency.
+  const seconds=Math.min(12,Math.max(2.5,(hits+1)/actor.frequency+1));
+  exposure+=meta.attack*meta.frequency*seconds*1.65;
+ }
+ if(!Number.isFinite(exposure)||actor.hp-exposure<actor.max_hp*.65)
+  return {allowed:false,reason:'unsafe-aimed-exposure',exposure};
+ return {allowed:true,reason:'verified-aimed-shared-spawn',
+  ids,targets:ids.length,exposure};
 }
 
 // Unlike a broad multi-pull allowance this authorizes only explicit aimed

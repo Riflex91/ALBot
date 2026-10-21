@@ -107,14 +107,26 @@ export function needsProductionStock(available,required){return available<requir
 // still decide if an actual mutation may execute.
 export function gearInputReady(g,stock,meta){
  if(!g?.gearSlot||!Number.isInteger(g.level)||g.level<1||
-   !(meta?.upgrade||meta?.compound))return false;
- const needed=meta.compound?3:1;
- const n=(stock??[]).reduce((sum,i)=>sum+(i?.name===g.item&&
-   (i.level??0)===g.level-1&&!i.l&&!i.b&&
-   (!g.variant||['stat_type','p','title','data'].every(k=>
-     g.variant[k]===undefined||JSON.stringify(g.variant[k])===JSON.stringify(i[k]??(['stat_type','p','title'].includes(k)?'':undefined))))?
-   (Number.isSafeInteger(i.q)&&i.q>0?i.q:1):0),0);
- return n>=needed;
+    !(meta?.upgrade||meta?.compound)||!Array.isArray(stock))return false;
+ const needed=meta.compound?3:1,s=meta.s,
+  limit=s===true?9999:Number.isSafeInteger(s)&&s>1?s:1;
+ let counted=0;
+ for(const i of stock){
+  if(i?.name!==g.item||(i.level??0)!==g.level-1||i.l||i.b)continue;
+  let exact;
+  try{exact=!g.variant||['stat_type','p','title','data'].every(k=>
+    g.variant[k]===undefined||
+    JSON.stringify(g.variant[k])===JSON.stringify(i[k]??
+     (['stat_type','p','title'].includes(k)?'':undefined)));}catch{return false;}
+  if(!exact)continue;
+  const qty=i.q===undefined?1:i.q;
+  // Any malformed matching input invalidates its readiness proof, rather
+  // than counting a null/fractional/oversized copy as a real mutation unit.
+  if(!Number.isSafeInteger(qty)||qty<1||qty>limit||
+     !Number.isSafeInteger(counted+qty))return false;
+  counted+=qty;
+ }
+ return counted>=needed;
 }
 // A multi-level goal can be actionable starting with a lower-level batch.
 export function gearChainReady(g,stock,meta){
@@ -139,8 +151,16 @@ export function actionCapacity(items,consumed=[],output=null,G={},outputs=1,{inv
 export function unbankedDemand(rows,bankItems,name,level){
  const demand=(rows??[]).filter(r=>r.item===name&&r.level===level)
   .sort((a,b)=>Number(!!b.variant)-Number(!!a.variant));
- const available=(bankItems??[]).filter(i=>i?.name===name&&(i.level??0)===level)
-  .map(item=>({item,left:Number.isSafeInteger(item.q)&&item.q>0?item.q:1}));
+ const available=[];
+ if(!Array.isArray(bankItems))return Infinity;
+ for(const item of bankItems){
+  if(item?.name!==name||(item.level??0)!==level)continue;
+  const qty=item.q===undefined?1:item.q;
+  // A malformed bank row is not proof that the goal is already covered.
+  // Missing metadata means we cannot infer a tighter game stack cap here.
+  if(!Number.isSafeInteger(qty)||qty<1)return Infinity;
+  available.push({item,left:qty});
+ }
  let remaining=0;
  for(const row of demand){
   let need=row.quantity;

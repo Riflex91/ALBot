@@ -1,0 +1,134 @@
+name: Deploy ALBot Konfigurator (Cloudflare Free)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'konfigurator/**'
+      - 'editor/**'
+      - '.github/workflows/deploy-konfigurator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize uploads; never cancel a partially applied production deployment.
+concurrency:
+  group: albot-konfigurator-cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      configured: ${{ steps.credentials.outputs.configured }}
+    steps:
+      - name: Check explicitly configured deployment credentials
+        id: credentials
+        shell: bash
+        env:
+          CF_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_DEPLOY_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -n "$CF_DEPLOY_TOKEN" && -n "$CF_DEPLOY_ACCOUNT" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare deployment credentials are configured."
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare deploy skipped. Configure both CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in GitHub Actions repository secrets. Never commit token values."
+          fi
+
+  linux-verification:
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Verify built runtime and personal CODE unchanged
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --check
+      - name: Full offline regression suite
+        run: npm test
+      - name: Prepare exact Cloudflare static assets
+        run: |
+          npm run build:editor
+          npm run build:konfigurator
+          node --check konfigurator/worker/index.mjs
+          node --check konfigurator/public/app.mjs
+          node --check konfigurator/public/relay.mjs
+      - name: Preserve only existing Free-tier Cloudflare services
+        run: |
+          test -f konfigurator/wrangler.toml
+          grep -q 'keep_vars = true' konfigurator/wrangler.toml
+          grep -q 'name = "albot-konfigurator"' konfigurator/wrangler.toml
+          grep -q 'binding = "DB"' konfigurator/wrangler.toml
+
+  windows-verification:
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Run the exact Windows runtime verification
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/VERIFY-U01-U07.ps1
+
+  deploy:
+    needs:
+      - preflight
+      - linux-verification
+      - windows-verification
+    if: >
+      github.ref == 'refs/heads/main' &&
+      needs.preflight.outputs.configured == 'true' &&
+      needs.linux-verification.result == 'success' &&
+      needs.windows-verification.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Rebuild assets from this verified main commit
+        run: |
+          npm run build:editor
+          npm run build:konfigurator
+      - name: Publish existing Worker and D1 binding only
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: konfigurator
+          command: deploy
+      - name: Document deployment verification
+        shell: bash
+        run: |
+          {
+            echo "### Cloudflare Konfigurator deploy"
+            echo "- Repository commit: \`$GITHUB_SHA\`"
+            echo "- Existing Worker: \`albot-konfigurator\`"
+            echo "- Tests: Linux + Windows passed"
+            echo "- No D1 migration, no Cloudflare plan change, no Worker secret replacement"
+            echo "- Live Access-protected API/browser confirmation remains a separate check"
+          } >> "$GITHUB_STEP_SUMMARY"

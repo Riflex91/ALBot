@@ -30,7 +30,7 @@ test('W07 gear source quantity proof permits only true item-defined stack bounda
  assert.equal(gearInputReady(gear,[{...ring,q:2},ring],stackable),true);
 });
 test('W07 malformed variants are not evaluated as current gear inputs',()=>{
- const cycle={stat_type:'int'};cycle.self=cycle;
+ const cycle={stat_type:'int',data:{}};cycle.data.self=cycle.data;
  assert.equal(gearInputReady({...gear,variant:cycle},
   [ring,ring,ring],meta),false);
  const exact={...gear,variant:{stat_type:'dex'}};
@@ -59,7 +59,7 @@ test('W07 bank variants and malformed accounting never release held reservation'
  assert.equal(unbankedDemand(goals,physical,'ring',0),2);
  assert.equal(unbankedDemand(goals,[{name:'ring',level:0,
   stat_type:'dex'}],'ring',0),1);
- const cyclic={stat_type:'dex'};cyclic.self=cyclic;
+ const cyclic={stat_type:'dex',data:{}};cyclic.data.self=cyclic.data;
  assert.equal(unbankedDemand([{...goals[0],variant:cyclic}],
   physical,'ring',0),Infinity);
  assert.equal(unbankedDemand([{item:'ore',level:0,quantity:2.5}],

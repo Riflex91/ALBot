@@ -19,7 +19,7 @@ function farmFixture(){
  const bot={p:{c:{...c,name:'L',ctype:'ranger',attack:50,frequency:1,level:80,items:[],xp:0,gold:0},G,root:{S:{}},parent:{S:{}},read:()=>null,write:()=>true,realm:()=>realm,entities:{}},
   cfg:{general:{testLogging:true,messageTtlMs:10000},farming:{pvp:false,maxAggro:1,planHoldMs:300000,switchImprovement:.45,deathWindowMs:600000},
    world:{excludedMaps:[],cacheTtlMs:10000},party:{enabled:true,merchant:'M'},production:{}},
-  me:{name:'L',role:'farmer',farmTargets:[]},leader:'L',farmers:['L'],transport:{fresh:n=>n==='M'?{materials:requests}:null},
+  me:{name:'L',role:'farmer',farmTargets:[]},leader:'L',farmers:['L'],transport:{fresh:n=>n==='M'?{running:true,realm,materials:requests}:null},
   strategy:{safeTarget:()=>true,permittedMap:()=>true,busy:false},monsters:()=>[],event:(type,data)=>events.push({type,data}),
   decisionEpoch:1,logistics:{reserved:false},movement:{order:null,stop(){this.order=null;}},gear:{snapshot:()=>({})},content:{approve:()=>true},progression:{bonus:()=>0}};
  return {bot,requests,events};

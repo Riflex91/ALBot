@@ -1,3 +1,5 @@
+**0.23.0-candidate: Rotationsfrist, verbindliche Materialarbeit, Markt-Fallback und Crafting-Gearziele.** [Implementierung, Regressionen und Livegrenzen](docs/CHANGELOG-0.23.0.md). Die signierte Veröffentlichung erfolgt separat über den bestehenden V2-Kanal.
+
 # W14: Sitzungsbindung innerhalb von JSONL-Liveberichten (21.10.2026)
 
 Der vorhandene Offline-Parser verweigert jetzt zusammengesetzte Dateien mit widersprüchlichen `session`-Headern oder fortlaufenden Snapshots bei Start, Charakter, Runtime/Spielversion, Realm und Laufzeitumgebung. Gleichbleibende Zwischenstände bleiben erlaubt. Regressionen in `test/roadmap-w14-jsonl-session-consistency.test.mjs`, Live-Gate-Anleitung ergänzt. **Kein Live-/Restartbeweis; W14 insgesamt weiterhin offen.** CI-Ergebnis und PR nach Merge gesondert nachweisen.

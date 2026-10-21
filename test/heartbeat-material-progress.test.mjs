@@ -81,3 +81,11 @@ test('G11 oversized bank owner cannot be hidden to make a heartbeat fit',()=>{
  assert.equal(fitHeartbeat(d,4200),null,
   'missing a live bank claim would make account access appear safe');
 });
+
+test('bounded material counts survive a large farmPlan that previously forced their removal',()=>{
+ const d={...data(),farmPlan:{id:'plan',reason:'x'.repeat(3000)},corePadding:''};
+ d.corePadding='p'.repeat(4200-JSON.stringify(d).length+50);
+ const result=fitHeartbeat(d,4200);assert.ok(result);
+ assert.deepEqual(result.materialProgress,d.materialProgress);
+ assert.equal(result.farmPlan,undefined);
+});

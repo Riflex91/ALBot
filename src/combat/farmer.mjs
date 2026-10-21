@@ -422,15 +422,28 @@ function independentSpawnEngagement(){
    const now=Date.now();
    if(!engagedFarm||now-lastFollowerSpawnAudit<10000)return;
    lastFollowerSpawnAudit=now;
+   const evidence=visible.slice(0,5).map(m=>{
+     const a=bot.encounter?.sharedSpawnAssessment?.(m);
+     const pos=a?.position??(a?.actorGap!==undefined?a:null);
+     const fmt=n=>Number.isFinite(n)?Math.round(n):'unknown';
+     return {id:m.id,reason:a?.reason??'unavailable',
+       targetRange:fmt(distance(p.c,m)),
+       actorArea:fmt(pos?.actorGap),leaderArea:fmt(pos?.leaderGap),
+       monsterArea:fmt(pos?.targetGap),teamGap:fmt(pos?.teamGap),
+       actorSource:pos?.actor?.source??null,
+       leaderSource:pos?.leader?.source??null,
+       monsterSource:pos?.monster?.source??null,
+       raw:pos?.monsterRaw??null,real:pos?.monsterReal??null};
+   });
    bot.event?.('combat.followerSpawnAudit',{
      code,plan:plan.id,monster:plan.target,
      movement:bot.movement.order?.owner??null,
      available:visible.length,
-     samples:visible.slice(0,5).map(m=>{
-       const assessment=bot.encounter?.sharedSpawnAssessment?.(m);
-       return String(m.id)+':'+(assessment?.reason??'unavailable')+
-         ':range='+Math.round(distance(p.c,m));
-     }).join('|')
+     samples:evidence.map(e=>e.id+':'+e.reason+
+       ':distance='+e.targetRange+':area='+e.monsterArea+
+       ':actorArea='+e.actorArea+':leaderArea='+e.leaderArea+
+       ':teamGap='+e.teamGap).join('|'),
+     geometry:evidence.length?JSON.stringify(evidence[0]):''
    });
  };
  if(bot.strategy?.busy||bot.movement.order||bot.recovering||

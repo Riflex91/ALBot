@@ -89,3 +89,19 @@ test('bounded material counts survive a large farmPlan that previously forced th
  assert.deepEqual(result.materialProgress,d.materialProgress);
  assert.equal(result.farmPlan,undefined);
 });
+
+test('W06 suspicious aggregate material progress cannot trigger extra pulls after heartbeat transport',()=>{
+ const objective='material:gem0',request={objective,item:'gem0',quantity:20};
+ const producer=name=>({
+  name,realm:'EUII',running:true,rip:false,
+  free:8,inventoryBlocked:false,materialProgress:[{
+   objective,item:'gem0',quantity:name==='A'?Number.MAX_SAFE_INTEGER:3}]
+ });
+ const outgoingA=fitHeartbeat(producer('A'),4200),
+  outgoingB=fitHeartbeat(producer('B'),4200);
+ const peers={A:outgoingA,B:outgoingB};
+ assert.ok(outgoingA?.materialProgress&&outgoingB?.materialProgress);
+ const plan=planMaterialQuotas(request,['A','B'],
+  name=>peers[name],'EUII',{freeReserve:4});
+ assert.deepEqual(plan,{remaining:20,quotas:[]});
+});

@@ -187,27 +187,34 @@ export function verifiedFarmSpawnRectangle(plan){
 // A neighboring area must be adjacent to the selected source's rectangle,
 // both shapes must come from the live G.maps catalog, and the player must
 // still be physically in range of each individual enemy.
+const adjacentCatalogCache=new WeakMap();
 export function verifiedAdjacentFarmSpawns(plan,game,{maxGap=175}={}){
  const original=verifiedFarmSpawnRectangle(plan);
  if(!original||!plan?.target||!game?.maps?.[plan.map]||
     game.maps[plan.map].instance||game.maps[plan.map].pvp||
     !Number.isFinite(maxGap)||maxGap<0)return [];
+ const key=plan.map+'|'+plan.target+'|'+JSON.stringify(plan.bounds)+'|'+maxGap;
+ let catalog=adjacentCatalogCache.get(game);
+ if(catalog?.has(key))return catalog.get(key);
+ if(!catalog){catalog=new Map();adjacentCatalogCache.set(game,catalog);}
  const rows=spawnLocations(game,[plan.target],[],false);
  const sameBounds=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&
    a.length===5&&b.length===5&&a.every((v,i)=>v===b[i]);
  // Do not use an unverified plan as a key for other official spawn regions.
- if(!rows.some(r=>r.map===plan.map&&sameBounds(r.bounds,plan.bounds)))
-  return [];
+ if(!rows.some(r=>r.map===plan.map&&sameBounds(r.bounds,plan.bounds))){
+  catalog.set(key,[]);return [];
+ }
  const separation=(a,b)=>Math.hypot(
    Math.max(a.minX-b.maxX,b.minX-a.maxX,0),
    Math.max(a.minY-b.maxY,b.minY-a.maxY,0));
- return rows.filter(r=>r.map===plan.map&&r.target===plan.target&&
+ const nearby=rows.filter(r=>r.map===plan.map&&r.target===plan.target&&
     !sameBounds(r.bounds,plan.bounds))
   .map(r=>({row:r,rect:verifiedFarmSpawnRectangle(r)}))
   .filter(r=>r.rect&&separation(original,r.rect)<=maxGap)
   .sort((a,b)=>separation(original,a.rect)-separation(original,b.rect)||
     a.row.key.localeCompare(b.row.key))
   .map(({row,rect})=>({key:row.key,rect}));
+ catalog.set(key,nearby);return nearby;
 }
 
 export function distanceFromFarmRectangle(point,rect){

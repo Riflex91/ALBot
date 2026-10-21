@@ -70,7 +70,8 @@ test('W03/G01 rejects absent item source and explicitly malformed physical quant
    'the actually occupied last slot may be removed');
  inv[41]=null;
  assert.equal(capacityAfterConsumption(inv,[{slot:41,quantity:1}],null),null);
- assert.equal(capacityAfterConsumption(inv,[{slot:0,quantity:10}],null)?.free,1);
+ assert.equal(capacityAfterConsumption(inv,[{slot:0,quantity:10}],null)?.free,2,
+  'preexisting empty slot and fully consumed stack provide two physical slots');
 });
 
 test('W03/G01 matching overstack never finances a separate free-slot transfer',()=>{

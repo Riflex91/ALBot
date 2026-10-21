@@ -89,6 +89,7 @@ import {Executor} from './core/executor.mjs';
 import {createPorts} from './runtime/ports.mjs';
 import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/telemetry-snapshot.mjs';
 import {createGameRelaySender,GAME_RELAY_INTERVAL_MS} from './runtime/telemetry-relay-sender.mjs';
+import {createAutomaticTelemetrySender,AUTO_TELEMETRY_INTERVAL_MS} from './runtime/telemetry-auto-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
 import {createLogistics} from './items/logistics.mjs';
@@ -374,14 +375,23 @@ export function install(root){
        !!bot.logistics?.reserved||!!bot.gold?.reserved}));
   }catch(e){exec.frame=[];runtimeWarning('tick',e);}finally{try{exec.flush();}catch(e){runtimeWarning('dispatch',e);}const elapsed=now()-tickStarted;schedulerTiming.ticks++;schedulerTiming.totalMs+=elapsed;schedulerTiming.lastMs=elapsed;schedulerTiming.maxMs=Math.max(schedulerTiming.maxMs,elapsed);bot.metrics.frame(elapsed);if(elapsed>100&&now()-lastSlow>10000){lastSlow=now();report.event('scheduler.slow',{ms:elapsed,reason:bot.reason});}if(bot.running&&gen===generation)timer=root.setTimeout(()=>tick(gen),me.role==='farmer'&&bot.skillWakeups?
      bot.skillWakeups.nextDelay(cfg.general.combatTickMs):cfg.general.combatTickMs);}}
-  // The public runtime contains no secrets or automatic cloud connection.
-  // Access Relay requires a synchronous user click in the existing game panel,
-  // then another explicit confirmation in the signed-in popup.
-  let telemetryRelay=null,telemetryInterval=null;
+  // Automatic uploads use a private CODE-slot credential, never a hardcoded
+  // secret in this public runtime. No popup or per-session opt-in is required.
+  // The legacy user-activated Access relay remains a fallback if no private
+  // telemetry credential is provisioned.
+  let telemetryRelay=null,telemetryInterval=null,telemetryAuto=null,telemetryAutoInterval=null;
   if(!p.headless){
     try{
       const gameWindow=p.parent;
       if(['https://adventure.land','https://www.adventure.land'].includes(gameWindow?.location?.origin)){
+        const fetcher=typeof root.fetch==='function'?root.fetch.bind(root):
+          typeof gameWindow.fetch==='function'?gameWindow.fetch.bind(gameWindow):null;
+        if(fetcher)telemetryAuto=createAutomaticTelemetrySender({
+          fetcher,getCredential:()=>root.ALBOT_AUTO_TELEMETRY_TOKEN,
+          getCharacter:()=>p.c,getRealm:()=>p.realm(),
+          getBankDefinitions:()=>p.G?.bank_packs??{},role:me.role,
+          isRunning:()=>bot.running&&!disposed
+        });
         telemetryRelay=createGameRelaySender({
           gameWindow,getCharacter:()=>p.c,getRealm:()=>p.realm(),
           getBankDefinitions:()=>p.G?.bank_packs??{},role:me.role,
@@ -393,6 +403,8 @@ export function install(root){
   cleanup.push(()=>{
     if(telemetryInterval!==null)root.clearInterval?.(telemetryInterval);
     telemetryInterval=null;telemetryRelay?.disconnect();
+    if(telemetryAutoInterval!==null)root.clearInterval?.(telemetryAutoInterval);
+    telemetryAutoInterval=null;telemetryAuto?.dispose();
   });
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
@@ -403,7 +415,14 @@ export function install(root){
       if(me.region+me.server!==p.realm()&&!(cfg.world?.serverHop&&cfg.world.allowedRealms.includes(p.realm())))return deny('Falscher Realm: erwartet '+me.region+me.server);
       if(cfg.general.transport==='ipc'&&!p.ipc)return deny('Lokale IPC nicht verfügbar');
       bot.recovery?.reconcile();if(cfg.production?.autoDisposition===true&&bot.inventoryBlocked&&/^gather\./.test(bot.journal?.kind??''))return deny('AutoDisposition gesperrt: offenes Inventarjournal zuerst nach Bestandsabgleich bestaetigen');if(bot.inventoryBlocked)report.event('runtime.warning',{where:'start',reason:'Offene Inventaraktion: Wertaktionen gesperrt, übriger Betrieb läuft',continued:true});
-      bot.cloud.resume();bot.economy?.resume();report.event('start');bot.running=true;bot.reason=supplyOnly?'Automatischer Trankempfänger (kein Farmprofil)':'Start';generation++;if(!supplyOnly)bot.progression?.refresh();tick(generation);return bot.running;
+      bot.cloud.resume();bot.economy?.resume();report.event('start');bot.running=true;bot.reason=supplyOnly?'Automatischer Trankempfänger (kein Farmprofil)':'Start';generation++;if(!supplyOnly)bot.progression?.refresh();
+      if(telemetryAuto?.status().configured&&telemetryAutoInterval===null&&typeof root.setInterval==='function'){
+        void telemetryAuto.sendOnce();
+        telemetryAutoInterval=root.setInterval(()=>{
+          if(!disposed&&bot.running)void telemetryAuto.sendOnce();
+        },AUTO_TELEMETRY_INTERVAL_MS);
+      }
+      tick(generation);return bot.running;
     },
     pause:()=>halt('Pause'),stop:()=>halt('STOP'),
     accountGoldStatus:()=>bot.lossGuard?.status()??null,
@@ -437,10 +456,11 @@ export function install(root){
       bank:me.role==='merchant'?observedBankTelemetry(
         p.c,p.realm(),p.G?.bank_packs??{}):[]
     }),
-    telemetryStatus:()=>telemetryRelay?.status()??{connected:false,opened:false,
-      intervalMs:GAME_RELAY_INTERVAL_MS,unsupported:true},
+    telemetryStatus:()=>telemetryAuto?.status().configured?telemetryAuto.status():
+      telemetryRelay?.status()??{connected:false,opened:false,
+        intervalMs:GAME_RELAY_INTERVAL_MS,unsupported:true},
     openTelemetryRelay(){
-      if(disposed||!telemetryRelay||typeof root.setInterval!=='function')return false;
+      if(disposed||telemetryAuto?.status().configured||!telemetryRelay||typeof root.setInterval!=='function')return false;
       if(!telemetryRelay.open())return false;
       if(telemetryInterval===null){
         telemetryInterval=root.setInterval(()=>{

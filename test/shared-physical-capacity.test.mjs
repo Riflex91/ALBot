@@ -64,8 +64,10 @@ test('W03/G01 rejects absent item source and explicitly malformed physical quant
    'corrupt physical stock is not a receiving promise');
  }
  inv[0]={name:'seashell',q:10};
- assert.equal(capacityAfterConsumption(inv,[{slot:41,quantity:1}],null),null,
-  'empty or invalid slot is not a consumed item');
+ assert.equal(capacityAfterConsumption(inv,[{slot:42,quantity:1}],null),null,
+   'out-of-range slot cannot be a consumed item');
+ assert.equal(capacityAfterConsumption(inv,[{slot:41,quantity:1}],null)?.free,1,
+   'the actually occupied last slot may be removed');
  inv[41]=null;
  assert.equal(capacityAfterConsumption(inv,[{slot:41,quantity:1}],null),null);
  assert.equal(capacityAfterConsumption(inv,[{slot:0,quantity:10}],null)?.free,1);

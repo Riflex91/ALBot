@@ -335,9 +335,58 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   bot.caveVoteJournal?.completeRun?.(completedRun);
   return true;
  }
+ // W12/N12: a prepared intent is BEFORE any cave_enter request. A new
+ // session may retire it without replay only after a FRESH post-prepare
+ // cave_info visit proves today's permission or the very same resumable
+ // run. Neither missing local cave state nor an expired visit is evidence.
+ function reconcileStalePrepared(){
+  if(closed||readFailed||writeFailed||!bot.running||
+     !validCaveLifecycleRecord(record)||record.phase!=='prepared'||
+     record.session===bot.session||record.name!==me.name||
+     record.realm!==p.realm()||!caveLifecycleText(bot.session,120)||
+     bot.journal||bot.inventoryBlocked||bot.bank?.pending||
+     bot.logistics?.reserved||bot.teamTravel?.blocked||
+     bot.lifecycleChanging||bot.account?.rotationPending?.()||
+     bot.cryptLifecycle?.status?.()?.blocked===true||
+     bot.caveVoteJournal?.status?.()?.blocked===true||
+     bot.exec?.pending?.size!==0||live()!==null||
+     p.c?.map!=='main'||
+     p.c?.in!==undefined&&p.c.in!=='main'||
+     p.c?.cave!==undefined&&p.c.cave!==null||
+     p.c?.rip===true)return false;
+  const at=now(),cave=bot.cave?.status?.(),v=cave?.visit,
+   flight=cave?.entryPreflight;
+  if(!caveLifecycleTime(at)||at<record.createdAt||
+     !v||!caveLifecycleTime(v.observedAt)||
+     !caveLifecycleTime(v.serverTime)||
+     v.observedAt<=record.createdAt||
+     v.observedAt>at||at-v.observedAt>30000||
+     Math.abs(at-v.serverTime)>300000||
+     !flight||flight.localConditionsMet!==true||
+     flight.requiresJournal!==true||
+     flight.executable!==false||
+     flight.serverVerified!==false||
+     flight.mode!==record.mode||flight.run!==record.run||
+     !Array.isArray(flight.party)||
+     flight.party.length!==record.party.length||
+     flight.party.some((name,i)=>name!==record.party[i]))return false;
+  if(record.mode==='new'&&(v.available!==true||v.resume!==null)||
+     record.mode==='resume'&&
+      (v.resume?.run!==record.run||
+       typeof v.resume?.server!=='string'||
+       v.resume.server.replace(/\\s+/g,'').toUpperCase()!==
+        p.realm().replace(/\\s+/g,'').toUpperCase()))return false;
+  // durable() re-reads the strict journal and refuses a competing write.
+  // This performs no cave_enter, cave_exit, vote or currency mutation.
+  return durable(null);
+ }
  function sample(){
   if(closed||readFailed||writeFailed)return;
   const observed=live(),at=now();
+  if(record?.phase==='prepared'&&!observed){
+   reconcileStalePrepared();
+   return;
+  }
   if(!observed||!caveLifecycleHex(observed.run)||
    !caveLifecycleTime(at))return;
   if(record===null){

@@ -174,7 +174,23 @@ export function createLogistics(bot){
         (cfg.merchant.potionTeamRefill!==true||bot.merchant?.potionSupplyActive?.()===true)?refillFarmers().map(x=>x.name):[]));
   };
   const sendRule=(item,to)=>{const explicit=chooseRule(cfg.items.filter(r=>r.enabled&&(r.action==='keep'||r.action==='send'&&r.recipient===to)),item,context()),r=explicit??(bot.economy?.explicit(item)?null:chooseRule(allRules().slice(cfg.items.length).filter(r=>r.action==='send'&&r.recipient===to),item,context()))??potionRule(item,to)??trackerRule(item,to)??(to===cfg.party.merchant?autoLootRule(item):null);return r?.action==='send'&&(bot.production?.matchesOutput?.(item)??true)&&(bot.production?.canRecordDelivery?.(item,to)??true)?r:null;};
-  const availableTransfer=(slot,r)=>{if(!r)return 0;const i=p.c.items[slot],reserved=bot.production?.reservedQuantity?.(i,r.recipient)??(bot.production?.reserved(i)?variantCount(p.c.items,i):0);return Math.min(transferable(p.c.items,slot,r),Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));};
+  const availableTransfer=(slot,r)=>{
+   if(!r)return 0;
+   const i=p.c.items[slot];
+   if(!i)return 0;
+   // For a finished automatic gear shipment, the production allocator
+   // already selected a physical copy and a single farmer. Subtracting the
+   // gross reservations for every OTHER farmer and merchant own gear again
+   // would zero out that copy. Keep explicit-rule reserves and the normal
+   // durable physical claim/receiver checks on every offer and dispatch.
+   if(r._autoGearDelivery===true)
+    return Math.min(transferable(p.c.items,slot,r),
+     bot.production?.gearDeliveryAllowance?.(i,r.recipient)??0);
+   const reserved=bot.production?.reservedQuantity?.(i,r.recipient)??
+    (bot.production?.reserved(i)?variantCount(p.c.items,i):0);
+   return Math.min(transferable(p.c.items,slot,r),
+    Math.max(0,variantCount(p.c.items,i)-r.keep-r.teamReserve-reserved));
+  };
   const defaultPotionDemand=(item,n,advertise=false)=>{
     if(me.role!=='farmer'||!isPotion(item))return 0;
     const desired=potionTarget(cfg,item.name);

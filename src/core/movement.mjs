@@ -10,8 +10,30 @@ export function reachedMovementRadius(character,destination){
  return !!destination&&Number.isFinite(destination.radius)&&
    samePlace(character,destination)&&distance(character,destination)<=destination.radius;
 }
+// Owner-scoped fast travel: approved farm destinations and live follower
+// routes may use the same measured Town shortcut as quest trips. Combat,
+// emergency positioning, local scouting and cave evacuation never do.
+export function townShortcutOwnerAllowed(role,owner,townTravel=true){
+ return role==='merchant'?townTravel!==false:
+  role==='farmer'&&['quest','quest-escort','farm','follow','regroup'].includes(owner);
+}
+export function townShortcutRetryReady(now,lastSuccess,lastAttempt){
+ return Number.isFinite(now)&&
+  now-lastSuccess>=30000&&now-lastAttempt>=4000;
+}
+export function townChannelTeamThreat(character,monsters=[],team=[]){
+ if(!character||!Array.isArray(monsters)||!Array.isArray(team))return true;
+ return monsters.some(m=>{
+  if(!m||m.dead===true||m.hp===0||typeof m.target!=='string'||
+     m.target!==character.name&&!team.includes(m.target))return false;
+  // No authoritative location/health data is NOT proof of a safe channel.
+  if(!m.map||!Number.isFinite(xy(m).x)||!Number.isFinite(xy(m).y))
+   return true;
+  return samePlace(character,m)&&distance(character,m)<350;
+ });
+}
 export function createMovement(bot){
-  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,townQueued=false,moveSeq=0;
+  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,lastTownAttempt=0,townQueued=false,moveSeq=0;
   // Only native smart-route failures quarantine a destination map, not normal
   // travel stops or a rejected non-movement action. Keep the cache bounded.
   const failedRoutes=new Map(),routeCooldownMs=300000;
@@ -82,15 +104,17 @@ export function createMovement(bot){
     // samePlace restriction suppressed the town shortcut precisely for
     // these journeys, making a merchant walk back from remote farms.
     const crossBank=p.c.map==='main'&&d.map==='bank';
-    // A farmer accepting/turning in a monsterhunt may use the same
-    // measured Town shortcut as the merchant. Never teleport for ordinary
-    // farm/combat/cohesion travel or an unrelated movement owner.
+    // Time the actual route for authorized farm/quest/group movement as
+    // well as merchant work, but never interrupt emergency combat travel.
     const merchantTown=bot.me?.role==='merchant'&&bot.cfg.merchant?.townTravel!==false;
-    const questTown=bot.me?.role==='farmer'&&owner==='quest';
-    if((merchantTown||questTown)&&
+    const mayTown=townShortcutOwnerAllowed(bot.me?.role,owner,
+     bot.cfg.merchant?.townTravel);
+    const safeTown=()=>!townChannelTeamThreat(p.c,bot.monsters(),bot.teamNames??[]);
+    if(mayTown&&
        (samePlace(p.c,d)||merchantTown&&crossBank)&&Array.isArray(spawn)&&
-       p.has('town')&&!p.c.c?.town&&Date.now()-lastTown>30000&&
-       !bot.monsters().some(m=>m.target===p.c.name)){
+       p.has('town')&&!p.c.c?.town&&
+       townShortcutRetryReady(Date.now(),lastTown,lastTownAttempt)&&
+       safeTown()){
      const speed=Math.max(1,p.c.speed??40),toSpawn=Math.hypot(
        xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])/speed*1000;
      // For bank use the same estimated final portal leg in both routes;
@@ -107,8 +131,8 @@ export function createMovement(bot){
      if(walk-town>(bot.cfg.merchant?.townMinSavingsMs??3000)){
       let at=0;const origin=p.c.map;townQueued=true;
       const accepted=exec.run('travel.town',['movement'],
-       ()=>bot.running&&!bot.monsters().some(m=>m.target===p.c.name),
-       ()=>{lastTown=Date.now();at=lastTown;if(p.c.moving||smartActive())
+       ()=>bot.running&&!p.c.rip&&safeTown(),
+       ()=>{at=Date.now();lastTownAttempt=at;if(p.c.moving||smartActive())
          p.call('stop','move');bot.event?.('travel.town',{owner,map:origin,
            reason:crossBank?'Bankportal per Town-Kanal schneller':
              'Town spart Reisezeit; laufenden Weg vor Kanal beenden'});
@@ -118,7 +142,12 @@ export function createMovement(bot){
         observe:()=>p.c.map===origin&&!p.c.c?.town&&
           Math.hypot(xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])<60,
         onSettle(result){townQueued=false;
-          if(result==='confirmed')townMs=(townMs+Date.now()-at)/2;}});
+          if(result==='confirmed'){
+           lastTown=Date.now();
+           townMs=(townMs+lastTown-at)/2;
+          }else bot.event?.('travel.townRetry',{
+           owner,result,reason:'No successful teleport; short safety backoff only'});
+         }});
       if(!accepted)townQueued=false;return false;
      }
     }

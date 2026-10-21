@@ -433,6 +433,10 @@ function independentSpawnEngagement(){
        actorSource:pos?.actor?.source??null,
        leaderSource:pos?.leader?.source??null,
        monsterSource:pos?.monster?.source??null,
+       areaKind:pos?.areaKind??null,
+       adjacentKey:pos?.adjacentKey??null,
+       primaryTargetGap:fmt(pos?.primaryTargetGap),
+       adjacentCount:pos?.adjacentCount??null,
        raw:pos?.monsterRaw??null,real:pos?.monsterReal??null};
    });
    bot.event?.('combat.followerSpawnAudit',{

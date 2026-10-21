@@ -1,0 +1,42 @@
+name: Temporary ALBot PR artifact synchronization
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/w02-w04-physical-operating-stock-20261021' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked install and source-aligned builds
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+      - name: Commit only generated review artifacts to the same PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/manifest.json dist/albot.settings.json editor/Bot-Werkstatt.html editor/albot.settings.json profiles/full-solo.json profiles/full-team.json
+          if git diff --cached --quiet; then
+            echo "Generated files already source-aligned."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(W02/W04): synchronize runtime and editor artifacts"
+          git push origin "HEAD:${{ github.head_ref }}"

@@ -1,0 +1,45 @@
+name: Temporary v025 signed release preflight
+on:
+  push:
+    branches:
+      - ci/release-v025-telemetry-preflight-20261021
+    paths:
+      - .github/workflows/release-v025-preflight.yml
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/automatic-telemetry-v025-20261021
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm test
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run check:bootstrap:auto
+      - run: npm run build:editor
+      - run: node --check dist/albot.runtime.js
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/automatic-telemetry-v025-20261021
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Windows integration check
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/VERIFY-U01-U07.ps1

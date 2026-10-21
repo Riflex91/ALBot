@@ -228,7 +228,8 @@ test('W02 no malformed sibling stack may mask insufficient recipe/production res
  }
  const valid=fixture();
  valid.c.items[0]={name:'junk',level:0};
- valid.c.items[1]={name:'junk',level:0,q:2};
+ valid.c.items[1]={name:'junk',level:0};
+ valid.c.items[2]={name:'junk',level:0};
  valid.setReserve(1);
  assert.equal(valid.planner.lowQualityRule(valid.c.items[0])?.action,'sell');
 });
@@ -246,7 +247,8 @@ test('W02 stale, fractional or invalid local bank backing never permits capacity
  f.c.items[0]={name:'junk',level:0};
  f.setReserve(1);
  f.c.map='bank';f.bot.bank.observed=true;
- f.stock.push({pack:'items0',slot:1,item:{name:'junk',level:0,q:2}});
+ f.stock.push({pack:'items0',slot:1,item:{name:'junk',level:0}});
+ f.stock.push({pack:'items0',slot:2,item:{name:'junk',level:0}});
  assert.equal(f.planner.lowQualityRule(f.c.items[0])?.action,'sell');
  f.bot.bank.observed=false;
  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
@@ -264,4 +266,44 @@ test('W02 uncertain reservations cannot turn NaN comparisons into authority to s
  f.G.craft={out:{items:[[1,'junk']]}};
  assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
   'known recipe demand cannot be sold from its only local stack');
+});
+
+test('W02 physical stack contract blocks invented carried replacement stock',()=>{
+ const f=fixture();
+ f.G.items.cake={type:'material',g:10,s:99};
+ f.bot.economy.npcFor=()=>({map:'main'});
+ f.c.items[0]={name:'cake',q:25};
+ f.c.items[1]={name:'cake',q:100};
+ f.setReserve(50);
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
+  'a 100-unit row exceeds the 99-unit physical stack limit');
+ f.c.items[1].q=90;
+ assert.equal(f.planner.lowQualityRule(f.c.items[0])?.batch,25);
+ f.c.items[0].q=100;
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null,
+  'the source for an NPC sale must itself be a valid physical stack');
+});
+
+test('W02 physically impossible bank stack does not authorize irreversible sale',()=>{
+ const f=fixture();
+ f.G.items.cake={type:'material',g:10,s:99};
+ f.bot.economy.npcFor=()=>({map:'main'});
+ f.c.items[0]={name:'cake',q:1};
+ f.setReserve(50);
+ f.c.map='bank';f.bot.bank.observed=true;
+ f.stock.push({pack:'items0',slot:0,item:{name:'cake',q:100}});
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null);
+ f.stock[0].item.q=99;
+ assert.equal(f.planner.lowQualityRule(f.c.items[0])?.action,'sell');
+ f.stock[0].item.q=null;
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null);
+});
+
+test('W02 ordinary nonstackable copies count individually, never as a fake q:2',()=>{
+ const f=fixture();f.c.items[0]={name:'junk'};
+ f.c.items[1]={name:'junk',q:2};
+ f.setReserve(1);
+ assert.equal(f.planner.lowQualityRule(f.c.items[0]),null);
+ f.c.items[1]={name:'junk'};
+ assert.equal(f.planner.lowQualityRule(f.c.items[0])?.action,'sell');
 });

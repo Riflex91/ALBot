@@ -1,3 +1,7 @@
+## 21.10.2026 — W02: reale Stackgrenzen bei vorbeugendem Lagerverkauf
+
+Die bestehende `createStoragePlanner`-Kapazitätsdisposition akzeptiert als physische Rezept-/Produktionsreserve nur noch einzelne Inventar- oder aktuell beobachtete Bankstapel mit den realen `G.items[name].s`-Grenzen. Für Gegenstände ohne gültiges Stackmerkmal gilt nur eine physische Einzelkopie pro Slot; übergroße Bank- oder Inventarstapel legitimieren keinen NPC-Verkauf. Vorhandene gebundene Bank-/Rezeptevidenz und Value-Executor bleiben unverändert. Tests in `test/preventive-storage.test.mjs`. Gesamtübergreifende Langzeit-W02-/W03- und Live-Abnahme offen.
+
 ## 21.10.2026 — W06/G09 sichere accountweite Materialquoten
 
 Die bestehende 0.24-Materialarbeit bleibt aktiv. `planMaterialQuotas` verweigert allerdings jede neue Farmzuteilung, wenn die Addition gültiger, einzeln belegter Farmerbestände keinen sicheren Integer mehr ergibt, ein frischer Peerabruf fehlschlägt oder Peer-/Roster-/Reservegrenzen ungültig sind. Die ursprünglichen Quoten bei gültiger Online-Gruppe sind unverändert. Tests: `test/material-quotas-active-farmers.test.mjs` und `test/heartbeat-material-progress.test.mjs`. Dies ist keine vollständige Markt-/Tauschbeschaffung oder Account-Liveabnahme.

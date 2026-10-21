@@ -31,8 +31,8 @@ export function createSeashellCycle(bot){
  const {p,cfg,me}=bot,key='albot:seashell-refill:'+me.name;
  const saved=p.read?.(key);
  let collecting=saved?.collecting===true,serial=Number.isSafeInteger(saved?.serial)?
-  Math.max(0,saved.serial):0,lastNotice='',lastSource=null,sourceUntil=0;
- const enabled=()=>me.role==='merchant'&&cfg.merchant?.enabled!==false&&
+  Math.max(0,saved.serial):0,lastNotice='',lastSource=null,sourceDefinition=null;
+ const enabled=()=>bot.running!==false&&me.role==='merchant'&&cfg.merchant?.enabled!==false&&
   cfg.production?.enabled&&cfg.production?.autonomy&&cfg.production?.exchange&&
   cfg.farming?.elixirs!==false&&p.G.items?.seashell?.e>0;
  const safeShell=item=>item?.name==='seashell'&&!item.l&&!item.b&&
@@ -91,13 +91,13 @@ export function createSeashellCycle(bot){
    bot.strategy?.safeTarget?.(name,undefined,true,true)===true);
   if(!permitted.length)return null;
   const now=Date.now();
-  if(!lastSource||now>sourceUntil||!permitted.includes(lastSource.monster)){
+  if(!lastSource||!permitted.includes(lastSource.monster)||sourceDefinition!==knowledgeFingerprint([p.G.monsters[lastSource.monster],p.G.drops?.monsters?.[lastSource.monster]])){
    lastSource=materialSources(p.G,'seashell',status.remaining,permitted,
      Infinity,bot.observations?.rate,{
       state:p.root?.S??p.parent?.S??{},
       confidence:cfg.production.farmConfidence,
       questAllowed:q=>!!p.c.s?.[q]})[0]??null;
-   sourceUntil=now+30000;
+   sourceDefinition=lastSource?knowledgeFingerprint([p.G.monsters[lastSource.monster],p.G.drops?.monsters?.[lastSource.monster]]):null;
   }
   if(!lastSource){
    note('seashell.farmUnavailable',{reason:'NO_APPROVED_DROP_SOURCE',

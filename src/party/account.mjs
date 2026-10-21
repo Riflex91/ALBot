@@ -95,6 +95,13 @@ export function createAccount(bot){
  const {p,cfg,me,exec}=bot;let coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
  const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative',rotationPrepare=null;const lastOnline=new Map();
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
+ const clockKey=storageKey+':training-clock',clockRoster=JSON.stringify([...validNames].sort());
+ const clock=p.read(clockKey);let clockBlocked=false;
+ if(cfg.party.balanceFarmers===true&&cfg.party.selection==='adaptive'&&clock?.version===1&&clock.realm===p.realm()&&clock.roster===clockRoster&&
+    Number.isSafeInteger(clock.since)&&clock.since>0&&clock.since<=Date.now()){changed=clock.since;if(Array.isArray(clock.names)&&(!cfg.party.leader||clock.names.includes(cfg.party.leader)))apply(clock.names,cfg.party.leader||clock.leader);}
+ function markChanged(){changed=Date.now();return persistClock();}
+ function persistClock(){if(cfg.party.balanceFarmers!==true)return true;clockBlocked=typeof p.write!=='function'||p.write(clockKey,{version:1,realm:p.realm(),roster:clockRoster,since:changed,names:[...bot.farmers],leader:bot.leader})!==true;return !clockBlocked;}
+ persistClock();
  const saved=p.read(storageKey);if(saved){if(validNames.includes(saved.out)&&validNames.includes(saved.in)&&Array.isArray(saved.original)&&saved.original.every(n=>validNames.includes(n))&&saved.original.includes(saved.originalLeader))transition={...saved,recovering:true};else{blocked=true;bot.report('Charakterwechsel-Checkpoint ungültig; Rotation gesperrt');}}
  if(transition&&p.headless===false&&!transition.browser)transition={...transition,browser:true,legacyRunner:true};
  const save=next=>{if(!p.write(storageKey,next)){blocked=true;bot.report('Charakterwechsel konnte nicht gespeichert werden; Rotation gesperrt');return false;}transition=next;return true;};
@@ -141,7 +148,7 @@ export function createAccount(bot){
   if(!Number.isSafeInteger(cost)||cost<0||!Number.isSafeInteger(loss)||loss<0||!Number.isSafeInteger(cost+loss))return false;
   const snap=risk(options);return cost+loss<=snap.sessionRiskLimit;
  }
- function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence,rotationPrepare};}
+ function heartbeat(){return {names:[...bot.farmers],leader:bot.leader,seq:sequence,rotationPrepare,rotationSince:changed};}
  function apply(names,leader){if(!Array.isArray(names)||!names.length||names.length>cfg.party.maxFarmers||new Set(names).size!==names.length||names.some(n=>!validNames.includes(n))||!names.includes(leader))return false;
   bot.farmers=[...names];bot.leader=leader;bot.target=null;return true;
  }
@@ -157,7 +164,7 @@ export function createAccount(bot){
   if(m.type==='accountReject'){
    if(me.name===coordinator&&transition?.browser&&from===transition.out&&m.id===transition.id){
     bot.event('account.swap-rejected',{id:m.id,peer:from,reason:String(m.data?.reason??'receiver-rejected').slice(0,100)});
-    if(['outgoing-session-changed','capability-unavailable','target-already-online','code-slot-missing','owned-character-api-missing','code-persistence-api-missing','running-code-save-unavailable','window-route-unsupported','window-route-invalid','headless-host','window-navigation-missing','checkpoint-write-failed'].includes(m.data?.reason)){if(save(null))changed=Date.now();}
+    if(['outgoing-session-changed','capability-unavailable','target-already-online','code-slot-missing','owned-character-api-missing','code-persistence-api-missing','running-code-save-unavailable','window-route-unsupported','window-route-invalid','headless-host','window-navigation-missing','checkpoint-write-failed'].includes(m.data?.reason)){if(save(null))markChanged();}
    }return;
   }
   if(m.type==='accountSwap'){
@@ -195,8 +202,9 @@ export function createAccount(bot){
    },{timeout:55000,delay:60000,onSettle(result){if(result!=='returned'){bot.lifecycleChanging=false;if(p.read('albot:account:'+d.in+':incoming')?.id===m.id)p.write('albot:account:'+d.in+':incoming',null);bot.report('Fensterwechsel fehlgeschlagen; ursprünglicher Farmer bleibt aktiv');}}});
   if(!accepted){bot.lifecycleChanging=false;p.write('albot:account:'+d.in+':incoming',null);}
  }
- function receive(from,data){if(Array.isArray(data?.names)&&data.names.some(n=>foreignRunningFarmer(bot.transport.fresh(n),p.realm())))return;if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
+ function receive(from,data){if(Array.isArray(data?.names)&&data.names.some(n=>foreignRunningFarmer(bot.transport.fresh(n),p.realm())))return;if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(Number.isSafeInteger(data.rotationSince)&&data.rotationSince>changed&&data.rotationSince<=Date.now()){changed=data.rotationSince;persistClock();}if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
+  if(clockBlocked)persistClock();
   if(cfg.general.autoRoster){
    const online=cfg.characters.filter(c=>c.enabled&&(c.name===me.name?bot.running:bot.transport.fresh(c.name)?.running&&bot.transport.fresh(c.name)?.realm===p.realm())).map(c=>c.name).sort();
    const next=online.includes(cfg.party.merchant)?cfg.party.merchant:online[0]??me.name;
@@ -217,15 +225,15 @@ export function createAccount(bot){
    if(Date.now()>transition.until&&!transition.recovering){transition.recovering=true;bot.report('Charakterwechsel nicht bestätigt; ursprüngliche Gruppe wiederherstellen');}
    if(transition.browser){
     const peer=bot.transport.fresh(transition.in),original=bot.transport.fresh(transition.out);
-    if(original?.running&&original.session!==transition.outSession&&transition.protocolVersion===2&&!transition.acked){bot.event('account.swap-cancelled',{id:transition.id,reason:'outgoing-session-changed'});if(save(null))changed=Date.now();return;}
+    if(original?.running&&original.session!==transition.outSession&&transition.protocolVersion===2&&!transition.acked){bot.event('account.swap-cancelled',{id:transition.id,reason:'outgoing-session-changed'});if(save(null))markChanged();return;}
     if(transition.acked&&peer?.running&&peer.realm===p.realm()&&!peer.rip&&(transition.protocolVersion!==2||peer.incomingRotation?.id===transition.id&&!original?.running)){const next=transition;const receipt={id:next.id,in:next.in,out:next.out,realm:p.realm(),at:Date.now(),joined:false,arrived:false};
-     if(p.write(storageKey+':receipt',receipt)&&save(null)){lastRotation=receipt;apply(next.names,next.leader);sequence++;changed=Date.now();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader,reason:'Farmer im bisherigen Fenster online bestätigt'});}return;}
+     if(p.write(storageKey+':receipt',receipt)&&save(null)){lastRotation=receipt;apply(next.names,next.leader);sequence++;markChanged();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader,reason:'Farmer im bisherigen Fenster online bestätigt'});}return;}
     if(transition.recovering){
      if(transition.legacyRunner){let active;try{active=p.call('get_active_characters');}catch{}
       if(active?.[transition.in]){exec.run('account.rollback.stop',['lifecycle'],()=>safe(me.name),()=>p.call('stop_character',transition.in),{delay:60000});return;}}
      // Never create a replacement iframe on the Merchant when a farmer tab
      // failed to reconnect. Keep the checkpoint for explicit recovery.
-     if(original?.running&&original.realm===p.realm()&&!original.rip){const next=transition;if(save(null)){apply(next.original,next.originalLeader);sequence++;changed=Date.now();}}
+     if(original?.running&&original.realm===p.realm()&&!original.rip){const next=transition;if(save(null)){apply(next.original,next.originalLeader);sequence++;markChanged();}}
      return;
     }
     if(!transition.acked&&Date.now()-(transition.sentAt??0)>3000){transition.sentAt=Date.now();bot.transport.send(transition.out,'accountSwap',{...transition,seq:sequence+1,realm:p.realm()},transition.id);}return;
@@ -235,11 +243,11 @@ export function createAccount(bot){
    if(transition.recovering){
     if(active[transition.in]){exec.run('account.rollback.stop',['lifecycle'],()=>safe(me.name),()=>p.call('stop_character',transition.in),{delay:60000});return;}
     const original=bot.transport.fresh(transition.out);
-    if(original?.running&&original.realm===p.realm()&&!original.rip){const next=transition;if(save(null)){apply(next.original,next.originalLeader);changed=Date.now();}return;}
+    if(original?.running&&original.realm===p.realm()&&!original.rip){const next=transition;if(save(null)){apply(next.original,next.originalLeader);markChanged();}return;}
     exec.run('account.rollback.start',['lifecycle'],()=>safe(me.name),()=>p.call('start_character',transition.out),{delay:60000,timeout:55000});return;
    }
    if(active[transition.out])return;
-   const peer=bot.transport.fresh(transition.in);if(peer?.running&&peer.realm===p.realm()&&!peer.rip){const next=transition;if(save(null)){apply(next.names,next.leader);sequence++;changed=Date.now();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader});}return;}
+   const peer=bot.transport.fresh(transition.in);if(peer?.running&&peer.realm===p.realm()&&!peer.rip){const next=transition;if(save(null)){apply(next.names,next.leader);sequence++;markChanged();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader});}return;}
    if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
   }
   // Fix the adaptive-roster deadlock: a missing selected farmer must not
@@ -257,7 +265,7 @@ export function createAccount(bot){
    const leader=preferred??chooseCombatLeader(online.map(name=>({name,...bot.transport.fresh(name)})))??online[0];
    const names=[leader,...bot.farmers.filter(n=>n!==leader&&available.has(n)),...online.filter(n=>n!==leader&&!bot.farmers.includes(n))].slice(0,cfg.party.maxFarmers);
    if(names.length&&(names.join(',')!==bot.farmers.join(',')||leader!==bot.leader)&&apply(names,leader)){
-    sequence++;changed=Date.now();bot.event('account.team',{names:names.join(','),leader,reason:'Offline gewählten Farmer durch bereits aktiven Peer ersetzen'});
+    sequence++;markChanged();bot.event('account.team',{names:names.join(','),leader,reason:'Offline gewählten Farmer durch bereits aktiven Peer ersetzen'});
    }
    return;
   }
@@ -269,7 +277,7 @@ export function createAccount(bot){
    const h=bot.transport.fresh(c.name),own=roster.get(c.name),g=bot.gear?.profile(c.name);
    const local=c.name===me.name?{...p.c,level:p.c.level,running:bot.running,class:p.c.ctype}:null;
    const seen=local??h;
-   return {...c,rotation:c.rotation&&!(p.headless===false&&seen?.browserSwitch?.supported===false),class:c.class==='auto'?seen?.class??own?.class??g?.class??'auto':c.class,
+   return {...c,rotation:c.rotation&&!(p.headless===false&&seen?.browserSwitch?.supported===false),switchReason:seen?.browserSwitch?.reason??null,class:c.class==='auto'?seen?.class??own?.class??g?.class??'auto':c.class,
     level:seen?.level??own?.level??g?.level??0,xp:own?.xp??null,maxXp:own?.maxXp??null,
     running:!!seen?.running,rip:!!seen?.rip,hp:seen?.hp,max_hp:seen?.max_hp,
     stats:seen?.gear?.stats??seen?.stats??g?.stats};
@@ -281,11 +289,12 @@ export function createAccount(bot){
   // reallocate quotas after the confirmed roster change; only quest travel
   // and boss/event ownership postpone catch-up, never select class alternates.
   const catchUpSafe=training&&!['quest','boss','event'].includes(task)&&!bot.bosses?.status?.()?.active;
-  const due=Date.now()-changed>=Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000);
-  const swap=catchUpSafe&&due?selectCatchUpSwap(members,bot.farmers,{
+  const due=!clockBlocked&&Date.now()-changed>=Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000);
+  const candidate=training?selectCatchUpSwap(members,bot.farmers,{
    levelGap:cfg.party.balanceLevelGap??2,protectedNames:[cfg.party.leader,me.name,
     ...bot.farmers.filter(name=>bot.transport.fresh(name)?.party===name)].filter(Boolean)
   }):null;
+  const swap=catchUpSafe&&due?candidate:null;
   // During ordinary farming the existing group stays stable until an eligible
   // underleveled *offline* farmer is demonstrably behind an active one.
   // Boss/event tasks still select by combat suitability and class synergy.
@@ -296,9 +305,9 @@ export function createAccount(bot){
     damageType:p.G?.monsters?.[bossObjective?.id??leaderActivity?.target??bot.target?.mtype]?.damage_type});
   bot.accountChoice={names:target,reason:training?'Levelausgleich aus belegten Charakterleveln (kein Wechsel ohne Rückstand und Mindesthaltezeit)':
    cfg.party.gearSynergy?'Klassenbedarf, effektive Gear-/Kampfwerte und feste Teammitglieder':'Klassenbedarf, Level und feste Teammitglieder',
-   catchUp:swap??null,nextEligibleAt:training?changed+Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000):null};
+   catchUp:swap??null,eligibleCatchUp:candidate??null,phase:clockBlocked?'clock-storage-unavailable':!due?'hold-time':!catchUpSafe?'activity-postpones-rotation':swap?'ready-to-drain':'no-eligible-level-gap',candidates:members.map(m=>({name:m.name,level:m.level||null,running:m.running,rotation:m.rotation,reason:!m.rotation?m.switchReason??'rotation-disabled':m.name===me.name?'coordinator-protected':bot.transport.fresh(m.name)?.party===m.name?'party-owner-protected':m.name===cfg.party.leader?'configured-leader-protected':!m.level?'level-unknown':m.running?'active':'offline-candidate'})),nextEligibleAt:training?changed+Math.max(cfg.party.rotationCooldownMs,cfg.party.balanceHoldMs??1800000):null};
   rotationPrepare=swap?{out:swap.out,into:swap.in,until:Date.now()+30000}:null;
-  if(!bot.farmers.every(safe)){bot.accountChoice.waiting='selected-farmers-draining-combat-or-value-work';return;}
+  if(!bot.farmers.every(safe)){if(swap)bot.accountChoice.phase='draining';bot.accountChoice.waiting='selected-farmers-draining-combat-or-value-work';return;}
   const elected=electStableCombatLeader(members,target,bot.leader,{
    explicit:cfg.party.leader,
    bossOrEvent:!!bossObjective||['boss','event'].includes(task)

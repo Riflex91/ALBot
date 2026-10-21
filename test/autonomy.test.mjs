@@ -42,7 +42,7 @@ test('planner favors dense fast respawns for three equipped rangers and exposes 
 });
 test('automatic candidates can be disabled and character whitelist remains authoritative',()=>{const {bot,cfg}=fixture();cfg.farming.autoTargets=false;bot.teamPlan.tick();assert.equal(bot.teamPlan.target(),'goo');const b=fixture();b.bot.me.farmTargets=['goo'];b.bot.teamPlan.tick();assert.equal(b.bot.teamPlan.target(),'goo');});
 test('follower adopts same objective and never invents independent fallback when leader disappears',()=>{const a=fixture();a.bot.teamPlan.tick();const b=fixture();b.bot.me=b.cfg.characters[1];b.c.name='B';b.bot.session='b-session';b.peers.A={...a.c,name:'A',running:true,realm:'EUII',farmPlan:a.bot.teamPlan.heartbeat()};b.bot.teamPlan=createTeamPlan(b.bot);b.bot.teamPlan.tick();assert.equal(b.bot.teamPlan.heartbeat().id,a.bot.teamPlan.heartbeat().id);b.peers.A.running=false;b.bot.teamPlan.tick();assert.equal(b.bot.teamPlan.target(),null);assert.deepEqual(b.bot.strategy.targets(),[]);});
-test('material request outranks XP and validates source definition and expiry',()=>{const {bot,peers,G}=fixture();peers.M={running:true,materials:[{monster:'goo',item:'mat',quantity:5,objective:'job-1',expires:Date.now()+30000,sourceFingerprint:knowledgeFingerprint([G.monsters.goo,G.drops.monsters.goo])}]};bot.teamPlan.tick();assert.equal(bot.teamPlan.target(),'goo');assert.equal(bot.teamPlan.materialActive(),true);peers.M.materials[0].remaining=0;assert.equal(bot.teamPlan.wantsCombat(),false);G.monsters.goo.hp=200;assert.equal(bot.teamPlan.target(),null);});
+test('material request outranks XP and validates source definition and expiry',()=>{const {bot,peers,G}=fixture();peers.M={running:true,realm:'EUII',materials:[{monster:'goo',item:'mat',quantity:5,objective:'job-1',expires:Date.now()+30000,sourceFingerprint:knowledgeFingerprint([G.monsters.goo,G.drops.monsters.goo])}]};bot.teamPlan.tick();assert.equal(bot.teamPlan.target(),'goo');assert.equal(bot.teamPlan.materialActive(),true);peers.M.materials[0].remaining=0;assert.equal(bot.teamPlan.wantsCombat(),false);G.monsters.goo.hp=200;assert.equal(bot.teamPlan.target(),null);});
 test('group travel can assess known remote peers while actual attack remains locally gated',()=>{const {bot,peers}=fixture();peers.B.map='other';assert.equal(bot.strategy.safeTarget('bee',undefined,true,true),true);bot.teamPlan.tick();assert.equal(bot.teamPlan.target(),'bee');});
 test('spawn changes invalidate propagated plan and graph retains directed connections',()=>{const {bot,G}=fixture();bot.teamPlan.tick();G.monsters.bee.attack=50000;assert.equal(bot.teamPlan.target(),null);const graph=mapGraph(G);assert.equal(mapHops(graph,'main','other'),1);assert.equal(mapHops(graph,'other','main'),Infinity);});
 test('planner assigns healer and support only from actually fresh capabilities',()=>{
@@ -87,7 +87,7 @@ test('economic disposition processes profitable known exchange surplus within lo
 
 // Regression boundaries from the 0.7.0 parity audit.
 test('same plan ID refreshes follower expiry and changed role without stopping movement',()=>{const a=fixture();a.bot.teamPlan.tick();const b=fixture();b.bot.me=b.cfg.characters[1];b.c.name='B';b.peers.A={running:true,realm:'EUII',roles:{heal:'Priest1'},farmPlan:a.bot.teamPlan.heartbeat()};b.bot.teamPlan=createTeamPlan(b.bot);b.bot.teamPlan.tick();const old=b.bot.teamPlan.heartbeat().expires;b.bot.movement.order={owner:'follow'};b.peers.A.farmPlan={...b.peers.A.farmPlan,expires:old+10000};b.peers.A.roles={heal:'Priest2'};b.bot.teamPlan.tick();assert.equal(b.bot.teamPlan.heartbeat().expires,old+10000);assert.equal(b.bot.teamPlan.roles().heal,'Priest2');assert.equal(b.bot.movement.order.owner,'follow');});
-test('personal material quota prevents new pulls while aggregate request is incomplete',()=>{const {bot,peers}=fixture();peers.M={running:true,materials:[{monster:'goo',item:'mat',quantity:10,remaining:5,objective:'quota',quotas:[{name:'A',quantity:3}],expires:Date.now()+30000}]};bot.production.progress=()=>[{objective:'quota',quantity:3}];bot.teamPlan.tick();assert.equal(bot.teamPlan.wantsCombat(),false);bot.production.progress=()=>[{objective:'quota',quantity:2}];assert.equal(bot.teamPlan.wantsCombat(),true);});
+test('personal material quota prevents new pulls while aggregate request is incomplete',()=>{const {bot,peers}=fixture();peers.M={running:true,realm:'EUII',materials:[{monster:'goo',item:'mat',quantity:10,remaining:5,objective:'quota',quotas:[{name:'A',quantity:3}],expires:Date.now()+30000}]};bot.production.progress=()=>[{objective:'quota',quantity:3}];bot.teamPlan.tick();assert.equal(bot.teamPlan.wantsCombat(),false);bot.production.progress=()=>[{objective:'quota',quantity:2}];assert.equal(bot.teamPlan.wantsCombat(),true);});
 test('gear receiver rejects stale slot and explicit keep before accepting delivery promise',()=>{const {bot,c,G}=fixture();c.slots.mainhand={name:'bow',level:0};G.items.bow={type:'weapon',wtype:'bow',upgrade:true};G.classes={ranger:{mainhand:{bow:1}}};bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{mainhand:{...c.slots.mainhand,l:false,b:false}}})};const a=createGearAllocation(bot),item={name:'bow',level:2},proposal={slot:'mainhand',expected:fingerprint(bot.gear.snapshot().slots.mainhand),expires:Date.now()+10000};assert.equal(a.accept('g1','M','session',item,proposal),true);assert.equal(a.rules()[0].slot,'mainhand');c.slots.mainhand.level=1;assert.equal(a.equipGuard(item,'mainhand'),false);assert.equal(a.accept('g2','M','session',item,proposal),false);c.slots.mainhand.level=0;bot.economy.explicit=()=>({action:'keep'});assert.equal(a.accept('g3','M','session',item,proposal),false);});
 test('compound economics accumulates compatible triples and honours future gear protection',()=>{const {bot,c,G,cfg}=fixture();bot.me.role='merchant';cfg.production.autoGear=false;cfg.production.autoDisposition=cfg.production.enabled=cfg.production.compound=true;cfg.production.minChance=.9;cfg.production.autoGearMaxLevel=1;G.items.ring={compound:true,type:'ring',grades:[10,20]};G.items.cscroll0={g:1};G.items.superring={type:'ring'};cfg.characters=[bot.me];bot.gear={snapshot:()=>({class:'ranger',level:60,slots:{ring1:{name:'superring',level:20},ring2:{name:'superring',level:20}}})};bot.economy.value=i=>i.level===1?100:10;const i={name:'ring',level:0};c.items[0]=i;const intel=createEconomicIntelligence(bot);assert.equal(intel.disposition(i).action,'bank');c.items[1]={...i};c.items[2]={...i};assert.equal(intel.disposition(i).action,'compound');i.l=true;assert.equal(intel.disposition(i),null);});
 
@@ -140,4 +140,84 @@ test('audit M03 finite compound holdings never fund fictitious +2 results',()=>{
  c.items[0].l=true;
  intel=createEconomicIntelligence(bot);
  assert.equal(intel.mutationEconomics(i).action,'sell','locked ninth input cannot finance a second compound tier');
+});
+
+// Cross-module regressions from the 21 October live reports.
+test('accepted material work keeps objective through acquire and fully blocked hunts',()=>{
+ for(const phase of ['acquire','blocked']){
+  const {bot,peers,data,cfg,c}=fixture();cfg.world.quests=cfg.world.questTargets=true;
+  if(phase==='blocked'){
+   c.s={monsterhunt:{id:'goo',c:10,ms:1000000}};
+   peers.B.monsterhunt={id:'goo',c:10,ms:1000000};
+   data.set('albot:teamhunt:'+bot.me.group,{names:bot.farmers,index:0,phase:'combat',lastId:'goo',skipped:Object.fromEntries(bot.farmers.map(n=>[n,{id:'goo',until:Date.now()+300000}]))});
+   bot.teamPlan=createTeamPlan(bot);
+  }
+  peers.M={running:true,realm:'EUII',materials:[{monster:'goo',item:'mat',quantity:5,remaining:5,objective:'craft:1',utilityPerHour:.00001,priority:1,quotas:[{name:'A',quantity:5}],expires:Date.now()+30000}]};
+  bot.teamPlan.tick();assert.equal(bot.teamPlan.heartbeat().target,'goo');
+  assert.equal(bot.teamPlan.heartbeat().kind,'material');assert.equal(bot.teamPlan.heartbeat().objective,'craft:1');
+ }
+});
+test('paused or foreign Merchant cannot publish executable material work',()=>{
+ for(const merchant of [{running:false,realm:'EUII'},{running:true,realm:'USI'}]){
+  const {bot,peers}=fixture();peers.M={...merchant,materials:[{monster:'goo',item:'mat',quantity:5,objective:'paused',expires:Date.now()+30000}]};
+  bot.teamPlan.tick();assert.equal(bot.teamPlan.materialActive(),false);assert.equal(bot.teamPlan.materialAck(),null);
+ }
+});
+function materialMerchant(){
+ const f=fixture(),{bot,c,cfg,G}=f;bot.me=cfg.characters[2];c.name='M';c.ctype='merchant';
+ cfg.production.enabled=cfg.production.autonomy=true;cfg.production.acquireBy=['farm'];
+ cfg.production.goals=[{name:'Craft material',enabled:true,item:'mat',level:0,quantity:2,recipient:'',budget:100,priority:1}];
+ G.items.mat={g:100,type:'material'};G.items.other={g:100,type:'material'};G.drops.monsters.bee.push([.1,'other']);
+ bot.bank={stock:()=>0,packs:()=>[],catalogStock:()=>[],observed:true};
+ bot.market={quote:()=>null,offerWaitMs:()=>0,hasVisibleBuyOffer:()=>false};
+ bot.economy.npcFor=()=>null;bot.economy.remaining=()=>true;bot.economy.destination=()=>null;bot.economy.note=()=>{};
+ bot.economy.rules=(item,phase)=>bot.production.derivedRule(item,phase);bot.gear={goals:()=>[]};
+ bot.production=createProduction(bot);return f;
+}
+test('committed material goal survives elapsed hold, reload and ordinary higher rank; explicit removal retires it',()=>{
+ const f=materialMerchant(),{bot,cfg}=f;bot.production.planGoals();const objective=bot.production.materials()[0].objective;
+ cfg.production.goals.push({name:'Other',enabled:true,item:'other',level:0,quantity:2,recipient:'',budget:100,priority:150});
+ bot.production=createProduction(bot);bot.production.planGoals();assert.equal(bot.production.activeGoal.item,'mat');
+ assert.equal(bot.production.materials()[0].objective,objective);
+ cfg.production.goals=cfg.production.goals.filter(g=>g.item!=='mat');bot.production.planGoals();
+ assert.equal(bot.production.activeGoal.item,'other');assert.notEqual(bot.production.materials()[0].objective,objective);
+});
+test('material commitment can yield urgent work and resumes the original objective afterwards',()=>{
+ const {bot,cfg}=materialMerchant();bot.production.planGoals();const original=bot.production.materials()[0].objective;
+ cfg.production.goals.push({name:'Urgent',enabled:true,item:'other',level:0,quantity:2,recipient:'',budget:100,priority:1000});
+ bot.production.planGoals();assert.equal(bot.production.activeGoal.item,'other');
+ cfg.production.goals.pop();cfg.production.goals.push({name:'Ordinary competing work',enabled:true,item:'other',level:0,quantity:2,recipient:'',budget:100,priority:150});bot.production.planGoals();assert.equal(bot.production.materials()[0].objective,original);
+});
+test('published special order, status and receipt agree; paused Merchant does not advertise work',()=>{
+ const {bot,peers}=materialMerchant();const order={objective:'shell-cycle',item:'mat',monster:'bee',quantity:4,expires:Date.now()+20000};
+ bot.seashells={request:()=>order};peers.A={...peers.B,name:'A',free:20,inventoryBlocked:false,materialProgress:[],materialAck:order};
+ peers.B={...peers.B,free:20,inventoryBlocked:false,materialProgress:[],materialAck:order};
+ const sent=bot.production.materials();assert.equal(sent[0].objective,order.objective);
+ assert.equal(bot.production.status().materialRequests[0].item,'mat');assert.deepEqual(bot.production.status().farmOrderReceipts,['A','B']);
+ bot.running=false;assert.deepEqual(bot.production.materials(),[]);assert.deepEqual(bot.production.status().materialRequests,[]);
+});
+test('market failure defers its route rather than hiding the whole farmable goal',()=>{
+ const {bot,cfg}=materialMerchant();cfg.production.acquireBy=['market','farm'];let unavailable=false,live=true;
+ bot.market={quote:()=>1,hasVisibleBuyOffer:()=>live,offerWaitMs:()=>unavailable?120000:0,buy:()=>{unavailable=true;live=false;return false;}};
+ bot.production.planGoals();assert.equal(bot.production.status().steps[0].kind,'marketBuy');
+ bot.production.tick();assert.ok(bot.production.status().waiting.length);
+ bot.production.planGoals();assert.equal(bot.production.activeGoal.item,'mat');assert.equal(bot.production.status().steps[0].kind,'farm');
+});
+test('a hypothetical cheap market does not displace a proven farm route',()=>{
+ const {bot,cfg}=materialMerchant();cfg.production.acquireBy=['market','farm'];bot.market.quote=()=>1;
+ bot.production.planGoals();assert.equal(bot.production.status().steps[0].kind,'farm');
+});
+
+test('recipe gear outside the simple item list becomes a feasible gear goal and material order',()=>{
+ const {bot,G,cfg}=materialMerchant();cfg.production.acquireBy=['farm','craft'];cfg.production.craft=true;cfg.production.goals=[];
+ cfg.production.gear=true;cfg.production.autoGear=true;cfg.production.optimizeGear=true;cfg.production.autoGearItems=[];cfg.production.autoGearBudget=1000000;
+ G.items.craftedhelmet={type:'helmet',g:100};G.craft={craftedhelmet:{cost:0,items:[[2,'mat']]}};
+ const profile={class:'ranger',level:60,slots:{helmet:{name:'oldhelmet',level:0}}};G.items.oldhelmet={type:'helmet',g:1};
+ bot.gear={snapshot:()=>profile,profile:()=>profile,goals:()=>[]};
+ bot.p.call=(name,item)=>name==='item_properties'?{armor:item.name==='craftedhelmet'?1000:1}:0;
+ bot.intelligence=createEconomicIntelligence(bot);
+ const targets=bot.intelligence.targets();assert.ok(targets.some(g=>g.item==='craftedhelmet'));assert.ok(targets.find(g=>g.item==='craftedhelmet').estimatedCost>0);
+ const target=targets.find(g=>g.item==='craftedhelmet');cfg.production.goals=[{...target,quantity:1,recipient:'',level:0}];
+ bot.production.invalidate();bot.production.planGoals();assert.equal(bot.production.status().steps[0].kind,'farm');
+ assert.equal(bot.production.materials()[0].item,'mat');
 });

@@ -132,6 +132,14 @@ Sicherheitsvertrag: Der Benutzer muss das Relay-Popup aus einer direkten Benutze
 
 **Noch nicht aktiv im Spiel:** Der neue Sender ist weder in `src/main.mjs` installiert noch in `scripts/build.mjs` enthalten. Ein spaeterer signierter Release mit echten Adventure-Land-Browsertests ist weiterhin erforderlich. Ein automatischer Betrieb darf erst danach behauptet werden. Cloudflare Free und die vorhandene D1-Datenbank genuegen.
 
+## Automatische Telemetrie ohne Relay-Popup
+
+Nach der Freigabe des neuen **signierten** Laufzeit-Bundles sendet ALBot beim Start und danach fruehestens alle 120 Sekunden selbststaendig ueber den **bestehenden tokenpflichtigen** `/api/ingest`-Endpunkt. Der Merchant sendet maximal ein beobachtetes Bankfach pro Durchlauf; kein Popup und kein Bestaetigungsklick erforderlich. Ohne privaten Telemetrie-Schluessel wird **keine** direkte Netzwerkanfrage ausgefuehrt; das Access-Relay bleibt als Fallback erhalten.
+
+**Einmalige private CODE-Slot-Einrichtung** (Schluessel niemals ins oeffentliche Repository, GitHub-Secrets oder den Chat kopieren): `globalThis.ALBOT_AUTO_TELEMETRY_TOKEN = '<privater-INGEST_TOKEN>';` vor dem signierten Bootstrap in deinem persoenlichen CODE-Slot setzen. Nur den separaten Cloudflare-Worker-Secret-Wert `INGEST_TOKEN` verwenden, niemals `CLOUDFLARE_API_TOKEN` oder `GITHUB_TOKEN`. Ein vorhandener Cloudflare-Secret-Wert kann nicht angezeigt werden; sichere Neuausgabe muss synchron im Worker und im privaten CODE erfolgen. Browser-Skripte derselben Game-Origin koennen auf den CODE-Wert zugreifen; vertrauenswuerdige, private Codeausfuehrung ist Voraussetzung. Die Worker-Konfiguration muss den exakt geschuetzten `/api/ingest` als einzige Telemetrie-Ausnahme von Access erlauben, Bearer-Validierung und CORS auf die offizielle Adventure-Land-Origin bleiben erhalten.
+
+`ALBot.telemetryStatus()` meldet `mode:'automatic'`, `configured`, Status/Versuchszeiten, aber keine geheimen Werte. Bis ein freigegebener signierter Release und echte Browser-Tests vorliegen, bleibt diese Funktion ein noch nicht live gepruefter Runtime-Kandidat.
+
 ## Globale Bankansicht ueber mehrere Spiel-Realms
 
 `/api/bank` zeigt pro Bankfach (`items0`, `items1` usw.) **nur den juengsten separat beobachteten Snapshot**. Wenn sich der Merchant zwischen Realms bewegt, bleiben aeltere Snapshots mit ihrem Realm unveraendert in D1 gespeichert, zaehlen aber nicht als weitere globale Bankfaecher und werden weder mit neueren Slots zusammengefuehrt noch als aktuell ausgegeben. Die Bank-Map und der beobachtende Realm bleiben sichtbar. Nicht beobachtete Packs werden niemals als leer erzeugt. Die bestehenden globalen 120-Sekunden-Schreiblimits, 7-Tage-Lesefrist und Free-Tier-Budgets aendern sich dadurch nicht.

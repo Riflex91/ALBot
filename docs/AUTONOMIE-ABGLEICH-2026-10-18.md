@@ -100,7 +100,7 @@ Die automatische Betriebsvorratsregel gilt nur ohne explizite Itemregel. Ein exp
 
 ## Fortschritt 21.10.2026 — W02/W04 physischer Vorratsvertrag
 
-Die bereits vorhandene, journalgebundene Reserve-Staging-/Entnahmefunktion wird nicht dupliziert. `automaticOperatingStockRule`, `bankOperatingStockRule` und `bankOperatingReserveNeed` akzeptieren nur nach `G.items[name].s` belegte physische Einzel-/Stapelbestände. Malforme gehaltene Stackmengen erzeugen weder Verkäufe noch eine Bankbedarfsfreigabe; die tatsächliche Livequittung und umfassende accountweite Stagingkette bleiben offen. Neue Regressionen in `test/operating-stock.test.mjs`. Linux-/Windows-CI im zugehörigen PR prüfen, nicht vorab behaupten.
+Die bereits vorhandene, journalgebundene Reserve-Staging-/Entnahmefunktion wird nicht dupliziert. `automaticOperatingStockRule`, `bankOperatingStockRule` und `bankOperatingReserveNeed` akzeptieren nur nach `G.items[name].s` belegte physische Einzel-/Stapelbestände. Malforme gehaltene Stackmengen erzeugen weder Verkäufe noch eine Bankbedarfsfreigabe; die tatsächliche Livequittung und umfassende accountweite Stagingkette bleiben offen. Neue Regressionen in `test/operating-stock.test.mjs`. Browser-/Headless-Runtime, personalisiertes `bot.js`, Manifest, Runtimepaket und Editor-Artefakt nach Quellcodeänderung neu gebaut und source-aligned committed. Linux-/Windows-CI auf dem abschließenden PR-Head prüfen, nicht vorab behaupten.
 
 ## Noch offene Roadmap-Pakete — nicht als fertig markieren
 

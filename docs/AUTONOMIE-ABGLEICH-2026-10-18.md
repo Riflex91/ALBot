@@ -1,3 +1,7 @@
+## W06/G09 – Materialquoten ohne Überlauf / ohne Phantomarbeit (21.10.2026)
+
+Der bestehende Quotenplan stoppt weitere Farming-Aufträge, wenn die kontoweite Addition physisch gemeldeter Mengen den sicheren Integerbereich überschreitet oder Peer-/Roster-Evidenz unzuverlässig wird. Bereits vorhandene Mengen werden nicht als null gerundet. Der bestehende Produktions- und Versandpfad wird nicht dupliziert; Markt-Tausch und Live-Belege sind weiterhin offen.
+
 ## W12/N11 — vor Dispatch sicherer Crypt-Restart (21.10.2026)
 
 Bei Sessionwechsel kann das vorhandene Crypt-Journal eine eindeutig noch nicht versendete `prepared`-Absicht nach strengem Realm-/Slot-/Fingerprint-/Keybestand- und Guard-Abgleich automatisch, dauerhaft und **ohne Spielaufruf** freigeben. Jeder unsichere Dispatch-/Instanzzustand bleibt blockiert. Dies löst ausschließlich den ersten eingrenzbaren Recovery-Schritt, nicht den gesamten Crypt-Run oder dessen Exit-/Loot-Belege.

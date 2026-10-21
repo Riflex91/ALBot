@@ -24,6 +24,6 @@
       "sha256": "30b086d4fbe055d035d50deb845756053bb86a6976306ecb2d5cf79b46815239"
     },
     "observedLoadedUrl": null,
-    "note": "Vorheriger signierter Kanal: 0.25.0-candidate / Sequence 25, Signierworkflow 39642136804, ECDSA-P-256/SHA-256 geprueft. Performancekorrektur 0.26 noch nicht signiert. Persoenliche Konfiguration, V2-Loader, URLs und Key unveraendert."
+    "note": "Sequence 25 / 0.25.0-candidate am 21.10.2026 im bestehenden signierten Release-Branch vorgefunden (Commit 8fb3baff29c6bf65528282e69264850efd4ce1dd). ECDSA-P-256-Signatur, Manifestfelder, exakte Runtime-Bytezahl und SHA-256 werden in der unveraenderten Linux-/Windows-CI geprueft. Dies ist keine Aussage zur Paritaet der unabhaengigen main/0.24.0-Entwicklungsruntime oder zu einem Ingame-Livetest; V2-Loader, URL, Public Key und persoenliche Konfiguration unveraendert."
   }
 }

@@ -1,3 +1,7 @@
+## 21.10.2026 — W06/G09 sichere accountweite Materialquoten
+
+Die bestehende 0.24-Materialarbeit bleibt aktiv. `planMaterialQuotas` verweigert allerdings jede neue Farmzuteilung, wenn die Addition gültiger, einzeln belegter Farmerbestände keinen sicheren Integer mehr ergibt, ein frischer Peerabruf fehlschlägt oder Peer-/Roster-/Reservegrenzen ungültig sind. Die ursprünglichen Quoten bei gültiger Online-Gruppe sind unverändert. Tests: `test/material-quotas-active-farmers.test.mjs` und `test/heartbeat-material-progress.test.mjs`. Dies ist keine vollständige Markt-/Tauschbeschaffung oder Account-Liveabnahme.
+
 ## 21.10.2026 — W12/N11 automatisierte Recovery sicherer Crypt-Vorbereitung
 
 Die bestehende dauerhafte `createCryptLifecycle`-Eintrittskette erhält eine begrenzte automatische **Pre-Dispatch-Recovery**: Nach einem echten Sessionwechsel darf `sample()` einen alten `prepared`-Checkpoint ausschließlich dann dauerhaft verwerfen, wenn der Realm/Owner unverändert ist, keine Lifecycle-/Inventarkollision besteht und der identische physische Crypt-Schlüssel am selben Slot noch nachweisbar ist. Eine alte `join`-Vorbereitung ohne Schlüssel darf unter denselben belegten Umfeldbedingungen freigegeben werden. Für `dispatch-unknown`, `inside-observed`, Schlüssel-/Bankdrift oder fehlgeschlagene Journalzugriffe bleibt die Sperre erhalten – ohne automatisches `enter()`, API-Replay oder erfundene Exitbelege. Regressionen: `test/roadmap-w12-crypt-keyed-entry.test.mjs`. Vollständiger Crypt-Run und W14-Liveabnahme bleiben offen.

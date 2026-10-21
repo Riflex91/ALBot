@@ -8,7 +8,7 @@ function fixture(){
   slot:'mainhand',item:'staff',level:0,statType:'str',budget:5000,priority:100};
  const G={version:1,items:{
   staff:{type:'weapon',wtype:'staff',upgrade:true,stat:true},
-  strscroll:{type:'pscroll',stat:'str',grade:1,g:100}
+  strscroll:{type:'pscroll',stat:'str',grade:1,g:100,s:9999}
  },classes:{priest:{mainhand:{staff:1}}}};
  const items=[{name:'staff',level:0},{name:'strscroll',q:20},null];
  const profile={complete:true,class:'priest',level:50,realm:'EUI',at:now,
@@ -119,4 +119,66 @@ test('N01 no additional pscroll purchase, no automatic destat, no anonymous stat
  f.target.statType='str';f.cfg.production.gearTargets=[];
  assert.equal(statTailoringCandidate(f.bot),null);
  assert.equal(f.calls.filter(c=>['buy','destat'].includes(c[0])).length,0);
+});
+
+test('N01 stat-tailoring scroll input must be physically valid at source',()=>{
+ const f=fixture();
+ assert.equal(statTailoringCandidate(f.bot)?.scrollStockBefore,20);
+ for(const q of [null,0,-1,1.5,Infinity,NaN,10000]){
+  f.items[1]={name:'strscroll',q};
+  assert.equal(statTailoringCandidate(f.bot),null,
+   'invalid scroll stack q='+String(q));
+ }
+ f.items[1]={name:'strscroll',q:20};
+ for(const q of [null,0,2,NaN]){
+  f.items[0]={name:'staff',level:0,q};
+  assert.equal(statTailoringCandidate(f.bot),null,
+   'gear cannot be synthetic multi-unit or malformed');
+ }
+});
+
+test('N01 moving scrolls between slots is not a consumption receipt',async()=>{
+ const f=fixture();
+ f.tailoring.tick();await Promise.resolve();await Promise.resolve();
+ f.tailoring.tick();
+ assert.equal(f.mutation?.guard(),true);
+ await f.mutation.call();
+ assert.equal(f.mutation.observe(),true,
+  'baseline real ten-scroll consumption remains confirmed');
+ // Undo ten-scroll consumption only by adding equal scroll quantity back
+ // to another slot. The source scroll slot still appears depleted.
+ f.items[2]={name:'strscroll',q:10};
+ assert.equal(f.mutation.observe(),false,
+  'the same total scroll quantity still physically exists');
+ f.items[2]=null;
+ assert.equal(f.mutation.observe(),true);
+});
+
+test('N01 absent original scroll slot alone never certifies total consumption',async()=>{
+ const f=fixture(),original=f.bot.p.call;
+ f.bot.p.call=(name,...args)=>{
+  if(name==='upgrade'&&args[3]!==true){
+   f.items[0]={name:'staff',level:0,stat_type:'str'};
+   f.items[2]={name:'strscroll',q:20};
+   f.items[1]=null;
+   return Promise.resolve({success:true});
+  }
+  return original(name,...args);
+ };
+ f.tailoring.tick();await Promise.resolve();await Promise.resolve();
+ f.tailoring.tick();
+ assert.equal(f.mutation.guard(),true);
+ await f.mutation.call();
+ assert.equal(f.mutation.observe(),false,
+  'relocation of all scroll units cannot impersonate their consumption');
+});
+
+test('N01 a drifted matching scroll in another slot revokes queued mutation',async()=>{
+ const f=fixture();
+ f.tailoring.tick();await Promise.resolve();await Promise.resolve();
+ f.tailoring.tick();
+ assert.equal(f.mutation.guard(),true);
+ f.items[2]={name:'strscroll',q:1};
+ assert.equal(f.mutation.guard(),false,
+  'new matching quantity changes the cross-inventory pre-action proof');
 });

@@ -15,4 +15,7 @@ CREATE TABLE IF NOT EXISTS bank_snapshots (
  payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_bank_updated ON bank_snapshots(updated_at);
+-- Canonical bank_snapshots.key is the account-wide pack name (e.g. items0).
+-- Historic realm:pack keys are kept as read-only legacy observations; new writes
+-- use the pack key alone. 'realm' records the observing server, not inventory scope.
 -- These rows are telemetry only, not authoritative in-game bank transaction evidence.

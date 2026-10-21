@@ -33,6 +33,58 @@ keinen Replay. Ein sauberer Endschnappschuss allein ist noch keine
 Bestätigung sämtlicher zuvor ausgeführter Wertaktionen und keine
 Ingame-Liveabnahme.
 
+
+### W14 – Beobachtete Aktivität im gemeinsamen Zeitfenster
+
+Für die strengere Prüfung echter Teamaktivität kann zusätzlich
+`--require-observed-overlap` gesetzt werden:
+
+```powershell
+node scripts/CHECK-LIVE-TEAM.mjs --strict --require-three-farmers --min-overlap-seconds 600 --require-observed-overlap --require-settled-value-state merchant.json ranger1.json ranger2.json priest.json
+```
+
+Der neue Gate verlangt für **jeden** Charakter mindestens zwei zeitlich
+unterschiedliche, sequenzierte `sample`-Ereignisse mit `running:true`
+und `rip:false` innerhalb der **gemeinsamen** Start-/Export-Intersektion.
+Browser- und Headless-Berichte dürfen nicht als derselbe gleichzeitige
+Teamdurchlauf kombiniert werden. Fehlende, abgeschnittene oder verlorene
+Ereignisse verhindern diese strenge Abnahme. Der ältere reine
+Zeitfenster-/Diagnosemodus bleibt ohne das Flag unverändert.
+
+Das weist nur die **im Report protokollierte** Laufzeitaktivität nach.
+Serverseitig bestätigte Spielhandlungen, Restart- und Disconnect-Recovery,
+physische Bank-/Loot-Quittungen und getrennte vollständige Browser- und
+Headless-Liveabnahmen bleiben zwingend eigenständige W14-Nachweise.
+
+### W14 – JSONL-Segmentintegrität und Neustartgrenzen
+
+Der read-only Auswerter akzeptiert übereinanderliegende JSONL-Dateisegmente
+nur bei **identischen** Ereignissen mit derselben `seq`. Zwei
+unterschiedliche Ereignisse mit derselben Sequenznummer sind kein erlaubter
+Replay: sowohl innerhalb einer JSONL-Datei als auch beim Zusammenführen
+mehrerer Teile wird die Auswertung mit Fehler abgebrochen. Gleiche Segmente
+dürfen unverändert wiederholt werden; es erfolgt keine Doppelzählung.
+
+Für das Zusammenführen bleiben Startzeit, Realm und Runtimeversion gebunden.
+Zusätzlich müssen `environment` und `gameVersion` übereinstimmen.
+Browser-/Headless-Wechsel, Spielversionswechsel oder ein neuer Start dürfen
+keine künstlich unterbrechungsfreie Einzelsitzung erzeugen. Solche Läufe
+müssen separat ausgewertet und als Neustart-/Wechsel-Szenario durch echte
+Spielbeobachtung belegt werden. Auch konfliktfreie JSONL-Segmente
+bestätigen **keine** Servertransaktion.
+
+### W14 – JSONL-Sitzungskonsistenz innerhalb einer Datei
+
+Mehrere periodische `snapshot`-Einträge aus derselben Session sind
+zulässig. Bei widersprüchlichem Startzeitpunkt, Charakter, Runtimeversion,
+Realm, Spielversion oder Browser-/Headless-Umgebung dürfen jedoch weder
+ältere Snapshots noch spätere `session`-Header einen künstlich
+zusammengesetzten Livebericht ergeben. Der Parser bricht vor jeder
+Teamabnahme ab. Identische Header und konsistente Snapshots bleiben
+lesbar. Ältere partielle Header bleiben nur in Bezug auf tatsächlich
+vorhandene Angaben kompatibel. Das ist eine **Offline-Evidenzschranke**
+und kein nachgewiesener Restart-/Disconnect-Livetest.
+
 ## 1 – Read-only startup and runtime parity
 - Verify start/stop/reload creates one scheduling timer and no leaked event handlers in both environments.
 - Check heartbeat round trips, session and realm changes, team roster, script version and user config. Review the measured dispatch p95/p99 and wall-load proxy separately from real CPU use.

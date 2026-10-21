@@ -71,6 +71,48 @@ test('bank throttle is global per interval, and storage remains capped at 24 pac
  database.close();
 });
 
+test('bank storage key is account-wide: switching realms updates one pack',async()=>{
+ const {database,DB}=testDb();
+ const start=1760000000000;
+ const us={...sampleBank('items0'),realm:'USIV',slots:Array(42).fill(null)};
+ const eu={...sampleBank('items0'),realm:'EUII',slots:Array(42).fill(null)};
+ eu.slots[0]={name:'beewings',q:23,level:0};
+ assert.equal((await storeTelemetry(DB,'bank',us,start)).stored,true);
+ assert.equal((await storeTelemetry(DB,'bank',eu,start+1000)).stored,false,
+  'changing realm cannot bypass global bank write throttle');
+ assert.equal((await storeTelemetry(DB,'bank',eu,
+  start+TELEMETRY_MIN_INTERVAL_MS)).stored,true);
+ const rows=database.prepare('SELECT key,realm,updated_at,payload FROM bank_snapshots').all();
+ assert.equal(rows.length,1,'same account-wide pack must not create a new realm row');
+ assert.equal(rows[0].key,'items0');
+ assert.equal(rows[0].realm,'EUII','realm records provenance of newest snapshot');
+ assert.equal(rows[0].updated_at,start+TELEMETRY_MIN_INTERVAL_MS);
+ assert.equal(JSON.parse(rows[0].payload).slots[0].q,23);
+ assert.equal((await storeTelemetry(DB,'bank',sampleBank('items1'),
+  start+2*TELEMETRY_MIN_INTERVAL_MS)).stored,true);
+ assert.deepEqual(database.prepare('SELECT key FROM bank_snapshots ORDER BY key').all()
+  .map(x=>x.key),['items0','items1']);
+ database.close();
+});
+
+test('legacy realm-prefixed D1 rows survive a new canonical account-wide write',async()=>{
+ const {database,DB}=testDb(),start=1760000000000;
+ const old={...sampleBank('items0'),realm:'USIV'};
+ database.prepare(
+  'INSERT INTO bank_snapshots (key,updated_at,realm,map,payload) VALUES (?,?,?,?,?)'
+ ).run('USIV:items0',start,old.realm,old.map,JSON.stringify(old));
+ const newer={...old,realm:'EUII'};
+ assert.equal((await storeTelemetry(DB,'bank',newer,
+  start+TELEMETRY_MIN_INTERVAL_MS)).stored,true);
+ const rows=database.prepare(
+  'SELECT key,realm,updated_at,payload FROM bank_snapshots ORDER BY updated_at DESC'
+ ).all();
+ assert.deepEqual(rows.map(x=>x.key),['items0','USIV:items0']);
+ assert.equal(rows[0].realm,'EUII');
+ assert.equal(rows[1].realm,'USIV','legacy evidence must never be deleted or overwritten');
+ database.close();
+});
+
 test('Worker responds 429 without writing a duplicated snapshot and keeps CORS',async()=>{
  const {database,DB}=testDb();
  const env={DB,INGEST_TOKEN:'X'.repeat(64)};

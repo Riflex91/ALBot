@@ -51,7 +51,7 @@ function idlePeriods(events,minSeconds){
 export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   maxPursuitDepartures=12,maxSampledIdleSeconds=60,requireElixirs=false,
   strict=false,requiredFarmers=null,minOverlapSeconds=0,
-  requireSettledValueState=false}={}){
+  requireSettledValueState=false,requireObservedOverlap=false}={}){
  if(!Number.isFinite(minOverlapSeconds)||minOverlapSeconds<0)
   throw Error('Invalid minimum shared observation duration');
  if(!Array.isArray(input)||!input.length)throw Error('At least one report is required');
@@ -92,6 +92,42 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
  }
  if(realms.size!==1||versions.size!==1)issues.push({level:'error',code:'MIXED_SESSIONS',
    detail:'Different realms or versions in supplied reports'});
+ // W14: capture-window overlap alone does not show that either process
+ // was running during that intersection. This optional acceptance gate
+ // requires two distinct, sequenced, running and alive local samples for
+ // EVERY submitted character within the common window. It is still a
+ // report-based witness, not independent server-side live verification.
+ const observedOverlapEvidence={required:requireObservedOverlap,
+  checked:0,missing:[],incomplete:[]};
+ if(requireObservedOverlap){
+  const environments=new Set([...reports.values()].map(r=>r.environment));
+  if(environments.size!==1||
+     !['browser','headless'].includes([...environments][0]))
+   issues.push({level:'error',code:'MIXED_OR_UNKNOWN_ENVIRONMENT',
+    detail:'An observed team session needs one known runtime environment'});
+  if(validWindows&&sharedSeconds>0){
+   const from=Date.parse(sharedFrom),until=Date.parse(sharedUntil);
+   for(const [name,r] of reports){
+    observedOverlapEvidence.checked++;
+    if((r.dropped??0)>0||r.exportTrimmed===true){
+     observedOverlapEvidence.incomplete.push(name);
+     issues.push({level:'error',code:'INCOMPLETE_OVERLAP_EVENT_HISTORY',
+      character:name,detail:'Dropped or trimmed events cannot prove running overlap'});
+    }
+    const samples=observed(r).filter(e=>e.type==='sample'&&
+     e.running===true&&e.rip===false&&
+     Number.isSafeInteger(e.seq)&&e.seq>0&&
+     millis(e)>=from&&millis(e)<=until);
+    if(samples.length<2||
+       millis(samples.at(-1))<=millis(samples[0])||
+       new Set(samples.map(e=>e.seq)).size<2){
+     observedOverlapEvidence.missing.push(name);
+     issues.push({level:'error',code:'MISSING_RUNNING_OVERLAP_SAMPLES',
+      character:name,detail:'Two distinct live-running samples inside the shared interval are required'});
+    }
+   }
+  }
+ }
  if(!reports.has(merchant))issues.push({level:'error',code:'MERCHANT_MISSING',
    detail:'No report for '+merchant});
  // W14: A report must include explicit final checkpoint evidence before
@@ -190,7 +226,7 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   scope:{characters:[...reports.keys()],sampledIdleIsProofOfAvailableTargets:false,
    sharedObservation:{from:sharedFrom,until:sharedUntil,seconds:sharedSeconds,
     sufficient:validWindows&&sharedSeconds>0&&sharedSeconds>=minOverlapSeconds},
-   valueStateEvidence},
+   valueStateEvidence,observedOverlapEvidence},
   merchant:{name:merchant,pursuit,departures,carriedElixirs,
     outgoingItemIntents:outbound.filter(t=>t.character===merchant).length},
   transfers:{outgoingIntents:outbound.length,
@@ -217,11 +253,40 @@ export function parseLiveReport(text){
  const snapshots=records.filter(x=>x.type==='snapshot'&&x.format==='albot-test-report');
  const latest=snapshots.at(-1);
  if(!latest)throw Error('JSONL contains no test-report snapshot');
- const session=records.find(x=>x.type==='session');
+ // One JSONL file may contain periodic snapshots, but never two
+ // contradictory process identities: their events cannot form one W14 run.
+ const sessions=records.filter(x=>x?.type==='session');
+ const session=sessions[0];
+ const pinned=['started','character','version','environment','realm','gameVersion'];
+ const differs=(a,b,key)=>a?.[key]!=null&&b?.[key]!=null&&
+  a[key]!==b[key];
+ for(const snapshot of snapshots){
+  if(pinned.some(k=>differs(snapshot,latest,k)))
+   throw Error('Conflicting JSONL snapshot session');
+ }
+ if(session){
+  if(typeof session.time==='string'&&
+     typeof latest.started==='string'&&session.time!==latest.started)
+   throw Error('Conflicting JSONL session start');
+  for(const candidate of sessions){
+   if((session.time!=null&&candidate.time!=null&&
+        candidate.time!==session.time)||
+      ['character','version','environment'].some(k=>
+       differs(session,candidate,k)))
+    throw Error('Conflicting JSONL session header');
+  }
+  if(['character','version','environment'].some(k=>
+      differs(session,latest,k)))
+   throw Error('Conflicting JSONL header and snapshot');
+ }
  const uniq=new Map();
  for(const e of records)if(e&&Number.isSafeInteger(e.seq)&&e.seq>0&&
-   typeof e.type==='string'&&e.type!=='snapshot'&&e.type!=='session')
+   typeof e.type==='string'&&e.type!=='snapshot'&&e.type!=='session'){
+  const previous=uniq.get(e.seq);
+  if(previous&&JSON.stringify(previous)!==JSON.stringify(e))
+   throw Error('Conflicting JSONL event sequence '+e.seq);
   uniq.set(e.seq,e);
+ }
  const events=[...uniq.values()].sort((a,b)=>a.seq-b.seq);
  const expected=Object.values(latest.counts??{}).reduce((n,v)=>
    n+(Number.isSafeInteger(v)&&v>=0?v:0),0);
@@ -244,12 +309,19 @@ export function joinLiveReportParts(reports){
   if(parts.length===1)return parts[0];
   const first=parts[0];
   if(parts.some(p=>p.started!==first.started||p.realm!==first.realm||
-      p.version!==first.version))
+      p.version!==first.version||p.environment!==first.environment||
+      p.gameVersion!==first.gameVersion))
    throw Error('Cannot join separate sessions for '+first.character);
   const ordered=[...parts].sort((a,b)=>String(a.exported).localeCompare(String(b.exported)));
   const newest=ordered.at(-1),seq=new Map();
   for(const p of ordered)for(const e of p.events??[])
-   if(Number.isSafeInteger(e?.seq)&&e.seq>0)seq.set(e.seq,e);
+   if(Number.isSafeInteger(e?.seq)&&e.seq>0){
+    const previous=seq.get(e.seq);
+    if(previous&&JSON.stringify(previous)!==JSON.stringify(e))
+     throw Error('Conflicting event sequence in '+first.character+
+      ' at '+e.seq);
+    seq.set(e.seq,e);
+   }
   const events=[...seq.values()].sort((a,b)=>a.seq-b.seq);
   const expected=Object.values(newest.counts??{}).reduce((n,v)=>
     n+(Number.isSafeInteger(v)&&v>=0?v:0),0);

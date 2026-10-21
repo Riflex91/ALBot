@@ -35,7 +35,11 @@ export async function storeTelemetry(db,kind,value,now=Date.now()){
    value.name,now,value.realm,value.map,JSON.stringify(value),
    MAX_STORED_CHARACTERS,value.name,TELEMETRY_MIN_INTERVAL_MS);
  }else if(kind==='bank'){
-  const key=value.realm+':'+value.pack;
+  // The bank is account-wide across Adventure Land realms. Each pack has
+  // exactly one canonical key in this single-user Cloudflare installation.
+  // Keep realm as the provenance of the latest observation, not identity.
+  // Legacy realm:pack rows remain untouched for non-destructive migration.
+  const key=value.pack;
   statement=db.prepare(BANK_UPSERT).bind(
    key,now,value.realm,value.map,JSON.stringify(value),
    cutoff,MAX_STORED_BANK_PACKS,key,cutoff);

@@ -384,7 +384,15 @@ export function createProduction(bot){
    extra.push({...generated('equip',{name:g.item,level:g.level},g.quantity,g),slot:g.gearSlot});
   }
   // Receiving characters derive only their explicitly configured gear demand.
-  for(const g of cfg.production.gearTargets??[])if(g.enabled&&g.character===bot.me.name&&!(p.c.slots?.[g.slot]?.name===g.item&&(p.c.slots[g.slot].level??0)>=g.level))extra.push({...generated('equip',{name:g.item,level:g.level},1,g),slot:g.slot});
+  for(const g of cfg.production.gearTargets??[]){
+   if(!g.enabled||g.character!==bot.me.name||
+      p.c.slots?.[g.slot]?.name===g.item&&
+      (p.c.slots[g.slot].level??0)>=g.level)continue;
+   if(me.role==='merchant'&&!(p.c.items??[]).some(i=>
+    i?.name===g.item&&(i.level??0)===g.level&&e.safe(i)&&
+    merchantSelfEquipDecision(bot,i).allowed))continue;
+   extra.push({...generated('equip',{name:g.item,level:g.level},1,g),slot:g.slot});
+  }
   for(const g of cfg.production.goals)if(g.enabled&&g.recipient===bot.me.name)extra.push(generated('keep',{name:g.item,level:g.level},g.quantity,g));
   if(bot.me.role==='merchant'){for(const g of goals())if(g.sourceOwner&&g.sourceOwner!==me.name)extra.push(generated('keep',{name:g.item,level:g.sourceLevel??g.level},1,g));for(const step of plan)if(step.kind==='farm')extra.push(generated('keep',{name:step.item,level:step.level},step.quantity+qtyRaw({name:step.item,level:step.level})));}
   else {const merchant=bot.transport.fresh(cfg.party.merchant);for(const g of merchant?.gearOrders??[])if(g.sourceOwner===me.name){extra.push({...generated(g.character===me.name&&g.level===(g.targetLevel??g.level)?'equip':'send',{name:g.item,level:g.level},1,g),slot:g.gearSlot,recipient:cfg.party.merchant});}for(const request of merchant?.materials??[])if(Number.isSafeInteger(request.quantity)&&request.quantity>0&&request.quantity<=1000000)extra.push({...generated('send',{name:request.item,level:0},request.quantity),recipient:cfg.party.merchant});}

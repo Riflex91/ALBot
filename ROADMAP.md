@@ -1,3 +1,7 @@
+# W14: Sitzungsbindung innerhalb von JSONL-Liveberichten (21.10.2026)
+
+Der vorhandene Offline-Parser verweigert jetzt zusammengesetzte Dateien mit widersprüchlichen `session`-Headern oder fortlaufenden Snapshots bei Start, Charakter, Runtime/Spielversion, Realm und Laufzeitumgebung. Gleichbleibende Zwischenstände bleiben erlaubt. Regressionen in `test/roadmap-w14-jsonl-session-consistency.test.mjs`, Live-Gate-Anleitung ergänzt. **Kein Live-/Restartbeweis; W14 insgesamt weiterhin offen.** CI-Ergebnis und PR nach Merge gesondert nachweisen.
+
 # W14: Konfliktfreie JSONL-Ereignisübernahme (21.10.2026)
 
 Der bereits vorhandene Offline-Liveprüfer lehnt widersprüchliche doppelte `seq`-Ereignisse beim einzelnen JSONL-Import **und** beim Zusammenfügen wiederholter Reports jetzt ab. Identische Mehrfachbeobachtungen werden weiter dedupliziert; Browser-/Headless- und Spielversionswechsel bleiben getrennte Läufe. Ergänzt: negative und positive Regressionen `test/roadmap-w14-log-part-integrity.test.mjs`; dokumentiert in `docs/ROADMAP-LIVE-TEST-GATES-2026-10-16.md`. **W14 bleibt ohne getrennte tatsächlich beobachtete Live-/Restart-/Disconnect-Abnahmen unvollständig.**

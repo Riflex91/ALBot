@@ -19,7 +19,7 @@ function farmFixture(){
  const bot={p:{c:{...c,name:'L',ctype:'ranger',attack:50,frequency:1,level:80,items:[],xp:0,gold:0},G,root:{S:{}},parent:{S:{}},read:()=>null,write:()=>true,realm:()=>realm,entities:{}},
   cfg:{general:{testLogging:true,messageTtlMs:10000},farming:{pvp:false,maxAggro:1,planHoldMs:300000,switchImprovement:.45,deathWindowMs:600000},
    world:{excludedMaps:[],cacheTtlMs:10000},party:{enabled:true,merchant:'M'},production:{}},
-  me:{name:'L',role:'farmer',farmTargets:[]},leader:'L',farmers:['L'],transport:{fresh:n=>n==='M'?{materials:requests}:null},
+  me:{name:'L',role:'farmer',farmTargets:[]},leader:'L',farmers:['L'],transport:{fresh:n=>n==='M'?{running:true,realm,materials:requests}:null},
   strategy:{safeTarget:()=>true,permittedMap:()=>true,busy:false},monsters:()=>[],event:(type,data)=>events.push({type,data}),
   decisionEpoch:1,logistics:{reserved:false},movement:{order:null,stop(){this.order=null;}},gear:{snapshot:()=>({})},content:{approve:()=>true},progression:{bonus:()=>0}};
  return {bot,requests,events};
@@ -137,4 +137,15 @@ test('healthy Priest keeps shared road route despite remote support-range emerge
   combatAssessment:{emergency:()=>({active:true,critical:[],reason:'party-not-in-combat-support-range'})},
   skills:{rotation:()=>healed++},event:()=>{}};
  createFarmer(bot).tick();assert.equal(movement.order,route);assert.equal(healed,1);
+});
+
+test('accepted material work keeps the physical spawn while travelling despite same-monster reranking',()=>{
+ const old=Date.now;let now=100000;Date.now=()=>now;
+ try{const {bot,requests}=farmFixture();bot.p.G.maps.main.monsters.push({type:'bee',boundaries:[['main',3500,0,3700,100]]});
+ requests.push({objective:'craft-work',item:'mat',monster:'bee',quantity:3,priority:10,expires:1000000});
+ const team=createTeamPlan(bot);team.tick();const initial=team.heartbeat();assert.equal(initial.kind,'material');
+ Object.assign(bot.p.c,{x:3600,y:0});now+=11000;bot.decisionEpoch++;team.tick();
+ assert.equal(team.heartbeat().key,initial.key);assert.equal(team.heartbeat().objective,'craft-work');
+ assert.equal(team.status().switchAdvice.reason,'committed-farm-trip');
+ }finally{Date.now=old;}
 });

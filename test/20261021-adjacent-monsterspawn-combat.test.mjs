@@ -133,7 +133,7 @@ test('adjacent spawn approval carries through the existing encounter permit gate
   me:{name:st.actor.name,role:'farmer'},
   leader:'My_Ranger1',running:true,recovering:false,journal:null,
   inventoryBlocked:false,logistics:{reserved:false},
-  p:{c:st.actor,G,realm:()=> 'EUII',parent:{}},
+  p:{c:st.actor,G,realm:()=> 'EUII',parent:{},read:()=>({})},
   cfg:{party:{enabled:true},farming:{freeSlots:3,maxAggro:12}},
   teamNames:['My_Ranger1','My_Ranger2','My_Priest'],
   monsters:()=>[bee],free:()=>30,

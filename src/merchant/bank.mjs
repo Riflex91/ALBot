@@ -30,8 +30,13 @@ export function bankGoldTransferPlan({wallet,bankGold,slots={},goldTarget,
     !slots||typeof slots!=='object'||Array.isArray(slots))return null;
  let committed=0;
  for(const [slot,bid] of Object.entries(slots)){
-  if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid?.b)continue;
-  const price=bid.price,quantity=bid.q??1;
+  if(!/^trade([1-9]|1[0-6])$/.test(slot)||!bid)continue;
+  // A malformed buy flag cannot be silently interpreted as an offer.
+  if(bid.b!==undefined&&typeof bid.b!=='boolean')return null;
+  if(bid.b!==true)continue;
+  // Only an ABSENT quantity represents an ordinary one-unit offer.
+  // Explicit null is not evidence of a spendable (or reserved) unit.
+  const price=bid.price,quantity=bid.q===undefined?1:bid.q;
   if(!Number.isSafeInteger(price)||price<1||
      !Number.isSafeInteger(quantity)||quantity<1||
      !Number.isSafeInteger(price*quantity)||

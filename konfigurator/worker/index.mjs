@@ -3,6 +3,7 @@ import {FULL_DESCRIPTOR} from '../../src/config/full.mjs';
 import {importProfile,envelope} from '../../editor/lib/contract.mjs';
 import {storeTelemetry,MAX_STORED_CHARACTERS,MAX_STORED_BANK_PACKS,SNAPSHOT_READ_TTL_MS} from './telemetry-store.mjs';
 import {TELEMETRY_MIN_INTERVAL_MS} from '../public/free-tier.mjs';
+import {GAME_ORIGINS} from '../public/relay-protocol.mjs';
 import {latestBankPackViews} from './bank-view.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
@@ -177,12 +178,13 @@ const secureHeaders={
  'referrer-policy':'no-referrer','cache-control':'no-store',
  'content-security-policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 };
-function telemetryCors(req,env){
- const raw=asString(env.INGEST_ALLOWED_ORIGIN)||'https://adventure.land';
+function telemetryCors(req){
+ // Both official Adventure Land game origins share the same private ingest
+ // path. Reflect ONLY a known exact origin; never mirror arbitrary hosts.
  const origin=req.headers.get('origin');
  if(!origin)return {};
- if(origin!==raw||!/^https:\/\/[a-zA-Z0-9.-]+$/.test(raw))return null;
- return {'access-control-allow-origin':raw,'vary':'Origin',
+ if(!GAME_ORIGINS.includes(origin))return null;
+ return {'access-control-allow-origin':origin,'vary':'Origin',
   'access-control-allow-methods':'POST, OPTIONS',
   'access-control-allow-headers':'Authorization, Content-Type',
   'access-control-max-age':'600'};
@@ -190,7 +192,7 @@ function telemetryCors(req,env){
 export async function handleRequest(request,env,ctx={},deps={}){
  const url=new URL(request.url),path=url.pathname,fetcher=deps.fetcher??fetch;
  if(path==='/api/ingest'){
-  const cors=telemetryCors(request,env);
+  const cors=telemetryCors(request);
   if(cors===null)return failure('Origin nicht freigegeben',403);
   if(request.method==='OPTIONS')
    return new Response(null,{status:204,headers:cors});

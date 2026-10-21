@@ -139,13 +139,13 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   return durable(confirmed);
  }
  function post(slot,rule){
-  if(posted)return false;
+  if(posted||storageUncertain)return false;
   const plan=ownTradeOfferPlan(bot,slot);
   if(!plan||plan.rule!==rule)return false;
   if(!p.c.stand)return bot.merchant?.activateStand?.()??false;
   const at=now();
   const ready=()=>{
-   if(posted||now()-at>10000||!p.c.stand||bot.movement?.order||
+   if(posted||storageUncertain||now()-at>10000||!p.c.stand||bot.movement?.order||
       p.realm()!==plan.realm||bot.session!==plan.session)return false;
    const next=ownTradeOfferPlan(bot,slot);
    return !!next&&next.rule===rule&&next.offerSlot===plan.offerSlot&&

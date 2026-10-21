@@ -110,7 +110,7 @@ test('3shot (2/3) and 5shot (4/5) have distinct ID and conservative combined saf
 });
 
 function runtime({character=actor,targets=mobs(5),leaderName='My_Ranger1',
- peerLeader=leader,peerPriest=priest,deferDispatch=false}={}){
+ peerLeader=leader,peerPriest=priest,deferDispatch=false,skillRules=[]}={}){
  const started=[],events=[],pending=[],
   roster=['My_Ranger1','My_Ranger2','My_Priest'];
  let live=targets;
@@ -126,7 +126,7 @@ function runtime({character=actor,targets=mobs(5),leaderName='My_Ranger1',
   enabled:true,waitForTeam:true,aoeMaxTargets:5,
   healing:true,focusFire:true},farming:{
   freeSlots:3,maxAggro:12,pullHp:.75,pullMp:.5,restBelow:.4,
-  pvp:false},skills:[],world:{excludedMaps:[]}};
+  pvp:false},skills:skillRules,world:{excludedMaps:[]}};
  const bot={p,me:{name:character.name,role:'farmer'},
   leader:leaderName,teamNames:roster,farmers:roster,
   running:true,recovering:false,inventoryBlocked:false,
@@ -134,6 +134,7 @@ function runtime({character=actor,targets=mobs(5),leaderName='My_Ranger1',
   monsters:()=>live,entity:id=>live.find(m=>String(m.id)===String(id))??null,
   free:()=>30,event:(type,data)=>events.push({type,...data}),
   strategy:{busy:false,safeTarget:()=>true},
+  measure:target=>({hp:target?.hp??0,monster:target?.mtype??null}),
   teamPlan:{heartbeat:()=>plan,target:()=>plan.target,
    wantsCombat:()=>true,roles:()=>({})},
   transport:{fresh:n=>n===leader.name?peerLeader:n===priest.name?
@@ -228,4 +229,34 @@ test('shared core coordinate contract never combines real X and old raw Y',async
  assert.deepEqual(xy(a),{x:-548,y:-455});
  assert.equal(distance(a,{x:-548,y:-455}),0);
  assert.equal(distance({real_x:42,real_y:undefined},{x:42,y:17}),Infinity);
+});
+
+test('active user 3shot rule authorizes independent exact aimed dispatch rather than ruleBlocked',()=>{
+ const rule={enabled:true,name:'Neue Skill-Regel',skill:'3shot',
+  class:'ranger',character:'',priority:1,target:'enemy',
+  minMp:.2,everyMs:100,minTargets:1,maxTargets:15,conditions:[]};
+ const r=runtime({targets:mobs(3),skillRules:[rule]});
+ assert.equal(r.bot.skills.independentOneShotAoE(),true);
+ assert.equal(r.started[0]?.id,'3shot');
+ assert.equal(r.started[0]?.ids.length,3);
+ const status=r.bot.skills.diagnostics();
+ assert.equal(status['3shot']?.ruleBlocked,0);
+ assert.equal(status['3shot']?.started,1);
+ assert.equal(r.events.find(x=>x.type==='skill.decision'&&
+  x.skill==='3shot')?.reason,'Passende individuelle Skill-Regel');
+});
+
+test('independent AoE respects configured enemy target and maximum targets, without bypass',()=>{
+ const rule={enabled:true,name:'Controlled 3shot',skill:'3shot',
+  class:'ranger',character:'',target:'enemy',priority:1,
+  minMp:.2,everyMs:100,minTargets:2,maxTargets:2,conditions:[]};
+ const limited=runtime({targets:mobs(3),skillRules:[rule]});
+ assert.equal(limited.bot.skills.independentOneShotAoE(),true);
+ assert.deepEqual(limited.started[0].ids,mobs(2).map(x=>x.id));
+ const forbidden=runtime({targets:mobs(3),skillRules:[{...rule,target:'self'}]});
+ assert.equal(forbidden.bot.skills.independentOneShotAoE(),false);
+ assert.equal(forbidden.started.length,0);
+ const invalid=runtime({targets:mobs(3),skillRules:[{...rule,minTargets:3,maxTargets:2}]});
+ assert.equal(invalid.bot.skills.independentOneShotAoE(),false);
+ assert.equal(invalid.started.length,0);
 });

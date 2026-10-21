@@ -120,8 +120,10 @@ export function createLootBacklog(bot,{now=()=>Date.now()}={}){
   const accepted=bot.exec.run('loot',['inventory'],guard,()=>{
    if(id){retry.set(id,now()+1600);lastSelection=id;}
    return Promise.resolve(bot.p.call('loot',...(id?[id]:[]))).catch(error=>{
-    if(String(error?.reason??error?.message??'')==='openning')
-     return {transient:'openning'};
+    if(String(error?.reason??error?.message??'')==='openning'){
+     bot.event?.('action.transient',{key:'loot',reason:'openning'});
+     return {success:true,transient:'openning'};
+    }
     throw error;
    });
   },{delay:interval,timeout:3000});

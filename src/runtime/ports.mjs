@@ -11,6 +11,18 @@ export function createPorts(root){
   const rotationCode=typeof parent.the_code==='string'?parent.the_code:null;
   const validSlot=()=>['string','number'].includes(typeof rotationSlot)&&String(rotationSlot).trim()!=='';
   const directSave=()=>rotationCode!==null&&rotationCode.length>0&&!!find('upload_code');
+  // Value-bearing journals must never use the game's forgiving get(),
+  // which maps a corrupted serialized record to an apparently empty slot.
+  const strictJournalValue=key=>{
+   const storage=root.localStorage??parent.localStorage;
+   if(!storage||typeof storage.getItem!=='function')
+    throw Error('Strict journal storage unavailable');
+   const raw=storage.getItem('cstore_'+key);
+   if(raw===null)return null;
+   if(typeof raw!=='string'||raw.length>65536)
+    throw Error('Invalid strict journal storage payload');
+   return JSON.parse(raw);
+  };
   return {root,parent,headless,ipc,h,
     has:name=>!!find(name),
     rewardMailCapability(){
@@ -132,14 +144,15 @@ export function createPorts(root){
     readCaveJournal(key){
      if(typeof key!=='string'||!/^albot:(?:cave-(?:lifecycle|vote)|crypt-lifecycle):[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid Cave journal key');
-     const storage=root.localStorage??parent.localStorage;
-     if(!storage||typeof storage.getItem!=='function')
-      throw Error('Strict Cave journal storage unavailable');
-     const raw=storage.getItem('cstore_'+key);
-     if(raw===null)return null;
-     if(typeof raw!=='string'||raw.length>65536)
-      throw Error('Invalid Cave journal storage payload');
-     return JSON.parse(raw);
+     return strictJournalValue(key);
+    },
+    readTradeOfferJournal(key){
+     // Same cstore_ key used by the normal set() port, but never convert
+     // parse/read errors into a false 'no previous offer' permission.
+     if(typeof key!=='string'||
+        !/^albot:trade-offer:v1:[A-Za-z0-9_]{1,100}$/.test(key))
+      throw Error('Invalid trade offer journal key');
+     return strictJournalValue(key);
     },
     readCryptJournal(key){
      // Reuse strict journal read semantics; a corrupt key cannot be

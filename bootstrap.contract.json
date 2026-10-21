@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 24,
-      "version": "0.24.0-candidate",
+      "sequence": 25,
+      "version": "0.25.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 916442,
-      "sha256": "56c2562496381ffdade50567fc33900cd15a9ad97453536cef5d98bb01f933f2"
+      "bytes": 919227,
+      "sha256": "30b086d4fbe055d035d50deb845756053bb86a6976306ecb2d5cf79b46815239"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 24 / 0.24.0-candidate am 21.10.2026 nach PR #355 (main 2ac84396ac482ebd12824f9d3338159528cd344d), Linux-/Windows-CI 39637823327 und Signierworkflow 39638036784 veroeffentlicht. 2274 Offline-Tests; ECDSA-P-256, SHA-256 und Bytezahl verifiziert; Runtime byteidentisch mit main. V2-Loader, Key, URLs und persoenliche Konfiguration unveraendert. Game-Liveabnahme offen."
+    "note": "Sequence 25 / 0.25.0-candidate am 21.10.2026 durch PR #364 und Signierworkflow 39642136804 veroeffentlicht. Linux-/Windows-Preflight 39641002011 bestanden, privater ECDSA-P-256-Signierprozess erfolgreich und signierte Runtime-Bytezahl sowie SHA256 bestaetigt. Automatische Telemetrie ohne Relay nur bei privatem INGEST_TOKEN, Game-Liveabnahme offen. V2-Loader, Release-URLs und persoenliche Konfiguration unveraendert."
   }
 }

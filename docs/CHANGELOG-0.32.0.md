@@ -15,3 +15,11 @@ Live-Berichte dreier Farmer (0.29.0) meldeten in rund 20 Minuten 511, 480 und 40
 
 ## Freigabe
 Linux- und Windows-CI, vollständige Offline-Suite, kryptografische Signatur und Main-/Runtime-Bytegleichheit sind vor Freigabe Pflicht. Persönliche Konfiguration, V2-Loader, Public Key und URLs bleiben unverändert. Ingame-Liveabnahme offen.
+
+## Zertifizierte Veröffentlichung
+
+- Merge: PR #391, Main-Commit fdbce853f4fc71c69c45240f5cda9ffe517a7032.
+- Linux-/Windows-CI: Workflow 39660456088, beide Jobs erfolgreich.
+- Signierworkflow 39660752603: npm test, Signierung und Signaturprüfung bestanden.
+- Sequence 32, Version 0.32.0-candidate, 933121 Bytes, SHA-256 36e1e4f702ce1059fad2b610d8faea811e29a066870a758134619764c11101bd.
+- Signierte Release-Runtime und geprüfte Main-Runtime haben denselben Git-Blob-SHA 194f31b36fd359bfa7cfbba4412c56af50242dcc. Live-Abnahme im Spiel weiter offen.

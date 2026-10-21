@@ -1,3 +1,5 @@
+**Aktuell signiert und öffentlich verifiziert: `0.26.0-candidate`, Sequence 26 (21.10.2026).** [PR #367](https://github.com/Riflex91/ALBot/pull/367) nach grüner [Linux-/Windows-CI 39642937064](https://github.com/Riflex91/ALBot/actions/runs/39642937064) in Main (`aef9be83d1e04b62bb3c61548225ce0602b2e6e1`). [Signierworkflow 39643137036](https://github.com/Riflex91/ALBot/actions/runs/39643137036): 2.302/2.302 Offline-Tests, ECDSA-P-256 gültig, 922154 Runtime-Bytes, SHA-256 `b7f096e7fa7aab772f55968cbec44afde23070038cbc0933546bb8fc10d8862c`. Öffentlich geladene Runtime byteidentisch mit Main. Gearplanung schrittweise, Reentranz gesperrt, Diagnosen passiv; Einzelaufrufe können das kooperative Zeitbudget weiterhin überschreiten. Persönliche Konfiguration, V2-Loader, Key und URLs unverändert. Spiel-Liveabnahme 0.26 offen. Frühere Releaseangaben darunter sind historisch.
+
 # 0.26.0-candidate: Browser-Blockaden der Gearplanung begrenzen
 
 ## Befund und Selbstprüfung
@@ -15,7 +17,7 @@ Im Quellcode war dennoch ein konkreter Fehler nachvollziehbar: targets -> estima
 - planning.gear.advance und regelmäßige transport.heartbeat werden gesondert gemessen; economicIntelligence.planning zeigt Zustand, Fertigstellungszeit und Revision.
 
 ## Abnahme und Grenzen
-2.297 Offline-Tests nach Integration des aktuellen Main bestanden, einschließlich acht neuer Regressionen: lazy/atomare Generationen mit 100 Craft-Kandidaten, 40-Sekunden-Zeitsprung ohne Reentranz, Cachefrist ab Abschluss, Invalidierung, Farmer-Suchvermeidung, Verkaufsschutz, passive Geardiagnose, kleines Logsampling und einmaliger Exchange-Katalogscan. Die vorhandene W01-Erklärungsprüfung verweigert jetzt ausdrücklich einen Aufruf des Reservierungsplaners.
+2.302 Offline-Tests nach Integration des aktuellen Main bestanden, einschließlich neun neuer Regressionen: lazy/atomare Generationen mit 100 Craft-Kandidaten, 40-Sekunden-Zeitsprung ohne Reentranz, Cachefrist ab Abschluss, Invalidierung, Farmer-Suchvermeidung, Verkaufsschutz, passive Geardiagnose, kleines Logsampling und einmaliger Exchange-Katalogscan. Die vorhandene W01-Erklärungsprüfung verweigert jetzt ausdrücklich einen Aufruf des Reservierungsplaners.
 
 4 ms ist ein kooperatives Budget zwischen Arbeitsschritten, keine harte Unterbrechung eines einzelnen synchronen Spiel-API-/Beschaffungsaufrufs und keine garantierte Obergrenze des gesamten Bot-Ticks. Production-Routen bleiben zusätzlich durch die bestehende Knotenzahl/Rezursionstiefe begrenzt. Es gibt noch keinen gemessenen 0.26-Livedurchlauf im Spiel. Bei weiteren Ausreißern zuerst die neuen Modulmetriken und planning.state prüfen; keine Kampf-/Inventarschutzregeln lockern.
 

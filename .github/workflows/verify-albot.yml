@@ -84,3 +84,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./scripts/VERIFY-U01-U07.ps1
+
+  # Temporary W05 live-stat observation artifact sync; remove before merge.
+  w05-observation-artifact-sync:
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/w05-observed-gear-delta-evidence-20261021'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          node scripts/sync-personal-code.mjs --check
+      - name: Commit only generated comparison artifacts
+        shell: bash
+        run: |
+          git add -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json editor/Bot-Werkstatt.html editor/albot.settings.json
+          if git diff --cached --quiet; then echo "Artifacts already synchronized"; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build(W05): sync observed gear evidence runtime artifacts'
+          git push origin HEAD:${{ github.head_ref }}

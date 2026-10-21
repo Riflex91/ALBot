@@ -433,6 +433,10 @@ function independentSpawnEngagement(){
        actorSource:pos?.actor?.source??null,
        leaderSource:pos?.leader?.source??null,
        monsterSource:pos?.monster?.source??null,
+       areaKind:pos?.areaKind??null,
+       adjacentKey:pos?.adjacentKey??null,
+       primaryTargetGap:fmt(pos?.primaryTargetGap),
+       adjacentCount:pos?.adjacentCount??null,
        raw:pos?.monsterRaw??null,real:pos?.monsterReal??null};
    });
    bot.event?.('combat.followerSpawnAudit',{
@@ -498,7 +502,9 @@ function independentSpawnEngagement(){
     bounded?'combat.independentBoundedSpawn':'combat.independentSharedSpawn',{
     target:id,monster:candidate.mtype,
     mode:exact?'one-shot':bounded?'short-bounded':'shared-low-threat',
-    plan:plan?.id,range:Math.round(distance(p.c,candidate))});
+    plan:plan?.id,range:Math.round(distance(p.c,candidate)),
+    areaKind:bot.encounter?.sharedSpawnAssessment?.(candidate)?.position?.areaKind??'primary',
+    adjacentKey:bot.encounter?.sharedSpawnAssessment?.(candidate)?.position?.adjacentKey??null});
  else diagnostic('attack-dispatch-denied',[candidate]);
  return true;
 }

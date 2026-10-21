@@ -132,6 +132,22 @@ Sicherheitsvertrag: Der Benutzer muss das Relay-Popup aus einer direkten Benutze
 
 **Noch nicht aktiv im Spiel:** Der neue Sender ist weder in `src/main.mjs` installiert noch in `scripts/build.mjs` enthalten. Ein spaeterer signierter Release mit echten Adventure-Land-Browsertests ist weiterhin erforderlich. Ein automatischer Betrieb darf erst danach behauptet werden. Cloudflare Free und die vorhandene D1-Datenbank genuegen.
 
+## Automatische Telemetrie ohne Relay-Popup (privater Game-CODE-Schluessel)
+
+Die neue Runtime-Quelle kann nach dem Start **ohne Klick auf Telemetrie verbinden und ohne Relay-Popup** ueber `/api/ingest` selbststaendig Charakterdaten und beim Merchant ein beobachtetes Bankpack melden. Sie benutzt weiterhin ausschliesslich den **vorhandenen** Bearer-geschuetzten Ingest-Endpunkt: Cloudflare Access bleibt fuer das Dashboard und alle anderen APIs aktiviert. Keine oeffentliche anonyme Telemetrie-Route, kein Zugriff auf Bankaktionen oder Konfigurationsuebernahme.
+
+**Einmalige, private Einrichtung:** Der im Cloudflare Worker gesetzte `INGEST_TOKEN` ist ausschliesslich ein Schreibschluessel fuer Telemetrie (kein GitHub-Token, kein Cloudflare-Deploy-Token). Nur im persoenlichen, privat gespeicherten Adventure-Land-CODE-Slot vor dem signierten Bootstrap bereitstellen:
+
+```js
+globalThis.ALBOT_AUTO_TELEMETRY_TOKEN = 'DEIN_PRIVATER_INGEST_TOKEN';
+```
+
+**Kein Token ins oeffentliche Repository, in ein Issue/PR, in Screenshots, Logs oder in den Chat.** Das CODE-Fenster ist eine Browser-Ausfuehrungsumgebung: Ein darin verwendeter Token ist grundsaetzlich fuer dort ausgefuehrte Game-Origin-Skripte erreichbar. Deshalb den Wert ausschliesslich in einem vertrauenswuerdigen, privaten CODE-Slot hinterlegen und keine fremden Scripts ausfuehren. Wenn dieser Schutz nicht akzeptabel ist, den Schluessel **nicht** im Spiel speichern und weiterhin das Access-Relay nutzen. Ein nur in Cloudflare vorhandenes Worker-Secret ist vom Game-Code aus absichtlich nicht abrufbar. Fuer den automatischen Browser-POST muss Cloudflare Access ausschliesslich `/api/ingest` vom Login ausnehmen; die Worker-Bearer-Pruefung und strenge Adventure-Land-Origin-CORS bleiben erhalten.
+
+Der Bot liest den privaten Schluessel bei jedem Game-Start zur Laufzeit. Bei gueltigem Schluessel und laufendem Bot erfolgen sofort und danach hoechstens alle 120 Sekunden Versuche; beim Merchant pro Zyklus maximal ein Bankpack. Nur lokal beobachtete, validierte Daten werden uebertragen; keine Chat-, Game-Session-, GitHub- oder Cloudflare-Admin-Tokens. Requests werden nicht aggressiv wiederholt, die bereits bestehende D1-Drosselung bleibt aktiv. **Ohne gueltigen Schluessel wird keine automatische Netzwerkanfrage gesendet.** `ALBot.telemetryStatus()` zeigt Konfiguration, letzte Versuchs- und Erfolgszeitstempel, aber niemals den Schluessel. Die bisherige manuelle Relay-Funktion bleibt fuer Installationen ohne privaten Token verfuegbar.
+
+**Release-Grenze:** Ein Commit in `main` und ein Cloudflare-Deploy aktivieren keine neue Game-Runtime. Der aktualisierte Build muss ueber den bestehenden verifizierten Signatur-/Bootstrap-Release-Kanal veroeffentlicht sein und das Browser-CODE muss diesen Release laden. Erst ein echter Spieltest mit vorhandenem privaten Schluessel und aktualisierten `/api/characters`-/`/api/bank`-Zeitstempeln bestaetigt den End-to-End-Betrieb.
+
 ## Globale Bankansicht ueber mehrere Spiel-Realms
 
 `/api/bank` zeigt pro Bankfach (`items0`, `items1` usw.) **nur den juengsten separat beobachteten Snapshot**. Wenn sich der Merchant zwischen Realms bewegt, bleiben aeltere Snapshots mit ihrem Realm unveraendert in D1 gespeichert, zaehlen aber nicht als weitere globale Bankfaecher und werden weder mit neueren Slots zusammengefuehrt noch als aktuell ausgegeben. Die Bank-Map und der beobachtende Realm bleiben sichtbar. Nicht beobachtete Packs werden niemals als leer erzeugt. Die bestehenden globalen 120-Sekunden-Schreiblimits, 7-Tage-Lesefrist und Free-Tier-Budgets aendern sich dadurch nicht.

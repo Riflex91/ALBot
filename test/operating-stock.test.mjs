@@ -85,7 +85,8 @@ test('W02 configured active offline farmers remain in physical potion reserve',(
   {name:'M',enabled:true,role:'merchant'},
   {name:'Disabled',enabled:false,role:'farmer'}];
  bot.p.G.items.hpot1={type:'pot',g:100,s:9999};
- bot.p.c.items=[{name:'hpot1',level:0,q:10000}];
+ bot.p.c.items=[{name:'hpot1',level:0,q:9999},
+  {name:'hpot1',level:0,q:1}];
  const item=bot.p.c.items[0];
  assert.equal(operatingReserveCohort(bot),3);
  const rule=automaticOperatingStockRule(bot,item);

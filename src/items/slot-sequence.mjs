@@ -24,6 +24,8 @@ function stackLimit(meta){
 function canUse(items,slot,n){
  const item=items[slot];
  return Number.isSafeInteger(slot)&&slot>=0&&slot<items.length&&
+  !!item&&typeof item==='object'&&!Array.isArray(item)&&
+  typeof item.name==='string'&&!!item.name&&
   !protectedItem(item)&&positive(qty(item))&&positive(n)&&n<=qty(item);
 }
 function openSlot(items,size){

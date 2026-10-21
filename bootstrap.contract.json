@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 27,
-      "version": "0.27.0-candidate",
+      "sequence": 28,
+      "version": "0.28.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 924287,
-      "sha256": "b55bea82b6c7de2f9edaeaeb5e28312cb21ea6dcb7088d4a882cbbcd923f0e50"
+      "bytes": 926463,
+      "sha256": "1367b966f64faefb8556567db32656b749e2d98adbc943e80f0579012f851261"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 27 / 0.27.0-candidate nach vollstaendig erfolgreichem Linux-/Windows-Preflight 39648365238 und PR #375 auf dem vertrauenswuerdigen Signierkanal veroeffentlicht. Signierworkflow 39649064561: 2320/2320 Offline-Tests, ECDSA-P-256, SHA-256 b55bea82b6c7de2f9edaeaeb5e28312cb21ea6dcb7088d4a882cbbcd923f0e50 und 924287 Bytes erfolgreich geprueft. Telemetrie-Origin-Fix #372 und Runtime-Diagnose/Timeout #373 enthalten; Game-Liveabnahme und private INGEST_TOKEN-Einrichtung bleiben offen. Persoenliches Profil, V2-Loader, Public Key und Release-URLs unveraendert."
+    "note": "Signierte Runtime Sequenz 28 / 0.28.0-candidate nach erfolgreicher Veröffentlichung geprüft; Dokumentationsstand mit dem veröffentlichten Manifest abgeglichen. Der neue generische Spawn-Kampffix ist ein getrenntes Quellcode-Update und wird erst nach eigener CI/Signierung im Spiel verfügbar. Bestehender V2-Bootstrap, EC-Prüfschlüssel und persönliche Konfiguration bleiben unverändert."
   }
 }

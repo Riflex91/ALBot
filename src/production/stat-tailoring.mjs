@@ -1,7 +1,7 @@
 import {fingerprint,identity} from '../core/policy.mjs';
 import {gearCompatible} from './gear.mjs';
 import {surplusQuantity} from '../core/policy.mjs';
-import {localVariantQuantity,verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
+import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 
 // Verified at source: a pscroll is consumed by the EXISTING upgrade handler.

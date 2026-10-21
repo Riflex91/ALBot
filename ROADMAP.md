@@ -1,4 +1,4 @@
-**0.23.0-candidate: dauerhafte Rotation und Material-/Craftingaufträge.** [Implementierung und Tests](docs/CHANGELOG-0.23.0.md).
+**0.24.0-candidate: dauerhafte Rotation und Material-/Craftingaufträge.** [Implementierung und Tests](docs/CHANGELOG-0.24.0.md).
 
 # W02/W04: Physisch gültige Betriebs- und Bankreservemengen (21.10.2026)
 

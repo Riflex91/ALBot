@@ -1,4 +1,4 @@
-# 0.23.0-candidate: Rotation, Materialaufträge und Craftingziele
+# 0.24.0-candidate: Rotation, Materialaufträge und Craftingziele
 
 Ausgangsbefund: Die Logs vom 21.10.2026 enthalten einen Lauf unter 30 Minuten, wiederholte erfolglose Marktsuchen sowie den gemeinsamen Wechsel von Material-/Elixierarbeit zu gewöhnlichem Rat-Farming. Frühe Farmerereignisse waren teilweise aus dem 2048-Ereignisring gefallen; fehlende Ereignisse wurden nicht als Nichterfüllung gewertet.
 

@@ -1,4 +1,4 @@
-**0.23.0-candidate: Rotationsfrist, verbindliche Materialarbeit, Markt-Fallback und Crafting-Gearziele.** [Implementierung, Regressionen und Livegrenzen](docs/CHANGELOG-0.23.0.md). Die signierte Veröffentlichung erfolgt separat über den bestehenden V2-Kanal.
+**0.24.0-candidate: Rotationsfrist, verbindliche Materialarbeit, Markt-Fallback und Crafting-Gearziele.** [Implementierung, Regressionen und Livegrenzen](docs/CHANGELOG-0.24.0.md). Die signierte Veröffentlichung erfolgt separat über den bestehenden V2-Kanal.
 
 **Aktuell signiertes Release: Sequence 19, `0.19.0-candidate` (20.10.2026).** Über [Workflow 39480451001](https://github.com/Riflex91/ALBot/actions/runs/39480451001) signiert und gegen exakt `886804` Runtime-Bytes sowie SHA-256 `d83f93525c6afc18b790ec820eb27074860cd617eec6acd7748a47c68e4d44c7` geprüft. Der Bootstrap-V2-Loader lädt diese Version automatisch vom unveränderten signierten Release-Kanal. Linux-/Windows-Abnahme bestanden; Persönliche `ALBotConfig`, Schlüssel, Cloudflare-Free-Grenzen unverändert, Game-Liveabnahme weiterhin offen. Enthält Farmer-One-Shots (#302), Merchant-Stabilisierung (#307) und Executor-Abschlussereignisse (#308).
 

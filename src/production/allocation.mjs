@@ -4,7 +4,12 @@ import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {fingerprint,identity,protectedItem} from '../core/policy.mjs';
 // An allocated equipment unit is one physical non-stackable copy.
 const allocationGearVariant=item=>{
- try{return item?identity(item):null;}catch{return null;}
+ try{
+  if(!item||typeof item.name!=='string'||!item.name||
+     item.name.length>120)return null;
+  const key=identity(item);
+  return typeof key==='string'&&key.length>0&&key.length<=512?key:null;
+ }catch{return null;}
 };
 const allocationGearSingle=item=>item?.q===undefined||item.q===1;
 // Protect a confirmed inbound gear allocation until equip or expiry. An
@@ -196,6 +201,7 @@ export function createGearAllocation(bot){
   if(unsafeReceiving||typeof id!=='string'||!id||id.length>240||
      typeof from!=='string'||!from||
      typeof session!=='string'||!session||
+     !allocationGearSingle(item)||!allocationGearVariant(item)||
      !Number.isSafeInteger(ttl)||ttl<1||
      !Number.isSafeInteger(g.expires)||g.expires<=now||
      g.expires>now+Math.max(1000,ttl*2)||
@@ -233,10 +239,19 @@ export function createGearAllocation(bot){
   return true;
  }
  function rules(){if(unsafeReceiving)return [];receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
- function equipGuard(item,slot){if(unsafeReceiving)return false;const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
+ function equipGuard(item,slot){
+  if(unsafeReceiving||!allocationGearSingle(item)||
+     !allocationGearVariant(item))return false;
+  const r=receiving.find(r=>r.slot===slot&&
+   r.state!=='equipped'&&r.expires>Date.now());
+  return !r||allocationGearSingle(r.item)&&
+   allocationGearVariant(r.item)===allocationGearVariant(item)&&
+   fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;
+ }
  function tick(){
   const newReceiving=unsafeReceiving?receiving:receiving.map(r=>r.state!=='equipped'&&
-   identity(bot.p.c.slots?.[r.slot])===identity(r.item)?
+   allocationGearSingle(bot.p.c.slots?.[r.slot])&&
+   allocationGearVariant(bot.p.c.slots?.[r.slot])===allocationGearVariant(r.item)?
    {...r,state:'equipped'}:r);
   if(newReceiving.some((r,i)=>r!==receiving[i])&&
      bot.p.write(receivingKey,newReceiving)){
@@ -256,7 +271,8 @@ export function createGearAllocation(bot){
       peer.session!==r.recipientSession||!r.realm||
       peer.realm!==r.realm||bot.p.realm()!==r.realm)return r;
    const equipped=peer.gear?.slots?.[r.gearSlot];
-   return equipped&&identity({...equipped,l:undefined,b:undefined})===r.variant?
+   return equipped&&allocationGearSingle(equipped)&&
+    allocationGearVariant({...equipped,l:undefined,b:undefined})===r.variant?
     {...r,state:'equipped'}:r;
   });
   if(next.some((r,i)=>r!==rows[i]))save(next);

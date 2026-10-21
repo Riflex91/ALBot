@@ -41,10 +41,11 @@ test('short bank visit captures real packs and drains them after departure, neve
  f.leaveBank();
  assert.equal(f.sender.status().pendingBankPacks,1);
  f.advance(AUTO_TELEMETRY_INTERVAL_MS-1);
- await f.sender.sendOnce();
- assert.equal(f.sent.length,2);
+ // The character may be due already, but the bank has its own cooldown.
+ assert.deepEqual(await f.sender.sendOnce(),{character:true,bank:false});
+ assert.equal(f.sent.filter(p=>p.kind==='bank').length,1);
  f.advance(1);
- assert.deepEqual(await f.sender.sendOnce(),{character:true,bank:true});
+ assert.deepEqual(await f.sender.sendOnce(),{character:false,bank:true});
  assert.equal(f.sent[3].data.pack,'items1');
  assert.equal(f.sender.status().pendingBankPacks,0);
  assert.equal(f.sender.status().lastBankSuccess,base+2500+AUTO_TELEMETRY_INTERVAL_MS);

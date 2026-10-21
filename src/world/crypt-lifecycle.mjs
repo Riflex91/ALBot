@@ -4,23 +4,23 @@ import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 // W12/N11 first bounded Crypt admission phase. The official CODE entrypoint
 // is enter('crypt') to open and enter('crypt', instanceName) to join.
 // There is deliberately NO automatic scheduler, replay, loot or exit path.
-const text=s=>typeof s==='string'&&s.length>0&&s.length<=100;
-const instance=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(s);
-const time=n=>Number.isSafeInteger(n)&&n>0;
-const phase=new Set(['prepared','dispatch-unknown','inside-observed']);
+const cryptEntryText=s=>typeof s==='string'&&s.length>0&&s.length<=100;
+const cryptEntryInstance=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(s);
+const cryptEntryTime=n=>Number.isSafeInteger(n)&&n>0;
+const cryptEntryPhases=new Set(['prepared','dispatch-unknown','inside-observed']);
 export function validCryptEntryRecord(r){
  return !!r&&typeof r==='object'&&!Array.isArray(r)&&r.version===1&&
-  text(r.owner)&&text(r.realm)&&text(r.session)&&time(r.at)&&
-  ['open','join'].includes(r.mode)&&phase.has(r.phase)&&
-  (r.mode==='open'?r.instance===null:instance(r.instance))&&
+  cryptEntryText(r.owner)&&cryptEntryText(r.realm)&&cryptEntryText(r.session)&&cryptEntryTime(r.at)&&
+  ['open','join'].includes(r.mode)&&cryptEntryPhases.has(r.phase)&&
+  (r.mode==='open'?r.instance===null:cryptEntryInstance(r.instance))&&
   (r.mode==='open'?Number.isSafeInteger(r.keySlot)&&r.keySlot>=0&&
-   r.keySlot<1000&&text(r.keyPrint)&&
+   r.keySlot<1000&&cryptEntryText(r.keyPrint)&&
    Number.isSafeInteger(r.keyBefore)&&r.keyBefore>=1:
    r.keySlot===null&&r.keyPrint===null&&r.keyBefore===null)&&
   (r.phase==='prepared'?r.dispatchAt===null&&r.inside===null:
-   time(r.dispatchAt)&&r.dispatchAt>=r.at&&
+   cryptEntryTime(r.dispatchAt)&&r.dispatchAt>=r.at&&
    (r.phase==='dispatch-unknown'?r.inside===null:
-    !!r.inside&&instance(r.inside.in)&&time(r.inside.at)&&
+    !!r.inside&&cryptEntryInstance(r.inside.in)&&cryptEntryTime(r.inside.at)&&
     r.inside.at>=r.dispatchAt&&
     (r.mode==='open'||r.inside.in===r.instance)));
 }
@@ -36,14 +36,14 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
  const clone=v=>v===null?null:JSON.parse(JSON.stringify(v));
  const quantity=()=>verifiedProductionStockQuantity(p.G,p.c?.items,
   {name:'cryptkey',level:0});
- const live=()=>p.c?.map==='crypt'&&instance(p.c?.in)?
+ const live=()=>p.c?.map==='crypt'&&cryptEntryInstance(p.c?.in)?
   {map:'crypt',in:p.c.in}:null;
  const plainSafe=()=>!closed&&bot.running&&
   !bot.journal&&!bot.inventoryBlocked&&!bot.bank?.pending&&
   !bot.logistics?.reserved&&!bot.lifecycleChanging&&
   !bot.teamTravel?.blocked&&!bot.account?.rotationPending?.()&&
   !p.c?.rip&&typeof bot.session==='string'&&!!bot.session&&
-  typeof p.realm==='function'&&text(p.realm())&&
+  typeof p.realm==='function'&&cryptEntryText(p.realm())&&
   bot.exec?.pending?.size===0&&
   !bot.movement?.order&&!bot.strategy?.busy&&!live()&&
   p.has?.('enter')===true;
@@ -63,7 +63,7 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
  function preflight(mode='open',name=null){
   if(readFailed||writeFailed||record||!plainSafe()||
      !['open','join'].includes(mode)||mode==='open'&&name!==null||
-     mode==='join'&&!instance(name))return null;
+     mode==='join'&&!cryptEntryInstance(name))return null;
   if(mode==='join')return {mode,instance:name,keySlot:null,
    keyPrint:null,keyBefore:null};
   const n=quantity();
@@ -99,7 +99,7 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
  }
  function prepare(mode='open',name=null){
   const pflight=preflight(mode,name),at=now();
-  if(!pflight||!time(at))return false;
+  if(!pflight||!cryptEntryTime(at))return false;
   const next={version:1,owner:me.name,realm:p.realm(),
    session:bot.session,at,mode:pflight.mode,instance:pflight.instance,
    keySlot:pflight.keySlot,keyPrint:pflight.keyPrint,
@@ -129,7 +129,7 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
   return bot.exec.dispatch('crypt.enter.once',
    ['lifecycle','movement','account'],ready,()=>{
     const at=now();
-    if(!time(at)||at<record.at||
+    if(!cryptEntryTime(at)||at<record.at||
        !durable({...record,phase:'dispatch-unknown',dispatchAt:at}))
      throw Error('crypt-entry-intent-not-durable');
     // The official enter() may consume one Crypt key, but its Promise
@@ -144,7 +144,7 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
      record.owner!==me.name||record.realm!==p.realm()||
      !bot.running)return false;
   const where=live(),at=now();
-  if(!where||!time(at)||at<record.dispatchAt||
+  if(!where||!cryptEntryTime(at)||at<record.dispatchAt||
      record.mode==='join'&&where.in!==record.instance)return false;
   // Opening consumes exactly one key; do not credit map transit as a
   // successful key-based run if its physical effect is unverified.

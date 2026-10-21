@@ -314,6 +314,13 @@ export function createEncounter(bot){
   const ids=targets.map(m=>String(m?.id??''));
   if(ids.some(id=>!id)||new Set(ids).size!==ids.length)
    return deny('duplicate-or-missing-aimed-id');
+  // Never authorize a copied entity from a prior tick. Every aimed ID must
+  // still exist in the native *current* visible entity set at dispatch.
+  const live=bot.monsters();
+  if(targets.some(m=>!live.some(e=>String(e?.id)===String(m.id)&&
+    e.mtype===m.mtype&&e.type==='monster'&&e.hp>0&&!e.dead&&
+    !e.target&&samePlace(bot.p.c,e))))
+   return deny('aimed-target-not-live');
   const invalid=targets.find(m=>aimedSpawnAssessment(m).allowed!==true);
   if(invalid)return {safe:false,reason:'aimed-target-not-authorized',
    target:invalid?.id??null,

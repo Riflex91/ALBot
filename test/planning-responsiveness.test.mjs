@@ -76,3 +76,9 @@ test('exchange route catalog is decoded once per estimate, dynamic event evidenc
  assert.ok(estimateRoutes(options).length);assert.equal(scans,1);
  estimateRoutes(options);assert.equal(scans,2);
 });
+
+test('disabled optimizer does not create a perpetual gear-sale waiting state',()=>{
+ const f=fixture(1),b=f.bot;b.cfg.production.optimizeGear=false;
+ b.gear.snapshot=()=>({class:'merchant',level:60,slots:{helmet:{name:'hat0',level:0}}});
+ b.intelligence.advance();assert.equal(b.intelligence.gearUse({name:'hat0'}).state,'no-gear-use');
+});

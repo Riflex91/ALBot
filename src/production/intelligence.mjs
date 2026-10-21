@@ -152,7 +152,7 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  }
  // A feasible, already planned +level gear allocation still reserves
  // the source, even if the item at its current level is not useful.
- if((me.role==='merchant'||me.name===cfg.party.merchant)&&Number.isInteger(bot.decisionEpoch)&&(!completed||work))
+ if((me.role==='merchant'||me.name===cfg.party.merchant)&&enabled()&&Number.isInteger(bot.decisionEpoch)&&(!completed||work))
    return {state:'unknown',reason:'economic-gear-plan-pending',checked,horizon};
  if((me.role==='merchant'||me.name===cfg.party.merchant)&&
     targets().some(g=>g.item===i.name&&g.level>=(i.level??0)&&

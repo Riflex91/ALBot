@@ -1,3 +1,7 @@
+## Fortschritt W10/W13 — physische Lootquittung (21.10.2026)
+
+Die passive Chest-/Inventardelta-Korrelation validiert jetzt alle aktuellen Bestandszeilen gegen reale Stackgrenzen, schützt vor einer veralteten Game-Definition und verweigert unbestätigte eigene Loot- oder readonly-Nutzungsbelege. Sie führt keine zusätzliche Loot-Aktion und keine neue Waren-/Gear-Disposition aus. Die vollständige Rollen-Lootmission und ihr echter W14-Livetest bleiben offen.
+
 ## W02: Stacklimit bei vorbeugender Disposition (21.10.2026)
 
 Die vorhandene reversible Lager-/Bankstrategie erhält einen echten `G.items[name].s`-Nachweis für alle tatsächlich zur Verlustfreigabe gezählten lokalen und aktuellen Bankstapel. Ein q:2-Gegenstand ohne Stackfähigkeit kann deshalb nicht länger als zwei physische Quellen die letzte Produktionsreserve schützen. Echt vorhandene Einzelkopien behalten ihre Wirkung. Langzeit-/Liveabnahme bleibt offen.

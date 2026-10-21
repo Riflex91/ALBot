@@ -225,3 +225,42 @@ test('W03 observed source stacks respect per-item maximum before any slot proof'
  assert.equal(proof(overflow,[remove('free',0,11)]).reason,
   'invalid-inventory');
 });
+
+
+test('W03 cyclic or unserializable physical input never crashes the slot planner',()=>{
+ for(const item of [
+  {name:'ring',data:{self:null}},
+  {name:'ring',data:1n},
+  {name:'ring',acc:123,data:{value:1n}},
+  {name:'ring',data:'x'.repeat(5000)}
+ ]){
+  if(item.data?.self===null)item.data.self=item.data;
+  const items=[item,null,...fill(40)];
+  const r=proof(items,[withdraw('w',{name:'ring'})]);
+  assert.equal(r.feasible,false);
+  assert.equal(r.reason,'invalid-inventory');
+  assert.equal(r.executable,false);
+ }
+ assert.equal(proof([{name:'ring',data:{id:'real'}},null,...fill(40)],
+  [remove('r',0),withdraw('w',{name:'ring'})]).feasible,true,
+  'ordinary serializable metadata must remain feasible');
+});
+test('W03 cyclic or oversized incoming variants cannot fabricate slot feasibility',()=>{
+ const circular={name:'ring',data:{}};
+ circular.data.loop=circular.data;
+ for(const candidate of [circular,{name:'ring',data:1n},
+  {name:'ring',data:'x'.repeat(5000)}]){
+  const inventory=[null,...fill(41)];
+  for(const step of [
+   receive('mail',candidate,1),
+   {...withdraw('bank'),item:candidate,quantity:1},
+   {id:'produce',kind:'produce',permitted:true,deterministic:true,
+    inputs:[{slot:1,quantity:1}],outputs:[{item:candidate,quantity:1}]}
+  ]){
+   assert.doesNotThrow(()=>proof(inventory,[step]));
+   const result=proof(inventory,[step]);
+   assert.equal(result.feasible,false,step.kind);
+   assert.equal(result.reason,'no-proven-physical-sequence',step.kind);
+  }
+ }
+});

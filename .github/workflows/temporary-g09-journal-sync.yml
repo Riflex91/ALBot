@@ -30,6 +30,7 @@ jobs:
           if git ls-files -u | grep .; then echo "Unresolved file conflicts" >&2;exit 1;fi
           grep -q 'readTradeOfferJournal' src/runtime/ports.mjs
           grep -q 'storageUncertain' src/merchant/trade-offer.mjs
+          grep -q 'strict reader rejects corrupted' test/roadmap-g09-own-offer.test.mjs
           npm ci --ignore-scripts
           npm run build
           node scripts/sync-personal-code.mjs --write

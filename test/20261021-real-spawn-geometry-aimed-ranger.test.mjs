@@ -110,8 +110,9 @@ test('3shot (2/3) and 5shot (4/5) have distinct ID and conservative combined saf
 });
 
 function runtime({character=actor,targets=mobs(5),leaderName='My_Ranger1',
- peerLeader=leader,peerPriest=priest}={}){
- const started=[],events=[],roster=['My_Ranger1','My_Ranger2','My_Priest'];
+ peerLeader=leader,peerPriest=priest,deferDispatch=false}={}){
+ const started=[],events=[],pending=[],
+  roster=['My_Ranger1','My_Ranger2','My_Priest'];
  let live=targets;
  const p={c:character,G:game,root:{},parent:{},
   realm:()=> 'EUII',read:()=>({}),write:()=>{},
@@ -141,6 +142,7 @@ function runtime({character=actor,targets=mobs(5),leaderName='My_Ranger1',
     stats:{attack:actor.attack,frequency:actor.frequency,range:actor.range}}},
   exec:{run:(key,resources,guard,invoke,opts)=>{
     if(!guard())return false;
+    if(deferDispatch){pending.push({guard,invoke,opts});return true;}
     const result=invoke();opts?.onSettle?.('returned',result);
     return true;}},
   skillWakeups:null};
@@ -152,7 +154,13 @@ function runtime({character=actor,targets=mobs(5),leaderName='My_Ranger1',
    admission?.independentAimedSpawnSkill&&
    bot.encounter.aimedSpawnAssessment(m).allowed);
  bot.skills=createSkills(bot);
- return {bot,started,events,setLive:next=>{live=next;}};
+ return {bot,started,events,setLive:next=>{live=next;},
+  dispatchPending:()=>{
+    const q=pending.shift();
+    if(!q||!q.guard())return false;
+    const result=q.invoke();q.opts?.onSettle?.('returned',result);
+    return true;
+  }};
 }
 
 test('full Ranger2 workflow: 5shot dispatches EXACT five vetted live IDs',()=>{
@@ -202,4 +210,22 @@ test('actual runtime layer routes only explicit skill admission via per-target v
  assert.match(main,/aimedSpawnAssessment/);
  assert.match(skills,/approveAimedSpawnPull\?\.\(selected,id,s\)/);
  assert.match(skills,/bot\.encounter\.approveAimedSpawnPull\(selected,id,skill\)/);
+});
+
+test('late execution refuses all five shots if one native ID vanishes after admission',()=>{
+ const r=runtime({deferDispatch:true});
+ assert.equal(r.bot.skills.independentOneShotAoE(),true,
+  'candidate was approved and the executor action queued');
+ assert.equal(r.started.length,0);
+ r.setLive(mobs(5).slice(1));
+ assert.equal(r.dispatchPending(),false,'live dispatch guard must abort');
+ assert.equal(r.started.length,0,'no skill may hit stale game objects');
+});
+
+test('shared core coordinate contract never combines real X and old raw Y',async()=>{
+ const {xy,distance}=await import('../src/core/policy.mjs');
+ const a={x:-548,y:-455,real_x:-900,real_y:undefined};
+ assert.deepEqual(xy(a),{x:-548,y:-455});
+ assert.equal(distance(a,{x:-548,y:-455}),0);
+ assert.equal(distance({real_x:42,real_y:undefined},{x:42,y:17}),Infinity);
 });

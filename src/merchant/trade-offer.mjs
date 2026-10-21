@@ -76,7 +76,35 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
  const {p,me}=bot,key='albot:trade-offer:v1:'+me.name;
  // Even an invalid/legacy marker is evidence of a possibly live offer:
  // never overwrite it or infer safe re-posting from a missing listing.
- let saved=p.read?.(key),posted=saved!==null&&saved!==undefined;
+ let saved=null,posted=true,storageUncertain=false;
+ const strictRead=()=>{
+  if(typeof p.readTradeOfferJournal!=='function')
+   throw Error('Strict trade offer journal reader unavailable');
+  return p.readTradeOfferJournal(key);
+ };
+ try{
+  saved=strictRead();
+  posted=saved!==null&&saved!==undefined;
+ }catch{storageUncertain=true;}
+ // Compare/read-back before and after every irreversible intent or receipt.
+ // If another runner changes the stored offer, never overwrite that value.
+ function durable(next){
+  if(storageUncertain)return false;
+  try{
+   if(JSON.stringify(strictRead()??null)!==
+      JSON.stringify(saved??null)){
+    storageUncertain=true;return false;
+   }
+   if(p.write?.(key,next)!==true||
+      JSON.stringify(strictRead()??null)!==
+       JSON.stringify(next??null)){
+    storageUncertain=true;return false;
+   }
+   saved=next;
+   posted=next!==null&&next!==undefined;
+   return true;
+  }catch{storageUncertain=true;return false;}
+ }
  let swapEvidence=null;
  const accurateRecord=()=>saved&&saved.version===1&&saved.owner===me.name&&
   saved.realm===p.realm()&&/^trade([1-9]|1[0-6])$/.test(saved.offerSlot)&&
@@ -93,8 +121,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
    outgoingBefore:plan.before};
   // Persist BEFORE the external side effect. If write or server call fails
   // the possible offer remains unknown and cannot be retried automatically.
-  if(!p.write?.(key,intent))throw Error('Barter intent persistence failed');
-  saved=intent;posted=true;
+  if(!durable(intent))throw Error('Barter intent persistence failed');
  }
  function record(plan,observedRid){
   const listing=p.c.slots?.[plan.offerSlot];
@@ -109,8 +136,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      saved.receiveBefore!==plan.receiveBefore)return false;
   const confirmed={...saved,rid:observedRid,at:now(),
    state:'listing-confirmed-post-trade-unverified'};
-  if(!p.write?.(key,confirmed))return false;
-  saved=confirmed;return true;
+  return durable(confirmed);
  }
  function post(slot,rule){
   if(posted)return false;
@@ -192,6 +218,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
    !listing.b&&!listing.giveaway;
  }
  function observeSwap(data){
+  if(storageUncertain)return false;
   // Official server emits UI {type:'swap',event:true,seller,buyer,
   // item,received,slot,snum}. It has no RID. The RID must already have
   // been observed and durably tied to this merchant's own stand slot.
@@ -214,6 +241,7 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   return true;
  }
  function sample(){
+  if(storageUncertain)return false;
   if(!swapEvidence||now()-swapEvidence.at>30000){
    swapEvidence=null;return false;
   }
@@ -258,8 +286,8 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
   const next={...saved,state:'swap-receipt-verified-no-repost',
    receipt:{buyer:swapEvidence.buyer,snum:swapEvidence.snum,
     at:now(),rid:swapEvidence.rid}};
-  if(!p.write?.(key,next))return false;
-  saved=next;swapEvidence=null;return true;
+  if(!durable(next))return false;
+  swapEvidence=null;return true;
  }
  function acknowledgeVerified(rid){
   // Explicit manual acknowledgement, never called by the scheduler.
@@ -268,14 +296,14 @@ export function createOwnTradeOffer(bot,{now=()=>Date.now()}={}){
      saved.state!=='swap-receipt-verified-no-repost'||
      !saved.receipt||rid!==saved.rid||
      typeof rid!=='string'||!rid||
-     !p.write?.(key,null))return false;
-  saved=null;posted=false;swapEvidence=null;return true;
+     !durable(null))return false;
+  swapEvidence=null;return true;
  }
  function status(){
   const listing=saved&&p.c.slots?.[saved.offerSlot];
-  return {mode:'explicit-once-only-posting',pendingReconciliation:posted&&
-   saved?.state!=='swap-receipt-verified-no-repost',
-   state:!posted?'not-posted':
+  return {mode:'explicit-once-only-posting',pendingReconciliation:storageUncertain||
+   posted&&saved?.state!=='swap-receipt-verified-no-repost',
+   state:storageUncertain?'storage-uncertain':!posted?'not-posted':
     saved?.state==='swap-receipt-verified-no-repost'?
      'swap-receipt-verified-no-repost':
     saved?.state==='dispatch-intent-unverified'?

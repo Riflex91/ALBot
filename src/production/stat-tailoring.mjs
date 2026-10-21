@@ -102,11 +102,12 @@ export function destatCandidate(bot){
      !Number.isSafeInteger(rule.keep)||rule.keep<1||
      !Number.isSafeInteger(rule.teamReserve)||rule.teamReserve<0||
      !Number.isSafeInteger(rule.maxActions)||rule.maxActions<1||rule.maxActions>20||
-     !Number.isSafeInteger(rule.batch)||rule.batch<1||
+     !Number.isSafeInteger(rule.batch)||rule.batch!==1||
+     !Number.isFinite(rule.lossBudget)||rule.lossBudget<0||
      cfg.production.gearTargets?.some(g=>g.enabled&&g.item===item.name&&
        g.level===(item.level??0))||
      !p.G.items[item.name]||!p.G.items[item.name].stat)continue;
-  const held=localVariantQuantity(p.c.items,item),
+  const held=verifiedProductionStockQuantity(p.G,p.c.items,item),
    reserved=bot.production?.reservedQuantity?.(item);
   if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||
      surplusQuantity(held,reserved,rule.keep,rule.teamReserve)<1)
@@ -135,7 +136,7 @@ export function destatCandidate(bot){
      beforeValue<0||afterValue<0)continue;
   const loss=Math.max(0,beforeValue-afterValue);
   if(!Number.isSafeInteger(loss)||loss>rule.lossBudget)continue;
-  const scrollBefore=localVariantQuantity(p.c.items,output);
+  const scrollBefore=verifiedProductionStockQuantity(p.G,p.c.items,output);
   if(!Number.isSafeInteger(scrollBefore))continue;
   return {slot,item:{...item},rule,grade,needed,cost,loss,scrollName,
    scrollMeta,output,d,held,scrollBefore,
@@ -250,8 +251,9 @@ export function createStatTailoring(bot){
     response.cost===plan.cost&&response.failed!==true&&
     response.success!==false&&p.c.gold===beforeGold-plan.cost&&
     fingerprint(p.c.items[plan.slot])===fingerprint(expected)&&
-    localVariantQuantity(p.c.items,plan.item)===plan.held-1&&
-    localVariantQuantity(p.c.items,plan.output)===plan.scrollBefore+plan.needed,
+    verifiedProductionStockQuantity(p.G,p.c.items,plan.item)===plan.held-1&&
+    verifiedProductionStockQuantity(p.G,p.c.items,plan.output)===
+     plan.scrollBefore+plan.needed,
    details:{item:plan.item.name,variant:identity(plan.item),
     scroll:plan.scrollName,quantity:plan.needed,fee:plan.cost,
     riskVariant:identity(plan.item),before:plan.held},timeout:45000

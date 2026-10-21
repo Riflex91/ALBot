@@ -113,3 +113,26 @@ test('W03 off-map cached bank balance, corrupt bank gold or inactive owner never
  const disabled=fixture();disabled.bot.cfg.merchant.bankGold=false;
  assert.equal(disabled.bot.bank.gold(),false);
 });
+
+
+test('W03 a null buy-stand quantity never reserves fake cash or permits transfer',()=>{
+ for(const q of [null,0,-1,0.5,NaN,Infinity,'1']){
+  assert.equal(plan({slots:{trade1:{b:true,price:100,q}}}),null,
+   'malformed posted bid quantity: '+String(q));
+ }
+ assert.deepEqual(plan({slots:{trade1:{b:true,price:100}}}),{
+  method:'bank_deposit',quantity:400,target:600,committed:100
+ },'missing q is an ordinary one-unit buy order');
+ for(const flag of ['true',1,{},null]){
+  assert.equal(plan({slots:{trade1:{b:flag,price:100,q:3}}}),null,
+   'malformed buy flag must never be interpreted as no financial obligation');
+ }
+});
+test('W03 bank gold queued guard refuses late null bid drift',()=>{
+ const f=fixture();
+ assert.equal(f.bot.bank.gold(),true);
+ assert.equal(f.calls[0].params.guard(),true);
+ f.c.slots.trade1.q=null;
+ assert.equal(f.calls[0].params.guard(),false);
+ assert.equal(f.api.length,0);
+});

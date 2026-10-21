@@ -152,8 +152,9 @@ export function unbankedDemand(rows,bankItems,name,level){
  const demand=(rows??[]).filter(r=>r.item===name&&r.level===level)
   .sort((a,b)=>Number(!!b.variant)-Number(!!a.variant));
  const available=[];
- if(!Array.isArray(bankItems))return Infinity;
- for(const item of bankItems){
+ if(bankItems!==null&&bankItems!==undefined&&
+    !Array.isArray(bankItems))return Infinity;
+ for(const item of bankItems??[]){
   if(item?.name!==name||(item.level??0)!==level)continue;
   const qty=item.q===undefined?1:item.q;
   // A malformed bank row is not proof that the goal is already covered.
@@ -167,10 +168,16 @@ export function unbankedDemand(rows,bankItems,name,level){
   if(!Number.isSafeInteger(need)||need<0)return Infinity;
   for(const source of available){
    if(!need)break;
-   if(row.variant&&identity({name,level,...row.variant})!==identity(source.item))continue;
+   if(row.variant){
+    let matches;
+    try{matches=identity({name,level,...row.variant})===identity(source.item);}
+    catch{return Infinity;}
+    if(!matches)continue;
+   }
    const take=Math.min(need,source.left);
    source.left-=take;need-=take;
   }
+  if(!Number.isSafeInteger(remaining+need))return Infinity;
   remaining+=need;
  }
  return remaining;

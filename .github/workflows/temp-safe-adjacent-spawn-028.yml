@@ -1,0 +1,97 @@
+name: Temporary safe adjacent spawn v0.28 full preflight
+on:
+  push:
+    branches:
+      - release/20261021-adjacent-spawn-combat-v028
+    paths:
+      - '.github/workflows/temp-safe-adjacent-spawn-028.yml'
+permissions:
+  contents: write
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/20261021-adjacent-spawn-combat-v028
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Exact official neighboring monster-spawn and aiming regressions
+        run: |
+          node --test test/20261021-adjacent-monsterspawn-combat.test.mjs test/20261021-real-spawn-geometry-aimed-ranger.test.mjs
+      - name: Full source and personal-runtime validation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run check:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          node scripts/verify-bootstrap-channel.mjs
+          npm run build:editor
+          npm test
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/20261021-adjacent-spawn-combat-v028
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Native Windows runtime and unchanged Bootstrap-V2 verification
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm.cmd run build
+          if($LASTEXITCODE -ne 0){throw 'build failed'}
+          node scripts/sync-personal-code.mjs --write
+          if($LASTEXITCODE -ne 0){throw 'personal sync failed'}
+          npm.cmd run build:bootstrap:auto
+          if($LASTEXITCODE -ne 0){throw 'V2 build failed'}
+          ./scripts/VERIFY-U01-U07.ps1
+          if($LASTEXITCODE -ne 0){throw 'Windows verification failed'}
+  stage:
+    needs: [linux,windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/20261021-adjacent-spawn-combat-v028
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Materialize source-equivalent v0.28 runtime
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run check:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          npm run build:editor
+          npm test
+      - name: Push only source-generated artifacts after both OSs pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -u -- bot.js dist/ editor/
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='ALBot CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build: align safe adjacent spawn runtime with signed v0.28 source'
+          git pull --rebase origin release/20261021-adjacent-spawn-combat-v028
+          git push origin HEAD:refs/heads/release/20261021-adjacent-spawn-combat-v028

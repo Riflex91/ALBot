@@ -24,6 +24,6 @@
       "sha256": "97b67cbfb5b8e3a5115867c6501c2ae2967d80976070d0bf3b5b95e38eba7be5"
     },
     "observedLoadedUrl": null,
-    "note": "Signierte Sequence 23 / 0.23.0-candidate am 21.10.2026 ueber Workflow 39637306083 verifiziert. Neuer Entwicklungsstand 0.24.0 wird nach CI separat signiert. V2-Loader, Key und persoenliches Profil unveraendert; keine neue Game-Liveabnahme."
+    "note": "Signierte Runtime Sequenz 23 / 0.23.0-candidate am 21.10.2026 nach PR #351/#354 über GitHub Actions 39637306083 erfolgreich veröffentlicht. Der unabhängige Ranger 3shot-Pfad berücksichtigt vorhandene aktivierte Skill-Regeln mit Bedingungen, Manareserve, Ausführungsintervall und Zielgrenzen. Zuvor bereits gemergte W02/W04-Korrekturen bleiben erhalten. 5shot ist für die derzeitigen Level-61-Ranger noch nicht verfügbar. V2-Bootstrap-Logik, EC-Schlüssel und persönliche Konfiguration unverändert; Erfolg im Live-Spiel erneut anhand von Logs zu prüfen."
   }
 }

@@ -1,0 +1,38 @@
+name: Temporary automatic telemetry artifact sync
+on:
+  push:
+    branches:
+      - feat/automatic-private-telemetry-no-relay-20261021
+    paths:
+      - .github/workflows/temporary-auto-telemetry-artifacts.yml
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Generate source-pinned unsigned review artifacts
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:konfigurator
+          node --test konfigurator/test/automatic-telemetry.test.mjs
+      - name: Commit reproducible artifacts only on feature branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json profiles/full-solo.json profiles/full-team.json editor/Bot-Werkstatt.html editor/albot.settings.json konfigurator/public/classic.html konfigurator/public/classic-csp.json
+          git diff --cached --quiet && exit 0
+          git commit -m "build: sync automatic telemetry review artifacts"
+          git push origin HEAD:feat/automatic-private-telemetry-no-relay-20261021

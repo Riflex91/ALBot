@@ -44,3 +44,8 @@ Main-Merge und signierte Bootstrap-Release-Workflow-Abnahme nach Merge.
 Die Offline-Abnahme ist kein Ingame-Nachweis: Ein echter Merchant-zu-Farmer-
 Send mit bestätigtem Gear-Equip und sichere Town-Reisen müssen anschließend
 im Spiel erneut beobachtet werden.
+
+## Zertifiziertes Release (21.10.2026)
+
+**Aktuell signiert und kryptografisch verifiziert: `0.30.0-candidate`, Sequence 30 (21.10.2026).** [Gear-/Town-Fix PR #385](https://github.com/Riflex91/ALBot/pull/385) nach [grüner Linux-/Windows-CI 39657860717](https://github.com/Riflex91/ALBot/actions/runs/39657860717) in Main (`2cf82d84dcfab70ea2e23f2fee24a658373af303`). [Signierworkflow 39658407136](https://github.com/Riflex91/ALBot/actions/runs/39658407136): 2.339/2.339 Offline-Tests, ECDSA-P-256 gültig, 930030 Runtime-Bytes, SHA-256 `cc1f81faa723d962f8718a30f030429044d1eed4156b3d3802d06f56e7d54be8`. Veröffentlichte Runtime byteidentisch mit Main; V2-Loader, Public Key, URLs und persönliche ALBotConfig unverändert. **Ingame-Liveabnahme der Gear-Übergabe und Town-Reise offen.** Frühere Freigabeangaben sind historisch.
+

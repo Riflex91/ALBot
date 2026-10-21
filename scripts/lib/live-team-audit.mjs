@@ -51,7 +51,7 @@ function idlePeriods(events,minSeconds){
 export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   maxPursuitDepartures=12,maxSampledIdleSeconds=60,requireElixirs=false,
   strict=false,requiredFarmers=null,minOverlapSeconds=0,
-  requireSettledValueState=false}={}){
+  requireSettledValueState=false,requireObservedOverlap=false}={}){
  if(!Number.isFinite(minOverlapSeconds)||minOverlapSeconds<0)
   throw Error('Invalid minimum shared observation duration');
  if(!Array.isArray(input)||!input.length)throw Error('At least one report is required');
@@ -92,6 +92,42 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
  }
  if(realms.size!==1||versions.size!==1)issues.push({level:'error',code:'MIXED_SESSIONS',
    detail:'Different realms or versions in supplied reports'});
+ // W14: capture-window overlap alone does not show that either process
+ // was running during that intersection. This optional acceptance gate
+ // requires two distinct, sequenced, running and alive local samples for
+ // EVERY submitted character within the common window. It is still a
+ // report-based witness, not independent server-side live verification.
+ const observedOverlapEvidence={required:requireObservedOverlap,
+  checked:0,missing:[],incomplete:[]};
+ if(requireObservedOverlap){
+  const environments=new Set([...reports.values()].map(r=>r.environment));
+  if(environments.size!==1||
+     !['browser','headless'].includes([...environments][0]))
+   issues.push({level:'error',code:'MIXED_OR_UNKNOWN_ENVIRONMENT',
+    detail:'An observed team session needs one known runtime environment'});
+  if(validWindows&&sharedSeconds>0){
+   const from=Date.parse(sharedFrom),until=Date.parse(sharedUntil);
+   for(const [name,r] of reports){
+    observedOverlapEvidence.checked++;
+    if((r.dropped??0)>0||r.exportTrimmed===true){
+     observedOverlapEvidence.incomplete.push(name);
+     issues.push({level:'error',code:'INCOMPLETE_OVERLAP_EVENT_HISTORY',
+      character:name,detail:'Dropped or trimmed events cannot prove running overlap'});
+    }
+    const samples=observed(r).filter(e=>e.type==='sample'&&
+     e.running===true&&e.rip===false&&
+     Number.isSafeInteger(e.seq)&&e.seq>0&&
+     millis(e)>=from&&millis(e)<=until);
+    if(samples.length<2||
+       millis(samples.at(-1))<=millis(samples[0])||
+       new Set(samples.map(e=>e.seq)).size<2){
+     observedOverlapEvidence.missing.push(name);
+     issues.push({level:'error',code:'MISSING_RUNNING_OVERLAP_SAMPLES',
+      character:name,detail:'Two distinct live-running samples inside the shared interval are required'});
+    }
+   }
+  }
+ }
  if(!reports.has(merchant))issues.push({level:'error',code:'MERCHANT_MISSING',
    detail:'No report for '+merchant});
  // W14: A report must include explicit final checkpoint evidence before
@@ -190,7 +226,7 @@ export function analyzeLiveTeam(input,{merchant='My_Merchant',minIdleSeconds=10,
   scope:{characters:[...reports.keys()],sampledIdleIsProofOfAvailableTargets:false,
    sharedObservation:{from:sharedFrom,until:sharedUntil,seconds:sharedSeconds,
     sufficient:validWindows&&sharedSeconds>0&&sharedSeconds>=minOverlapSeconds},
-   valueStateEvidence},
+   valueStateEvidence,observedOverlapEvidence},
   merchant:{name:merchant,pursuit,departures,carriedElixirs,
     outgoingItemIntents:outbound.filter(t=>t.character===merchant).length},
   transfers:{outgoingIntents:outbound.length,

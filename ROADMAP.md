@@ -1,3 +1,9 @@
+# W14: Beobachtete gleichzeitige Laufzeitaktivität (21.10.2026, PR #346)
+
+Der vorhandene read-only Live-Team-Prüfer kann optional mit `--require-observed-overlap` zwei echte, zeitlich getrennte und sequenzierte Running-Samples **pro Charakter innerhalb der gemeinsamen Beobachtungsintersektion** verlangen. Fehlende, abgeschnittene und gedroppte Ereignisfolgen sowie gemischte Browser-/Headless-Berichte sperren diese strengere Prüferakzeptanz. Der bisherige Diagnosemodus bleibt unverändert. Positiv-/Negativtests und CLI-Prüfung: `test/roadmap-w14-running-overlap.test.mjs`. Dokumentierter Aufruf: `docs/ROADMAP-LIVE-TEST-GATES-2026-10-16.md`.
+
+**Nicht erledigt:** Das ist eine Offline-Evidenzprüfung, kein tatsächlich ausgeführter W14-Live-/Dauertest, keine serverseitige Bestätigung und kein Nachweis von Disconnect-/Tod-/Revive-/Bank-Recovery. Linux-/Windows-CI und Merge nur nach unabhängiger Bestätigung im verlinkten PR. Alle übrigen offenen Roadmap-Pakete bleiben offen.
+
 # Umsetzung 0.10.11-candidate: Autonomie-Abgleich (18.10.2026)
 
 [Konkrete Implementierung und Restliste](docs/AUTONOMIE-ABGLEICH-2026-10-18.md), [PR #167](https://github.com/Riflex91/ALBot/pull/167). Aktuellen Main geprüft; vorhandene Overflow-, Bank-, Crafting-, Liefer- und Browserrotation nicht doppelt implementiert. Dauerbetriebs-Lücken in Vorrat/Bank, Aktionskosten, Conditions, Eventbeobachtung, Abreiseloot, Revival, Gearpriorität und Systembelohnungen ergänzt. Die komplette Forschungsroadmap bleibt teilweise offen; Crypt/Cave, Tailoring/De-Statting, Temporal-Loadouts und Tauschmarkt nicht als fertig markieren. Finale GitHub-CI und tatsächlicher Spiel-Livetest sind getrennte Nachweise. Der signierte V2-Kanal bleibt separat.

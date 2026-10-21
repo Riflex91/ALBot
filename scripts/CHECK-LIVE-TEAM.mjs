@@ -10,6 +10,7 @@ function parse(argv){
   const a=argv[i];
   if(a==='--strict')opts.strict=true;
   else if(a==='--require-settled-value-state')opts.requireSettledValueState=true;
+  else if(a==='--require-observed-overlap')opts.requireObservedOverlap=true;
   else if(a==='--require-three-farmers')opts.requiredFarmers=3;
   else if(a==='--require-elixirs')opts.requireElixirs=true;
   else if(['--out','--merchant','--max-departures','--max-idle-seconds','--min-idle-seconds','--min-overlap-seconds'].includes(a)){

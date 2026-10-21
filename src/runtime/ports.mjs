@@ -130,7 +130,7 @@ export function createPorts(root){
     // an unresolved Cave admission or vote look absent after a restart.
     // Read the SAME cstore_ storage used by set() without swallowing faults.
     readCaveJournal(key){
-     if(typeof key!=='string'||!/^albot:cave-(?:lifecycle|vote):[A-Za-z0-9_]{1,100}$/.test(key))
+     if(typeof key!=='string'||!/^albot:(?:cave-(?:lifecycle|vote)|crypt-lifecycle):[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid Cave journal key');
      const storage=root.localStorage??parent.localStorage;
      if(!storage||typeof storage.getItem!=='function')
@@ -140,6 +140,11 @@ export function createPorts(root){
      if(typeof raw!=='string'||raw.length>65536)
       throw Error('Invalid Cave journal storage payload');
      return JSON.parse(raw);
+    },
+    readCryptJournal(key){
+     // Reuse strict journal read semantics; a corrupt key cannot be
+     // silently normalized to absent by the normal game get() method.
+     return this.readCaveJournal(key);
     },
     storageError:'',
     write(key,value){try{if(root.localStorage){root.localStorage.setItem('cstore_'+key,JSON.stringify(value));this.storageError='';return true;}const ok=this.call('set',key,value)===true;if(!ok)this.storageError='set() meldet Schreibfehler';return ok;}catch(e){this.storageError=String(e?.name)+': '+String(e?.message??e);return false;}},

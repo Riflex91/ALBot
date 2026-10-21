@@ -1,3 +1,7 @@
+## G09 — strikter Own-Trade-Offer-Lebenszyklus (21.10.2026)
+
+Auch dieser Wertpfad verwendet nun den direkt gespeicherten `cstore_`-Datensatz statt des fehlertoleranten Adventure-Land-`get()`. Unklare Initialreads, beschädigte Einträge, konkurrierende Schreibvorgänge und fehlende Read-back-Belege blockieren weitere Listings und das Einbuchen eines Swaps. Das ersetzt keine fehlenden Serverbelege, erzeugt keinen automatischen Repost und verändert keine persönliche Konfiguration. Vollständige Markt-/Tauschautonomie offen.
+
 ## Fortschritt W12/N12 — eng begrenzte Cave-Pre-Dispatch-Recovery (21.10.2026)
 
 Ein nach Sessionwechsel verbliebener, garantiert noch nicht versendeter Cave-`prepared`-Checkpoint blockiert die nächste tatsächliche Berechtigungsprüfung nicht dauerhaft: Nur eine danach frische `cave_info`-Antwort, dieselbe Run-/Rosteridentität, Current-Realm-Prüfung und freie Wert-/Vote-/Crypt-Journale ermöglichen lokales Journal-Reset. Die schon implementierte Server-Dispatch-Unbekannt- und Exit-Recovery bleiben strikt gesperrt. Kein erfundener Cave-Exit, keine Erhöhung täglicher Versuche und keine neue API. Vollständiger W12/N12-/W14-Livebetrieb weiterhin offen.

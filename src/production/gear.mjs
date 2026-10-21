@@ -50,7 +50,7 @@ export function autoGearTargetLevel(configured,characterLevel,slot){
 }
 export function createGear(bot,{now=()=>Date.now()}={}){
  const {p,cfg,me}=bot,e=bot.economy;
- let lastLocalSnapshot=null,observedGearChanges=[];
+ let lastLocalSnapshot=null,observedGearChanges=[],observedTargets=[],observedGoals=[];
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
  if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))profiles={};
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
@@ -138,6 +138,7 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   }
  }return result.slice(0,20);}
  function targets(){
+  if(bot.diagnosticRead)return observedTargets;
   const optimized=bot.intelligence?.targets()??[];
   const fairness=g=>{
    const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
@@ -240,9 +241,9 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
    result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)+fairness({character:member.name,slot})});
-  }}return result;
+  }}observedTargets=result;return result;
  }
- function goals(){if(!cfg.production.gear)return [];return targets().flatMap(g=>{
+ function goals(){if(bot.diagnosticRead)return observedGoals;if(!cfg.production.gear)return [];return observedGoals=targets().flatMap(g=>{
   const profile=g.character===me.name?snapshot():profiles[g.character];if(!profile||!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot))return [];
   const old=profile.slots[g.slot];if(old?.l||old?.b||old?.name===g.item&&old.level>=g.level)return [];
   const member=cfg.characters.find(c=>c.name===g.character),role=member?.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member?.gearRole;

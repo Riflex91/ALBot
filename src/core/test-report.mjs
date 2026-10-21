@@ -15,7 +15,7 @@ export function describeReportError(error){
  })??String(value);}catch{return String(value);}
 }
 export function createTestReport(p,version){
-  const events=[],incidents=[],counts={},actionStats={};let dropped=0,lastSample=0,lastSave=0,automaticDownload=false,provider=()=>({}),lastWriteError='',continuous=false,sequence=0,directory=null,writing=Promise.resolve(),writeBusy=false,queuedData=null,savedSequence=0,part=1,fileBytes=0,lastDecision='';
+  const events=[],incidents=[],counts={},actionStats={};let dropped=0,lastSample=0,lastSave=0,automaticDownload=false,provider=()=>({}),decisionProvider=null,lastWriteError='',continuous=false,sequence=0,directory=null,writing=Promise.resolve(),writeBusy=false,queuedData=null,savedSequence=0,part=1,fileBytes=0,lastDecision='';
   const clean=value=>String(value??'').replace(/\b(?:US|CH)_[A-Za-z0-9]+\b/g,'[redacted]').replace(/((?:token|password|authorization|user_auth)\s*[:=]\s*)[^\s,;]+/gi,'$1[redacted]').slice(0,1800);
   const started=new Date().toISOString();
   const pickerWindow=()=>typeof p.parent?.showDirectoryPicker==='function'?p.parent:typeof p.root?.showDirectoryPicker==='function'?p.root:null;
@@ -54,7 +54,7 @@ export function createTestReport(p,version){
     fileBytes=file.size+new TextEncoder().encode(lines).length;savedSequence=delta.at(-1)?.seq??savedSequence;lastWriteError='';
    }})().catch(e=>{lastWriteError=clean(e.message);p.log('Testdatei: '+lastWriteError);}).finally(()=>{writeBusy=false;});return writing;}
   async function chooseDirectory(){if(p.headless)return save();const win=pickerWindow();if(!win){p.log('Dieser Browser-Spielkontext erlaubt keine Ordnerauswahl. Testlog speichern verwenden; Speicherort in den Browser-Downloads einstellen.');return false;}try{directory=await win.showDirectoryPicker({id:'albot-testlogs',mode:'readwrite',startIn:'desktop'});event('log.directory',{name:directory.name});await queueWrite();return directory.name;}catch(e){lastWriteError=clean(e.message);p.log('Ordnerauswahl fehlgeschlagen: '+lastWriteError+'. Testlog speichern verwenden.');return false;}}
-  return {event,text,document,setProvider:f=>provider=f,
+  return {event,text,document,setProvider:(f,decision=null)=>{provider=f;decisionProvider=decision;},
     configure({continuous:value=false}){continuous=value;},chooseDirectory,capabilities,getDirectory:()=>directory,
     error(where,e){event('error',{where,name:e?.name??e?.reason?.name??'',message:describeReportError(e),code:e?.code??e?.reason?.code??null,stack:e?.stack??e?.reason?.stack??null});},
     sample(state={}){const now=Date.now();if(now-lastSample>=5000){lastSample=now;const c=p.c;event('sample',{reason:state.reason,running:state.running,task:state.task,
@@ -64,7 +64,7 @@ export function createTestReport(p,version){
       hp:c?.hp,mp:c?.mp,gold:c?.gold,xp:c?.xp,level:c?.level,
       hpPotions:(c?.items??[]).reduce((n,i)=>n+(i?.name==='hpot0'?(i.q??1):0),0),
       mpPotions:(c?.items??[]).reduce((n,i)=>n+(i?.name==='mpot0'?(i.q??1):0),0),
-      target:c?.target,rip:!!c?.rip});if(continuous){const d=provider(),decision=JSON.stringify({reason:state.reason,target:d.status?.target,task:d.status?.task,movement:d.movement?.owner,merchantTask:d.merchantTask?.task,productionGoal:d.production?.goal,blocked:d.production?.blocked,team:d.account?.names});if(decision!==lastDecision){lastDecision=decision;event('decision',{state:decision});}}}if((p.headless||continuous&&directory)&&now-lastSave>=10000){lastSave=now;save();}},
+      target:c?.target,rip:!!c?.rip});if(continuous){const d=(decisionProvider??provider)(),decision=JSON.stringify({reason:state.reason,target:d.status?.target,task:d.status?.task,movement:d.movement?.owner,merchantTask:d.merchantTask?.task,productionGoal:d.production?.goal,blocked:d.production?.blocked,team:d.account?.names});if(decision!==lastDecision){lastDecision=decision;event('decision',{state:decision});}}}if((p.headless||continuous&&directory)&&now-lastSave>=10000){lastSave=now;save();}},
     flush(automatic=false){if(p.headless||continuous&&directory)return save();if(automatic){if(automaticDownload)return;automaticDownload=true;}return save();}
   };
 }

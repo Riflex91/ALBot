@@ -1,0 +1,22 @@
+# 0.26.0-candidate: Browser-Blockaden der Gearplanung begrenzen
+
+## Befund und Selbstprüfung
+Die gelieferten 0.24-Logs enthalten 40.269 ms beim Merchant und 14.185 ms beim Ranger; test.sample erreicht 20.029 ms. Live wurde am Merchant GETRENNT/automatisches Neuladen beobachtet, am Priester wiederholt ein Diagnose-Timeout. Das ist kein CPU-Profil und beweist nicht, dass sämtliche Verzögerungen denselben Aufruf haben.
+
+Im Quellcode war dennoch ein konkreter Fehler nachvollziehbar: targets -> estimateAcquisition -> Reservierungen/goals -> Gear/targets. Ein am Berechnungsanfang gesetztes zeitbasiertes Cache-Gate konnte bei langen Durchläufen erneut öffnen. Vollberichte konnten diese Planung auslösen. Nur längeres Caching würde den ersten Stillstand nicht lösen; bloßes Abschalten der Craftingziele würde benötigte Autonomie entfernen.
+
+## Umsetzung
+- Die Runtime initialisiert decisionEpoch vor dem ersten Heartbeat. Live targets() liest ausschließlich die letzte abgeschlossene Generation. Der Scheduler setzt einen Generator nach Kampfentscheidungen in höchstens 24 Schritten und mit 4 ms kooperativem Zeitbudget fort. Die bisherigen Ergebnisse bleiben bis zur vollständigen Veröffentlichung erhalten. Keine zusätzlichen Timer, Worker oder Spielaktionen.
+- Eine ausdrückliche Reentranzsperre gilt unabhängig von Uhrzeit und Cacheablauf; TTL beginnt nach Abschluss. Invalidierung verwirft Teilberechnungen. Standalone-Modulnutzer ohne Scheduler behalten eine ebenfalls gegen Reentranz geschützte synchrone Auswertung.
+- Nur der Merchant bewertet neue Craft-Beschaffungsketten für den Account. Farmer behalten lokale/gewöhnliche Gearanalyse und erhalten weiterhin Merchant-Gear-/Materialaufträge. Kompatibilität, Chancen, Ausgabenlimits, Level-/Gear-Ausgleich und aktuelle Executor-Prüfungen bleiben wirksam.
+- Unfertige Merchant-Optimierung ist keine Negativbewertung eines Gearitems. Ohne abgeschlossene Analyse werden entsprechende automatische Verkäufe zurückgehalten.
+- Exchange-Ausgaben werden pro Kostenschätzung einmal indexiert. Sichere Farmkandidaten werden pro Entscheidungsdurchlauf, identische Farmzeitabfragen innerhalb einer Schätzung wiederverwendet. Neue Schätzungen lesen Definitionen und Ereigniszustand neu.
+- Fortlaufende 5-Sekunden-Entscheidungslogs benutzen eine kleine Statusansicht. Vollberichte laufen in einem synchronen Lesekontext: Gear-/Produktionsziele und automatische Dispositionen stammen aus vorhandenen Beobachtungen; keine neue Optimierung, Hilfsmittelanforderung oder Reservierungsplanung. Noch nicht beobachtete Reservierungen sind null/unbekannt. Diese Werte autorisieren keine Ausführung.
+- planning.gear.advance und regelmäßige transport.heartbeat werden gesondert gemessen; economicIntelligence.planning zeigt Zustand, Fertigstellungszeit und Revision.
+
+## Abnahme und Grenzen
+2.291 Offline-Tests bestanden, einschließlich acht neuer Regressionen: lazy/atomare Generationen mit 100 Craft-Kandidaten, 40-Sekunden-Zeitsprung ohne Reentranz, Cachefrist ab Abschluss, Invalidierung, Farmer-Suchvermeidung, Verkaufsschutz, passive Geardiagnose, kleines Logsampling und einmaliger Exchange-Katalogscan. Die vorhandene W01-Erklärungsprüfung verweigert jetzt ausdrücklich einen Aufruf des Reservierungsplaners.
+
+4 ms ist ein kooperatives Budget zwischen Arbeitsschritten, keine harte Unterbrechung eines einzelnen synchronen Spiel-API-/Beschaffungsaufrufs und keine garantierte Obergrenze des gesamten Bot-Ticks. Production-Routen bleiben zusätzlich durch die bestehende Knotenzahl/Rezursionstiefe begrenzt. Es gibt noch keinen gemessenen 0.26-Livedurchlauf im Spiel. Bei weiteren Ausreißern zuerst die neuen Modulmetriken und planning.state prüfen; keine Kampf-/Inventarschutzregeln lockern.
+
+Die installierte Bootstrap-V2-Logik, Public Key, Kanal-URLs und persönliche Konfiguration bleiben gleich. Die neue Runtime wird separat über den bestehenden Signierworkflow veröffentlicht; ein Main-Merge allein aktualisiert diesen Kanal nicht.

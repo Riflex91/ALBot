@@ -84,7 +84,7 @@ export function bankOperatingStockRule(bot,item,{carried=false}={}){
   q=item?.q===undefined?1:item.q;
  if(bot.me.role!=='merchant'||!e?.safe(item)||
     !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
-    physicalSourceQuantity(p.G,item)!==q)return null;
+    physicalSourceQuantity(p.G,item)===null)return null;
  if(meta.quest||meta.q||meta.e||meta.exchange||meta.event||meta.cash||meta.cash_item||
     meta.soulbound||meta.compound||meta.upgrade||meta.rare||meta.rarity||meta.action||
     meta.onclick||meta.offering||meta.throw||meta.ignore||meta.wtype||meta.class||
@@ -123,7 +123,7 @@ export function bankOperatingReserveNeed(bot,item){
   q=item?.q===undefined?1:item.q;
  if(bot.me.role!=='merchant'||!e?.safe?.(item)||
     !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
-    physicalSourceQuantity(p.G,item)!==q||
+    physicalSourceQuantity(p.G,item)===null||
     meta.quest||meta.q||meta.e||meta.exchange||meta.event||
     meta.cash||meta.cash_item||meta.soulbound||meta.compound||
     meta.upgrade||meta.rare||meta.rarity||meta.action||

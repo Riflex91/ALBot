@@ -30,7 +30,7 @@ function fixture(){
    call:(method,item)=>{
     if(method==='item_properties'){
      if(item.name==='skullamulet')return {dex:9,luck:9,hp:20};
-     if(item.name==='hpamulet')return {hp:200+(item.level??0)*15};
+     if(item.name==='hpamulet')return {hp:12+(item.level??0)};
     }
     if(method==='equip')return true;
     throw Error('unexpected game call '+method);

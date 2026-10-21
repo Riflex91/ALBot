@@ -1,3 +1,7 @@
+## 21.10.2026 — W03/G01 physische Quell- und Empfangsbelege
+
+Der gemeinsame `capacityAfterConsumption`-Vorprüfer verwirft ungültige vorhandene Inventarpositionen (einschließlich explizit `q:null`), ungültige oder übergroße Ausgabestapel und übergroße passende Merge-Quellen vor Kauf, Produktion, Team-Transfer und Reward-Mail. Die W03-Slotfolgensuche behandelt leere Slots nicht als entfernbare Ware oder mergefähige Quelle. Tests: `test/shared-physical-capacity.test.mjs`, `test/logistics-inbound-capacity.test.mjs`, `test/roadmap-w03-slot-sequence.test.mjs`. Vollständige serverquittierte W03-Kette und W14-Liveabnahme bleiben ausdrücklich offen. Der parallel gemergte 0.24.0-Material-/Rotationsstand bleibt erhalten.
+
 **0.24.0-candidate: dauerhafte Rotation und Material-/Craftingaufträge.** [Implementierung und Tests](docs/CHANGELOG-0.24.0.md).
 
 # W02/W04: Physisch gültige Betriebs- und Bankreservemengen (21.10.2026)

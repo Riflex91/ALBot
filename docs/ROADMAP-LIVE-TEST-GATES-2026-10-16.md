@@ -73,6 +73,18 @@ müssen separat ausgewertet und als Neustart-/Wechsel-Szenario durch echte
 Spielbeobachtung belegt werden. Auch konfliktfreie JSONL-Segmente
 bestätigen **keine** Servertransaktion.
 
+### W14 – JSONL-Sitzungskonsistenz innerhalb einer Datei
+
+Mehrere periodische `snapshot`-Einträge aus derselben Session sind
+zulässig. Bei widersprüchlichem Startzeitpunkt, Charakter, Runtimeversion,
+Realm, Spielversion oder Browser-/Headless-Umgebung dürfen jedoch weder
+ältere Snapshots noch spätere `session`-Header einen künstlich
+zusammengesetzten Livebericht ergeben. Der Parser bricht vor jeder
+Teamabnahme ab. Identische Header und konsistente Snapshots bleiben
+lesbar. Ältere partielle Header bleiben nur in Bezug auf tatsächlich
+vorhandene Angaben kompatibel. Das ist eine **Offline-Evidenzschranke**
+und kein nachgewiesener Restart-/Disconnect-Livetest.
+
 ## 1 – Read-only startup and runtime parity
 - Verify start/stop/reload creates one scheduling timer and no leaked event handlers in both environments.
 - Check heartbeat round trips, session and realm changes, team roster, script version and user config. Review the measured dispatch p95/p99 and wall-load proxy separately from real CPU use.

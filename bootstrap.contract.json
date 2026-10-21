@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 30,
-      "version": "0.30.0-candidate",
+      "sequence": 31,
+      "version": "0.31.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 930030,
-      "sha256": "cc1f81faa723d962f8718a30f030429044d1eed4156b3d3802d06f56e7d54be8"
+      "bytes": 930741,
+      "sha256": "08ca21206962ae2fe5298263e11ad5c6d62790318f2b3ee24d50e18a5ab0fe55"
     },
     "observedLoadedUrl": null,
-    "note": "Sequence 30 / 0.30.0-candidate signed 21.10.2026 after PR #385 (main 2cf82d84dcfab70ea2e23f2fee24a658373af303), green Linux/Windows CI 39657860717 and signing workflow 39658407136. 2339/2339 offline tests passed, ECDSA-P-256 signature verified, 930030 bytes, SHA-256 cc1f81faa723d962f8718a30f030429044d1eed4156b3d3802d06f56e7d54be8. Signed runtime byteidentical with main. Game live acceptance for farmer gear delivery/Town travel pending. V2 loader, public key, URLs, personal config unchanged."
+    "note": "Offiziell signierte Runtime Sequenz 31 / 0.31.0-candidate: ereignisnahe Bank-Beobachtung, gepufferte echte Bank-Packs und Fehlerstatus-Rücksetzung. PR #387, #388 nach grüner Linux-/Windows-CI (39658948349, 39659471317); Release-PR #389 und geschützter Signierworkflow 39659853012 erfolgreich. Main- und signierte Runtime byteidentisch. V2-Loader, Public Key, Release-URLs und persönliche ALBotConfig unverändert. Ingame-Abnahme der Bank-Snapshots nach tatsächlichem Bankbesuch offen."
   }
 }

@@ -37,7 +37,7 @@ export function createTrackerAcquisition(bot){
     (cfg.items??[]).some(r=>r?.enabled&&
       ['tracker','monstertoken'].includes(r.item)))return null;
   const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
-  if(own>trackerMerchantKeep(p.c.items,{farmerNeeds:true}))return null;
+  if(own>trackerMerchantKeep(p.c.items))return null;
   for(const [pack,items] of Object.entries(p.c.bank??{})){
    if(!/^items[0-9]+$/.test(pack)||!Array.isArray(items)||
       !p.G?.bank_packs?.[pack])continue;
@@ -64,7 +64,7 @@ export function createTrackerAcquisition(bot){
   const dest=recipient();
   if(!dest||!Array.isArray(p.c.items))return null;
   const own=p.c.items.filter(i=>i?.name==='tracker'&&!protectedItem(i)).length;
-  if(own>trackerMerchantKeep(p.c.items,{farmerNeeds:true})||bankCandidate())return null;
+  if(own>trackerMerchantKeep(p.c.items)||bankCandidate())return null;
   // The game function exchange_buy chooses the FIRST token slot, including
   // locked/undersized stacks. Do not accidentally spend a different stack.
   const slot=p.c.items.findIndex(i=>i?.name==='monstertoken');

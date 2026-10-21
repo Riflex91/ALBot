@@ -285,6 +285,14 @@ export function createProduction(bot){
   actionDeferred.set(key,now);
   bot.event?.('production.actionDeferred',{kind,item,reason,...extra});
  }
+ const contractKey='albot:production:'+bot.me.name+':material-contract';
+ let materialContract=p.read(contractKey)??null,lastPublishedMaterials=[],publicationState='';
+ function saveMaterialContract(next,reason){
+  if(JSON.stringify(next)===JSON.stringify(materialContract))return true;
+  if(p.write(contractKey,next)===false){intentBlocked=true;bot.event('farmOrder.suspended',{reason:'contract-storage-unavailable'});return false;}
+  const prior=materialContract;materialContract=next;
+  bot.event(next?'farmOrder.committed':'farmOrder.retired',{objective:next?.objective??prior?.objective,reason});return true;
+ }
  const routeCache=new Map();const farmOrderReceipts=new Set();const waiting=new Map(),intentKey='albot:production:'+bot.me.name+':intent';let intent=p.read(intentKey)??null,intentBlocked=false;
  function persistIntent(next){if(cfg.general.testLogging===undefined)return true;if(intent&&next&&JSON.stringify({...intent,at:0})===JSON.stringify({...next,at:0}))return true;if(!p.write(intentKey,next)){intentBlocked=true;bot.economy.note('Produktionsabsicht konnte nicht gespeichert werden');return false;}intent=next;return true;}
  const deliveryKey='albot:production:'+bot.me.name+':deliveries',goalKey=g=>JSON.stringify([g.name,g.item,g.level,g.quantity,g.recipient,...(g.gearSlot?[g.gearSlot]:[]),...(g.variant?[g.variant]:[])]);
@@ -723,15 +731,23 @@ export function createProduction(bot){
  }
  function goalStillWaiting(g){
   const wait=waiting.get(goalKey(g));
-  if(!wait||wait.until<=Date.now()||wait.fingerprint!==availabilityFingerprint(wait.step))return false;
+  if(wait?.step?.kind==='marketBuy'&&bot.market?.offerWaitMs?.({name:wait.step.item,level:wait.step.level})>0)return false;
+   if(!wait||wait.until<=Date.now()||wait.fingerprint!==availabilityFingerprint(wait.step))return false;
   const item=wait.step?.kind==='marketBuy'?{name:wait.step.item,level:wait.step.level,
    ...(wait.step.item===g.item?g.variant:{})}:null;
   const rule=item?e.rules(item,'acquisition'):null;
   return !(item&&rule&&e.remaining(rule)&&bot.market?.hasVisibleBuyOffer?.(item,{strict:true,rule}));
  }
  function planGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-planAt<cfg.general.planningTickMs)return;planAt=Date.now();
-  const continuingMaterialKey=goal&&plan[0]?.kind==='farm'&&materials.length?
-    goalKey(goal):null;
+  const bound=materialContract&&goals().find(g=>goalKey(g)===materialContract.goal);
+  if(materialContract&&(!cfg.production.enabled||materialContract.version!==1||
+     materialContract.realm!==p.realm()||!bound||!cfg.production.acquireBy.includes('farm')||
+     materialContract.step?.kind!=='farm'||materialContract.step.level!==0||
+     !Number.isSafeInteger(materialContract.step.quantity)||materialContract.step.quantity<1||
+     !Number.isSafeInteger(materialContract.started)||materialContract.started>Date.now()||
+     (bound.recipient?(deliveries[goalKey(bound)]?.quantity??0)>=bound.quantity:qty(bound.item,bound.level,bound)>=bound.quantity)))
+   saveMaterialContract(null,'goal-fulfilled-removed-or-invalid');
+  const continuingMaterialKey=materialContract?.goal??(goal&&plan[0]?.kind==='farm'&&materials.length?goalKey(goal):null);
   routeCache.clear();plan=[];goal=null;planningReason=null;if(!cfg.production.enabled||bot.me.role!=='merchant')return;
   const readyStock=[...p.c.items.filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep'),
    ...(bot.bank?.catalogStock?.()??[]).map(r=>r.item).filter(i=>i&&e.safe(i)&&e.explicit(i)?.action!=='keep')];
@@ -748,9 +764,9 @@ export function createProduction(bot){
    maxHoldMs:45000,maxPriorityDeficit:15
   });
   const stable=prioritizeContinuingMaterialGoal(ordered,{
-   heldKey:continuingMaterialKey,heldAt,now:Date.now(),
+   heldKey:continuingMaterialKey,heldAt:materialContract?.started??heldAt,now:Date.now(),
    keyOf:goalKey,scoreOf:g=>(g.priority??0)+(fastGear(g)?65:0),
-   maxHoldMs:90000,maxPriorityDeficit:10});
+   maxHoldMs:90000,maxPriorityDeficit:10,committed:!!materialContract});
   for(const g of stable){
    const wait=waiting.get(goalKey(g));
    // A visible ask is not an authorized material offer until its exact
@@ -763,7 +779,7 @@ export function createProduction(bot){
     e.remaining(waitingRule)&&
     bot.market?.hasVisibleBuyOffer?.(waitingItem,{strict:true,rule:waitingRule});
    if(wait?.until>Date.now()&&wait.fingerprint===availabilityFingerprint(wait.step)&&
-      !wakeForOffer)continue;
+      !wakeForOffer&&!(wait.step?.kind==='marketBuy'&&bot.market?.offerWaitMs?.({name:wait.step.item,level:wait.step.level})>0))continue;
    if(wait)waiting.delete(goalKey(g));
    const delivered=g.recipient?(deliveries[goalKey(g)]?.quantity??0):0,needed=Math.max(0,g.quantity-delivered);
    if(!needed)continue;// Items already in stock are delivered by logistics.poll. A remote recipient
@@ -771,7 +787,7 @@ export function createProduction(bot){
    if(!needsProductionStock(qty(g.item,g.level,g),needed))continue;
    const holder=g.sourceOwner&&g.sourceOwner!==me.name?bot.transport.fresh(g.sourceOwner):null;if(holder?.running&&holder.realm===p.realm()&&holder.stock?.some(i=>i.name===g.item&&(i.level??0)===(g.sourceLevel??g.level))&&qty(g.item,g.sourceLevel??g.level,g)<1){planningReason='Vorhandenes Gear von '+g.sourceOwner+' anfordern';continue;}
    try{goal=g;
-    const permit=(name,level,kind)=>{if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const item={name,level},phase=phaseOf(kind),r=e.explicit(item,phase);return r?r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level):!!cfg.production.autonomy;};
+    const permit=(name,level,kind)=>{if(materialContract?.goal===goalKey(g)&&materialContract.step?.item===name&&materialContract.step.level===level&&kind!=='farm')return false;if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const item={name,level},phase=phaseOf(kind),r=e.explicit(item,phase);return r?r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level):!!cfg.production.autonomy;};
     // Historical profiles retain their explicit-rule planner and fixed ordering.
     const options=cfg.production.autonomy?{permit,recipeFor:(name,level)=>e.explicit({name,level},'production')?.recipe??'',helpers:(name,level,kind)=>{
      const r=e.explicit({name,level},'production'),grade=p.call('item_grade',{name,level}),scroll=r?.scroll||((kind==='compound'?'cscroll':'scroll')+grade);
@@ -805,35 +821,34 @@ export function createProduction(bot){
    persistIntent({objective,goal:goalKey(g),item:g.item,level:g.level,quantity:needed,recipient:g.recipient,realm:p.realm(),phase:'planned',at:Date.now(),definition:knowledgeFingerprint([p.G.items[g.item],p.G.craft]),steps:plan.slice(0,32),reservations:plan.reservations??[]});break;
   }
   if(!goal&&intent&&!bot.journal){const pending=goals().some(g=>g.recipient?(deliveries[goalKey(g)]?.quantity??0)<g.quantity:qty(g.item,g.level,g)<g.quantity);if(pending)persistIntent({...intent,phase:'waiting'});else{bot.event('production.intent.complete',{objective:intent.objective,reason:'Bedarf erfüllt oder ausdrücklich entfernt'});persistIntent(null);}}
-  if(!goal||plan[0]?.kind!=='farm')materials=[];else updateMaterials();
-  if(materials.length){
-    const request=materials[0];
-    for(const name of bot.farmers){
-      const h=bot.transport.fresh(name),ack=h?.materialAck;
-      if(!h?.running||h.rip||h.realm!==p.realm()||ack?.objective!==request.objective||
-         ack.item!==request.item||ack.monster!==request.monster)continue;
-      const key=request.objective+':'+name+':'+h.session;
-      if(!farmOrderReceipts.has(key)){
-        if(farmOrderReceipts.size>=128)farmOrderReceipts.clear();
-        farmOrderReceipts.add(key);
-        bot.event('farmOrder.acknowledged',{farmer:name,objective:request.objective,
-          monster:request.monster,item:request.item,session:h.session});
-      }
-    }
-  }
+  if(goal&&plan[0]?.kind==='farm'){
+    if(!materialContract||materialContract.goal===goalKey(goal))saveMaterialContract({version:1,goal:goalKey(goal),objective:intent?.objective,
+      realm:p.realm(),step:{...plan[0]},started:materialContract?.goal===goalKey(goal)?materialContract.started:Date.now()},'verified-material-work');
+    updateMaterials();
+    if(materialContract?.goal===goalKey(goal)&&materials[0])saveMaterialContract({...materialContract,monster:materials[0].monster},'verified-material-source');
+   }else{
+    materials=[];
+    if(goal&&materialContract?.goal===goalKey(goal))saveMaterialContract(null,'material-stage-fulfilled');
+   }
   if(goal&&!intentBlocked){if(heldGoal!==goalKey(goal)){heldGoal=goalKey(goal);heldAt=Date.now();}const objective=knowledgeFingerprint(goalKey(goal)),participants=bot.farmers.map(name=>{const h=bot.transport.fresh(name);return {name,session:h?.session??null,held:h?.materialProgress?.find(x=>x.objective===objective)?.quantity??0};});persistIntent({...intent,objective,goal:goalKey(goal),item:goal.item,level:goal.level,quantity:goal.quantity,recipient:goal.recipient,realm:p.realm(),phase:materials.length?'gathering':plan.length?'planned':'delivery',participants,sources:materials.slice(0,1).map(r=>({monster:r.monster,item:r.item,quantity:r.quantity,sourceFingerprint:r.sourceFingerprint}))});}
 
  }
+ function effectiveRouteScore(rows,kind){
+  const row=rows.find(r=>r.kind===kind);if(!row)return Infinity;
+  const proven=rows.filter(r=>!r.speculative);
+  return row.speculative&&proven.length?Math.max(...proven.map(r=>r.score??0))+Math.max(1,row.score):row.score;
+ }
  function routeScore(step){
-  const cacheKey=JSON.stringify([step.item,step.level,step.quantity,step.sources]);if(routeCache.has(cacheKey))return routeCache.get(cacheKey).find(r=>r.kind===step.kind)?.score??Infinity;const key=step.item+':'+step.level,permit=(name,level,kind)=>{if(kind==='exchange'&&step.sources?.length===1&&name!==step.sources[0][0])return false;if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const r=e.explicit({name,level},phaseOf(kind));return !r||r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level);};
+  const cacheKey=JSON.stringify([step.item,step.level,step.quantity,step.sources]);if(routeCache.has(cacheKey))return effectiveRouteScore(routeCache.get(cacheKey),step.kind);const key=step.item+':'+step.level,permit=(name,level,kind)=>{if(kind==='exchange'&&step.sources?.length===1&&name!==step.sources[0][0])return false;if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const r=e.explicit({name,level},phaseOf(kind));return !r||r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level);};
   const capped=(name,level,price)=>{const r=e.explicit({name,level},'acquisition');return Number.isFinite(price)&&price>0&&price<=(r?.maxPrice??(cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.helperMaxPrice))?price:Infinity;};
   const rows=estimateRoutes({G:p.G,item:step.item,level:step.level,quantity:step.quantity,stock:(name,level)=>name+':'+level===key?0:qty(name,level),bank:(name,level,wanted)=>name+':'+level===key?0:bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((v,i)=>v+(i?.name===name&&(i.level??0)===level&&e.safe(i)&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),allowed:cfg.production.acquireBy,permit,
-   npcPrice:name=>e.npcFor(name)?capped(name,0,p.G.items[name]?.g):Infinity,marketPrice:(name,level)=>bot.market?.offerWaitMs?.({name,level})>0?Infinity:capped(name,level,bot.market.quote?.({name,level})??e.explicit({name,level},'acquisition')?.maxPrice??cfg.production.helperMaxPrice),
+   marketAvailable:(name,level)=>bot.market?.hasVisibleBuyOffer?.({name,level},{strict:true,rule:e.rules({name,level},'acquisition')})===true,
+    npcPrice:name=>e.npcFor(name)?capped(name,0,p.G.items[name]?.g):Infinity,marketPrice:(name,level)=>bot.market?.offerWaitMs?.({name,level})>0?Infinity:capped(name,level,bot.market.quote?.({name,level})??e.explicit({name,level},'acquisition')?.maxPrice??cfg.production.helperMaxPrice),
    farmHours:(name,q)=>materialSources(p.G,name,q,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]})[0]?.selectedHours??Infinity,
    travelHours:(kind,name)=>{const d=kind==='buy'?e.npcFor(name):kind==='craft'?e.destination('craftsman'):kind==='retrieve'?{map:'bank',x:0,y:-100}:kind==='exchange'?(exchangeSource(p.G,name,p.root?.S??p.parent?.S??{}).destination??e.destination('exchange')):e.destination(kind==='marketBuy'?'citizen22':'newupgrade');return (bot.observations?.travelMs(d)??60000)/3600000;},
    helpers:(name,level,kind)=>{const r=e.explicit({name,level},'production');return [{item:r?.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',{name,level})),quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];},
    chance:(name,level,kind)=>bot.intelligence?(bot.intelligence.chance(name,level,kind)??0):Math.max(cfg.production.minChance,e.explicit({name,level},'production')?.minChance??0),recipeFor:(name,level)=>e.explicit({name,level},'production')?.recipe??'',confidence:cfg.production.farmConfidence??'mean',strategy:cfg.production.strategy,goldPerHour:cfg.production.goldPerHour,maxDepth:cfg.production.maxChainDepth,state:p.root?.S??p.parent?.S??{}});
-  routeCache.set(cacheKey,rows);return rows.find(r=>r.kind===step.kind)?.score??Infinity;
+  routeCache.set(cacheKey,rows);return effectiveRouteScore(rows,step.kind);
  }
  const allowedMonsters=()=>bot.teamPlan?bot.teamPlan.candidates().filter(id=>bot.strategy.safeTarget(id,undefined,true,true)):[...new Set(cfg.characters.filter(c=>c.enabled&&c.role==='farmer'&&(!bot.farmers||bot.farmers.includes(c.name))).flatMap(c=>c.farmTargets.length?c.farmTargets:cfg.farming.targets))];
  // A fully verified local exchange must not be displaced by an unrelated
@@ -935,7 +950,7 @@ export function createProduction(bot){
    e.note(materials.length?'Materialauftrag: '+step.item+' bei '+materials[0].monster:'Kein erlaubter Farmweg im Zeitbudget: '+step.item);
   }return false;
  }
- function updateMaterials(){if(!goal||plan[0]?.kind!=='farm'){materials=[];return;}const step=plan[0];materials=materialSources(p.G,step.item,step.quantity,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]}).slice(0,5).map(r=>({...r,objective:intent?.objective??knowledgeFingerprint(goalKey(goal)),priority:goal.priority??0,utilityPerHour:goal.utilityPerHour??0,expires:Date.now()+cfg.general.messageTtlMs*2,recipient:goal.recipient,sourceFingerprint:knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])}));}
+ function updateMaterials(){if(!goal||plan[0]?.kind!=='farm'){materials=[];return;}const step=plan[0];materials=materialSources(p.G,step.item,step.quantity,allowedMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]}).sort((a,b)=>materialContract?.goal===goalKey(goal)?Number(b.monster===materialContract.monster)-Number(a.monster===materialContract.monster):0).slice(0,5).map(r=>({...r,objective:intent?.objective??knowledgeFingerprint(goalKey(goal)),priority:goal.priority??0,utilityPerHour:goal.utilityPerHour??0,expires:Date.now()+cfg.general.messageTtlMs*2,recipient:goal.recipient,sourceFingerprint:knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])}));}
  function reservedQuantity(i,recipient=''){
   // Moving loot to the sole production hub preserves its purpose. Retain
   // completed gear promised to this farmer, but forward recipe/upgrade inputs
@@ -1004,15 +1019,23 @@ export function createProduction(bot){
   e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');
   return false;
  }
- return {invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(cfg.general.testLogging===undefined)return materials;
- const first=bot.seashells?.request?.()??materials[0];if(!first)return [];
+ return {estimateAcquisition(item,level=0,quantity=1){routeScore({kind:'farm',item,level,quantity});return routeCache.get(JSON.stringify([item,level,quantity,undefined]))?.[0]??null;},invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(bot.running===false||intentBlocked){lastPublishedMaterials=[];publicationState=bot.running===false?'merchant-paused':'contract-storage-unavailable';return [];}if(cfg.general.testLogging===undefined)return materials;
+ const first=bot.seashells?.request?.()??materials[0];
+  const state=materialContract?(first?.objective===materialContract.objective?'active':first?'higher-priority-material-work':'waiting-for-approved-source'):'';
+  if(state!==publicationState){publicationState=state;if(materialContract)bot.event(state==='active'?'farmOrder.resumed':'farmOrder.suspended',{objective:materialContract.objective,reason:state});}if(!first){lastPublishedMaterials=[];return [];}
  const plan=planMaterialQuotas(first,bot.farmers,
   name=>bot.transport.fresh(name),p.realm(),{freeReserve:cfg.farming.freeSlots});
- return [{...first,...plan}];},
+ lastPublishedMaterials=[{...first,...plan}];
+  for(const name of bot.farmers){const h=bot.transport.fresh(name),ack=h?.materialAck;
+   if(!h?.running||h.rip||h.realm!==p.realm()||ack?.objective!==first.objective||ack.item!==first.item||ack.monster!==first.monster)continue;
+   const key=first.objective+':'+name+':'+h.session;if(farmOrderReceipts.has(key))continue;
+   if(farmOrderReceipts.size>=128)farmOrderReceipts.clear();farmOrderReceipts.add(key);
+   bot.event('farmOrder.acknowledged',{farmer:name,objective:first.objective,item:first.item,monster:first.monster,session:h.session});}
+  return lastPublishedMaterials;},
  reserved:i=>reservedQuantity(i)>0,
  farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.teamPlan?.candidates()??(bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets);for(const request of merchant.materials){if(request.expires&&request.expires<Date.now()||!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.explicit({name:request.item,level:0},'acquisition');if((r?.action==='farm'||!r&&cfg.production.autonomy)&&qty(request.item,0)<Math.min(r?.targetCount??request.quantity,materialQuotaCap(request,bot.me.name)))return [request.monster];}return null;},
  status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,
   deliveryLedgerUnsafe:unsafeDeliveryHistory,
   deliveryLedgerReason:deliveryEvidence.reason,
-  autonomy:!!cfg.production.autonomy,marketDeferred:[...marketDeferred.values()].filter(x=>x.until>Date.now()).slice(0,20),waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialRequests:materials.slice(0,5).map(x=>({item:x.item,monster:x.monster,quantity:x.quantity})),farmOrderReceipts:materials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===materials[0].objective&&h.materialAck.item===materials[0].item&&h.materialAck.monster===materials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];planningReason=null;}};
+  autonomy:!!cfg.production.autonomy,marketDeferred:[...marketDeferred.values()].filter(x=>x.until>Date.now()).slice(0,20),waiting:[...waiting.values()],goal:goal?.name??null,blocked:planningReason,toolGoals:goals().filter(g=>g.name.startsWith('Werkzeug: ')).map(g=>({item:g.item,priority:g.priority,available:qtyRaw({name:g.item,level:0})+(p.c.slots?.mainhand?.name===g.item?1:0)})),materialContract:materialContract?{...materialContract}:null,publicationState,materialRequests:lastPublishedMaterials.slice(0,5).map(x=>({objective:x.objective,item:x.item,monster:x.monster,quantity:x.quantity,remaining:x.remaining,quotas:x.quotas,expires:x.expires})),farmOrderReceipts:lastPublishedMaterials.length?bot.farmers.filter(name=>{const h=bot.transport.fresh(name);return h?.materialAck?.objective===lastPublishedMaterials[0].objective&&h.materialAck.item===lastPublishedMaterials[0].item&&h.materialAck.monster===lastPublishedMaterials[0].monster;}):[],steps:plan.slice(0,20),reservations:(plan.reservations??[]).slice(0,20),deliveries:goals().filter(g=>g.recipient).slice(0,20).map(g=>({goal:g.name,slot:g.gearSlot,quantity:deliveries[goalKey(g)]?.quantity??0,target:g.quantity}))}),close(){preview=null;plan=[];goal=null;materials=[];lastPublishedMaterials=[];publicationState='merchant-paused';if(materialContract)bot.event('farmOrder.suspended',{objective:materialContract.objective,reason:'merchant-paused'});planningReason=null;}};
 }

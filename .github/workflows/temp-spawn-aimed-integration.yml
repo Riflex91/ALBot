@@ -1,4 +1,4 @@
-name: Temporary spawn geometry and aimed Ranger integration retry
+name: Temporary spawn geometry and aimed Ranger final regression
 on:
   push:
     branches:

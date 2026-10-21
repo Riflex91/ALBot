@@ -1,4 +1,4 @@
-name: Temporary all-spawn adjacent combat verification
+name: Temporary all-spawn adjacent combat verification retry
 on:
   push:
     branches:

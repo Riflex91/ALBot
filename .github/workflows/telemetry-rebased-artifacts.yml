@@ -1,0 +1,40 @@
+name: Temporary ALBot rebased telemetry artifact sync
+on:
+  push:
+    branches:
+      - ci/telemetry-v024-rebased-artifact-sync-20261021
+    paths:
+      - '.github/workflows/telemetry-rebased-artifacts.yml'
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/automatic-private-telemetry-v024-rebased-20261021
+          persist-credentials: true
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build and test feature source
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:konfigurator
+          node --test konfigurator/test/automatic-telemetry.test.mjs
+      - name: Commit tracked candidate artifacts only
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u -- bot.js dist editor profiles
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "build: sync rebased automatic telemetry v024 review artifacts"
+          git push origin "HEAD:feat/automatic-private-telemetry-v024-rebased-20261021"

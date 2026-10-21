@@ -24,6 +24,6 @@
       "sha256": "1367b966f64faefb8556567db32656b749e2d98adbc943e80f0579012f851261"
     },
     "observedLoadedUrl": null,
-    "note": "Signierte Runtime Sequenz 28 / 0.28.0-candidate nach erfolgreicher Veröffentlichung geprüft; Dokumentationsstand mit dem veröffentlichten Manifest abgeglichen. Der neue generische Spawn-Kampffix ist ein getrenntes Quellcode-Update und wird erst nach eigener CI/Signierung im Spiel verfügbar. Bestehender V2-Bootstrap, EC-Prüfschlüssel und persönliche Konfiguration bleiben unverändert."
+    "note": "Sequence 28 / 0.28.0-candidate signed on 2026-10-21 after PR #378 merged (main 275094333880f74595c0007d847f1465a51bb720), full Linux/Windows CI 39649989650 and signing workflow 39650511597. 2325/2325 offline tests, ECDSA-P-256 manifest validated, 926463 runtime bytes SHA-256 1367b966f64faefb8556567db32656b749e2d98adbc943e80f0579012f851261, published runtime byteidentical with main; in-game live acceptance pending, personal settings V2 loader and URLs unchanged."
   }
 }

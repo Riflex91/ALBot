@@ -35,7 +35,7 @@ export function finishedGearDeliveryStock(items,g,explicit=()=>null,safe=()=>tru
  if(!g?.gearSlot||!g.recipient||!Array.isArray(items)||
     typeof g.item!=='string'||!Number.isSafeInteger(g.level)||
     typeof explicit!=='function'||typeof safe!=='function')return 0;
- let count=0;
+ let count=0,protectedUnits=0;
  for(const i of items){
   if(!i||i.name!==g.item||(i.level??0)!==g.level)continue;
   const n=i.q??1;
@@ -49,9 +49,9 @@ export function finishedGearDeliveryStock(items,g,explicit=()=>null,safe=()=>tru
   const keep=(r?.keep??0)+(r?.teamReserve??0);
   if(!Number.isSafeInteger(keep)||keep<0||
      !Number.isSafeInteger(count+n))return 0;
-  count+=n;
+  count+=n;protectedUnits=Math.max(protectedUnits,keep);
  }
- return count;
+ return Math.max(0,count-protectedUnits);
 }
 // Independent recipients require independent send rules even for identical items.
 // Two gear slots for the same recipient accumulate their remaining quantities.

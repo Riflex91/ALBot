@@ -67,7 +67,7 @@ test('Merchant safely dispatches exact bank-rollback instead of entering an eter
    sourcePrint,inventoryCount:9,bankCount:11}};
  state.set('albot:bank-reclaim:My_Merchant',record);
  const p={c:{name:'My_Merchant',map:'bank',bank:{items0:bank,gold:0},items:inv,gold:100},
-  G:{bank_packs:{items0:['bank']},items:{beewings:{type:'material'}}},
+  G:{bank_packs:{items0:['bank']},items:{beewings:{type:'material',s:9999}}},
   realm:()=> 'EUII',read:k=>state.get(k)??null,
   write:(k,v)=>{state.set(k,v);return true;},root:{},parent:{},call:()=>true};
  const e={safe:i=>!!i,explicit:()=>null,rules:()=>({action:'keep'}),
@@ -91,4 +91,13 @@ test('Merchant safely dispatches exact bank-rollback instead of entering an eter
  assert.equal(m.recoverCapacity(),false,'synchronous confirmed rollback has already cleared its journal');
  assert.equal(m.pending,false,'checkpoint cleared only after seeing exact restored bank state');
  assert.equal(state.get('albot:bank-reclaim:My_Merchant'),null);
+});
+
+test('W04 rollback evidence rejects explicit null or overstacked source quantities',()=>{
+ const record={item:{name:'beewings'},before:0,bankBefore:1,quantity:1};
+ const G={items:{beewings:{type:'material',s:9}}};
+ assert.equal(reclaimRollbackEvidence(record,{name:'beewings'},null,0,G),true);
+ assert.equal(reclaimRollbackEvidence(record,{name:'beewings',q:null},null,0,G),false);
+ const many={...record,item:{name:'beewings',q:10},quantity:10,bankBefore:10};
+ assert.equal(reclaimRollbackEvidence(many,{name:'beewings',q:10},null,0,G),false);
 });

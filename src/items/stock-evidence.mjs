@@ -6,6 +6,10 @@ const accountStockFields=['stat_type','p','title','acc','rid','data'];
 const accountStockKey=i=>JSON.stringify([i.name,i.level??0,...accountStockFields.map(k=>i[k]??null)]);
 const accountStockValidId=x=>typeof x==='string'&&x.length>0&&x.length<=100;
 const accountStockInt=(x,max=1e7)=>Number.isSafeInteger(x)&&x>=0&&x<=max;
+// acc/rid are variant identity, not arbitrary numbers. NaN serializes to
+// null and would otherwise collapse distinct stock into the same key.
+const accountStockVariantId=v=>(typeof v==='string'&&v.length<=80)||
+ (Number.isSafeInteger(v)&&v>=0);
 export function inventoryStockEvidence(items,{
  owner,session,realm,at=Date.now(),maxRows=12,allowOpaque=false,reserved=()=>0
 }={}){
@@ -30,7 +34,9 @@ export function inventoryStockEvidence(items,{
    // Null means no variant, not an opaque unspendable property. Structured
    // non-null properties still require explicit opaque shadow treatment.
    if(v===null)continue;
-   if(['acc','rid'].includes(k)&&['string','number'].includes(typeof v)){
+   if(['acc','rid'].includes(k)){
+    if(!accountStockVariantId(v))
+     return bad('unknown-inventory-variant:'+entry.name+':'+k);
     signature[k]=v;continue;
    }
    if(typeof v==='string'&&v.length<=(k==='data'?120:80)){
@@ -92,7 +98,7 @@ export function reconcileStockEvidence({
      !accountStockInt(x.item.level??0,99)||
      accountStockFields.some(k=>x.item[k]!==undefined&&(
        ['acc','rid'].includes(k)?
-        !['string','number'].includes(typeof x.item[k]):
+        !accountStockVariantId(x.item[k]):
        typeof x.item[k]!=='string'||x.item[k].length>(k==='data'?120:80)))||
      !accountStockInt(x.quantity)||x.quantity<1||
      !accountStockInt(x.protectedUnits)||
@@ -162,7 +168,9 @@ export function reconcileStockEvidence({
  // A status heartbeat has a strict byte budget. Encode physical evidence as
  // bounded tuples; never truncate an inventory and call it complete.
 export function packInventoryEvidence(e){
- if(!e||e.version!==1||!Array.isArray(e.rows)||e.rows.length>32)
+ if(!e||e.version!==1||!Array.isArray(e.rows)||e.rows.length>32||
+    e.rows.some(row=>!row?.item||['acc','rid'].some(k=>
+     row.item[k]!=null&&!accountStockVariantId(row.item[k]))))
   return null;
  return {v:1,o:e.owner,s:e.session,r:e.realm,t:e.at,
   c:e.complete===true?1:0,n:e.slotCount,
@@ -190,7 +198,7 @@ export function unpackInventoryEvidence(w){
   for(let i=0;i<fields.length;i++)if(fields[i]!==null){
    const key=accountStockFields[i],val=fields[i];
    if(['acc','rid'].includes(key)){
-    if(!['number','string'].includes(typeof val))return null;
+    if(!accountStockVariantId(val))return null;
    }else if(typeof val!=='string'||val.length>(key==='data'?120:80))
     return null;
    item[key]=val;

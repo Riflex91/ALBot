@@ -257,3 +257,39 @@ test('G09 unverified quota callbacks fail closed instead of minting spare stock'
   assert.equal(f.swaps.tick(0,f.r),false);
  }
 });
+
+test('G09 malformed explicit q never proves payment or advertised singleton',()=>{
+ for(const invalid of [null,0,-1,0.5,2,NaN,Infinity]){
+  for(const field of ['payment','spare','listing','want']){
+   const f=fixture();
+   if(field==='payment')f.items[0].q=invalid;
+   if(field==='spare')f.items[1].q=invalid;
+   if(field==='listing')f.listing.q=invalid;
+   if(field==='want')f.listing.want.q=invalid;
+   assert.equal(singleSwapOpportunity(f.bot,0),null,
+    field+':'+String(invalid));
+   assert.equal(f.swaps.tick(0,f.r),false);
+   assert.equal(f.calls.length,0);
+  }
+ }
+ const f=fixture();
+ f.items[0].q=1;f.items[1].q=1;f.listing.q=1;f.listing.want.q=1;
+ assert.ok(singleSwapOpportunity(f.bot,0),
+  'physical singleton q=1 remains a valid exact exchange');
+});
+
+test('G09 late quantity drift revokes a queued swap before API call',async()=>{
+ for(const change of [
+  f=>{f.items[1].q=null;},
+  f=>{f.listing.q=null;},
+  f=>{f.listing.want.q=null;}
+ ]){
+  const f=fixture();
+  assert.equal(f.swaps.tick(0,f.r),true);
+  assert.equal(f.pending.guard(),true);
+  change(f);
+  assert.equal(f.pending.guard(),false);
+  await assert.rejects(f.pending.call(),/swap-proof-expired-before-call/);
+  assert.equal(f.calls.length,0);
+ }
+});

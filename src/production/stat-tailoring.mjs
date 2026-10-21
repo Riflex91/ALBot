@@ -1,7 +1,7 @@
 import {fingerprint,identity} from '../core/policy.mjs';
 import {gearCompatible} from './gear.mjs';
 import {surplusQuantity} from '../core/policy.mjs';
-import {localVariantQuantity} from '../items/stock-policy.mjs';
+import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 
 // Verified at source: a pscroll is consumed by the EXISTING upgrade handler.
@@ -39,7 +39,8 @@ export function statTailoringCandidate(bot){
   for(let slot=0;slot<p.c.items.length;slot++){
    const item=p.c.items[slot];
    if(!item||item.name!==target.item||(item.level??0)!==target.level||
-      item.stat_type!==undefined||!e?.safe?.(item)||
+      item.stat_type!==undefined||
+      (item.q===undefined?1:item.q)!==1||!e?.safe?.(item)||
       e.explicit?.(item,'inventory')?.action==='keep'||
       e.explicit?.(item,'production')?.action==='keep')continue;
    let grade;
@@ -52,21 +53,29 @@ export function statTailoringCandidate(bot){
     p.G.items[s.name].stat===target.statType&&
     Number.isFinite(p.G.items[s.name].grade)&&
     p.G.items[s.name].grade>=grade&&
-    e.safe(s)&&Number.isSafeInteger(s.q??1)&&
-    (s.q??1)>=needed&&
+    e.safe(s)&&Number.isSafeInteger(s.q===undefined?1:s.q)&&
+    (s.q===undefined?1:s.q)>=needed&&
+    (s.q===undefined?1:s.q)<=
+     (p.G.items[s.name].s===true?9999:
+      Number.isSafeInteger(p.G.items[s.name].s)&&p.G.items[s.name].s>1?
+       p.G.items[s.name].s:1)&&
     e.explicit?.(s,'inventory')?.action!=='keep'&&
     e.explicit?.(s,'production')?.action!=='keep'&&
     (e.count?.(s)??0)-(bot.production?.reservedQuantity?.(s)??0)>=
       needed+(e.rules?.(s)?.keep??0)+(e.rules?.(s)?.teamReserve??0));
    if(idx<0)continue;
-   const scroll=p.c.items[idx],price=e.value?.(scroll),
+   const scroll=p.c.items[idx],
+    scrollStockBefore=verifiedProductionStockQuantity(p.G,p.c.items,scroll);
+   if(!Number.isSafeInteger(scrollStockBefore)||
+      scrollStockBefore<needed)continue;
+   const price=e.value?.(scroll),
     gearValue=e.value?.(item);
    if(!Number.isFinite(price)||price<0||
       !Number.isFinite(gearValue)||gearValue<0||
       !Number.isFinite(price*needed+gearValue)||
       price*needed+gearValue>target.budget)continue;
    return {target,slot,scrollSlot:idx,item:{...item},scroll:{...scroll},
-    grade,needed,loss:price*needed+gearValue,
+    grade,needed,loss:price*needed+gearValue,scrollStockBefore,
     sourcePrint:fingerprint(item),scrollPrint:fingerprint(scroll)};
   }
  }
@@ -93,11 +102,12 @@ export function destatCandidate(bot){
      !Number.isSafeInteger(rule.keep)||rule.keep<1||
      !Number.isSafeInteger(rule.teamReserve)||rule.teamReserve<0||
      !Number.isSafeInteger(rule.maxActions)||rule.maxActions<1||rule.maxActions>20||
-     !Number.isSafeInteger(rule.batch)||rule.batch<1||
+     !Number.isSafeInteger(rule.batch)||rule.batch!==1||
+     !Number.isFinite(rule.lossBudget)||rule.lossBudget<0||
      cfg.production.gearTargets?.some(g=>g.enabled&&g.item===item.name&&
        g.level===(item.level??0))||
      !p.G.items[item.name]||!p.G.items[item.name].stat)continue;
-  const held=localVariantQuantity(p.c.items,item),
+  const held=verifiedProductionStockQuantity(p.G,p.c.items,item),
    reserved=bot.production?.reservedQuantity?.(item);
   if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||
      surplusQuantity(held,reserved,rule.keep,rule.teamReserve)<1)
@@ -126,7 +136,7 @@ export function destatCandidate(bot){
      beforeValue<0||afterValue<0)continue;
   const loss=Math.max(0,beforeValue-afterValue);
   if(!Number.isSafeInteger(loss)||loss>rule.lossBudget)continue;
-  const scrollBefore=localVariantQuantity(p.c.items,output);
+  const scrollBefore=verifiedProductionStockQuantity(p.G,p.c.items,output);
   if(!Number.isSafeInteger(scrollBefore))continue;
   return {slot,item:{...item},rule,grade,needed,cost,loss,scrollName,
    scrollMeta,output,d,held,scrollBefore,
@@ -139,7 +149,8 @@ export function createStatTailoring(bot){
  const proof=plan=>JSON.stringify([p.G.version,p.G.items?.[plan.item.name],
   p.G.items?.[plan.scroll.name],cfg.production?.gear,
   cfg.production?.minChance,cfg.production?.gearTargets,cfg.items,
-  plan.sourcePrint,plan.scrollPrint,plan.grade,plan.needed,plan.loss]);
+  plan.sourcePrint,plan.scrollPrint,plan.grade,plan.needed,
+  plan.scrollStockBefore,plan.loss]);
  function ready(plan,initial){
   if(!bot.running||bot.journal||bot.inventoryBlocked||
      bot.bank?.pending||bot.logistics?.reserved||p.c.rip||
@@ -148,7 +159,9 @@ export function createStatTailoring(bot){
   return !!fresh&&fresh.slot===plan.slot&&
    fresh.scrollSlot===plan.scrollSlot&&
    fresh.sourcePrint===plan.sourcePrint&&fresh.scrollPrint===plan.scrollPrint&&
-   fresh.needed===plan.needed&&fresh.loss===plan.loss&&
+   fresh.needed===plan.needed&&
+   fresh.scrollStockBefore===plan.scrollStockBefore&&
+   fresh.loss===plan.loss&&
    fresh.target===plan.target;
  }
  function tick(){
@@ -178,7 +191,7 @@ export function createStatTailoring(bot){
   }
   const minimum=Math.max(cfg.production.minChance??1,.65);
   if(!Number.isFinite(preview.chance)||preview.chance<minimum)return false;
-  const beforeScroll=plan.scroll.q??1,at=preview.at;
+  const at=preview.at;
   return bot.economy.perform('upgrade',{
    slots:[plan.slot,plan.scrollSlot],loss:plan.loss,cost:0,
    guard:()=>Date.now()-at<5000&&preview?.key===key&&
@@ -186,14 +199,14 @@ export function createStatTailoring(bot){
      ready(plan,initial)&&bot.economy.npcAt(d),
    call:()=>p.call('upgrade',plan.slot,plan.scrollSlot,null),
    observe:()=>{
-    const actual=p.c.items?.[plan.slot],held=p.c.items?.[plan.scrollSlot];
+    const actual=p.c.items?.[plan.slot],
+     scrollAfter=verifiedProductionStockQuantity(p.G,p.c.items,plan.scroll);
     return actual?.name===plan.item.name&&
      (actual.level??0)===(plan.item.level??0)&&
      actual.stat_type===plan.target.statType&&
      !p.c.q?.upgrade&&
-     (!held||held.name!==plan.scroll.name||
-      Number.isSafeInteger(held.q??1)&&
-      beforeScroll-(held.q??1)>=plan.needed);
+     Number.isSafeInteger(scrollAfter)&&
+     scrollAfter===plan.scrollStockBefore-plan.needed;
    },
    onConfirmed:()=>{preview=null;return true;},
    details:{item:plan.item.name,variant:identity(plan.item),
@@ -238,8 +251,9 @@ export function createStatTailoring(bot){
     response.cost===plan.cost&&response.failed!==true&&
     response.success!==false&&p.c.gold===beforeGold-plan.cost&&
     fingerprint(p.c.items[plan.slot])===fingerprint(expected)&&
-    localVariantQuantity(p.c.items,plan.item)===plan.held-1&&
-    localVariantQuantity(p.c.items,plan.output)===plan.scrollBefore+plan.needed,
+    verifiedProductionStockQuantity(p.G,p.c.items,plan.item)===plan.held-1&&
+    verifiedProductionStockQuantity(p.G,p.c.items,plan.output)===
+     plan.scrollBefore+plan.needed,
    details:{item:plan.item.name,variant:identity(plan.item),
     scroll:plan.scrollName,quantity:plan.needed,fee:plan.cost,
     riskVariant:identity(plan.item),before:plan.held},timeout:45000

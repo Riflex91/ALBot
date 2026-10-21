@@ -38,7 +38,7 @@ test('nearby Priest also has autonomous low-threat spawn permission',()=>{
 
 test('plan and live game identity are strict but not an arbitrary 85-unit anchor rule',()=>{
  assert.equal(admits({...ranger2,x:650,y:1110}).allowed,true);
- assert.equal(admits({...ranger2,x:820,y:1110}).reason,'outside-assembled-spawn');
+ assert.equal(admits({...ranger2,x:820,y:1110}).reason,'actor-outside-spawn');
  assert.equal(admits(ranger2,{...bee,mtype:'rat'}).reason,'no-valid-shared-spawn');
  assert.equal(admits(ranger2,bee,{...options,plan:{...plan,expires:now-1}}).reason,'no-valid-shared-spawn');
  assert.equal(admits(ranger2,bee,{...options,leader:{...leader,received:now-8000}}).reason,'leader-or-spawn-proof-stale');
@@ -107,6 +107,6 @@ test('combat tick genuinely calls shared-spawn permission and includes denial di
  assert.match(farmer,/bot\.encounter\?\.soloSharedSpawn\?\.\(m\)/);
  assert.match(farmer,/combat\.independentSharedSpawn/);
  assert.match(farmer,/combat\.followerSpawnAudit/);
- assert.match(skills,/bot\.encounter\?\.soloSharedSpawn\?\.\(m\)/);
+ assert.match(skills,/bot\.encounter\.approveAimedSpawnPull\(selected,id,skill\)/);
  assert.match(skills,/combat\.independentSharedSpawnAoE/);
 });

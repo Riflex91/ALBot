@@ -186,3 +186,24 @@ test('W13 verified original recipient session and realm can record equipped only
  assert.equal(f.allocation.status()[0].state,'equipped');
  assert.equal(f.store.get('albot:gear:Merchant:allocations')[0].state,'equipped');
 });
+
+
+test('W05/W13 ambiguous sender gear quantity is unknown, not two owned copies',()=>{
+ for(const q of [null,0,-1,0.5,2,3,NaN,Infinity]){
+  const f=fixture([row('open')],[{...variant,q}]);
+  const d=f.allocation.recoveryStatus().outstanding[0];
+  assert.equal(d.senderStillCarriesUnits,null,
+   'invalid gear quantity cannot prove sender ownership: '+String(q));
+  assert.equal(d.canClearClaim,false);
+  assert.equal(d.canResend,false);
+  assert.equal(f.allocation.offer(variant,'Priest'),false);
+ }
+});
+test('W05/W13 transferred equipment variant evidence cannot rely on cyclic data',()=>{
+ const bad={name:'staff',level:3,data:{}};
+ bad.data.self=bad.data;
+ const d=inspectGearClaimEvidence(row('bad'),{items:[bad],realm:'EUI'});
+ assert.equal(d.senderStillCarriesUnits,null);
+ assert.equal(d.canClearClaim,false);
+ assert.equal(d.canResend,false);
+});

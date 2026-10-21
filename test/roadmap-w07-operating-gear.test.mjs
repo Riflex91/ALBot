@@ -69,3 +69,36 @@ test('W07 late observed gear recovery changes the final admissibility decision',
  f.items[3]={name:'staff',level:0,l:true};
  assert.equal(f.check(planned).allowed,false);
 });
+
+test('W07 malformed spare weapon quantities cannot justify consuming the last real staff',()=>{
+ for(const q of [null,0,-1,1.5,NaN,Infinity,
+  Number.MAX_SAFE_INTEGER+1,2]){
+  const f=fixture();
+  f.items.push({name:'staff',q});
+  assert.deepEqual(f.check([0]),{
+   allowed:false,reason:'last-observed-functional-mainhand',
+   before:2,after:1,unarmed:2
+  },String(q));
+  assert.equal(f.check([1]).allowed,false,
+   'invalid copy does not affect independent sword demand');
+ }
+});
+
+test('W07 ordinary absent q or exactly one staff remain usable spare evidence',()=>{
+ for(const spare of [{name:'staff'},{name:'staff',q:1}]){
+  const f=fixture();
+  f.items.push(spare);
+  assert.equal(f.check([0]).allowed,true,
+   'real distinct safe staff remains after consumption');
+  assert.equal(f.check([0,3]).allowed,false,
+   'both real staves cannot be sacrificed');
+ }
+});
+
+test('W07 malformed nonweapon quantities do not fabricate or veto a weapon',()=>{
+ const f=fixture();
+ f.items[2]={name:'hpot0',q:null};
+ assert.equal(f.check([0]).allowed,false);
+ assert.equal(f.check([2]).allowed,true,
+  'operational weapon gate does not prohibit unrelated potions');
+});

@@ -1,4 +1,4 @@
-import {gearCatchUpPriority,crossRoleGearPriority} from './gear-fairness.mjs';
+import {gearCatchUpPriority,crossRoleGearPriority,measuredSlotUtilityPriority,observedGearStatDelta} from './gear-fairness.mjs';
 import {identity} from '../core/policy.mjs';
 export function gearScore(stats,role,ctype=''){
  const weights=role==='tank'?{hp:.01,armor:1,resistance:1,vit:2,vitality:2}:role==='healer'?{attack:2,int:3,mp:.02,frequency:100,armor:.3,resistance:.3,hp:.004,speed:.2}:role==='economy'?{gold:10,luck:10,speed:2,mp:.01,armor:.1,resistance:.1,hp:.002}:{attack:2,apiercing:.3,rpiercing:.3,str:1,dex:1,int:1,frequency:100,crit:2,armor:.2,resistance:.2,hp:.002,mp:.001,speed:.2};
@@ -48,8 +48,9 @@ export function autoGearTargetLevel(configured,characterLevel,slot){
  const progressionCap=Math.floor(Math.max(1,Number(characterLevel)||1)/10)+3;
  return Math.max(0,Math.min(userCap,slot==='mainhand'?8:7,progressionCap));
 }
-export function createGear(bot){
+export function createGear(bot,{now=()=>Date.now()}={}){
  const {p,cfg,me}=bot,e=bot.economy;
+ let lastLocalSnapshot=null,observedGearChanges=[];
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
  if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))profiles={};
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
@@ -62,11 +63,18 @@ export function createGear(bot){
     stat_type:i.stat_type??'',p:i.p??'',title:i.title??'',l:!!i.l,b:!!i.b};
   const stats=Object.fromEntries(["attack","frequency","armor","resistance","max_hp","max_mp",
    "range","crit","apiercing","rpiercing"].filter(k=>Number.isFinite(p.c[k])).map(k=>[k,p.c[k]]));
-  return {class:p.c.ctype,level:p.c.level,slots,stats,complete:true,at:Date.now(),
+  return {class:p.c.ctype,level:p.c.level,slots,stats,complete:true,at:now(),
    session:bot.session,realm:p.realm()};
  }
  function refresh(){
-  if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
+  if(!cfg.production.gear&&cfg.party.selection!=='adaptive')return;
+  // Observe only this living process's own canonical, direct game snapshot.
+  // Do not compare stale peer heartbeat timestamps or invent equip receipts.
+  const local=snapshot(),change=observedGearStatDelta(
+   lastLocalSnapshot,local,{now:local.at});
+  lastLocalSnapshot=local;
+  if(change)observedGearChanges=[...observedGearChanges.slice(-15),change];
+  for(const name of bot.teamNames){const peer=name===me.name?{gear:snapshot(),received:Date.now()}:bot.transport.fresh(name);const data=peer?.gear;
    // The heartbeat may be fresh while its embedded gear snapshot is
    // outdated or belongs to another realm. Do not refresh the timestamp
    // of old gear merely because a peer sent another heartbeat.
@@ -130,6 +138,7 @@ export function createGear(bot){
   }
  }return result.slice(0,20);}
  function targets(){
+  const optimized=bot.intelligence?.targets()??[];
   const fairness=g=>{
    const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
    if(!member)return 0;
@@ -150,9 +159,10 @@ export function createGear(bot){
    return Math.min(75,gearCatchUpPriority(profile,sameRole,{now:Date.now()})+
     crossRoleGearPriority(profile,cohort,{
      role:classify(member,profile),slot:g.slot,
-     lastImprovedAt:last||null}));
+     lastImprovedAt:last||null})+
+    measuredSlotUtilityPriority(g,optimized,{profile,now:Date.now()}));
   };
-  const automatic=(bot.intelligence?.targets()??[]).map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
+  const automatic=optimized.map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
   const result=[...automatic,...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
   // Prefer a server-compatible, non-protected weapon already in Merchant
   // inventory. A +3 staff held in stock must beat buying/delivering +0.
@@ -242,5 +252,7 @@ export function createGear(bot){
   return [{...g,name:'Gear: '+g.name,quantity:1,recipient:g.character===me.name?'':g.character,gearSlot:g.slot}];
  });}
  function status(){const eligible=new Set(goals().map(g=>g.name));return targets().slice(0,32).map(g=>{const profile=g.character===me.name?snapshot():profiles[g.character],old=profile?.slots?.[g.slot];return {name:g.name,character:g.character,item:g.item,level:g.level,slot:g.slot,offline:g.character!==me.name&&!bot.transport.fresh(g.character),state:!cfg.production.gear?'disabled':!profile?'unknown-profile':!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot)?'incompatible':old?.l||old?.b?'protected':old?.name===g.item&&old.level>=g.level?'equipped':eligible.has('Gear: '+g.name)?'requested':'below-improvement-threshold'};});}
- return {equip,snapshot,refresh,suggestions,goals,status,profile:name=>profiles[name]??null};
+ return {equip,snapshot,refresh,suggestions,goals,status,
+  observedPerformance:()=>observedGearChanges.map(x=>structuredClone(x)),
+  profile:name=>profiles[name]??null};
 }

@@ -411,3 +411,23 @@ test('N12 strict read failure during dispatch checkpoint cannot cause a Cave cal
  assert.equal(f.lifecycle.status().state,'storage-uncertain');
  assert.equal(f.lifecycle.requestEntry(),false);
 });
+
+
+test('W12/N12 Cave entry and exit cannot overlap an unresolved Crypt journal',()=>{
+ const f=readyOneShot(fixture());
+ f.bot.cryptLifecycle={status:()=>({blocked:true,state:'dispatch-unknown'})};
+ assert.equal(f.lifecycle.prepare(),false,
+  'a possibly consumed Crypt key forbids new Cave preparation');
+ assert.deepEqual(f.calls,[]);
+ f.bot.cryptLifecycle.status=()=>({blocked:false,state:'empty'});
+ assert.equal(f.lifecycle.prepare(),true);
+ f.bot.cryptLifecycle.status=()=>({blocked:true,state:'inside-observed'});
+ assert.equal(f.lifecycle.markDispatchUnknown(),false);
+ assert.equal(f.lifecycle.requestEntry(),false);
+ assert.equal(f.lifecycle.status().state,'prepared');
+ assert.deepEqual(f.calls,[]);
+ f.bot.cryptLifecycle.status=()=>({blocked:false,state:'empty'});
+ assert.equal(f.lifecycle.requestEntry(),true,
+  'a genuinely settled alternate admission permits the old prepared Cave');
+ assert.deepEqual(f.calls,['cave_enter']);
+});

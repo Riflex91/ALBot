@@ -48,10 +48,10 @@ test('unreserved automated bank materials can be deposited as whole stacks',()=>
 });
 test('multi-level compound gear receives planning credit for available level-zero materials',()=>{
  const target={item:'ringsj',level:2,gearSlot:'ring1'};
- const stock=[{name:'ringsj',level:0,q:9}];
+ const stock=Array.from({length:9},()=>({name:'ringsj',level:0}));
  assert.equal(gearInputReady(target,stock,{compound:true}),false);
  assert.equal(gearChainReady(target,stock,{compound:true}),true);
- assert.equal(gearChainReady(target,[{name:'ringsj',level:0,q:2}],{compound:true}),false);
+ assert.equal(gearChainReady(target,Array.from({length:2},()=>({name:'ringsj',level:0})),{compound:true}),false);
 });
 test('personalized 3shot rule is set to 15 without claiming the skill fires 15 projectiles',()=>{
  const js=readFileSync(new URL('../bot.js',import.meta.url),'utf8');

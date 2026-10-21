@@ -70,7 +70,8 @@ export function automaticOperatingStockRule(bot,item){
 // already physically carried. Retained bank stock is NEVER sale backing.
 // The existing bank reclaim journal still proves the exact withdrawal.
 export function bankOperatingStockRule(bot,item,{carried=false}={}){
- const {p}=bot,e=bot.economy,meta=p.G.items?.[item?.name],q=item?.q??1;
+ const {p}=bot,e=bot.economy,meta=p.G.items?.[item?.name],
+  q=item?.q===undefined?1:item.q;
  if(bot.me.role!=='merchant'||!e?.safe(item)||
     !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
     !Number.isSafeInteger(q)||q<1||q>9999)return null;
@@ -106,7 +107,8 @@ export function bankOperatingStockRule(bot,item,{carried=false}={}){
 // read-only need, never an implicit permission to withdraw or liquidate.
 // Only full, ordinary stack variants qualify; unknown policy is fail-closed.
 export function bankOperatingReserveNeed(bot,item){
- const {p,economy:e}=bot,meta=p.G.items?.[item?.name],q=item?.q??1;
+ const {p,economy:e}=bot,meta=p.G.items?.[item?.name],
+  q=item?.q===undefined?1:item.q;
  if(bot.me.role!=='merchant'||!e?.safe?.(item)||
     !boundedStockVariantAllowed(p.G,item)||!meta||(item.level??0)!==0||
     !Number.isSafeInteger(q)||q<1||q>9999||

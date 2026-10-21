@@ -1,4 +1,4 @@
-import {neutralPullReadiness,verifiedFollowerOneShot,verifiedFollowerBoundedSpawn,assessFollowerSharedSpawn} from './team-readiness.mjs';
+import {neutralPullReadiness,verifiedFollowerOneShot,verifiedFollowerBoundedSpawn,assessFollowerSharedSpawn,verifiedLowThreatAimedSet} from './team-readiness.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 import {distance,samePlace} from '../core/policy.mjs';
 import {knowledgeFingerprint,semanticGear} from '../world/knowledge.mjs';
@@ -267,6 +267,88 @@ export function createEncounter(bot){
   });
  }
  function soloSharedSpawn(m){return sharedSpawnAssessment(m).allowed===true;}
+ // Aimed Ranger skills own a separate all-target authorization. The
+ // adaptive BUILD phase is not proof that a weak, fully bounded aimed set
+ // is unsafe, but a normal leader-neutral attack may not inherit this grant.
+ function aimedSpawnAssessment(m){
+  if(bot.me?.role!=='farmer'||bot.p.c.ctype!=='ranger')
+   return {allowed:false,reason:'not-ranger-farm-skill'};
+  if(bot.me.name!==bot.leader)return sharedSpawnAssessment(m);
+  if(!bot.running||bot.p.c.rip||bot.strategy?.busy||
+     bot.recovering||bot.journal||bot.inventoryBlocked||
+     bot.logistics?.reserved||bot.account?.rotationPending?.()||
+     bot.combatAssessment?.emergency?.()?.active||
+     bot.p.parent?.is_pvp||bot.p.G.maps?.[bot.p.c.map]?.pvp||
+     bot.teamPlan?.wantsCombat?.()===false||
+     bot.free?.()<=(bot.cfg.farming?.freeSlots??0))
+   return {allowed:false,reason:'leader-operational-hold'};
+  const readiness=neutralPullReadiness(bot);
+  if(!readiness.ready)return {allowed:false,
+   reason:'leader-'+readiness.reason};
+  const plan=bot.teamPlan?.heartbeat?.();
+  if(!plan||bot.teamPlan?.target?.()!==m?.mtype||
+     bot.strategy?.safeTarget?.(m.mtype,m,true)!==true)
+   return {allowed:false,reason:'unapproved-leader-spawn'};
+  const now=Date.now();
+  return assessFollowerSharedSpawn(bot.p.c,m,{
+   plan,realm:bot.p.realm(),game:bot.p.G,now,
+   leader:{...bot.p.c,name:bot.me.name,realm:bot.p.realm(),
+    running:bot.running,received:now,farmPlan:plan}
+  });
+ }
+ function approveAimedSpawnPull(targets,skillId,skill){
+  const deny=reason=>({safe:false,reason});
+  if(!Array.isArray(targets)||bot.me?.role!=='farmer'||
+     bot.p.c?.ctype!=='ranger'||!bot.running||
+     bot.p.c.rip||bot.recovering||
+     bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
+     bot.account?.rotationPending?.()||
+     bot.combatAssessment?.emergency?.()?.active||
+     bot.p.parent?.is_pvp||bot.p.G.maps?.[bot.p.c.map]?.pvp)
+   return deny('aimed-skill-operational-hold');
+  const teamThreats=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
+    m.target&&bot.teamNames.includes(m.target));
+  // Entirely fresh weak-spawn engagements only. Existing aggro remains
+  // subject to the ordinary encounter AoE planner, including healing.
+  if(teamThreats.length)return deny('existing-team-aggro');
+  const ids=targets.map(m=>String(m?.id??''));
+  if(ids.some(id=>!id)||new Set(ids).size!==ids.length)
+   return deny('duplicate-or-missing-aimed-id');
+  // Never authorize a copied entity from a prior tick. Every aimed ID must
+  // still exist in the native *current* visible entity set at dispatch.
+  const live=bot.monsters();
+  if(targets.some(m=>!live.some(e=>String(e?.id)===String(m.id)&&
+    e.mtype===m.mtype&&e.type==='monster'&&e.hp>0&&!e.dead&&
+    !e.target&&samePlace(bot.p.c,e))))
+   return deny('aimed-target-not-live');
+  const invalid=targets.find(m=>aimedSpawnAssessment(m).allowed!==true);
+  if(invalid)return {safe:false,reason:'aimed-target-not-authorized',
+   target:invalid?.id??null,
+   targetReason:aimedSpawnAssessment(invalid).reason};
+  const now=Date.now(),plan=bot.teamPlan?.heartbeat?.();
+  const leader=bot.me.name===bot.leader?{
+   ...bot.p.c,name:bot.me.name,realm:bot.p.realm(),
+   running:bot.running,received:now,farmPlan:plan
+  }:bot.transport?.fresh?.(bot.leader);
+  // Disallow a new multiple pull when another selected farmer is lost,
+  // stale, injured, or cannot supply local team support if needed.
+  const peers=(bot.farmers??[]).filter(n=>n!==bot.me.name)
+   .map(n=>bot.transport?.fresh?.(n));
+  if(!peers.length||peers.some(h=>!h?.running||h.rip||
+     h.realm!==bot.p.realm()||
+     !samePlace(h,bot.p.c)||
+     !Number.isFinite(h.received)||h.received>now||
+     now-h.received>4000||!(h.hp/h.max_hp>=.8)||
+     !(h.mp/h.max_mp>=.15)||
+     distance(h,bot.p.c)>285))
+   return deny('aimed-support-team-not-ready');
+  const proof=verifiedLowThreatAimedSet(bot.p.c,targets,{
+   skillId,skill,plan,leader,realm:bot.p.realm(),
+   game:bot.p.G,now});
+  return proof.allowed?{safe:true,...proof}:{
+    safe:false,reason:proof.reason,target:proof.target??null,
+    targetReason:proof.targetReason??null};
+ }
  function permit(m){
   if(m.target)return true;
   if(soloOneShot(m)||soloBoundedSpawn(m)||soloSharedSpawn(m))return true;
@@ -324,5 +406,5 @@ export function createEncounter(bot){
   };
   return bot.exec.run('attack',['attack','mana'],guard,()=>bot.p.call('attack',bot.entity(candidate.id)),{delay:250});
  }
- return {tick,permit,soloOneShot,soloBoundedSpawn,soloSharedSpawn,sharedSpawnAssessment,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
+ return {tick,permit,soloOneShot,soloBoundedSpawn,soloSharedSpawn,sharedSpawnAssessment,aimedSpawnAssessment,approveAimedSpawnPull,pull,approvePullSet,status:()=>({phase,capacity,context,profiles:Object.keys(profiles).length,unsafeUntil:unsafeUntil(bot.teamPlan?.target())}),close(){complete(phase==='ABORT');bot.p.write(key,profiles);}};
 }

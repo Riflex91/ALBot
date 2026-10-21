@@ -55,3 +55,25 @@ export function boundedExcessSaleRule({item,inventory,G,rule,reserved=0}={}){
  return {...rule,action:'sell',_autoBoundedExcess:true,
   _boundedSource:rule,batch:Math.min(rule.batch,policy.excess)};
 }
+
+
+// W06/W07 read-only physical input proof. Neither invalid explicit quantity
+// nor an oversized source stack can back an automatic economic decision.
+export function verifiedProductionStockQuantity(G,items,item){
+ if(!Array.isArray(items)||!item?.name||!G?.items?.[item.name])return null;
+ const s=G.items[item.name].s,
+  limit=s===true?9999:Number.isSafeInteger(s)&&s>1?s:1;
+ let count=0,key;
+ try{key=identity(item);}catch{return null;}
+ for(const stock of items){
+  if(!stock)continue;
+  let matches;
+  try{matches=identity(stock)===key;}catch{return null;}
+  if(!matches)continue;
+  const qty=stock.q===undefined?1:stock.q;
+  if(!Number.isSafeInteger(qty)||qty<1||qty>limit||
+     !Number.isSafeInteger(count+qty))return null;
+  count+=qty;
+ }
+ return count;
+}

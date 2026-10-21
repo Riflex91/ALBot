@@ -1,6 +1,12 @@
-import {identity,fingerprint,variantCount} from '../core/policy.mjs';
+import {identity,fingerprint} from '../core/policy.mjs';
+import {localVariantQuantity} from './stock-policy.mjs';
 import {capacityAfterConsumption} from './physical-capacity.mjs';
 const SYSTEM_REWARD_PHRASES=['server.cave.mail_subject','server.tracktrix.mail_subject'];
+// Missing quantity denotes a regular single item; an explicit null never does.
+const rewardMailQuantity=i=>i?.q===undefined?1:i.q;
+const rewardMailValidInventory=items=>Array.isArray(items)&&items.every(i=>
+ i===null||i===undefined||!!i&&typeof i==='object'&&
+ Number.isSafeInteger(rewardMailQuantity(i))&&rewardMailQuantity(i)>=1);
 export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
  // A server-confirmed taken mail is no longer claimable. The recovery
  // reader must validate its attachment independently of can_take, while
@@ -22,7 +28,7 @@ export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
  if(typeof item.name!=='string'||!G.items?.[item.name])return null;
  const result={name:item.name};
  for(const key of ['level','q']){
-  const value=item[key]??(key==='level'?0:1);
+  const value=item[key]===undefined?(key==='level'?0:1):item[key];
   if(!Number.isSafeInteger(value)||value<(key==='level'?0:1)||value>1000000)return null;
   result[key]=value;
  }
@@ -39,14 +45,18 @@ export function rewardMailAttachment(row,name,G,{recoverTaken=false}={}){
 export function rewardClaimFits(character,item,G){
  if(item?.gold)return Number.isSafeInteger(character.gold)&&
   Number.isSafeInteger(character.gold+item.gold);
+ const amount=rewardMailQuantity(item);
+ if(!Number.isSafeInteger(amount)||amount<1||
+    !rewardMailValidInventory(character.items))return false;
  const fit=capacityAfterConsumption(character.items,[],item,G.items?.[item?.name],
   {inventorySize:character.isize});
- return !!fit&&fit.units>=(item?.q??1);
+ return !!fit&&fit.units>=amount;
 }
 export function rewardClaimDelta(journal,character){
  if(journal?.kind!=='mail.claim'||!Array.isArray(journal.beforeInventory)||
     journal.beforeInventory.length>256||!Number.isSafeInteger(journal.beforeGold))return false;
  const before=journal.beforeInventory,current=character.items??[];
+ if(!rewardMailValidInventory(current))return false;
  if(journal.attachment?.gold)return character.gold===journal.beforeGold+journal.attachment.gold&&
   JSON.stringify(current.map(fingerprint))===JSON.stringify(before);
  // All unrelated variants must remain byte-identical as a multiset. A
@@ -56,21 +66,37 @@ export function rewardClaimDelta(journal,character){
   const other=[];let quantity=0;
   for(const row of rows){if(typeof row!=='string')return null;
    const cut=row.lastIndexOf(':'),variant=row.slice(0,cut),q=Number(row.slice(cut+1));
-   if(variant===expected){if(!Number.isSafeInteger(q)||q<1)return null;quantity+=q;}
+   if(variant===expected){if(!Number.isSafeInteger(q)||q<1||
+     !Number.isSafeInteger(quantity+q))return null;quantity+=q;}
    if(variant!==expected&&row!==':1')other.push(row);
   }
   return {quantity,other:other.sort()};
  };
  const a=split(before),b=split(current.map(fingerprint));
  return !!a&&!!b&&Number.isSafeInteger(journal.attachment?.q)&&
+  localVariantQuantity(current,journal.attachment)===b.quantity&&
   b.quantity-a.quantity===journal.attachment.q&&
   character.gold===journal.beforeGold&&JSON.stringify(a.other)===JSON.stringify(b.other);
 }
 export function createRewardMail(bot,{now=()=>Date.now()}={}){
  const {p,cfg}=bot,key='albot:reward-mail-cursor:'+bot.me.name;
- let cursor=p.read?.(key)?.cursor??null,nextRead=0,reading=false,generation=0,
+ const old=p.read?.(key),owner=bot.me.name;
+ const startingRealm=p.realm(),
+  verifiedCursor=old?.version===2&&old.owner===owner&&
+   old.realm===startingRealm&&(old.cursor===null||
+   typeof old.cursor==='string'&&/^\d{1,8}$/.test(old.cursor));
+ let cursorRealm=startingRealm,
+  // Legacy {cursor:next} records may have skipped unclaimed page rows.
+  // Restart those from the beginning; taken=true rows are never claimable.
+  cursor=verifiedCursor?old.cursor:null,
+  // Legacy unknown mail.claim may be on a later page. Keep the durable
+  // replay cursor at the beginning while scanning forward READ-ONLY;
+  // never let unrelated earlier claimable mail block recovery.
+  recoverySweep=bot.journal?.kind==='mail.claim'&&
+   (!verifiedCursor||old.recoveryScan===true||old.cursor===null),
+  nextRead=0,reading=false,generation=0,
   queue=[],observed=[],reason='not-scanned';
- if(bot.journal?.kind==='mail.claim')cursor=null;
+ if(recoverySweep)cursor=null;
  const remember=(id,state)=>{observed.push({id,state,at:now()});observed=observed.slice(-16);};
  const enabled=()=>cfg.world?.rewardMail===true;
  const available=()=>p.rewardMailCapability?.()??{supported:false,reason:'authenticated-mail-reader-unavailable'};
@@ -87,25 +113,62 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
   if(!bot.journal){bot.inventoryBlocked=false;remember(j.mailId,'confirmed-after-reload');}
  }
  function read(){
+  // Pagination is bound to a particular realm; no cursor is portable.
+  if(p.realm()!==cursorRealm){
+   cursorRealm=p.realm();cursor=null;queue=[];generation++;
+   recoverySweep=bot.journal?.kind==='mail.claim';
+   reading=false;nextRead=0;
+  }
   if(reading||now()<nextRead||!available().supported)return;
   if(queue.length&&!bot.journal)return;
-  const gen=generation;reading=true;nextRead=now()+60000;
+  const gen=generation,realm=cursorRealm;
+  reading=true;nextRead=now()+60000;
   const requested=cursor;
   bot.exec.run('reward.mail.read',['reward-reader'],()=>bot.running,()=>
    Promise.resolve(p.readRewardMailPage(requested)).then(page=>{
-    if(gen!==generation||!bot.running)return;
+    if(gen!==generation||!bot.running||p.realm()!==realm)return;
     if(!Array.isArray(page?.mail)||page.mail.length>40)throw Error('Invalid reward mail page');
     const next=page.more===true&&typeof page.cursor==='string'&&/^\d{1,8}$/.test(page.cursor)?page.cursor:null;
     if(page.more===true&&(!next||Number(next)<=Number(requested??0)))throw Error('Invalid reward mail cursor');
-    // Do not make a page actionable until its pagination advance is
-    // durably accepted. Invalid pages and failed storage leave the queue
-    // unchanged; they cannot schedule a later value action.
-    if(p.write(key,{cursor:next})!==true){reason='mail-cursor-storage-unavailable';return;}
+    const rows=page.mail.filter(row=>row.taken===false&&
+     rewardMailAttachment(row,owner,p.G));
+    const journalHere=bot.journal?.kind==='mail.claim'&&
+     page.mail.some(row=>row.id===bot.journal.mailId);
+    if(recoverySweep&&bot.journal?.kind==='mail.claim'){
+     // Scan pages for the historical claim, but persist ONLY the original
+     // replay point. After a crash or once the claim is resolved, revisit
+     // all skipped claimable pages; no other reward can be acted on here.
+     if(p.write(key,{version:2,owner,realm,cursor:null,
+        recoveryScan:true})!==true){
+      reason='mail-cursor-storage-unavailable';return;
+     }
+     reconcile(page.mail);
+     queue=[];
+     if(bot.journal?.kind!=='mail.claim'){
+      recoverySweep=false;cursor=null;nextRead=0;
+      reason='mail-recovery-rescan-from-start';
+     }else{
+      cursor=journalHere?requested:next;
+      nextRead=now()+5000;
+      reason=journalHere?'mail-claim-reconciliation-pending':
+       'mail-claim-searching-next-page';
+     }
+     return;
+    }
+    // Do not persist the next cursor while this page contains a claimable
+    // attachment or an unresolved mail value journal. A process crash must
+    // reread the SAME page rather than silently skip an uncollected reward.
+    // Already taken rows are filtered on replay; this authorizes no retry.
+    const hold=rows.length>0||journalHere;
+    const durableCursor=hold?requested:next;
+    if(p.write(key,{version:2,owner,realm,cursor:durableCursor})!==true){
+     reason='mail-cursor-storage-unavailable';return;
+    }
     reconcile(page.mail);
-    const rows=page.mail.filter(row=>row.taken===false&&rewardMailAttachment(row,bot.me.name,p.G));
     queue=rows.slice(0,40);for(const row of queue)remember(row.id,'observed');
-    cursor=next;nextRead=now()+(next?5000:300000);
-    reason=queue.length?'own-system-rewards-observed':'no-own-system-reward-on-page';
+    cursor=durableCursor;nextRead=now()+(hold||next?5000:300000);
+    reason=queue.length?'own-system-rewards-observed':
+     hold?'mail-claim-reconciliation-pending':'no-own-system-reward-on-page';
    }).finally(()=>{if(gen===generation)reading=false;}),
    {timeout:20000,delay:5000,onSettle:state=>{reading=false;
     if(['timeout','rejected','superseded'].includes(state))reason='mail-page-'+state;}});
@@ -127,9 +190,17 @@ export function createRewardMail(bot,{now=()=>Date.now()}={}){
     .then(result=>{receipt=result;return result;});},
    observe:()=>receipt?.success===true&&receipt.id===row.id&&
     (item.gold?receipt.gold===item.gold:identity(receipt.item)===identity(item)&&
-     (receipt.item?.q??1)===(item.q??1))&&
+     rewardMailQuantity(receipt.item)===item.q&&
+     Number.isSafeInteger(rewardMailQuantity(receipt.item)))&&
     rewardClaimDelta({kind:'mail.claim',...details},p.c),
-   onConfirmed:()=>{queue=queue.filter(r=>r.id!==row.id);remember(row.id,'confirmed');return true;},
+   onConfirmed:()=>{
+    queue=queue.filter(r=>r.id!==row.id);
+    remember(row.id,'confirmed');
+    // The checkpoint still points at this page until it is reread and
+    // the server confirms that no claimable attachments remain.
+    if(!queue.length)nextRead=0;
+    return true;
+   },
    details,timeout:20000});
  }
  return {tick(){

@@ -151,3 +151,21 @@ test('Merchant objective ledger represents 27 distinct local item variants withi
  assert.equal(inventoryStockEvidence(rows,{owner,session,realm,at,maxRows:12}).complete,
   false,'default small remote heartbeat budget remains bounded');
 });
+
+test('W02 malformed acc/rid identifiers never prove spendable account stock',()=>{
+ for(const field of ['acc','rid'])for(const value of [
+   -1,0.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'x'.repeat(81)
+ ]){
+  const source=proof('R1','peer-v1',[{name:'ore',q:4,[field]:value}]);
+  assert.equal(source.complete,false,field+':'+String(value));
+  const observed=ledger(local([]),[peer(source)],['R1']);
+  assert.equal(observed.complete,false,field+':'+String(value));
+  assert.equal(observed.quantity('ore'),null);
+ }
+ for(const value of [0,7,'listing-1','']){
+  const source=proof('R1','peer-v1',[{name:'ore',q:4,acc:value,rid:value}]);
+  assert.equal(source.complete,true,String(value));
+  assert.equal(ledger(local([]),[peer(source)],['R1'])
+   .quantity('ore',0,{acc:value,rid:value}),4);
+ }
+});

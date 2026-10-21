@@ -149,9 +149,9 @@ export function createSkills(bot){
     const aimed=['3shot','5shot'].includes(id);
     const independentAimed=aimed&&Array.isArray(independentTargets)&&
       independentTargets.length>0&&bot.me?.role==='farmer'&&
-      bot.me?.name!==bot.leader&&p.c.ctype==='ranger';
+      p.c.ctype==='ranger';
     const allowedTarget=e=>bot.allowed(e,independentAimed?
-      {independentOneShotSkill:id}:null);
+      {independentAimedSpawnSkill:id}:null);
     const visible=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
     // Targeted skills can initiate a controlled encounter: a neutral mob is
     // allowed only if the team plan, danger checks and planner all approve it.
@@ -207,24 +207,13 @@ export function createSkills(bot){
       if(!independentAimed)return true;
       if(liveTargets.length!==independentTargets.length||
          liveTargets.some(e=>!e||e.target||!allowedTarget(e)))return false;
-      const plan=bot.teamPlan?.heartbeat?.();
-      const leader=bot.transport?.fresh?.(bot.leader);
-      const peers=(bot.farmers??[]).filter(n=>n!==p.c.name)
-        .map(n=>bot.transport?.fresh?.(n));
-      if(peers.length!==(bot.farmers??[]).length-1)return false;
-      const claimed=new Set(peers.map(h=>h?.target).filter(x=>x!=null).map(String));
+      const claimed=new Set((bot.farmers??[])
+        .filter(n=>n!==p.c.name)
+        .map(n=>bot.transport?.fresh?.(n)?.target)
+        .filter(x=>x!=null).map(String));
       if(liveTargets.some(e=>claimed.has(String(e.id))))return false;
-      const remaining=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
-        m.target&&bot.teamNames.includes(m.target));
-      const proof=verifiedFollowerAoeOneShot(p.c,liveTargets,{
-        skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G})||
-        (!remaining.length&&verifiedFollowerAoeBoundedSpawn(p.c,liveTargets,{
-          skillId:id,skill:s,plan,leader,peers,realm:p.realm(),game:p.G}));
-      const shared=!remaining.length&&liveTargets.length>=
-        (id==='3shot'?3:4)&&liveTargets.every(m=>
-          bot.encounter?.soloSharedSpawn?.(m)===true);
-      return !!(proof||shared)&&
-        bot.encounter?.approvePullSet?.([...remaining,...liveTargets])?.safe===true;
+      return bot.encounter?.approveAimedSpawnPull?.(
+        liveTargets,id,s)?.safe===true;
     };
     if(independentAimed&&!independentProof())return false;
     // A two-target 3shot is useful when its verified effective damage exceeds
@@ -260,7 +249,9 @@ export function createSkills(bot){
       if(score&&score.gain<=0){count(id,'targetBlocked');return false;}
     }
     if(multi&&neutralCount>0&&
-      bot.encounter?.approvePullSet?.(selected)?.safe!==true){
+      (independentAimed?
+        bot.encounter?.approveAimedSpawnPull?.(selected,id,s)?.safe:
+        bot.encounter?.approvePullSet?.(selected)?.safe)!==true){
       count(id,'targetBlocked');
       bot.event?.('combat.multiPullDenied',{skill:id,
        reason:'unverified-aggregate-survival-or-healer-range',
@@ -298,7 +289,9 @@ export function createSkills(bot){
       (id!=='poisonarrow'||(()=>{const live=bot.entity(target?.id);return !!live&&poisonArrowCombatAllowed(p.G,live,bot.strategy?.heartbeat?.(),bot.bosses?.profile?.(live.mtype));})())&&
       (id!=='revive'||(()=>{const live=bot.entity(target?.name??target?.id);return !!live&&live.rip&&live.hp>=live.max_hp&&reviveDeathKey(bot,live)===reviveKey&&bot.revivals?.canCast(live,reviveKey)!==false;})())&&
       (id!=='heal'||explicit||!healCollision(target).defer)&&(id!=='cburst'||p.c.mp-burstMana-(s.mp??0)>=p.c.max_mp*reserve&&burstTargets.every(([targetId,mana])=>{const live=bot.entity(targetId);return live&&ready(id,live,reserve)&&bot.allowed(live)&&Number.isSafeInteger(mana)&&mana>0&&(burstTargets.length===1||eligible(live));}))&&(!s.hostile||!target||allowedTarget(bot.entity(target.id)))&&(!multi||(selected.filter(e=>!e.target).length<=(independentAimed?additional:extraAllowance())&&selected.every(e=>{const live=bot.entity(e.id);return !!(live&&(e.target?eligible(live):canPull(live)));})&&(!independentAimed||independentProof(selected.map(e=>bot.entity(e.id))))&&
-      (neutralCount===0||bot.encounter?.approvePullSet?.(selected)?.safe===true)));
+      (neutralCount===0||(independentAimed?
+        bot.encounter?.approveAimedSpawnPull?.(selected,id,s)?.safe:
+        bot.encounter?.approvePullSet?.(selected)?.safe)===true)));
     if(!guard()){
       const weapons=['mainhand','offhand'].flatMap(k=>asArray(p.G.items[p.c.slots?.[k]?.name]?.wtype));
       const cost=id==='burst'?p.c.mp:s.mp??0;
@@ -313,7 +306,12 @@ export function createSkills(bot){
       count(id,'started');
       if(id==='revive'&&bot.revivals?.claim(bot.entity(target.name??target.id),reviveKey)===false)throw Error('Revive-Todesbindung konnte nicht gespeichert werden');
       if(consume)bot.beginValue({kind:'consume',item:consume,before:prior,...(id==='revive'?{target:target.name,deathKey:reviveKey}:{} )});
-      const invoked=id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
+      // After the guarded admission, resolve aimed server IDs again. A
+      // candidate captured several scheduler ticks ago is not a live cast
+      // target even when its stale JavaScript object still has HP.
+      const currentArgs=aimed?selected.map(m=>bot.entity(m.id)):argsTarget;
+      const invoked=id==='heal'?p.call('heal',target):
+       p.call('use_skill',id,currentArgs,extra);
       // Only AFTER a real game API invocation, record shadow reservations.
       // Returning a promise from the skill is not equivalent to a hit.
       const affected=id==='cburst'?burstTargets.map(row=>row[0]):multi?selected.map(x=>x.id):
@@ -389,57 +387,59 @@ export function createSkills(bot){
     const allies=bot.allies().filter(e=>!e.rip);const t=r.target==='enemy'?target:r.target==='self'?p.c:r.target==='leader'?bot.entity(bot.leader):allies.sort((a,b)=>r.target==='lowestHp'?a.hp/a.max_hp-b.hp/b.max_hp:a.mp/a.max_mp-b.mp/b.max_mp)[0];
     if(['heal','partyheal','hardshell','selfheal'].includes(r.skill)&&((t??p.c).hp/(t??p.c).max_hp>=(r.hpThreshold??.7)))continue;if(r.skill==='partyheal'&&allies.filter(a=>a.hp/a.max_hp<(r.hpThreshold??.7)).length<(r.minInjured??2))continue;if(!t&&p.G.skills[r.skill]?.target)continue;if(use(r.skill,t,r.minMp,r.everyMs,r.maxTargets,true))return true;
   }return false;}
-  // Try an aimed multi-kill before ordinary single-target cleanup.
-  // This does not expose a general extra-pull budget to other skill paths.
+  // Autonomous aimed Ranger combat is a complete skill-specific decision:
+  // not leader-only, not dependent on adaptive BUILD capacity, and NEVER
+  // an untargeted area attack. Use exactly the chosen live IDs and repeat
+  // all safety and cooldown checks immediately before the network dispatch.
   function independentOneShotAoE(){
-    if(bot.me?.role!=='farmer'||bot.me.name===bot.leader||
-       !cfg.party.enabled||!bot.encounter?.soloOneShot||
+    if(bot.me?.role!=='farmer'||p.c.ctype!=='ranger'||
+       !cfg.party.enabled||!bot.encounter?.approveAimedSpawnPull||
        bot.strategy?.busy||bot.recovering||bot.movement?.order||
        bot.inventoryBlocked||bot.journal||bot.logistics?.reserved)
-       return false;
-    const plan=bot.teamPlan?.heartbeat?.(),leader=bot.transport?.fresh?.(bot.leader);
+      return false;
+    const plan=bot.teamPlan?.heartbeat?.();
     if(!plan?.id||bot.teamPlan?.target?.()!==plan.target)return false;
-    const peers=(bot.farmers??[]).filter(n=>n!==p.c.name).map(n=>bot.transport?.fresh?.(n));
-    if(peers.length!==(bot.farmers??[]).length-1)return false;
-    const claimed=new Set(peers.map(h=>h?.target).filter(x=>x!=null).map(String));
-    const engaged=bot.monsters().filter(m=>m?.hp>0&&!m.dead&&
-      m.target&&bot.teamNames.includes(m.target));
+    const claimed=new Set((bot.farmers??[])
+      .filter(n=>n!==p.c.name)
+      .map(n=>bot.transport?.fresh?.(n)?.target)
+      .filter(x=>x!=null).map(String));
     for(const id of ['5shot','3shot']){
-      const skill=p.G.skills?.[id],maximum=Math.min(
-        id==='3shot'?3:5,cfg.party.aoeMaxTargets??0);
-      const minimum=id==='3shot'?3:4;
+      const skill=p.G.skills?.[id],
+       maximum=Math.min(id==='3shot'?3:5,cfg.party.aoeMaxTargets??0),
+       minimum=id==='3shot'?2:4;
       if(!skill||maximum<minimum||!ready(id,null,.2))continue;
       const range=(skill.range??p.c.range)-5;
-      const selected=bot.monsters().filter(m=>m?.id!=null&&
-        m.type==='monster'&&!m.target&&!claimed.has(String(m.id))&&
+      const candidates=bot.monsters().filter(m=>m?.id!=null&&
+        m.type==='monster'&&!m.target&&m.mtype===plan.target&&
+        !claimed.has(String(m.id))&&samePlace(p.c,m)&&
         distance(p.c,m)<=range&&
-        (bot.encounter.soloOneShot(m,skill)||
-         !engaged.length&&(bot.encounter.soloBoundedSpawn?.(m,skill)||
-           bot.encounter.soloSharedSpawn?.(m)))&&
-        bot.allowed(m,{independentOneShotSkill:id}))
-       .sort((a,b)=>distance(p.c,a)-distance(p.c,b)||
-          String(a.id).localeCompare(String(b.id)))
-       .slice(0,maximum);
-      if(selected.length<minimum)continue;
-      const exact=verifiedFollowerAoeOneShot(p.c,selected,{
-        skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G});
-      const bounded=!engaged.length&&verifiedFollowerAoeBoundedSpawn(p.c,selected,{
-        skillId:id,skill,plan,leader,peers,realm:p.realm(),game:p.G});
-      const shared=!engaged.length&&selected.every(m=>
-        bot.encounter?.soloSharedSpawn?.(m)===true);
-      if(!(exact||bounded||shared)||
-         bot.encounter?.approvePullSet?.([...engaged,...selected])?.safe!==true)continue;
-      if(use(id,selected[0],.2,600,selected.length,false,selected)){
-        bot.target=selected[0];
-        bot.event?.(exact?'combat.independentOneShotAoE':
-          bounded?'combat.independentBoundedAoE':
-          'combat.independentSharedSpawnAoE',{
-          skill:id,targets:selected.length,
-          targetIds:selected.map(m=>m.id).join(','),
-          plan:plan.id,mode:exact?'verified-aimed-lethal-group':
-             bounded?'verified-bounded-short-multitarget':
-             'verified-low-threat-shared-spawn'});
-        return true;
+        bot.encounter.aimedSpawnAssessment?.(m)?.allowed===true&&
+        bot.allowed(m,{independentAimedSpawnSkill:id})&&
+        !p.call('is_on_cooldown',id))
+       .sort((a,b)=>{
+        // Smallest-risk monsters first; prefer more useful near enemies.
+        const threat=m=>(p.G.monsters[m.mtype]?.attack??Infinity)*
+          (p.G.monsters[m.mtype]?.frequency??Infinity);
+        return threat(a)-threat(b)||distance(p.c,a)-distance(p.c,b)||
+          String(a.id).localeCompare(String(b.id));
+       }).slice(0,maximum);
+      if(candidates.length<minimum)continue;
+      for(let count=Math.min(maximum,candidates.length);count>=minimum;count--){
+        const selected=candidates.slice(0,count);
+        const grant=bot.encounter.approveAimedSpawnPull(selected,id,skill);
+        if(!grant.safe)continue;
+        const damage=aoeDamageScore(p.c,skill,selected,selected[0]);
+        if(!damage?.gain||damage.gain<=0)continue;
+        if(use(id,selected[0],.2,600,selected.length,false,selected)){
+          bot.target=selected[0];
+          bot.event?.('combat.independentSharedSpawnAoE',{
+           skill:id,targets:selected.length,plan:plan.id,
+           targetIds:selected.map(m=>m.id).join(','),
+           mode:'verified-bounded-aimed-multitarget',
+           exposure:grant.exposure??null,
+           projectedGain:Math.round(damage.gain)});
+          return true;
+        }
       }
     }
     return false;

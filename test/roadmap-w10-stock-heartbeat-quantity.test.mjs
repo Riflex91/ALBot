@@ -42,3 +42,23 @@ test('W10 tampered peer reservations larger than held stock fail closed',()=>{
  assert.equal(ledger(proof).quantity('ore'),null);
  assert.equal(unpackInventoryEvidence(packInventoryEvidence(proof)),null);
 });
+
+test('W02 malformed transmitted variant identifiers fail closed before and after transport',()=>{
+ const valid=evidence([{name:'ore',q:4,acc:1,rid:'listing-1'}]);
+ assert.equal(valid.complete,true);
+ const packed=packInventoryEvidence(valid);
+ assert.ok(packed);
+ assert.equal(ledger(unpackInventoryEvidence(packed)).quantity('ore'),4);
+ for(const [field,index] of [['acc',5],['rid',6]]){
+  for(const value of [-1,1.25,Infinity,NaN,Number.MAX_SAFE_INTEGER+1,'x'.repeat(81)]){
+   const forged=structuredClone(valid);
+   forged.rows[0].item[field]=value;
+   assert.equal(ledger(forged).complete,false,field+':'+String(value));
+   assert.equal(packInventoryEvidence(forged),null,
+    'unserializable identities cannot turn into omitted/null fields');
+   const wire=structuredClone(packed);
+   wire.x[0][index]=value;
+   assert.equal(unpackInventoryEvidence(wire),null,field+':'+String(value));
+  }
+ }
+});

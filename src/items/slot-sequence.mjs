@@ -10,7 +10,13 @@ const MAX_STEPS=8,MAX_STATES=256;
 const qty=i=>i?.q===undefined?1:i.q;
 const positive=n=>Number.isSafeInteger(n)&&n>0;
 const clone=items=>items.map(i=>i?{...i}:null);
-const sig=items=>JSON.stringify(items.map(i=>i?[identity(i),qty(i)]:null));
+const slotIdentity=i=>{
+ try{
+  const key=identity(i);
+  return typeof key==='string'&&key.length>0&&key.length<=2048?key:null;
+ }catch{return null;}
+};
+const sig=items=>JSON.stringify(items.map(i=>i?[slotIdentity(i),qty(i)]:null));
 function stackLimit(meta){
  return meta?.s===true?9999:
   Number.isSafeInteger(meta?.s)&&meta.s>1?meta.s:1;
@@ -29,8 +35,9 @@ function openSlot(items,size){
  return items.length<size?items.length:-1;
 }
 function addOutput(items,raw,amount,G,size,wholeSlot=false){
- if(!raw||typeof raw.name!=='string'||!raw.name||!G?.items?.[raw.name]||
-    !positive(amount)||protectedItem(raw)||
+ if(!raw||typeof raw!=='object'||Array.isArray(raw)||
+    typeof raw.name!=='string'||!raw.name||!G?.items?.[raw.name]||
+    !slotIdentity(raw)||!positive(amount)||protectedItem(raw)||
     (raw.q!==undefined&&(!positive(raw.q)||raw.q!==amount)))return null;
  const item={...raw};delete item.q;
  const limit=stackLimit(G.items[item.name]);
@@ -130,7 +137,11 @@ export function planPhysicalSlotSequence(items,steps,G,{
  const start=physicalInventoryCapacity(items,{inventorySize});
  if(!start||items.some(i=>i!==null&&i!==undefined&&
     (typeof i!=='object'||Array.isArray(i)||
-     typeof i.name!=='string'||!i.name||!positive(qty(i)))))
+     typeof i.name!=='string'||!i.name||!slotIdentity(i)||
+     !positive(qty(i))||
+     // An observed source cannot contain more than its game's stack limit.
+     // Unknown metadata permits only an ordinary unstacked single item.
+     qty(i)>stackLimit(G.items[i.name]))))
   return fail('invalid-inventory');
  const ids=new Set();
  for(const s of steps){

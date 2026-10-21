@@ -66,8 +66,8 @@ test('Mage energize prioritizes maximum observed DPS rather than lowest mana rat
 });
 test('ready mutation inputs can promote Gear goals without manufacturing materials',()=>{
  const goal={item:'ringsj',level:1,gearSlot:'ring1'};
- assert.equal(gearInputReady(goal,[{name:'ringsj',level:0,q:3}],{compound:true}),true);
- assert.equal(gearInputReady(goal,[{name:'ringsj',level:0,q:2}],{compound:true}),false);
+ assert.equal(gearInputReady(goal,Array.from({length:3},()=>({name:'ringsj',level:0})),{compound:true}),true);
+ assert.equal(gearInputReady(goal,Array.from({length:2},()=>({name:'ringsj',level:0})),{compound:true}),false);
  assert.equal(gearInputReady({...goal,gearSlot:undefined},
    [{name:'ringsj',level:0,q:9}],{compound:true}),false);
  assert.equal(gearInputReady({...goal,item:'staff'},

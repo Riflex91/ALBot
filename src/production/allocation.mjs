@@ -2,26 +2,40 @@ import {gearCompatible,gearScore,gearSuitability} from './gear.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
 import {fingerprint,identity,protectedItem} from '../core/policy.mjs';
+// An allocated equipment unit is one physical non-stackable copy.
+const allocationGearVariant=item=>{
+ try{
+  if(!item||typeof item.name!=='string'||!item.name||
+     item.name.length>120)return null;
+  const key=identity(item);
+  return typeof key==='string'&&key.length>0&&key.length<=512?key:null;
+ }catch{return null;}
+};
+const allocationGearSingle=item=>item?.q===undefined||item.q===1;
 // Protect a confirmed inbound gear allocation until equip or expiry. An
 // automatic loot handoff must not return the very item the merchant supplied.
 export function pendingGearReceipt(receiving,item,now=Date.now()){
- return !!item&&Array.isArray(receiving)&&receiving.some(r=>
-  r?.state!=='equipped'&&Number.isFinite(r?.expires)&&r.expires>now&&
-  r.item&&identity(r.item)===identity(item));
+ const key=allocationGearVariant(item);
+ return !!key&&allocationGearSingle(item)&&Array.isArray(receiving)&&
+  receiving.some(r=>r?.state!=='equipped'&&Number.isFinite(r?.expires)&&
+   r.expires>now&&allocationGearSingle(r.item)&&
+   allocationGearVariant(r.item)===key);
 }
 // A durable unresolved/reserved gear claim still owns a physical copy.
 // An identical live item is not automatically a second available copy.
 export function unclaimedGearUnits(rows,items,item,{excludeId=null}={}){
  if(!Array.isArray(rows)||!Array.isArray(items)||!item||
     typeof item.name!=='string'||!item.name)return 0;
- const key=identity(item);
+ const key=allocationGearVariant(item);
+ if(!key||!allocationGearSingle(item))return 0;
  let held=0;
  for(const x of items){
-  if(!x||identity(x)!==key||protectedItem(x))continue;
-  const n=x.q??1;
-  if(!Number.isSafeInteger(n)||n<1)return 0;
-  held+=n;
-  if(!Number.isSafeInteger(held))return 0;
+  if(!x)continue;
+  const variant=allocationGearVariant(x);
+  if(!variant)return 0;
+  if(variant!==key||protectedItem(x))continue;
+  if(!allocationGearSingle(x))return 0;
+  if(!Number.isSafeInteger(++held))return 0;
  }
  let claimed=0;
  for(const row of rows){
@@ -44,17 +58,23 @@ export function inspectGearClaimEvidence(row,{items=[],peer=null,realm=null}={})
     !Number.isSafeInteger(row.quantity)||row.quantity!==1)
    return null;
  const live=Array.isArray(items)?items:[];
- const sourceCount=live.reduce((n,item)=>{
-  if(!item||identity(item)!==row.variant)return n;
-  const q=item.q??1;
-  return Number.isSafeInteger(q)&&q>0?Math.min(1000000,n+q):n;
- },0);
+ let sourceCount=0;
+ for(const item of live){
+  if(!item)continue;
+  const variant=allocationGearVariant(item);
+  if(!variant){sourceCount=null;break;}
+  if(variant!==row.variant)continue;
+  if(!allocationGearSingle(item)||
+     !Number.isSafeInteger(sourceCount+1)){sourceCount=null;break;}
+  sourceCount++;
+ }
  const sameSession=!!peer?.running&&!peer.rip&&
   peer.realm===realm&&typeof row.recipientSession==='string'&&
   !!row.recipientSession&&peer.session===row.recipientSession;
  const equipped=peer?.gear?.slots?.[row.gearSlot];
  const recipientEquippedMatch=sameSession&&!!equipped&&
-  identity({...equipped,l:undefined,b:undefined})===row.variant;
+  allocationGearSingle(equipped)&&
+  allocationGearVariant({...equipped,l:undefined,b:undefined})===row.variant;
  return {id:row.id,recipient:row.recipient,state:row.state,
   variant:row.variant,gearSlot:row.gearSlot,
   senderStillCarriesUnits:sourceCount,
@@ -111,6 +131,8 @@ export function createGearAllocation(bot){
      fingerprint(peer.gear?.slots?.[j.gear.slot])!==j.gear.expected)
     return false;
   const old=rows.find(r=>r.id===j.id);
+  if(old&&unclaimedGearUnits(rows,bot.p.c.items,live,
+     {excludeId:j.id})<j.quantity)return false;
   if(old)return old.state==='reserved'&&old.realm===bot.p.realm()&&old.recipient===j.to&&
     old.recipientSession===j.session&&old.fingerprint===j.fingerprint&&
     old.slot===j.slot&&old.variant===identity(live)&&
@@ -179,6 +201,7 @@ export function createGearAllocation(bot){
   if(unsafeReceiving||typeof id!=='string'||!id||id.length>240||
      typeof from!=='string'||!from||
      typeof session!=='string'||!session||
+     !allocationGearSingle(item)||!allocationGearVariant(item)||
      !Number.isSafeInteger(ttl)||ttl<1||
      !Number.isSafeInteger(g.expires)||g.expires<=now||
      g.expires>now+Math.max(1000,ttl*2)||
@@ -216,10 +239,19 @@ export function createGearAllocation(bot){
   return true;
  }
  function rules(){if(unsafeReceiving)return [];receiving=receiving.filter(r=>r.expires>Date.now());return receiving.filter(r=>fingerprint(bot.gear.snapshot().slots?.[r.slot])===r.expected).map(r=>({...defaultsFor(ITEM_RULE),name:'Gearzusage '+r.id,item:r.item.name,minLevel:r.item.level,maxLevel:r.item.level,statType:r.item.stat_type??'',property:r.item.p??'',title:r.item.title??'',role:bot.me.role,character:bot.me.name,action:'equip',slot:r.slot,priority:50000,targetCount:1,maxCount:1}));}
- function equipGuard(item,slot){if(unsafeReceiving)return false;const r=receiving.find(r=>r.slot===slot&&r.state!=='equipped'&&r.expires>Date.now());return !r||identity(r.item)===identity(item)&&fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;}
+ function equipGuard(item,slot){
+  if(unsafeReceiving||!allocationGearSingle(item)||
+     !allocationGearVariant(item))return false;
+  const r=receiving.find(r=>r.slot===slot&&
+   r.state!=='equipped'&&r.expires>Date.now());
+  return !r||allocationGearSingle(r.item)&&
+   allocationGearVariant(r.item)===allocationGearVariant(item)&&
+   fingerprint(bot.gear.snapshot().slots?.[slot])===r.expected;
+ }
  function tick(){
   const newReceiving=unsafeReceiving?receiving:receiving.map(r=>r.state!=='equipped'&&
-   identity(bot.p.c.slots?.[r.slot])===identity(r.item)?
+   allocationGearSingle(bot.p.c.slots?.[r.slot])&&
+   allocationGearVariant(bot.p.c.slots?.[r.slot])===allocationGearVariant(r.item)?
    {...r,state:'equipped'}:r);
   if(newReceiving.some((r,i)=>r!==receiving[i])&&
      bot.p.write(receivingKey,newReceiving)){
@@ -239,7 +271,8 @@ export function createGearAllocation(bot){
       peer.session!==r.recipientSession||!r.realm||
       peer.realm!==r.realm||bot.p.realm()!==r.realm)return r;
    const equipped=peer.gear?.slots?.[r.gearSlot];
-   return equipped&&identity({...equipped,l:undefined,b:undefined})===r.variant?
+   return equipped&&allocationGearSingle(equipped)&&
+    allocationGearVariant({...equipped,l:undefined,b:undefined})===r.variant?
     {...r,state:'equipped'}:r;
   });
   if(next.some((r,i)=>r!==rows[i]))save(next);

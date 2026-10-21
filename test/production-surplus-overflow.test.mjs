@@ -17,7 +17,7 @@ test('only physical copies of an exact variant may be dispositioned',()=>{
  const items=[{name:'mat',level:0,q:3},{name:'mat',level:1,q:2},
   {name:'mat',level:0,p:'rare',q:1},...Array(38).fill(null)];
  let reserved=3;
- const bot={p:{c:{items},G:{items:{mat:{type:'material',g:5}},craft:{},skills:{}},Gversion:1,
+ const bot={p:{c:{items},G:{items:{mat:{type:'material',g:5,s:9999}},craft:{},skills:{}},Gversion:1,
     call:()=>0},
    cfg:{production:{autoDisposition:true,enabled:true,exchange:false,minChance:.7,
        minImprovement:.1,lossBudget:10000},

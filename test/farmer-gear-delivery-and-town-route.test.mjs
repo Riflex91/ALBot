@@ -23,6 +23,9 @@ test('physical gear allocation respects explicit keep, other-recipient send, var
  assert.equal(finishedGearDeliveryStock([skull],g,()=>({action:'keep'})),0);
  assert.equal(finishedGearDeliveryStock([skull],g,()=>({action:'send',recipient:'Ranger2'})),0);
  assert.equal(finishedGearDeliveryStock([skull],g,()=>({action:'send',recipient:'Ranger1'})),1);
+ assert.equal(finishedGearDeliveryStock([skull],g,()=>({action:'send',recipient:'Ranger1',keep:1})),0);
+ assert.equal(finishedGearDeliveryStock([skull,{...skull}],g,
+  ()=>({action:'send',recipient:'Ranger1',keep:1})),1);
  assert.equal(finishedGearDeliveryStock([{...skull,l:true}],g),0);
  assert.equal(finishedGearDeliveryStock([{...skull,b:true}],g),0);
  assert.equal(finishedGearDeliveryStock([{...skull,level:1}],g),0);

@@ -44,6 +44,19 @@ Die Browseroberfläche steht unter \`konfigurator/public/index.html\`, der Worke
 
 **Wichtig:** \`Cloudflare Access\` muss vor der Worker-Domain aktiviert sein; bei fehlenden Access-Secrets gibt die Anwendung HTTP 503 statt einer ungeschützten Website zurück. Ohne Datenbank sind die Liveansichten leer, nicht erfunden. Der persönliche Ingame-Bootstrap bleibt bis zu einer gesonderten validierten Konfigurationssignatur unverändert.
 
+## Reproduzierbares Auto-Deployment nach `main` (Cloudflare Free)
+
+Die GitHub-Action [`deploy-konfigurator.yml`](../.github/workflows/deploy-konfigurator.yml) deployt bei Aenderungen unter `konfigurator/**`, `editor/**` oder am eigenen Workflow nach einem Merge auf `main` automatisch den **bereits existierenden Worker** `albot-konfigurator`. Alternativ kann sie per **Actions -> Deploy ALBot Konfigurator (Cloudflare Free) -> Run workflow** auf `main` gestartet werden. Es werden weder neue Datenbanken noch Access-Anwendungen erzeugt oder Cloudflare-Tarife geaendert.
+
+**Einmalige Einrichtung (ausschliesslich in GitHub -> Settings -> Secrets and variables -> Actions -> Repository secrets):**
+
+1. `CLOUDFLARE_ACCOUNT_ID`: Account-ID des bereits verwendeten kostenlosen Cloudflare-Accounts.
+2. `CLOUDFLARE_API_TOKEN`: eng auf diesen Account beschraenkter Cloudflare-Token mit Berechtigung **Workers Scripts: Edit**, um den vorhandenen Worker zu deployen. Der Token darf nicht im ALBot-Code, in `wrangler.toml`, im Dashboard-Frontend oder in einer Chat-Nachricht gespeichert werden.
+
+Ohne **beide** Secrets wird das Deployment vor dem ersten Build uebersprungen und es erscheint ein GitHub-Actions-Hinweis. Ein existierender Cloudflare-Login und dort hinterlegte Worker-Secrets werden **nicht automatisch** in GitHub uebernommen. Nach erfolgreichem Credential-Check muessen erst die Linux- und Windows-Laufzeiten sowie der komplette Node-Testumfang erfolgreich sein. Danach erstellt die Action die geschuetzten klassischen Editor-Assets neu und fuehrt `wrangler deploy` aus; `keep_vars=true` erhaelt die in Cloudflare gesetzten Worker-Secrets und Account-spezifischen Einstellungen.
+
+Eine gruene PR-CI **alleine ist kein Cloudflare-Deployment**. Nur ein erfolgreich beendeter `deploy`-Job in diesem gesonderten Workflow bestaetigt den Deployment-Aufruf. Die Access-geschuetzten API-Daten und neue Bankpakete muessen anschliessend weiterhin im echten Browser geprueft werden. Keine `wrangler d1 execute`-Migration, kein automatisches Loeschen historischer Bankdaten, kein kostenpflichtiges Cloudflare-Produkt.
+
 ## Voraussetzungen für echte Konfigurationsübernahme
 
 Für Hot-Reload muss künftig eine serverseitig signierte versionierte Konfiguration in einen allein lesbaren, bereinigten Clientkanal veröffentlicht werden. Der bestehende Ingame-Loader besitzt aktuell nur den verifizierten Runtime-Download mit persönlicher \`ALBotConfig\`. Weder GitHub-Commit noch Worker-Speichern alleine aktualisiert laufende Bots. Signaturvalidierung, Rollbackschutz, kompatible Schema-Migration, sichere Entscheidungspunkte und Charakter-ACK müssen vor Aktivierung implementiert und im Browser sowie Headless überprüft werden.

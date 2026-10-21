@@ -14,7 +14,7 @@ export function createServicePlan({holdMs=30000,now=()=>Date.now(),event=()=>{}}
   if(target===name)return true;
   const returning=history.slice(0,-1).some(x=>x.name===name),held=target&&time-since<holdMs;
   if(!urgent&&(held||returning)){
-   if(time-lastNotice>5000){lastNotice=time;event('merchant.switchBlocked',{from:target,to:name,reason:held?'Aktuellen Empfänger fertig bedienen':'Schnellen A→B→A-Wechsel vermeiden',retryAfter:held?since+holdMs:history.find(x=>x.name===name).at+window);}
+   if(time-lastNotice>5000){lastNotice=time;event('merchant.switchBlocked',{from:target,to:name,reason:held?'Aktuellen Empfänger fertig bedienen':'Schnellen A→B→A-Wechsel vermeiden',retryAfter:held?since+holdMs:history.find(x=>x.name===name).at+window});}
    return false;
   }
   const previous=target;target=name;since=time;history.push({name,at:time});

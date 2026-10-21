@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 21,
-      "version": "0.21.0-candidate",
+      "sequence": 22,
+      "version": "0.22.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 893872,
-      "sha256": "ca9c89221b67a438746929d6f0ef9c412bc465ce28b1bcbfae6a8f940e45ca93"
+      "bytes": 909990,
+      "sha256": "e4834ae4c80370d19337b808bfd2b155f4ab25709911ea1f1e1836f1c8f3fccb"
     },
     "observedLoadedUrl": null,
-    "note": "Sequenz 21 / 0.21.0-candidate am 20.10.2026 nach PR #318/#320 per GitHub Actions 39489966968 kryptografisch signiert und veroeffentlicht; Linux und Windows erfolgreich, V2-Bootstrap-URL, oeffentlicher EC-Schluessel und persoenliche ALBotConfig unveraendert. Ingame-Mehrfarmer-Verhalten muss mit neuen Logs noch bestaetigt werden."
+    "note": "Signierte Sequenz 22 / 0.22.0-candidate am 21.10.2026 nach PR #341 und PR #343 über GitHub Actions 39625179422 erfolgreich veröffentlicht. Koordinaten, Spawn-Rechteck-Verifikation und echte gezielte 3shot/5shot-Ausführung offline einschließlich Linux und Windows verifiziert. V2-Bootstrap, EC-Prüfschlüssel und persönliche Konfiguration unverändert. Live-Ingame-Wirksamkeit noch nicht bestätigt."
   }
 }

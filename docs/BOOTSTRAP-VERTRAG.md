@@ -1,3 +1,5 @@
+**Aktuell signiert und verifiziert: `0.24.0-candidate`, Sequence 24 (21.10.2026).** [PR #355](https://github.com/Riflex91/ALBot/pull/355) ist nach gruener Linux-/Windows-CI [39637823327](https://github.com/Riflex91/ALBot/actions/runs/39637823327) in Main. [Signierworkflow 39638036784](https://github.com/Riflex91/ALBot/actions/runs/39638036784): 2.274/2.274 Offline-Tests, ECDSA-P-256 gueltig, 916442 Runtime-Bytes, SHA-256 `56c2562496381ffdade50567fc33900cd15a9ad97453536cef5d98bb01f933f2`. Runtime byteidentisch zum freigegebenen Main-Commit `2ac84396ac482ebd12824f9d3338159528cd344d`. Rotationsfrist, verbindliche Materialarbeit, Markt-Fallback und Crafting-Gearziele sind enthalten. V2-Loader, Key, URLs und persoenliche Konfiguration bleiben unveraendert; Ingame-Liveabnahme offen. [Aenderungen und Grenzen](CHANGELOG-0.24.0.md). Fruehere Releaseangaben darunter sind historisch.
+
 # Verbindlicher Bootstrap-/Ladevertrag – überprüfter Ingame-CODE
 
 Stand: **20. Oktober 2026**. Grundlage: vom Benutzer übermittelter CODE und das für die Integration signierte Release-Manifest. Der tatsächliche Spielstart wurde nicht beobachtet.

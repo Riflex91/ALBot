@@ -1,3 +1,15 @@
+## W03/W04 — Stackgrenzen in Bank-Reclaim-Quittungen (21.10.2026)
+
+Alle neu bewerteten Reclaim-Belege nutzen die echte G-Metadatenobergrenze für jedes physische Quellen-/Zwischenstapelitem. Ungültige Mengen und unbekannte Quelle werden unbestätigt gehalten. Der vorhandene irreversible NPC-/Bank-Executor bleibt die einzige Ausführungsinstanz; kein Wiederholen ungeklärter Antworten. Restarbeiten: vollständige mehrstufige Slotfolgen und echte Ingame-Quittierung.
+
+## W06/G09 — physisch nachweisbare Marktbeobachtungen (21.10.2026)
+
+Die vorhandene automatische Marktnachfrage wird jetzt vor der Ratenschätzung gegen reale Stackgrößen und Replay-belastete gespeicherte Handelsmengen geschützt. Der Rückzug eigener Angebote akzeptiert nur eine echte, unveränderte Standmenge. Die neue Prüfung verhindert Phantom-Marktsignale, autorisiert aber keine zusätzlichen Käufe/Verkäufe, ersetzt keine echten Handelsquittungen und schließt W06/G09 oder W14 nicht vollständig ab.
+
+## G09 — strikter Own-Trade-Offer-Lebenszyklus (21.10.2026)
+
+Auch dieser Wertpfad verwendet nun den direkt gespeicherten `cstore_`-Datensatz statt des fehlertoleranten Adventure-Land-`get()`. Unklare Initialreads, beschädigte Einträge, konkurrierende Schreibvorgänge und fehlende Read-back-Belege blockieren weitere Listings und das Einbuchen eines Swaps. Das ersetzt keine fehlenden Serverbelege, erzeugt keinen automatischen Repost und verändert keine persönliche Konfiguration. Vollständige Markt-/Tauschautonomie offen.
+
 ## Fortschritt W12/N12 — eng begrenzte Cave-Pre-Dispatch-Recovery (21.10.2026)
 
 Ein nach Sessionwechsel verbliebener, garantiert noch nicht versendeter Cave-`prepared`-Checkpoint blockiert die nächste tatsächliche Berechtigungsprüfung nicht dauerhaft: Nur eine danach frische `cave_info`-Antwort, dieselbe Run-/Rosteridentität, Current-Realm-Prüfung und freie Wert-/Vote-/Crypt-Journale ermöglichen lokales Journal-Reset. Die schon implementierte Server-Dispatch-Unbekannt- und Exit-Recovery bleiben strikt gesperrt. Kein erfundener Cave-Exit, keine Erhöhung täglicher Versuche und keine neue API. Vollständiger W12/N12-/W14-Livebetrieb weiterhin offen.

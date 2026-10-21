@@ -22,3 +22,19 @@ test('W03/W04 only exact positive safe item stack quantities form a bank receipt
   'unrelated items do not modify this variant receipt');
  assert.equal(verifiedBankVariantCount(null,item),null);
 });
+
+test('W03/W04 bank quantity proofs reject physically impossible game stacks',()=>{
+ const G={items:{beewing:{s:99},ring:{}}};
+ assert.equal(verifiedBankVariantCount([
+  {name:'beewing',q:50},{name:'beewing',q:49}],item,G),99);
+ for(const q of [null,0,100,Number.MAX_SAFE_INTEGER]){
+  assert.equal(verifiedBankVariantCount([
+   {name:'beewing',q:1},{name:'beewing',q}],item,G),null,String(q));
+ }
+ assert.equal(verifiedBankVariantCount([{name:'ring'},{name:'ring'}],
+  {name:'ring'},G),2,'separate single-copy physical slots remain valid');
+ assert.equal(verifiedBankVariantCount([{name:'ring',q:2}],
+  {name:'ring'},G),null,'one invalid non-stackable row is not two copies');
+ assert.equal(verifiedBankVariantCount([{name:'beewing',q:1}],item,
+  {items:{}}),null,'unknown source metadata cannot prove bank stock');
+});

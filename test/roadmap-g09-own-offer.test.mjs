@@ -20,6 +20,7 @@ function fixture(seed=null){
  const p={G,c:{name:'M',items:inventory,isize:3,slots,
    map:'main',stand:true},has:n=>n==='trade_offer',
    realm:()=> 'EUI',read:k=>writes.get(k)??null,
+   readTradeOfferJournal:k=>writes.get(k)??null,
    write:(k,v)=>{writes.set(k,structuredClone(v));return true;},
    call:(name,...args)=>{
     calls.push({name,args});
@@ -218,7 +219,7 @@ test('G09 failed settlement checkpoint preserves unknown instead of claiming com
  f.slots.trade3=null;f.inventory[2]={name:'wand'};
  f.p.write=()=>false;
  assert.equal(f.maker.sample(),false);
- assert.equal(f.maker.status().state,'listing-absent-outcome-unverified');
+ assert.equal(f.maker.status().state,'storage-uncertain');
 });
 test('G09 only paused operator may clear EXACT verified receipt marker',async()=>{
  const f=fixture();f.maker.post(0,f.rule);
@@ -381,7 +382,7 @@ test('G09 failed durable listing checkpoint cannot be treated as confirmed',asyn
  assert.equal(f.pending.observe(),true);
  f.p.write=()=>false;
  assert.equal(f.pending.onConfirmed(),false);
- assert.equal(f.maker.status().state,'dispatch-intent-unverified');
+ assert.equal(f.maker.status().state,'storage-uncertain');
  assert.equal(f.maker.post(1,f.rule),false);
 });
 
@@ -552,4 +553,81 @@ test('G09 post-swap receipt refuses malformed incoming or outgoing quantity',asy
   assert.equal(f.maker.status().state,
    'listing-absent-outcome-unverified');
  }
+});
+
+test('G09 strict reader rejects corrupted or unavailable durable own-offer source',()=>{
+ for(const failure of ['missing','throws','malformed']){
+  const f=fixture();
+  if(failure==='missing')delete f.p.readTradeOfferJournal;
+  if(failure==='throws')f.p.readTradeOfferJournal=()=>{throw Error('storage unavailable');};
+  if(failure==='malformed')f.p.readTradeOfferJournal=()=>{throw SyntaxError('bad JSON');};
+  const reloaded=createOwnTradeOffer(f.bot);
+  assert.equal(reloaded.status().state,'storage-uncertain',failure);
+  assert.equal(reloaded.status().pendingReconciliation,true,failure);
+  assert.equal(reloaded.post(0,f.rule),false,failure);
+  assert.equal(f.calls.length,0,failure);
+ }
+});
+
+test('G09 post refuses competing durable intent before any trade_offer call',async()=>{
+ const f=fixture();
+ assert.equal(f.maker.post(0,f.rule),true);
+ f.writes.set('albot:trade-offer:v1:M',{by:'other-owner',state:'unknown'});
+ assert.throws(()=>f.pending.call(),/Barter intent persistence failed/);
+ assert.equal(f.calls.length,0);
+ assert.equal(f.maker.status().state,'storage-uncertain');
+ assert.deepEqual(f.writes.get('albot:trade-offer:v1:M'),
+  {by:'other-owner',state:'unknown'});
+});
+
+test('G09 unacknowledged written intent cannot be reissued when read-back fails',async()=>{
+ const f=fixture();
+ assert.equal(f.maker.post(0,f.rule),true);
+ let reads=0;
+ f.p.readTradeOfferJournal=k=>{
+  reads++;
+  return reads===1?null:{different:'unproven'};
+ };
+ assert.throws(()=>f.pending.call(),/Barter intent persistence failed/);
+ assert.equal(f.calls.length,0);
+ assert.equal(f.maker.status().state,'storage-uncertain');
+ assert.equal(f.maker.post(0,f.rule),false);
+});
+
+test('G09 competing durable update prevents swap completion without clobbering it',async()=>{
+ const f=fixture();f.maker.post(0,f.rule);
+ await f.pending.call();
+ assert.equal(f.pending.observe(),true);
+ assert.equal(f.pending.onConfirmed(),true);
+ const evt={type:'swap',event:true,seller:'M',buyer:'Other',
+  slot:'trade3',item:{name:'sword'},received:{name:'wand'},snum:2};
+ assert.equal(f.maker.observeSwap(evt),true);
+ f.slots.trade3=null;f.inventory[2]={name:'wand'};
+ const newer={...f.writes.get('albot:trade-offer:v1:M'),
+  at:Date.now()+50};
+ f.writes.set('albot:trade-offer:v1:M',newer);
+ assert.equal(f.maker.sample(),false);
+ assert.equal(f.maker.status().state,'storage-uncertain');
+ assert.deepEqual(f.writes.get('albot:trade-offer:v1:M'),newer);
+ assert.equal(f.maker.post(1,f.rule),false);
+});
+test('G09 exact trade storage port shares strict cstore contract with cave journals',()=>{
+ const data=new Map(),store={
+  getItem:key=>data.get(key)??null,
+  setItem:(key,value)=>data.set(key,value)
+ };
+ const port=createPorts({localStorage:store});
+ const key='albot:trade-offer:v1:M';
+ assert.equal(port.readTradeOfferJournal(key),null);
+ assert.equal(port.write(key,{version:1,state:'dispatch-intent-unverified'}),true);
+ assert.deepEqual(port.readTradeOfferJournal(key),
+  {version:1,state:'dispatch-intent-unverified'});
+ data.set('cstore_'+key,'{truncated');
+ assert.throws(()=>port.readTradeOfferJournal(key),SyntaxError);
+ assert.equal(port.read(key),null,
+  'normal forgiving get is NOT allowed to prove value journal absent');
+ for(const other of ['albot:trade-offer:v1:../P','albot:trade-offer:v2:M',
+  'albot:cave-lifecycle:P',null])
+  assert.throws(()=>port.readTradeOfferJournal(other));
+ assert.throws(()=>createPorts({}).readTradeOfferJournal(key));
 });

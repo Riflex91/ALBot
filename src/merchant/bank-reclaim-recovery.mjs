@@ -5,7 +5,7 @@ import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
 // No guess about missing bank packs or a checkpoint written by older code
 // may authorize a withdrawal or a second NPC sale.
 const safe=n=>Number.isSafeInteger(n)&&n>=0;
-export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}){
+export function validateBankReclaimRecord(record,{owner,realm,now=Date.now(),G}={}){
  const reject=reason=>({valid:false,reason});
  if(!record||typeof record!=='object'||Array.isArray(record)||
     record.version!==2||typeof owner!=='string'||!owner||
@@ -19,7 +19,13 @@ export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}
   return reject('invalid-addressed-slots');
  if(!record.item||typeof record.item.name!=='string'||!record.item.name||
     protectedItem(record.item)||!safe(record.quantity)||
-    record.quantity<1||record.quantity!==(record.item.q??1)||
+    record.quantity<1||
+    record.quantity!==(record.item.q===undefined?1:record.item.q)||
+    (G&&(!G.items?.[record.item.name]||
+     record.quantity>(G.items[record.item.name].s===true?9999:
+      Number.isSafeInteger(G.items[record.item.name].s)&&
+      G.items[record.item.name].s>1?
+       G.items[record.item.name].s:1)))||
     !safe(record.before)||!safe(record.bankBefore)||
     record.bankBefore<record.quantity||
     !safe(record.before+record.quantity))
@@ -89,9 +95,9 @@ export function validateBankReclaimRecord(record,{owner,realm,now=Date.now()}={}
 // NPC when the character has left the bank map. This does NOT prove an
 // offsite bank pack is empty or that an NPC sale already happened.
 export function inspectOffsiteBankReclaim(record,{
- owner,realm,now=Date.now(),inventory
+ owner,realm,now=Date.now(),inventory,G
 }={}){
- const v=validateBankReclaimRecord(record,{owner,realm,now});
+ const v=validateBankReclaimRecord(record,{owner,realm,now,G});
  if(!v.valid)return {eligible:false,reason:v.reason};
  if(record.saleConfirmed===true)return {
   eligible:false,reason:'npc-sale-already-confirmed-return-to-bank'
@@ -100,7 +106,7 @@ export function inspectOffsiteBankReclaim(record,{
     record.dest>=inventory.length)
   return {eligible:false,reason:'durable-withdrawal-or-inventory-missing'};
  const item=inventory[record.dest];
- const count=verifiedBankVariantCount(inventory,record.item);
+ const count=verifiedBankVariantCount(inventory,record.item,G);
  if(!item||fingerprint(item)!==record.sourcePrint||
     !safe(count)||count!==record.withdrawal.inventoryCount)
   return {eligible:false,reason:'offsite-source-slot-or-variant-count-changed'};
@@ -108,8 +114,8 @@ export function inspectOffsiteBankReclaim(record,{
 }
 
 export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
- inventory,bank,map,packMap}={}){
- const verified=validateBankReclaimRecord(record,{owner,realm,now});
+ inventory,bank,map,packMap,G}={}){
+ const verified=validateBankReclaimRecord(record,{owner,realm,now,G});
  if(!verified.valid)return {phase:'invalid',reason:verified.reason,confirmed:false};
  if(!Array.isArray(inventory)||record.dest>=inventory.length||
     typeof packMap!=='function'||typeof map!=='string'||!map)
@@ -122,8 +128,8 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
   return {phase:'unobserved',reason:'addressed-local-bank-pack-unavailable',confirmed:false};
  const pack=bank[record.pack],source=pack[record.slot],
   target=inventory[record.dest];
- const count=verifiedBankVariantCount(inventory,record.item),
-  bankCount=verifiedBankVariantCount(pack,record.item);
+ const count=verifiedBankVariantCount(inventory,record.item,G),
+  bankCount=verifiedBankVariantCount(pack,record.item,G);
  if(!safe(count)||!safe(bankCount))
   return {phase:'ambiguous',reason:'invalid-observed-quantities',confirmed:false};
  const original=!!source&&fingerprint(source)===record.sourcePrint,

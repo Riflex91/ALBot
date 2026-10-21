@@ -22,6 +22,8 @@ export function trackerDeliveryNeed(peer,realm,{reserve=4}={}){
 }
 // Preserve the Merchant's own tracker if it has no Super Computer. A
 // duplicate is surplus, and an available Super Computer replaces Tracktrix.
-export function trackerMerchantKeep(items){
- return carriedAchievementCarrier(items)==='tracker'?1:0;
+export function trackerMerchantKeep(items,{farmerNeeds=false}={}){
+ // An explicitly confirmed farmer deficit outranks the merchant's optional
+ // self-carrier reserve. Never infer that deficit from missing heartbeats.
+ return farmerNeeds===true?0:carriedAchievementCarrier(items)==='tracker'?1:0;
 }

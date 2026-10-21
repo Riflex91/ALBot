@@ -1,5 +1,6 @@
 import {defaultPolicy,validatePolicyDocument,previewGlobalItem} from './policy.mjs';
 import {DASHBOARD_REFRESH_MS,SNAPSHOT_FRESH_MS} from './free-tier.mjs';
+import {telemetrySummary} from './telemetry-summary.mjs';
 
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);if(cls)e.className=cls;return e;};
@@ -71,7 +72,7 @@ async function refreshLive(){
  const [chars,bank]=await Promise.allSettled([api('/api/characters'),api('/api/bank')]);
  acceptTelemetryResult('characters',chars);
  acceptTelemetryResult('bank',bank);
- if(['dashboard','characters','bank'].includes(state.view))render();
+ if(['dashboard','characters','bank','settings'].includes(state.view))render();
  }finally{refreshingLive=false;}
 }
 function save(){
@@ -98,23 +99,35 @@ function dashboard(){
  if(!state.configured)content.append(notice('Cloudflare Access und der private GitHub-Konfigurationsspeicher sind noch nicht verbunden. Bis zur Einrichtung bleibt die Weboberfläche read-only.'));
  for(const [label,kind] of [['Charaktere','characters'],['Bank','bank']])
   if(state.telemetryErrors[kind])content.append(notice(label+': Abruf fehlgeschlagen – '+state.telemetryErrors[kind]));
- const online=state.characters.filter(x=>fresh(x.observedAt)&&x.hp>0);
+ const observation=telemetrySummary({characters:state.characters,bank:state.bank,
+  errors:state.telemetryErrors});
  const measured=state.characters.filter(x=>fresh(x.observedAt)&&x.ratesMeasured!==false);
  const gold=measured.reduce((n,x)=>n+(Number(x.goldPerHour)||0),0);
  const metrics=node('div',undefined,'grid metrics');metrics.append(
-  metric('Charaktere online',state.telemetryErrors.characters?'—':online.length+' / '+state.characters.length,'Status jünger als 5 Minuten'),
+  metric('Charakter-Meldungen',observation.characters.available?
+   observation.characters.recent+' / '+observation.characters.total:'—',
+   'Innerhalb 5 Minuten beobachtet · kein Verbindungsnachweis'),
   metric('Gold pro Stunde',measured.length?fmt(gold):'—','Nur gemessene, frische Charakterdaten'),
-  metric('Bankfächer',state.telemetryErrors.bank?'—':fmt(state.bank.length),'Letzte beobachtete Snapshots'),
+  metric('Bankfächer frisch',observation.bank.available?
+   observation.bank.recent+' / '+observation.bank.total:'—',
+   'Nur gemeldete Fächer · keine vollständige Bankinventur'),
   metric('Itemrichtlinien',fmt(state.policy.items.length),'GitHub · nicht automatisch aktiviert'));content.append(metrics);
  const grid=node('div',undefined,'grid two'),one=card('Aktivitätsübersicht'),two=card('Sicherheit & Synchronisierung');
- if(!state.characters.length)one.append(empty(state.telemetryErrors.characters?'Charakterabfrage fehlgeschlagen':'Noch keine Live-Telemetrie',state.telemetryErrors.characters?'Fehler oben beachten. Falls der Relay-Upload erfolgreich war, /api/characters pruefen.':'Im Relay-Fenster zuerst Empfang aktivieren und einen erfolgreichen Upload bestaetigen. Danach das Dashboard neu laden.'));else{
+ if(!state.characters.length)one.append(empty(state.telemetryErrors.characters?'Charakterabfrage fehlgeschlagen':'Noch keine Live-Telemetrie',state.telemetryErrors.characters?'Fehler oben beachten. Falls der Relay-Upload erfolgreich war, /api/characters pruefen.':'Der ALBot-Direktsender überträgt bei korrekt konfiguriertem privatem Token automatisch alle 120 Sekunden. Prüfe im Spiel ALBot.telemetryStatus(); das Relay ist nur ein optionaler Ausweichweg.'));else{
   const t=table(['Name','Map / Realm','HP','Zuletzt']);
   for(const c of state.characters.slice(0,12))addRow(t.body,[c.name,c.map+' · '+c.realm,fmt(c.hp)+' / '+fmt(c.maxHp),fresh(c.observedAt)?pill('Live · '+age(c.observedAt),'ok'):pill('Veraltet · '+age(c.observedAt),'off')]);
   one.append(t.wrap);
  }
  two.append(notice('Veränderte Itemrichtlinien erzeugen weder direkte Verkäufe noch automatische Game-Updates. Der signierte ALBot-Bootstrap bleibt geschützt.',true));
  const list=node('div',undefined,'stack');
- for(const row of [['GitHub-Konfiguration',state.configured?'Verbunden':'Nicht eingerichtet'],['Telemetrie',state.health?.telemetryEnabled?'Server bereit':'Noch nicht eingerichtet'],['Live-Übernahme','Noch nicht freigeschaltet'],['Verkaufsfreigabe','Nur Ingame-Runtime nach eigener Prüfung']]){
+ for(const row of [['GitHub-Konfiguration',state.configured?'Verbunden':'Nicht eingerichtet'],
+  ['Telemetrie',state.health?.telemetryEnabled===true?'Worker bereit':state.health?.telemetryEnabled===false?'Worker nicht bereit':'Worker-Status nicht verfügbar'],
+  ['Letzter Charakter-Snapshot',observation.characters.available&&observation.characters.latest!==null?
+    'vor '+age(observation.characters.latest):'Nicht bestätigt'],
+  ['Letztes Bankfach',observation.bank.available&&observation.bank.latest!==null?
+    'vor '+age(observation.bank.latest):'Nicht bestätigt'],
+  ['Live-Übernahme','Noch nicht freigeschaltet'],
+  ['Verkaufsfreigabe','Nur Ingame-Runtime nach eigener Prüfung']]){
   const x=node('div',undefined,'row');x.append(node('span',row[0],'muted'),node('strong',row[1]));list.append(x);
  }two.append(list);grid.append(one,two);content.append(grid);
 }
@@ -251,7 +264,20 @@ function settings(){
  const grid=node('div',undefined,'grid two'),a=card('GitHub-Konfiguration'),b=card('Live-Schnittstellen');
  const values=[['Verbindung',state.configured?'Bereit':'Einrichtung erforderlich'],['Gespeicherter SHA',state.sha??'Noch nicht angelegt'],['Änderungen',state.dirty?'Ungespeichert':'Keine offenen'],['Ingame-Übernahme','Noch nicht aktiviert']];
  for(const [k,v] of values){const row=node('div',undefined,'row');row.append(node('span',k,'muted'),node('span',v));a.append(row);a.append(node('hr',undefined,'separator'));}
- b.append(node('p','Cloudflare Worker API, D1-Schema und Access-Verifikation sind vorbereitet. Die Character-/Bank-Telemetrie ist erst nach Einrichtung der geheimen Zugangsdaten nutzbar.','help'));
+ const observation=telemetrySummary({characters:state.characters,bank:state.bank,
+  errors:state.telemetryErrors});
+ const availability=state.health?.telemetryEnabled===true?'Worker-Telemetrie aktiviert':
+  state.health?.telemetryEnabled===false?'Worker-Telemetrie nicht bereit':
+  'Worker-Status derzeit nicht abrufbar';
+ b.append(node('p',availability+'. Ein gespeicherter Datensatz bestätigt nur die letzte empfangene Beobachtung, nicht dass ein Charakter derzeit online ist.','help'));
+ for(const [label,data] of [['Charaktere',observation.characters],['Bankfächer',observation.bank]]){
+  const line=node('div',undefined,'row');
+  line.append(node('span',label,'muted'),node('strong',
+   data.available?(data.recent+' / '+data.total+' jüngere als 5 Minuten · zuletzt '+
+    (data.latest===null?'nie':'vor '+age(data.latest))):'API-Abruf fehlgeschlagen'));
+  b.append(line);
+ }
+ b.append(node('p','Die private ALBot-Telemetrie wird direkt aus Adventure Land übertragen. Das Relay ist nur ein optionaler Ausweichweg. Kein Token wird auf dieser Seite abgefragt oder angezeigt.','help'));
  b.append(node('p',sourceNote,'help'));
  const link=node('a','GitHub-Implementierungsstand und Einrichtung');link.href='https://github.com/Riflex91/ALBot/blob/main/konfigurator/README.md';link.rel='noopener noreferrer';b.append(link);grid.append(a,b);content.append(grid);
 }

@@ -7,9 +7,10 @@ test('dashboard shows API failures instead of misreporting zero characters',asyn
  assert.match(source,/telemetryErrors:\{characters:null,bank:null\}/);
  assert.match(source,/acceptTelemetryResult\('characters',chars\)/);
  assert.match(source,/acceptTelemetryResult\('bank',bank\)/);
- assert.match(source,/state\.telemetryErrors\.characters\?'—'/);
+ assert.match(source,/observation\.characters\.available\?/);
+ assert.match(source,/observation\.bank\.available\?/);
  assert.match(source,/Charakterabfrage fehlgeschlagen/);
- assert.match(source,/Im Relay-Fenster zuerst Empfang aktivieren/);
+ assert.match(source,/Der ALBot-Direktsender überträgt/);
  assert.doesNotMatch(source,/if\(chars\.status==='fulfilled'\)state\.characters=/);
  assert.doesNotMatch(source,/if\(bank\.status==='fulfilled'\)state\.bank=/);
 });

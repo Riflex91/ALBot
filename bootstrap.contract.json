@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 31,
-      "version": "0.31.0-candidate",
+      "sequence": 32,
+      "version": "0.32.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 930741,
-      "sha256": "08ca21206962ae2fe5298263e11ad5c6d62790318f2b3ee24d50e18a5ab0fe55"
+      "bytes": 933121,
+      "sha256": "36e1e4f702ce1059fad2b610d8faea811e29a066870a758134619764c11101bd"
     },
     "observedLoadedUrl": null,
-    "note": "Offiziell signierte Runtime Sequenz 31 / 0.31.0-candidate: ereignisnahe Bank-Beobachtung, gepufferte echte Bank-Packs und Fehlerstatus-Rücksetzung. PR #387, #388 nach grüner Linux-/Windows-CI (39658948349, 39659471317); Release-PR #389 und geschützter Signierworkflow 39659853012 erfolgreich. Main- und signierte Runtime byteidentisch. V2-Loader, Public Key, Release-URLs und persönliche ALBotConfig unverändert. Ingame-Abnahme der Bank-Snapshots nach tatsächlichem Bankbesuch offen."
+    "note": "Signierte ALBot 0.32.0-candidate Runtime Sequence 32 aus PR #391 / Main fdbce853f4fc71c69c45240f5cda9ffe517a7032. Linux/Windows CI 39660456088 grün; Signierworkflow 39660752603 inklusive ECDSA-P-256, SHA-256, 933121 Bytes, kompletter Offline-Suite grün. Release-Runtime byteidentisch mit Main. V2-Loader, Public Key, Runtime-/Manifest-URLs und persönliche ALBotConfig unverändert; Spiel-Liveabnahme des Loot-Rückstandscontrollers offen."
   }
 }

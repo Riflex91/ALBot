@@ -1,4 +1,4 @@
-name: Temporary adjacent spawn current main source validation
+name: Temporary adjacent spawn current main source validation retry
 on:
   push:
     branches:

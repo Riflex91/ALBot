@@ -3,7 +3,9 @@ import {TELEMETRY_MIN_INTERVAL_MS} from './free-tier.mjs';
 
 const $=id=>document.getElementById(id);
 const state=$('state'),result=$('result'),button=$('activate'),counter=$('counter');
-let activated=false,successful=0;
+const characterResult=$('character-result'),bankResult=$('bank-result');
+let activated=false,successful=0,successfulCharacters=0,successfulBanks=0;
+const receivedAt=()=>new Date().toLocaleTimeString('de-DE');
 const lastAttempt=new Map();
 if(!window.opener){
  button.disabled=true;
@@ -27,36 +29,47 @@ window.addEventListener('message',async event=>{
    result.textContent='Spiel-Nachricht erkannt, aber Fensterzuordnung oder Datenformat ungültig.';
   return;
  }
- result.textContent='Spiel-Snapshot empfangen. Prüfe Cloudflare-Speicherung …';
- const bucket=relayBucket(accepted.packet);
- if(!bucket)return;
+ const {packet,serialized}=accepted;
+ const bank=packet.kind==='bank';
+ const kindResult=bank?bankResult:characterResult;
+ const label=bank?'Bank ('+packet.data.pack+')':'Charakter ('+packet.data.name+')';
+ const bucket=relayBucket(packet);
+ if(!bucket){
+  kindResult.textContent=label+': Paketzuordnung ungültig; nicht gesendet.';
+  return;
+ }
  const now=Date.now();
  const previous=lastAttempt.get(bucket);
- // Throttle *attempts*, including network failures/HTTP 429. No retry loop.
  if(previous!==undefined&&now-previous<TELEMETRY_MIN_INTERVAL_MS){
-  result.textContent='Wartezeit aktiv: erneuter Upload frühestens nach 120 Sekunden.';
+  kindResult.textContent=label+': lokaler Mindestabstand aktiv (120 Sekunden).';
   return;
  }
  lastAttempt.set(bucket,now);
+ kindResult.textContent=label+': Snapshot um '+receivedAt()+' empfangen; Cloudflare-Speicherung läuft …';
  try{
   const response=await fetch('/api/relay-ingest',{
    method:'POST',credentials:'same-origin',cache:'no-store',
-   headers:{'content-type':'application/json'},body:accepted.serialized
+   headers:{'content-type':'application/json'},body:serialized
   });
   if(!(response.headers.get('content-type')??'').includes('application/json'))
-   throw Error('Access-Anmeldung abgelaufen oder unerwartete Antwort');
+   throw Error('non-json');
   const body=await response.json();
   if(!response.ok||body?.ok!==true){
-   result.textContent=response.status===429?
-    'D1-Free-Drosselung aktiv. Bitte mindestens 120 Sekunden warten.':
-    'Upload abgewiesen (HTTP '+response.status+').';
+   const explanation=response.status===429?'D1-Free-Drosselung aktiv (HTTP 429)':
+    'Upload abgewiesen (HTTP '+response.status+
+    (typeof body?.error==='string'?'; '+body.error.slice(0,120):'')+')';
+   kindResult.textContent=label+': '+explanation;
+   result.textContent='Letztes Ereignis: '+label+' um '+receivedAt()+' nicht gespeichert.';
    return;
   }
   successful++;
-  counter.textContent='Erfolgreiche Uploads: '+successful;
-  result.textContent='Letzter erfolgreicher Upload: '+new Date().toLocaleTimeString('de-DE')+
-   ' ('+(accepted.packet.kind==='bank'?'Bankpack':'Charakter')+').';
+  if(bank)successfulBanks++;else successfulCharacters++;
+  counter.textContent='Erfolgreiche Uploads: '+successful+
+   ' (Charakter: '+successfulCharacters+'; Bank: '+successfulBanks+')';
+  kindResult.textContent=label+': zuletzt erfolgreich um '+receivedAt()+' gespeichert.';
+  result.textContent='Letztes Ereignis: '+label+' erfolgreich.';
  }catch{
-  result.textContent='Netzwerk- oder Anmeldefehler. Kein automatischer Retry.';
+  kindResult.textContent=label+': Netzwerk-, Anmelde- oder Serverantwortfehler; kein automatischer Retry.';
+  result.textContent='Letztes Ereignis: '+label+' um '+receivedAt()+' fehlgeschlagen.';
  }
 });

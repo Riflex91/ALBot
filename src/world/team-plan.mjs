@@ -560,7 +560,7 @@ export function createTeamPlan(bot){
     scope:'same-monsterhunt'};
    next=choice.choice;
   }
-  if(holdOrdinary&&(!request||current?.kind==='farm')&&old&&valid(current)){
+  if(holdOrdinary&&(!request||current?.kind==='farm'||current?.objective===request.objective)&&old&&valid(current)){
    const choice=chooseCommittedFarmArea({
     current,candidate:next,currentRank:old,character:p.c,now:Date.now(),
     holdMs:cfg.farming.planHoldMs??60000,
@@ -600,7 +600,7 @@ export function createTeamPlan(bot){
     selected.deferred?'Sicheres Zwischenfarming: '+selected.deferred+' ('+hunt.owner+')':
     selectedRequest?'Gemeinsamer Material-/Elixierbedarf':
     'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
-  if(!same){bot.target=null;if(!sameFarmDestination(current,proposal)&&['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
+  if(!same){if(current?.objective&&current.objective!==proposal.objective)bot.event('farmOrder.suspended',{objective:current.objective,reason:proposal.objective?'higher-priority-material-work':'merchant-order-unavailable-or-source-not-approved'});bot.target=null;if(!sameFarmDestination(current,proposal)&&['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
   if(!valid(current)||bot.strategy.busy)return false;

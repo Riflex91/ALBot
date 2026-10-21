@@ -138,3 +138,14 @@ test('healthy Priest keeps shared road route despite remote support-range emerge
   skills:{rotation:()=>healed++},event:()=>{}};
  createFarmer(bot).tick();assert.equal(movement.order,route);assert.equal(healed,1);
 });
+
+test('accepted material work keeps the physical spawn while travelling despite same-monster reranking',()=>{
+ const old=Date.now;let now=100000;Date.now=()=>now;
+ try{const {bot,requests}=farmFixture();bot.p.G.maps.main.monsters.push({type:'bee',boundaries:[['main',3500,0,3700,100]]});
+ requests.push({objective:'craft-work',item:'mat',monster:'bee',quantity:3,priority:10,expires:1000000});
+ const team=createTeamPlan(bot);team.tick();const initial=team.heartbeat();assert.equal(initial.kind,'material');
+ Object.assign(bot.p.c,{x:3600,y:0});now+=11000;bot.decisionEpoch++;team.tick();
+ assert.equal(team.heartbeat().key,initial.key);assert.equal(team.heartbeat().objective,'craft-work');
+ assert.equal(team.status().switchAdvice.reason,'committed-farm-trip');
+ }finally{Date.now=old;}
+});

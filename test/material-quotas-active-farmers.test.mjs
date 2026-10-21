@@ -129,3 +129,42 @@ test('stale offline or wrong-realm missing progress does not freeze active team'
   materialProgress:undefined}),peer('C',0,{realm:'USIV',materialProgress:null})]);
  assert.deepEqual(result,{remaining:8,quotas:[{name:'A',quantity:10}]});
 });
+
+test('W06/G09 account-wide material arithmetic rejects unsafe aggregate without farming permission',()=>{
+ const large=Number.MAX_SAFE_INTEGER;
+ const peers={A:peer('A',large),B:peer('B',1)};
+ const result=planMaterialQuotas({...request,quantity:9},['A','B'],
+  name=>peers[name],'EUII');
+ assert.deepEqual(result,{remaining:9,quotas:[]});
+ for(const name of ['A','B'])
+  assert.equal(materialQuotaCap({...request,...result},name),0);
+});
+
+test('W06/G09 safe large totals remain exact instead of imprecise float sums',()=>{
+ const quantity=Number.MAX_SAFE_INTEGER,first=quantity-5;
+ const peers={A:peer('A',first),B:peer('B',4)};
+ const plan=planMaterialQuotas({...request,quantity},['A','B'],
+  name=>peers[name],'EUII');
+ assert.equal(plan.remaining,1);
+ assert.deepEqual(plan.quotas,[{name:'A',quantity:first+1},
+  {name:'B',quantity:4}]);
+ assert.equal(plan.quotas[0].quantity+plan.quotas[1].quantity,quantity);
+});
+
+test('W06/G09 inaccessible or unbounded peer reports pause all new quotas',()=>{
+ const peers={A:peer('A',1),B:peer('B',2)};
+ const base=()=>planMaterialQuotas(request,['A','B'],
+  name=>peers[name],'EUII');
+ assert.equal(base().remaining,6);
+ assert.deepEqual(planMaterialQuotas(request,['A','B'],
+  name=>name==='B'?(()=>{throw Error('heartbeat unavailable');})():peers[name],
+  'EUII'),{remaining:9,quotas:[]});
+ peers.B.materialProgress=Array.from({length:129},(_,n)=>({
+  objective:'unrelated:'+n,quantity:1}));
+ assert.deepEqual(base(),{remaining:9,quotas:[]});
+ peers.B.materialProgress=[{objective:request.objective,quantity:2}];
+ assert.deepEqual(planMaterialQuotas(request,['A','B'],name=>peers[name],
+  'EUII',{freeReserve:-1}),{remaining:9,quotas:[]});
+ assert.deepEqual(planMaterialQuotas(request,Array(129).fill('A'),
+  name=>peers[name],'EUII'),{remaining:9,quotas:[]});
+});

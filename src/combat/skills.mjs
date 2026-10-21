@@ -306,7 +306,12 @@ export function createSkills(bot){
       count(id,'started');
       if(id==='revive'&&bot.revivals?.claim(bot.entity(target.name??target.id),reviveKey)===false)throw Error('Revive-Todesbindung konnte nicht gespeichert werden');
       if(consume)bot.beginValue({kind:'consume',item:consume,before:prior,...(id==='revive'?{target:target.name,deathKey:reviveKey}:{} )});
-      const invoked=id==='heal'?p.call('heal',target):p.call('use_skill',id,argsTarget,extra);
+      // After the guarded admission, resolve aimed server IDs again. A
+      // candidate captured several scheduler ticks ago is not a live cast
+      // target even when its stale JavaScript object still has HP.
+      const currentArgs=aimed?selected.map(m=>bot.entity(m.id)):argsTarget;
+      const invoked=id==='heal'?p.call('heal',target):
+       p.call('use_skill',id,currentArgs,extra);
       // Only AFTER a real game API invocation, record shadow reservations.
       // Returning a promise from the skill is not equivalent to a hit.
       const affected=id==='cburst'?burstTargets.map(row=>row[0]):multi?selected.map(x=>x.id):

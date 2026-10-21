@@ -1,0 +1,43 @@
+name: Temporary G09 final artifact regeneration
+on:
+  push:
+    branches: [codex/g09-strict-trade-journal-20261021]
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: ${{ github.repository == 'Riflex91/ALBot' && github.ref == 'refs/heads/codex/g09-strict-trade-journal-20261021' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Build verified source artifacts with exact updated Cave error contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff -X theirs origin/main
+          if git ls-files -u | grep .; then exit 1;fi
+          grep -q "strictJournalValue(key,'trade offer')" src/runtime/ports.mjs
+          grep -q "strictJournalValue(key,'Cave')" src/runtime/ports.mjs
+          npm ci --ignore-scripts
+          node --test test/roadmap-g09-own-offer.test.mjs test/roadmap-n12-cave-persistence-port.test.mjs
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:bootstrap:auto
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          git add -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/manifest.json dist/albot.settings.json dist/albot.bootstrap.auto.js editor/Bot-Werkstatt.html editor/albot.settings.json profiles/full-solo.json profiles/full-team.json
+          git commit -m "build(G09): source-align strict trade journal runtime after regression fixes"
+          git push origin "HEAD:codex/g09-strict-trade-journal-20261021"

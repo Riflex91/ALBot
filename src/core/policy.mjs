@@ -1,6 +1,16 @@
 import {ruleRank} from '../../editor/lib/contract.mjs';
-export const xy=e=>({x:e?.real_x??e?.x,y:e?.real_y??e?.y});
-export const distance=(a,b)=>Math.hypot(xy(a).x-xy(b).x,xy(a).y-xy(b).y);
+// Read one coherent coordinate pair: native real coordinates if both are
+// finite, otherwise both stable fallback coordinates. Mixing one realtime
+// axis with one stale client axis falsely places mobs outside their spawn.
+export const xy=e=>Number.isFinite(e?.real_x)&&Number.isFinite(e?.real_y)?
+ {x:e.real_x,y:e.real_y}:
+ Number.isFinite(e?.x)&&Number.isFinite(e?.y)?
+ {x:e.x,y:e.y}:{x:NaN,y:NaN};
+export const distance=(a,b)=>{
+ const x=xy(a),y=xy(b);
+ return [x.x,x.y,y.x,y.y].every(Number.isFinite)?
+  Math.hypot(x.x-y.x,x.y-y.y):Infinity;
+};
 export const samePlace=(a,b)=>!!a&&!!b&&a.map===b.map&&String(a.in??a.map)===String(b.in??b.map);
 export const protectedItem=i=>!i||!!(i.l||i.b||i.bound||i.locked||i.equipped||i.reserved||i.giveaway);
 export const identity=i=>i?JSON.stringify([i.name,i.level??0,i.stat_type??'',i.p??'',i.title??'',i.acc??'',i.rid??'',i.l??'',i.b??'',...(i.data===undefined?[]:[i.data])]):'';

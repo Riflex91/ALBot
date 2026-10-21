@@ -1,0 +1,45 @@
+name: Temporary ALBot merchant source synchronization
+on:
+  push:
+    branches:
+      - fix/merchant-delivery-gear-tracker-20261021
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.event.head_commit.message != 'build(merchant): sync generated runtime v0.33'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/merchant-delivery-gear-tracker-20261021
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Run complete Linux regression suite before bundling
+        run: npm test
+      - name: Generate runtime and personal code without touching config
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run build:editor
+      - name: Verify source/personal synchronization
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          npm run check:bootstrap:auto
+          node scripts/verify-bootstrap-contract.mjs
+      - name: Commit generated outputs to feature branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bot.js dist editor/Bot-Werkstatt.html editor/albot.settings.json profiles/full-solo.json profiles/full-team.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(merchant): sync generated runtime v0.33'
+            git push origin HEAD:fix/merchant-delivery-gear-tracker-20261021
+          fi

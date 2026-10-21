@@ -37,3 +37,8 @@ Fünf gezielte Node-Regressionen:
 Neue signierte Runtime ausschließlich nach grüner Linux-/Windows-CI,
 konfliktfreiem Main-Merge, Release-Workflow und gültiger
 ECDSA-P-256-/SHA-256-/Bytezahlprüfung. Spiel-Liveabnahme bleibt offen.
+
+## Zertifizierte Veröffentlichung (21.10.2026)
+
+**Aktuell signiert und kryptografisch verifiziert: `0.28.0-candidate`, Sequence 28 (21.10.2026).** [Farmer-first-Gear-Fix PR #378](https://github.com/Riflex91/ALBot/pull/378) nach [grüner Linux-/Windows-CI 39649989650](https://github.com/Riflex91/ALBot/actions/runs/39649989650) in Main (`275094333880f74595c0007d847f1465a51bb720`). [Signierworkflow 39650511597](https://github.com/Riflex91/ALBot/actions/runs/39650511597): 2.325/2.325 Offline-Tests, ECDSA-P-256 gültig, 926463 Runtime-Bytes, SHA-256 `1367b966f64faefb8556567db32656b749e2d98adbc943e80f0579012f851261`. Veröffentlichte Runtime byteidentisch mit Main; V2-Loader, Public Key, URLs und persönliche ALBotConfig unverändert. **Ingame-Liveabnahme offen.** Ältere Freigabeangaben darunter sind historisch.
+

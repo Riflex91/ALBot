@@ -107,3 +107,51 @@ export function measuredSlotUtilityPriority(goal,candidates,{profile,now=Date.no
  if(!Number.isFinite(range)||range<=0)return 0;
  return Math.min(12,Math.max(0,Math.round(12*(goal.utility-low)/range)));
 }
+
+
+// W05/W08: passive actual before/after GEAR and live character stat readings.
+// This never proves a causal DPS/survival improvement: buffs, effects, target
+// selection and movement may change stats between snapshots. No scheduling,
+// spending, mutation or shipment receives authority from this evidence.
+const GEAR_OBSERVATION_STATS=['attack','frequency','armor','resistance',
+ 'max_hp','max_mp','range','crit','apiercing','rpiercing'];
+export function observedGearStatDelta(before,after,{
+ now=Date.now(),maxGapMs=300000
+}={}){
+ if(!freshGearEvidence(before,now)||!freshGearEvidence(after,now)||
+    !Number.isSafeInteger(maxGapMs)||maxGapMs<1||maxGapMs>3600000||
+    typeof before.session!=='string'||!before.session||
+    before.session!==after.session||before.realm!==after.realm||
+    before.class!==after.class||before.level!==after.level||
+    after.at<=before.at||after.at-before.at>maxGapMs||
+    !before.stats||typeof before.stats!=='object'||
+    Array.isArray(before.stats)||!after.stats||
+    typeof after.stats!=='object'||Array.isArray(after.stats))return null;
+ const keys=Object.keys(before.stats),nextKeys=Object.keys(after.stats);
+ if(keys.length<2||keys.length!==nextKeys.length||
+    keys.some(k=>!GEAR_OBSERVATION_STATS.includes(k)||
+      !Object.hasOwn(after.stats,k)||!Number.isFinite(before.stats[k])||
+      !Number.isFinite(after.stats[k])||
+      Math.abs(before.stats[k])>1e9||Math.abs(after.stats[k])>1e9))
+  return null;
+ const signature=item=>item===null?'null':JSON.stringify([
+  item.name,item.level,item.stat_type??'',item.p??'',
+  item.title??'',item.l??false,item.b??false]);
+ let changed;
+ try{changed=SLOT_KEYS.filter(k=>
+  signature(before.slots[k])!==signature(after.slots[k]));}
+ catch{return null;}
+ if(changed.length!==1)return null;
+ const slot=changed[0],statDelta={};
+ for(const key of keys){
+  const d=after.stats[key]-before.stats[key];
+  if(!Number.isFinite(d))return null;
+  statDelta[key]=d;
+ }
+ return {version:1,kind:'observed-live-character-stat-delta',
+  realm:after.realm,session:after.session,slot,
+  from:before.slots[slot],to:after.slots[slot],
+  beforeAt:before.at,afterAt:after.at,statDelta,
+  directlyObserved:true,causalityConfirmed:false,
+  executable:false,priorityAuthorized:false};
+}

@@ -23,10 +23,14 @@ export function townShortcutRetryReady(now,lastSuccess,lastAttempt){
 }
 export function townChannelTeamThreat(character,monsters=[],team=[]){
  if(!character||!Array.isArray(monsters)||!Array.isArray(team))return true;
- return monsters.some(m=>m&&m.hp>0&&!m.dead&&
-  typeof m.target==='string'&&
-  (m.target===character.name||team.includes(m.target))&&
-  samePlace(character,m)&&distance(character,m)<350);
+ return monsters.some(m=>{
+  if(!m||m.dead===true||m.hp===0||typeof m.target!=='string'||
+     m.target!==character.name&&!team.includes(m.target))return false;
+  // No authoritative location/health data is NOT proof of a safe channel.
+  if(!m.map||!Number.isFinite(xy(m).x)||!Number.isFinite(xy(m).y))
+   return true;
+  return samePlace(character,m)&&distance(character,m)<350;
+ });
 }
 export function createMovement(bot){
   const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,lastTownAttempt=0,townQueued=false,moveSeq=0;

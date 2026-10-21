@@ -456,9 +456,13 @@ export function install(root){
       bank:me.role==='merchant'?observedBankTelemetry(
         p.c,p.realm(),p.G?.bank_packs??{}):[]
     }),
-    telemetryStatus:()=>telemetryAuto?.status().configured?telemetryAuto.status():
-      telemetryRelay?.status()??{connected:false,opened:false,
-        intervalMs:GAME_RELAY_INTERVAL_MS,unsupported:true},
+    telemetryStatus:()=>telemetryAuto?{
+      ...telemetryAuto.status(),
+      active:!disposed&&bot.running&&telemetryAutoInterval!==null,
+      relay:telemetryRelay?.status()??null
+    }:telemetryRelay?{mode:'relay-only',...telemetryRelay.status()}:
+      {mode:'unavailable',configured:false,active:false,
+       connected:false,opened:false,intervalMs:GAME_RELAY_INTERVAL_MS,unsupported:true},
     openTelemetryRelay(){
       if(disposed||telemetryAuto?.status().configured||!telemetryRelay||typeof root.setInterval!=='function')return false;
       if(!telemetryRelay.open())return false;

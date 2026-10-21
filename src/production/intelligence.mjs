@@ -4,7 +4,7 @@ import {isAchievementCarrier} from '../items/achievement-utility.mjs';
 const identityVariant=(a,b)=>identity(a)===identity(b);
 import {exchangeDrops} from './materials.mjs';
 import {itemPurposes} from '../items/purposes.mjs';
-import {boundedStockSurplus,boundedStockVariantAllowed} from '../items/stock-policy.mjs';
+import {boundedStockSurplus,boundedStockVariantAllowed,verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 import {physicalInventoryCapacity} from '../items/physical-capacity.mjs';
 import {mutationContext,mutationHelpers} from './helpers.mjs';
 import {gearScore,gearCompatible,gearSuitability,gearSlotPriority,autoGearTargetLevel} from './gear.mjs';
@@ -166,9 +166,12 @@ function futureGear(i){return gearUse(i).state!=='no-gear-use';}
  // Sell-or-compound optimization over the FINITE, currently actionable
  // inventory. Each batch consumes three units; a failed attempt returns zero
  // units. Future results cannot be financed with nonexistent inputs.
- const local=p.c.items.filter(x=>x&&identityVariant(x,i)&&bot.economy.safe(x))
-   .reduce((n,x)=>n+(Number.isSafeInteger(x.q)&&x.q>0?x.q:1),0);
- const held=Number.isSafeInteger(heldOverride)&&heldOverride>=local?heldOverride:local;
+ const local=verifiedProductionStockQuantity(p.G,
+  p.c.items.filter(x=>x&&identityVariant(x,i)&&bot.economy.safe(x)),i);
+ if(local===null)return {level:i.level??0,ev:current,
+  action:'bank',reason:'unverified-physical-compound-quantity'};
+ const held=Number.isSafeInteger(heldOverride)&&heldOverride>=local?
+  heldOverride:local;
  const reserved=bot.production?.reservedQuantity?.(i)??0;
  const n=Math.min(42,surplusQuantity(held,reserved));
  if(n<1)return {level:i.level??0,ev:current,action:'bank',reason:'no-unreserved-copies'};
@@ -273,7 +276,9 @@ function mutationEconomics(i,{heldOverride=null}={}){
    if(cfg.production.autoDisposition!==true||!bot.economy.safe(i)||isAchievementCarrier(i))return null;
    // A goal only protects its exact-variant allocation; other held copies
    // remain available for normal economic decision making.
-   if(!surplusQuantity(variantCount(p.c.items??[],i),bot.production?.reservedQuantity?.(i)??0))return null;
+   const witnessed=verifiedProductionStockQuantity(p.G,p.c.items??[],i);
+   if(witnessed===null||!surplusQuantity(witnessed,
+      bot.production?.reservedQuantity?.(i)??0))return null;
   const operating=automaticOperatingStockRule(bot,i);
   if(operating){noteDisposition(i,operating,{reason:'Endlicher NPC-ersetzbarer Betriebsvorrat mit voller Teamreserve'});return operating;}
   const purposes=itemPurposes(p.G,i);
@@ -281,8 +286,11 @@ function mutationEconomics(i,{heldOverride=null}={}){
   // Equipment ingredients must pass the recipe check BEFORE equipment
   // liquidation. Active production allocations remain authoritative.
   const recipeTarget=purposes.recipes.length?Math.max(...purposes.recipes.map(r=>r.quantity).filter(Number.isSafeInteger)):0;
-  const bankCopies=stockItems().filter(r=>r.pack&&identityVariant(r.item,i)).reduce((n,r)=>n+(r.item.q??1),0);
-  const recipeKeep=Number.isFinite(recipeTarget)?Math.max(0,recipeTarget-bankCopies):0;
+  const bankCopies=verifiedProductionStockQuantity(p.G,
+   stockItems().filter(r=>r.pack&&identityVariant(r.item,i)).map(r=>r.item),i);
+  if(bankCopies===null)return null;
+  const recipeKeep=Number.isFinite(recipeTarget)?
+   Math.max(0,recipeTarget-bankCopies):0;
   // Preserve any unusual item variant; NPC sell value does not price rare
   // effects (such as cxjar with data="makeawish"). Explicit user rules win.
   if(i.data!==undefined&&i.data!==null||i.acc||i.rid||i.p||i.title||i.stat_type||i.skin||i.expires)return null;const m=p.G.items[i.name];if(!m||m.cash||m.quest||m.event||['pot','elixir','scroll','uscroll','cscroll','offering','stand','tool','booster'].includes(m.type))return null;
@@ -292,14 +300,13 @@ function mutationEconomics(i,{heldOverride=null}={}){
   if(equipment){
     const use=gearUse(i);
     const reserve=surplusEquipmentReserve(i);
-    const local=p.c.items.reduce((n,x)=>n+
-      (x&&identityVariant(x,i)?(x.q??1):0),0);
+    const local=witnessed;
     const redundant=use.state!=='unknown'&&
       Number.isSafeInteger(reserve)&&reserve>0&&local>reserve;
     if(use.state!=='no-gear-use'&&!redundant)return null;
     const value=bot.economy.value(i),progressable=!!(m.upgrade||m.compound);
     const choice=progressable?mutationEconomics(i):{level:i.level??0,ev:value,action:'sell',reason:'non-progressive-equipment'};
-    const count=p.c.items.filter(x=>x&&identityVariant(x,i)).reduce((n,x)=>n+(x.q??1),0);let action=me.role==='farmer'?'send':choice.action;
+    const count=witnessed;let action=me.role==='farmer'?'send':choice.action;
    if(me.role==='merchant'&&['upgrade','compound'].includes(action)&&(!cfg.production.enabled||!cfg.production[action]))action='bank';if(me.role==='merchant'&&progressable&&m.compound&&count<3){
     const hypothetical=mutationEconomics(i,{heldOverride:3});
     // Only accumulate when completing ONE bounded triple is economically
@@ -337,8 +344,10 @@ function mutationEconomics(i,{heldOverride=null}={}){
   const derived={...defaultsFor(ITEM_RULE),name:'Ökonomische Disposition '+i.name,item:i.name,role:me.role,character:me.name,recipient:action==='send'?cfg.party.merchant:'',action,priority:-500,_autoDisposition:true,minLevel:0,maxLevel:0,batch:action==='bank'&&recipeUsed?Math.max(1,Math.min(100,recipeKeep)):100,maxCount:100000,targetCount:100000,lossBudget:cfg.production.lossBudget,minChance:cfg.production.minChance,minPrice:action==='sell'?Math.floor(value):1,keep:0};noteDisposition(i,derived);return derived;
  }
  function profitGoals(){if(Number.isInteger(bot.decisionEpoch)&&Date.now()-profitAt<1000)return profits;if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||!cfg.production.autoDisposition)return [];const result=[],stock=stockItems();for(const {item:i} of stock){if(itemPurposes(p.G,i).protected||itemPurposes(p.G,i).recipes.length||bot.economy.explicit(i)||futureGear(i)||!p.G.items[i.name]?.upgrade&&!p.G.items[i.name]?.compound)continue;const sources=stock.filter(r=>identityVariant(r.item,i));
-   const accessible=sources.reduce((n,r)=>n+(Number.isSafeInteger(r.item.q)?r.item.q:1),0);
-   const choice=mutationEconomics(i,{heldOverride:accessible}),kind=choice.action;if(!['upgrade','compound'].includes(kind)||!cfg.production[kind])continue;if(kind==='compound'&&sources.reduce((n,r)=>n+(r.item.q??1),0)<3)continue;if(choice.ev<=bot.economy.value(i))continue;
+   const accessible=verifiedProductionStockQuantity(p.G,
+    sources.map(r=>r.item),i);
+   if(accessible===null)continue;
+   const choice=mutationEconomics(i,{heldOverride:accessible}),kind=choice.action;if(!['upgrade','compound'].includes(kind)||!cfg.production[kind])continue;if(kind==='compound'&&accessible<3)continue;if(choice.ev<=bot.economy.value(i))continue;
    // Remote or bank acquisitions consume time and have nonzero opportunity
    // cost. No irreversible mutation is authorized by this planning stock.
    const external=sources.some(r=>r.owner!==me.name||r.pack);

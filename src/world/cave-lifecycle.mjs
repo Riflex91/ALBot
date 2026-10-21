@@ -139,7 +139,8 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   }catch{writeFailed=true;return false;}
  }
  function prepare(){
-  if(closed||!bot.running||status().blocked)return false;
+  if(closed||!bot.running||status().blocked||
+     bot.cryptLifecycle?.status?.()?.blocked===true)return false;
   const preflight=bot.cave?.status?.()?.entryPreflight;
   const at=now();
   if(!caveLifecycleTime(at)||!preflight||
@@ -164,6 +165,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
   if(closed||!bot.running||writeFailed||readFailed||
    !validCaveLifecycleRecord(record)||record.phase!=='prepared'||
    record.session!==bot.session||record.realm!==p.realm()||
+   bot.cryptLifecycle?.status?.()?.blocked===true||
    !bot.cave?.status?.()?.entryPreflight?.localConditionsMet)return false;
   const at=now();
   if(!caveLifecycleTime(at)||at<record.createdAt)return false;
@@ -202,6 +204,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
    typeof p.has!=='function'||typeof p.call!=='function')return false;
   const guard=()=>{
    if(bot.journal||bot.inventoryBlocked||
+      bot.cryptLifecycle?.status?.()?.blocked===true||
       bot.bank?.pending||bot.logistics?.reserved||
       bot.teamTravel?.blocked||bot.lifecycleChanging||
       bot.account?.rotationPending?.()||
@@ -274,6 +277,7 @@ export function createCaveLifecycle(bot,{now=()=>Date.now()}={}){
      typeof p.has!=='function'||typeof p.call!=='function')return false;
   const guard=()=>{
    if(bot.journal||bot.inventoryBlocked||
+      bot.cryptLifecycle?.status?.()?.blocked===true||
       bot.bank?.pending||bot.logistics?.reserved||
       bot.teamTravel?.blocked||bot.lifecycleChanging||
       bot.account?.rotationPending?.()||

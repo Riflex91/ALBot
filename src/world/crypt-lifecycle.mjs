@@ -40,6 +40,10 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
   {map:'crypt',in:p.c.in}:null;
  const plainSafe=()=>!closed&&bot.running&&
   !bot.journal&&!bot.inventoryBlocked&&!bot.bank?.pending&&
+  // A Cave entry or vote may already have reached the server.
+  // Never authorize another keyed admission during reconciliation.
+  bot.caveLifecycle?.status?.()?.blocked!==true&&
+  bot.caveVoteJournal?.status?.()?.blocked!==true&&
   !bot.logistics?.reserved&&!bot.lifecycleChanging&&
   !bot.teamTravel?.blocked&&!bot.account?.rotationPending?.()&&
   !p.c?.rip&&typeof bot.session==='string'&&!!bot.session&&

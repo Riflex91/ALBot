@@ -144,3 +144,36 @@ test('W12/N11 poisoned persisted intent never becomes an empty entry journal',()
  assert.equal(c.requestEntry(),false);
  assert.equal(c.discardPrepared(),false);
 });
+
+
+test('W12/N12 Crypt cannot open while Cave entry or vote journal is unresolved',()=>{
+ for(const journal of ['cave','vote']){
+  const f=cryptFixture(),c=f.lifecycle();
+  f.bot[journal==='cave'?'caveLifecycle':'caveVoteJournal']={
+   status:()=>({blocked:true,state:'dispatch-unknown'})};
+  assert.equal(c.preflight(),null,journal);
+  assert.equal(c.prepare(),false,journal);
+  assert.equal(c.requestEntry(),false,journal);
+  assert.deepEqual(f.calls,[]);
+ }
+});
+test('W12/N12 Cave journal drift revokes a previously prepared Crypt dispatch',()=>{
+ for(const source of ['caveLifecycle','caveVoteJournal']){
+  const f=cryptFixture(),c=f.lifecycle();
+  assert.equal(c.prepare(),true);
+  const pflight=c.status();
+  assert.equal(pflight.state,'prepared');
+  f.bot[source]={status:()=>({blocked:true,state:'dispatch-unknown'})};
+  assert.equal(c.requestEntry(),false,
+   'a new conflicting Cave journal blocks enqueue');
+  assert.equal(f.calls.length,0);
+  assert.equal(c.status().state,'prepared',
+   'no speculative cancellation or replay of the original checkpoint');
+  f.bot[source].status=()=>({blocked:false,state:'empty'});
+  assert.equal(c.requestEntry(),true,
+   'only a verifiably empty other lifecycle restores the original guard');
+  f.bot[source].status=()=>({blocked:true,state:'observed-run'});
+  assert.equal(f.intents.at(-1).guard(),false,
+   'the final Executor guard must repeat the conflict proof');
+ }
+});

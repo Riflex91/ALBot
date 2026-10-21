@@ -144,7 +144,7 @@ export function createPorts(root){
     readCaveJournal(key){
      if(typeof key!=='string'||!/^albot:(?:cave-(?:lifecycle|vote)|crypt-lifecycle):[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid Cave journal key');
-     return strictJournalValue(key,'trade offer');
+     return strictJournalValue(key,'Cave');
     },
     readTradeOfferJournal(key){
      // Same cstore_ key used by the normal set() port, but never convert
@@ -152,7 +152,7 @@ export function createPorts(root){
      if(typeof key!=='string'||
         !/^albot:trade-offer:v1:[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid trade offer journal key');
-     return strictJournalValue(key,'Cave');
+     return strictJournalValue(key,'trade offer');
     },
     readCryptJournal(key){
      // Reuse strict journal read semantics; a corrupt key cannot be

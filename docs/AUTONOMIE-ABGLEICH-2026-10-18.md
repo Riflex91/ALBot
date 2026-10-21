@@ -1,3 +1,7 @@
+## W03/W04 — Stackgrenzen in Bank-Reclaim-Quittungen (21.10.2026)
+
+Alle neu bewerteten Reclaim-Belege nutzen die echte G-Metadatenobergrenze für jedes physische Quellen-/Zwischenstapelitem. Ungültige Mengen und unbekannte Quelle werden unbestätigt gehalten. Der vorhandene irreversible NPC-/Bank-Executor bleibt die einzige Ausführungsinstanz; kein Wiederholen ungeklärter Antworten. Restarbeiten: vollständige mehrstufige Slotfolgen und echte Ingame-Quittierung.
+
 ## W06/G09 — physisch nachweisbare Marktbeobachtungen (21.10.2026)
 
 Die vorhandene automatische Marktnachfrage wird jetzt vor der Ratenschätzung gegen reale Stackgrößen und Replay-belastete gespeicherte Handelsmengen geschützt. Der Rückzug eigener Angebote akzeptiert nur eine echte, unveränderte Standmenge. Die neue Prüfung verhindert Phantom-Marktsignale, autorisiert aber keine zusätzlichen Käufe/Verkäufe, ersetzt keine echten Handelsquittungen und schließt W06/G09 oder W14 nicht vollständig ab.

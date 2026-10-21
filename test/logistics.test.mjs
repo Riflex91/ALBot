@@ -264,12 +264,21 @@ test('Merchant sends exactly one spare Tracktrix to Farmer with verified missing
  B.logistics.poll();A.logistics.poll();
  assert.equal(A.logistics.stats().sendsStarted,1);
 });
-test('Merchant keeps its only Tracker without Super Computer, even if Farmer needs one',()=>{
+test('Merchant gives its only Tracktrix to authenticated needy Farmer before reserving one for self',()=>{
  const {A,B,sends}=carrierPair({merchantItems:1});
- A.logistics.poll();A.logistics.poll();
- assert.equal(sends(),0);
- assert.equal(A.p.c.items.filter(i=>i?.name==='tracker').length,1);
  assert.equal(B.logistics.summary().find(x=>x.item==='tracker')?.need,1);
+ A.logistics.poll();A.logistics.poll();
+ assert.equal(sends(),1);
+ assert.equal(A.p.c.items.filter(i=>i?.name==='tracker').length,0);
+ assert.equal(B.p.c.items.filter(i=>i?.name==='tracker').length,1);
+});
+test('Tracker supply does not require rotating heartbeat item-demand row when live carrier proof exists',()=>{
+ const {A,B,sends}=carrierPair({merchantItems:1});
+ const old=A.transport.fresh;
+ A.transport.fresh=name=>({...old(name),items:[]});
+ A.logistics.poll();A.logistics.poll();
+ assert.equal(sends(),1);
+ assert.equal(B.p.c.items.some(i=>i?.name==='tracker'),true);
 });
 test('Farmer with Super Computer or unknown carrier cannot trigger speculative Tracker transfer',()=>{
  for(const carrier of ['supercomputer','unknown','tracker']){

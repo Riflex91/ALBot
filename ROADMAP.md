@@ -1,3 +1,7 @@
+# W14: Konfliktfreie JSONL-Ereignisübernahme (21.10.2026)
+
+Der bereits vorhandene Offline-Liveprüfer lehnt widersprüchliche doppelte `seq`-Ereignisse beim einzelnen JSONL-Import **und** beim Zusammenfügen wiederholter Reports jetzt ab. Identische Mehrfachbeobachtungen werden weiter dedupliziert; Browser-/Headless- und Spielversionswechsel bleiben getrennte Läufe. Ergänzt: negative und positive Regressionen `test/roadmap-w14-log-part-integrity.test.mjs`; dokumentiert in `docs/ROADMAP-LIVE-TEST-GATES-2026-10-16.md`. **W14 bleibt ohne getrennte tatsächlich beobachtete Live-/Restart-/Disconnect-Abnahmen unvollständig.**
+
 # W14: Beobachtete gleichzeitige Laufzeitaktivität (21.10.2026, PR #346)
 
 Der vorhandene read-only Live-Team-Prüfer kann optional mit `--require-observed-overlap` zwei echte, zeitlich getrennte und sequenzierte Running-Samples **pro Charakter innerhalb der gemeinsamen Beobachtungsintersektion** verlangen. Fehlende, abgeschnittene und gedroppte Ereignisfolgen sowie gemischte Browser-/Headless-Berichte sperren diese strengere Prüferakzeptanz. Der bisherige Diagnosemodus bleibt unverändert. Positiv-/Negativtests und CLI-Prüfung: `test/roadmap-w14-running-overlap.test.mjs`. Dokumentierter Aufruf: `docs/ROADMAP-LIVE-TEST-GATES-2026-10-16.md`.

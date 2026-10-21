@@ -256,8 +256,12 @@ export function parseLiveReport(text){
  const session=records.find(x=>x.type==='session');
  const uniq=new Map();
  for(const e of records)if(e&&Number.isSafeInteger(e.seq)&&e.seq>0&&
-   typeof e.type==='string'&&e.type!=='snapshot'&&e.type!=='session')
+   typeof e.type==='string'&&e.type!=='snapshot'&&e.type!=='session'){
+  const previous=uniq.get(e.seq);
+  if(previous&&JSON.stringify(previous)!==JSON.stringify(e))
+   throw Error('Conflicting JSONL event sequence '+e.seq);
   uniq.set(e.seq,e);
+ }
  const events=[...uniq.values()].sort((a,b)=>a.seq-b.seq);
  const expected=Object.values(latest.counts??{}).reduce((n,v)=>
    n+(Number.isSafeInteger(v)&&v>=0?v:0),0);
@@ -280,12 +284,19 @@ export function joinLiveReportParts(reports){
   if(parts.length===1)return parts[0];
   const first=parts[0];
   if(parts.some(p=>p.started!==first.started||p.realm!==first.realm||
-      p.version!==first.version))
+      p.version!==first.version||p.environment!==first.environment||
+      p.gameVersion!==first.gameVersion))
    throw Error('Cannot join separate sessions for '+first.character);
   const ordered=[...parts].sort((a,b)=>String(a.exported).localeCompare(String(b.exported)));
   const newest=ordered.at(-1),seq=new Map();
   for(const p of ordered)for(const e of p.events??[])
-   if(Number.isSafeInteger(e?.seq)&&e.seq>0)seq.set(e.seq,e);
+   if(Number.isSafeInteger(e?.seq)&&e.seq>0){
+    const previous=seq.get(e.seq);
+    if(previous&&JSON.stringify(previous)!==JSON.stringify(e))
+     throw Error('Conflicting event sequence in '+first.character+
+      ' at '+e.seq);
+    seq.set(e.seq,e);
+   }
   const events=[...seq.values()].sort((a,b)=>a.seq-b.seq);
   const expected=Object.values(newest.counts??{}).reduce((n,v)=>
     n+(Number.isSafeInteger(v)&&v>=0?v:0),0);

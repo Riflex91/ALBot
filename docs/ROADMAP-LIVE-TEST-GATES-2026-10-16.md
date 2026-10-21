@@ -56,6 +56,23 @@ Serverseitig bestätigte Spielhandlungen, Restart- und Disconnect-Recovery,
 physische Bank-/Loot-Quittungen und getrennte vollständige Browser- und
 Headless-Liveabnahmen bleiben zwingend eigenständige W14-Nachweise.
 
+### W14 – JSONL-Segmentintegrität und Neustartgrenzen
+
+Der read-only Auswerter akzeptiert übereinanderliegende JSONL-Dateisegmente
+nur bei **identischen** Ereignissen mit derselben `seq`. Zwei
+unterschiedliche Ereignisse mit derselben Sequenznummer sind kein erlaubter
+Replay: sowohl innerhalb einer JSONL-Datei als auch beim Zusammenführen
+mehrerer Teile wird die Auswertung mit Fehler abgebrochen. Gleiche Segmente
+dürfen unverändert wiederholt werden; es erfolgt keine Doppelzählung.
+
+Für das Zusammenführen bleiben Startzeit, Realm und Runtimeversion gebunden.
+Zusätzlich müssen `environment` und `gameVersion` übereinstimmen.
+Browser-/Headless-Wechsel, Spielversionswechsel oder ein neuer Start dürfen
+keine künstlich unterbrechungsfreie Einzelsitzung erzeugen. Solche Läufe
+müssen separat ausgewertet und als Neustart-/Wechsel-Szenario durch echte
+Spielbeobachtung belegt werden. Auch konfliktfreie JSONL-Segmente
+bestätigen **keine** Servertransaktion.
+
 ## 1 – Read-only startup and runtime parity
 - Verify start/stop/reload creates one scheduling timer and no leaked event handlers in both environments.
 - Check heartbeat round trips, session and realm changes, team roster, script version and user config. Review the measured dispatch p95/p99 and wall-load proxy separately from real CPU use.

@@ -10,7 +10,7 @@
 - Der Telemetrie-Endpunkt \`/api/ingest\` ist davon getrennt und erfordert ein Worker-Secret \`INGEST_TOKEN\` (mindestens 32 zufällige Zeichen). Niemals in das öffentliche Runtime-Bundle schreiben.
 - \`GITHUB_TOKEN\` ist ein Worker-Secret mit Schreibrechten **nur auf ein separates privates Konfigurationsrepository**, nicht auf \`Riflex91/ALBot\`. Der öffentliche Source- und Runtime-Branch bleibt davon getrennt.
 - Der Worker ruft den jeweils aktuellen öffentlichen Item-Katalog und Build-Metadaten aus \`Riflex91/ALBot/main\` ab. Es gibt noch keinen Live-Config-Update-Mechanismus für Adventure Land/Headless; dieser benötigt einen gesonderten, signierten Bootstrap-/Versionsvertrag.
-- Der Worker selbst wird vor Inbetriebnahme noch nicht bereitgestellt, weil Cloudflare-Benutzerkonto, D1-ID, Access-Audience und Secret-Werte fehlen.
+- Der produktive Worker wurde am 21.10.2026 nach Linux-/Windows-CI über den bestehenden Workflow deployed (siehe [Actions-Lauf 39644211739](https://github.com/Riflex91/ALBot/actions/runs/39644211739)). Dies belegt den Deployment-Aufruf, nicht die private Access-Ausnahme, die Secret-Provisionierung oder einen echten Ingame-Direktupload.
 
 ## Lokale und CI-Prüfung (ohne Cloudflare)
 
@@ -38,7 +38,7 @@ Die Browseroberfläche steht unter \`konfigurator/public/index.html\`, der Worke
    - \`CF_ACCESS_AUD\`: Access Application Audience Tag
    - \`ALLOWED_EMAIL\`: exakte erlaubte E-Mail
    - \`INGEST_TOKEN\`: mindestens 32 zufällige Zeichen, später nur in privater Clientkonfiguration verwendet
-5. Für \`/api/ingest\` eine **eigene, exakte Access-Anwendungspfad-Ausnahme** konfigurieren (Bypass ausschließlich für diesen einzelnen Endpunkt); im Worker erzwingen wir weiterhin den langen Bearer-Token und CORS-Allowlist für \`https://adventure.land\`. Keine allgemeine Domain-Bypass-Policy setzen. Browser-Preflight \`OPTIONS\` auf diesem Pfad darf nicht von Access abgefangen werden. Dashboard, HTML und alle anderen \`/api/*\` müssen Access-authentifiziert bleiben.
+5. Für \`/api/ingest\` eine **eigene, exakte Access-Anwendungspfad-Ausnahme** konfigurieren (Bypass ausschließlich für diesen einzelnen Endpunkt); im Worker bleiben ein langer privater Bearer-Token und eine fest definierte CORS-Allowlist für **beide** offiziellen Origins \`https://adventure.land\` und \`https://www.adventure.land\` verpflichtend. Keine allgemeine Domain-Bypass-Policy setzen. Browser-Preflight \`OPTIONS\` auf diesem Pfad darf nicht von Access abgefangen werden. Dashboard, HTML und alle anderen \`/api/*\` müssen Access-authentifiziert bleiben.
 6. Cloudflare D1-Datenbank \`albot-konfigurator\` anlegen, die **echte** \`database_id\` in \`wrangler.toml\` eintragen und \`schema.sql\` einmalig migrieren.
 7. \`cd konfigurator && npx wrangler deploy\` erst danach ausführen. Browser-Login und Access-Prüfung im Live-Worker überprüfen, bevor echte Itemrichtlinien gespeichert werden.
 
@@ -87,7 +87,7 @@ Nach der Cloudflare-Einrichtung die Seite \`/classic.html\` öffnen. Falls im pr
 
 ## Browser-Telemetrie und Cloudflare Access
 
-Ein Ingame-Browser sendet bei \`POST /api/ingest\` mit \`Authorization\` einen CORS-Preflight (\`OPTIONS\`). Deshalb darf nur dieser **exakte Pfad** außerhalb der Login-Weiterleitung liegen. Seine eigentliche \`POST\`-Verarbeitung besitzt eine unabhängige, konstante Bearer-Token-Prüfung. Vom Worker antwortet der Pfad auf Preflight nur für \`https://adventure.land\`; jeder andere Origin erhält 403. Falls Adventure Land aus einer anderen origin ausgeführt wird, erst nach Prüfung \`INGEST_ALLOWED_ORIGIN\` konfigurieren. Das ist keine Erlaubnis für fremde Websites und keine Garantie, dass ein Token im öffentlich sichtbaren Code geheim bleibt. Der spätere private Browser-/Headless-Adapter muss Schlüssel getrennt vom öffentlichen Runtime-Repository halten.
+Ein Ingame-Browser sendet bei \`POST /api/ingest\` mit \`Authorization\` einen CORS-Preflight (\`OPTIONS\`). Deshalb darf nur dieser **exakte Pfad** außerhalb der Login-Weiterleitung liegen. Der \`POST\` besitzt unabhängig vom Browser-Origin eine verpflichtende Bearer-Token-Prüfung. Der Worker antwortet auf CORS-Preflight nur für die **beiden exakt definierten offiziellen Spiel-Origins** \`https://adventure.land\` und \`https://www.adventure.land\`; alle anderen Origins erhalten 403. Eine konfigurierte \`INGEST_ALLOWED_ORIGIN\`-Umgebungsvariable wird nicht mehr verwendet. Kein generischer Origin-Reflector, keine fremden Websites und keine Geheimhaltungsgarantie für private Token im Game-CODE-Frame.
 
 ## Read-only Telemetrie-Snapshot (Stufe 1)
 
@@ -139,6 +139,16 @@ Nach der Freigabe des neuen **signierten** Laufzeit-Bundles sendet ALBot beim St
 **Einmalige private CODE-Slot-Einrichtung** (Schluessel niemals ins oeffentliche Repository, GitHub-Secrets oder den Chat kopieren): `globalThis.ALBOT_AUTO_TELEMETRY_TOKEN = '<privater-INGEST_TOKEN>';` vor dem signierten Bootstrap in deinem persoenlichen CODE-Slot setzen. Nur den separaten Cloudflare-Worker-Secret-Wert `INGEST_TOKEN` verwenden, niemals `CLOUDFLARE_API_TOKEN` oder `GITHUB_TOKEN`. Ein vorhandener Cloudflare-Secret-Wert kann nicht angezeigt werden; sichere Neuausgabe muss synchron im Worker und im privaten CODE erfolgen. Browser-Skripte derselben Game-Origin koennen auf den CODE-Wert zugreifen; vertrauenswuerdige, private Codeausfuehrung ist Voraussetzung. Die Worker-Konfiguration muss den exakt geschuetzten `/api/ingest` als einzige Telemetrie-Ausnahme von Access erlauben, Bearer-Validierung und CORS auf die offizielle Adventure-Land-Origin bleiben erhalten.
 
 `ALBot.telemetryStatus()` meldet `mode:'automatic'`, `configured`, Status/Versuchszeiten, aber keine geheimen Werte. Bis ein freigegebener signierter Release und echte Browser-Tests vorliegen, bleibt diese Funktion ein noch nicht live gepruefter Runtime-Kandidat.
+
+### Privaten Telemetrie-Schlüssel einmalig einrichten oder rotieren
+
+1. Im eigenen Cloudflare-Account am **vorhandenen** Worker `albot-konfigurator` einen kryptografisch zufälligen separaten `INGEST_TOKEN` mit mindestens 32 Zeichen als **Secret** hinterlegen (Workers & Pages → `albot-konfigurator` → Settings → Variables and Secrets). Falls der alte Wert unbekannt ist, **neu erzeugen und überschreiben**; der alte Wert muss und darf nicht ausgelesen werden. **Nicht** den Repository-Secret-Wert `CLOUDFLARE_API_TOKEN` wiederverwenden.
+2. Genau **denselben** privaten `INGEST_TOKEN` einmal im *persönlichen gespeicherten Adventure-Land-CODE-Slot* als `globalThis.ALBOT_AUTO_TELEMETRY_TOKEN = '<GEHEIMER_WERT>';` **vor** dem signierten Bootstrap eintragen und diesen Slot speichern. Die Variable muss im ausführenden CODE-Frame gesetzt sein, nicht nur in der übergeordneten Browserkonsole; pro benutztem privatem CODE-Slot einmal hinterlegen. Sie gehört weder in das öffentliche GitHub-Repository, noch in `ALBotConfig`-Exporte, Logs oder einen Chat.
+3. Bei Cloudflare Access ausschließlich den **exakten** Pfad `/api/ingest` für `OPTIONS` und `POST` so ausnehmen, dass der Preflight ohne Access-Login beantwortet wird. `/api/relay-ingest`, `/api/bank`, `/api/characters`, die Weboberfläche und alle Konfigurations-APIs bleiben vollständig Access-geschützt. Der Worker verlangt für den direkten `POST` weiterhin den Bearer-Token.
+4. Spiel mit gespeichertem CODE starten; im Spiel-CODE-Frame `ALBot.telemetryStatus()` lesen. `configured:true` belegt nur das gültige Tokenformat; `lastCharacterSuccess` bzw. `lastBankSuccess` belegen einen vom Worker bestätigten Upload. In der durch Access geschützten Weboberfläche anschließend den aktuellen Charakter und – beim Merchant in der Bank – mindestens ein beobachtetes Bankfach prüfen.
+
+**Sicherheitsgrenze:** Der Adventure-Land-CODE-Frame ist keine vertrauenswürdige Secret-Enklave. Andere dort ausgeführte Skripte, Browser-Erweiterungen oder kompromittierter Game-Code können den Schlüssel auslesen. Ein geleakter `INGEST_TOKEN` ermöglicht gefälschte Telemetrie-Schreibversuche innerhalb der D1-Limits. Bei Verdacht den Worker-Secret-Wert rotieren, den privaten CODE-Slot aktualisieren und neu starten. Weder Cloudflare Access noch CORS schützen gegen einen Angreifer, der den gültigen Bearer-Token bereits besitzt. Eine abschließende Ingame-Liveabnahme ist gesondert erforderlich.
+
 
 ## Globale Bankansicht ueber mehrere Spiel-Realms
 

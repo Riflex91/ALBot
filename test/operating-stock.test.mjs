@@ -9,7 +9,7 @@ const fixture=()=>{
  cfg.production.autoDisposition=true;cfg.merchant.enabled=true;
  cfg.merchant.preventiveStorage=true;
  const c={items:[{name:'scroll0',q:300}],gold:100000,slots:{},map:'main',x:0,y:0};
- const bot={cfg,p:{c,G:{items:{scroll0:{type:'uscroll',g:1000}},skills:{}},
+ const bot={cfg,p:{c,G:{items:{scroll0:{type:'uscroll',g:1000,s:9999}},skills:{}},
   realm:()=>'EUI',read:()=>null,write:()=>true,call:()=>100},
   me:{name:'M',role:'merchant'},farmers:['A','B','C'],task:()=> 'supply',
   production:{reservedQuantity:()=>10}};
@@ -85,7 +85,8 @@ test('W02 configured active offline farmers remain in physical potion reserve',(
   {name:'M',enabled:true,role:'merchant'},
   {name:'Disabled',enabled:false,role:'farmer'}];
  bot.p.G.items.hpot1={type:'pot',g:100,s:9999};
- bot.p.c.items=[{name:'hpot1',level:0,q:10000}];
+ bot.p.c.items=[{name:'hpot1',level:0,q:9999},
+  {name:'hpot1',level:0,q:1}];
  const item=bot.p.c.items[0];
  assert.equal(operatingReserveCohort(bot),3);
  const rule=automaticOperatingStockRule(bot,item);
@@ -148,4 +149,72 @@ test('W04 explicit null quantity never represents one bank reserve or surplus un
  assert.equal(bankOperatingStockRule(bot,item),null);
  // Missing q remains the ordinary single-unit source form.
  assert.equal(bankOperatingStockRule(bot,{name:'scroll0'})?.batch,1);
+});
+
+test('W02 operating disposal refuses phantom, overstacked and null local stock',()=>{
+ const bot=fixture(),item=bot.p.c.items[0];
+ assert.equal(automaticOperatingStockRule(bot,item)?.batch,190);
+ for(const q of [null,0,-1,1.5,Infinity,10000,Number.MAX_SAFE_INTEGER]){
+  item.q=q;
+  assert.equal(automaticOperatingStockRule(bot,item),null,
+   'invalid local physical quantity '+String(q));
+ }
+ item.q=300;
+ bot.p.c.items.push({name:'scroll0',q:null});
+ assert.equal(automaticOperatingStockRule(bot,item),null,
+  'invalid matching variant cannot supplement the reserve');
+ bot.p.c.items[1].q=2;
+ assert.equal(automaticOperatingStockRule(bot,item)?.batch,192);
+});
+
+test('W04 explicit bank stock and staging are bounded by game-defined stack limit',()=>{
+ const bot=fixture(),bank={name:'scroll0',q:20};
+ bot.p.G.items.scroll0.s=99;
+ bot.p.c.items=[{name:'scroll0',q:99},{name:'scroll0',q:11}];
+ assert.equal(bankOperatingStockRule(bot,bank)?.batch,20);
+ assert.equal(bankOperatingReserveNeed(bot,bank),null);
+ bot.p.c.items[0].q=100;
+ assert.equal(bankOperatingStockRule(bot,bank),null,
+  'oversized carried stack cannot cover a bank sale');
+ assert.equal(bankOperatingReserveNeed(bot,bank),null,
+  'phantom carried reserve is not a physical staging need');
+ bot.p.c.items[0].q=49;bot.p.c.items[1].q=11;
+ assert.deepEqual(bankOperatingReserveNeed(bot,bank),
+  {floor:110,held:60,missing:50});
+ bank.q=100;
+ assert.equal(bankOperatingStockRule(bot,bank),null);
+ assert.equal(bankOperatingReserveNeed(bot,bank),null,
+  'oversized bank source is not a real withdrawable stack');
+});
+
+test('W04 malformed reserve variants never silently fund an NPC sale or staged retrieval',()=>{
+ const bot=fixture(),bank={name:'scroll0',q:20};
+ bot.p.c.items=[{name:'scroll0',q:50},{name:'scroll0',q:60}];
+ for(const bad of [null,0,2.5,10000]){
+  bot.p.c.items[1].q=bad;
+  assert.equal(bankOperatingStockRule(bot,bank),null);
+  assert.equal(bankOperatingReserveNeed(bot,bank),null);
+ }
+ bot.p.c.items[1].q=60;
+ assert.equal(bankOperatingStockRule(bot,bank)?.batch,20);
+ for(const bad of [null,0,2.5,10000]){
+  bank.q=bad;
+  assert.equal(bankOperatingStockRule(bot,bank),null);
+  assert.equal(bankOperatingReserveNeed(bot,bank),null);
+ }
+});
+
+test('W04 nonstackable plain material cannot pretend to be a bank multi-copy stack',()=>{
+ const bot=fixture();
+ bot.p.G.items.ore={type:'material',g:2};
+ bot.p.c.items=[{name:'ore'},{name:'ore'}];
+ const itemRule={...defaultsFor(FULL_DESCRIPTOR.schema.properties.items.items),
+  item:'ore',enabled:true,action:'keep',excessAction:'sell',
+  keep:1,teamReserve:0,maxCount:1,batch:2};
+ bot.cfg.items=[itemRule];
+ bot.production.reservedQuantity=()=>0;
+ assert.equal(bankOperatingStockRule(bot,{name:'ore',q:2}),null);
+ assert.equal(bankOperatingReserveNeed(bot,{name:'ore',q:2}),null);
+ itemRule.batch=1;
+ assert.equal(bankOperatingStockRule(bot,{name:'ore'})?.batch,1);
 });

@@ -1,3 +1,7 @@
+## N05 – dynamische Scout-Wegfreiheit (22.10.2026)
+
+Der vorhandene begrenzte lokale Scout überprüft die native `can_move_to`-Wegfreiheit jetzt mit demselben ausfallsicheren Adapter vor Planung, unmittelbar beim Dispatch und während der aktiven Bewegung. Verlorene Wegfreiheit, fehlende/werfende API oder aktivierter Stand brechen den Scout kontrolliert ab; das einmalige Kill-Ticket wird nicht erneut verwendet. Tests in `test/roadmap-n05-approved-local-scout-hop.test.mjs`. **Teilabsicherung, keine N05/N10-Vollabnahme, kein Live- oder Respawn-Zeitbeleg.** Linux-/Windows-CI und Artefakt-Synchronisierung gesondert prüfen.
+
 ## 21.10.2026 — W03/W04 physische Stackgrenzen bei Bank-Reclaim und Rollback
 
 Die bestehende persistente Bank-Reclaim-/NPC-Verkaufs-/Rücklagerungskette überprüft jetzt jeden passenden Bank- und Inventarstapel zusätzlich gegen `G.items[name].s`. Defekte oder übergroße Komponenten dürfen keine belegte Vorher-/Nachher-Summe, Offsite-Verkaufsfreigabe oder Rücklagerung bestätigen. Auch eine ausdrücklich gesetzte `q:null`-Quellmenge ist keine einzelne physische Einheit. Bisheriger V2-Journaltyp, Originalslots, geschützter Executor und unterbrochene Transaktionen bleiben unverändert; unklare Zustände werden nicht automatisch erneut ausgeführt. Regressionen in `test/roadmap-w04-reclaim-recovery.test.mjs` und `test/roadmap-w03-w04-bank-recovery-quantity-proof.test.mjs` sowie Rollback-Integrationstest. Vollständige Bankfolgen-/W14-Liveabnahme bleibt offen.

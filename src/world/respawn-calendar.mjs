@@ -190,6 +190,14 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    !(bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
     (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target))));
  }
+ // Native local reachability is time-dependent: a path that was clear at
+ // planning or dispatch can become blocked while a scout is moving.
+ // Missing/throwing adapters are not movement permission.
+ function scoutRouteClear(point){
+  if(!Number.isFinite(point?.x)||!Number.isFinite(point?.y))return false;
+  try{return p.has?.('can_move_to')===true&&
+   p.call('can_move_to',point.x,point.y)===true;}catch{return false;}
+ }
  function scout(plan){
   expire();
   const time=now();
@@ -204,8 +212,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    const result=approvedLocalScoutHop({row,plan,character:p.c,
     realm,now:time,approved:true,solo:true,safe:true});
    if(!result.allowed)continue;
-   if(!p.has?.('can_move_to')||p.call('can_move_to',
-       result.point.x,result.point.y)!==true)continue;
+   if(!scoutRouteClear(result.point))continue;
    // The executor may defer a move until after this tick's action
    // arbitration. Re-evaluate the SAME live kill, plan, bounds, session,
    // team safety and coordinates immediately before the native move call.
@@ -225,7 +232,8 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
      approved:true,solo:true,safe:true});
     return next.allowed&&next.point.map===result.point.map&&
      next.point.in===result.point.in&&
-     next.point.x===lease.x&&next.point.y===lease.y;
+     next.point.x===lease.x&&next.point.y===lease.y&&
+     scoutRouteClear(next.point);
    };
    if(bot.movement.local(result.point.x,result.point.y,'scout',
        admitAtDispatch)!==true)continue;
@@ -288,7 +296,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    bot.cfg?.party?.enabled!==false||
    (bot.farmers?.length??1)>1||
    bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
-   bot.strategy?.busy||p.c.rip||
+   bot.strategy?.busy||p.c.rip||p.c.stand||
    !Number.isFinite(p.c.hp)||!Number.isFinite(p.c.max_hp)||
    p.c.max_hp<=0||p.c.hp/p.c.max_hp<.9||
    bot.combatAssessment?.emergency?.()?.active===true||
@@ -296,7 +304,8 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
     (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target)))||
    !r||r.killedAt!==a.killedAt||r.scoutState!=='observing'||
    now()>=r.scoutUntil||r.scoutNegatives>=SCOUT_MAX_NEGATIVES||
-   !same(location(realm,p.c),r);
+   !same(location(realm,p.c),r)||
+   !scoutRouteClear(a?.point);
   if(invalid){
    const timedOut=!!a&&now()-a.at>12000;
    bot.movement.stop?.();

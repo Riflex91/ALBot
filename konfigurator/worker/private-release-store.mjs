@@ -1,6 +1,6 @@
 // Isolated private GitHub store. This is NOT a public profile distribution API.
-const FILE=new RegExp('^[a-zA-Z0-9._/-]{1,180}
-const BRANCH=new RegExp('^[a-zA-Z0-9._/-]{1,120}
+const FILE=/^[a-zA-Z0-9._\/-]{1,180}$/;
+const BRANCH=/^[a-zA-Z0-9._\/-]{1,120}$/;
 const REPO=/^[\w.-]+\/[\w.-]+$/;
 const SHA=/^[a-f0-9]{40}$/;
 export class ReleaseStorageError extends Error{

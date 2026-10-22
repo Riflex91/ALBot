@@ -124,7 +124,7 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
   return {phase:'unobserved',reason:'bank-map-unresolved',confirmed:false};
  }
  if(bankMap!==map||!bank||!Array.isArray(bank[record.pack])||
-    bank[record.pack].length>42)
+    bank[record.pack].length>42||record.slot>=bank[record.pack].length)
   return {phase:'unobserved',reason:'addressed-local-bank-pack-unavailable',confirmed:false};
  const pack=bank[record.pack],source=pack[record.slot],
   target=inventory[record.dest];

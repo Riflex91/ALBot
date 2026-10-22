@@ -1787,13 +1787,22 @@
               "enum": [
                 "fixed",
                 "market",
+                "marketRatio",
                 "npc"
               ],
               "x-labels": {
                 "fixed": "Fester Grenzpreis",
                 "market": "Aktuelle Marktbeobachtung",
+                "marketRatio": "Prozentual zum beobachteten Marktpreis",
                 "npc": "NPC-Preis"
               }
+            },
+            "marketPercent": {
+              "type": "integer",
+              "title": "Maximaler Anteil am Marktpreis (%)",
+              "default": 80,
+              "minimum": 10,
+              "maximum": 150
             },
             "goldBudget": {
               "type": "integer",

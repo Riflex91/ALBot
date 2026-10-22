@@ -111,7 +111,7 @@ test('U02 ordinary exchange remains available; inactive, unverifiable and expiri
 });
 
 test('U02 execution guard rechecks event and NPC mapping after planning, without dispatch',()=>{
- const G={items:{ticket:{e:2,quest:'quest1',event:'season'},prize:{}},drops:{ticket:[[1,'prize']]},events:{season:{}},npcs:{quest_npc:{quest:'quest1'}},maps:{main:{npcs:[['quest_npc',10,20]]}}};
+ const G={items:{ticket:{e:2,s:9999,quest:'quest1',event:'season'},prize:{}},drops:{ticket:[[1,'prize']]},events:{season:{}},npcs:{quest_npc:{quest:'quest1'}},maps:{main:{npcs:[['quest_npc',10,20]]}}};
  let guard=null,notes=[];const p={G,c:{items:[{name:'ticket',q:4},...Array(6).fill(null)],slots:{},s:{}},root:{S:{season:{live:true}}},parent:{},read:()=>null};
  const e={remaining:()=>true,spare:()=>4,count:()=>4,explicit:()=>null,at:()=>true,npcAt:()=>true,destination:()=>({map:'main',x:10,y:20}),travel:()=>true,npcTravel:()=>true,value:()=>2,note:x=>notes.push(x),perform:(kind,args)=>{guard=args.guard;return true;}};
  const bot={p,me:{name:'M',role:'merchant'},economy:e,cfg:{general:{testLogging:1},production:{enabled:true,exchange:true,goals:[]},merchant:{minFreeSlots:0},party:{}},exec:{pending:new Set()},free:()=>6,transport:{fresh:()=>null}};
@@ -487,7 +487,8 @@ test('U04 market purchase requires same map and instance even for a nearby visib
  const p={c,entities:{S:seller},read:()=>null};
  const econ={count:()=>0,destination:()=>null,perform:()=>{orders++;return true;}};
  const bot={p,me:{name:'M'},cfg:{general:{testLogging:true},merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}}},economy:econ,exec:{},free:()=>5,entity:()=>seller};
- const market=createMarket(bot),r={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:5,maxCount:5};
+ const market=createMarket(bot),r={enabled:true,action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:5,maxCount:5};
+ econ.explicit=()=>r;
  assert.equal(market.buy(item,r),false);
  assert.equal(orders,0);
  seller.in='main';assert.equal(market.buy(item,r),true);
@@ -500,7 +501,8 @@ test('U04 market buy dispatch rechecks live stand, instance, offer flags and pri
  const p={c,entities:{S:seller},read:()=>null};
  const econ={count:()=>0,perform:(kind,opts)=>{assert.equal(kind,'market.buy');guard=opts.guard;return true;}};
  const bot={p,me:{name:'M'},cfg:{general:{testLogging:true},merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}}},economy:econ,exec:{},free:()=>5,entity:()=>p.entities.S};
- const market=createMarket(bot),r={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:5,maxCount:5};
+ const market=createMarket(bot),r={enabled:true,action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:5,maxCount:5};
+ econ.explicit=()=>r;
  assert.equal(market.buy(item,r),true);
  assert.equal(guard(),true);
  seller.stand=false;assert.equal(guard(),false);seller.stand=true;
@@ -570,7 +572,8 @@ test('U04 buyer ignores out-of-range trade slot names even if the offer otherwis
  let purchases=0;
  const econ={count:()=>0,destination:()=>null,perform:()=>{purchases++;return true;}};
  const bot={p:{c,entities:{S:seller}},cfg:{merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}},general:{testLogging:true}},me:{name:'M'},economy:econ,exec:{},free:()=>5,entity:()=>seller};
- const market=createMarket(bot),rule={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:4,maxCount:4};
+ const market=createMarket(bot),rule={enabled:true,action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:4,maxCount:4};
+ econ.explicit=()=>rule;
  assert.equal(market.buy(item,rule),false);
  assert.equal(purchases,0);
  delete seller.slots.trade17;seller.slots.trade1=offer;
@@ -584,7 +587,8 @@ test('U04 player market-buy dispatch rechecks target stock and available invento
  let amount=0,free=2,guard=null;
  const econ={count:()=>amount,perform:(kind,args)=>{guard=args.guard;return true;}};
  const bot={p:{c,entities:{S:seller}},cfg:{merchant:{minFreeSlots:0,marketHistory:false,position:{enabled:false}},general:{testLogging:true}},me:{name:'M'},economy:econ,exec:{},free:()=>free,entity:()=>seller};
- const market=createMarket(bot),rule={action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:3,maxCount:3};
+ const market=createMarket(bot),rule={enabled:true,action:'marketBuy',priceSource:'fixed',maxPrice:200,batch:2,targetCount:3,maxCount:3};
+ econ.explicit=()=>rule;
  assert.equal(market.buy(item,rule),true);
  assert.equal(guard(),true);
  amount=2;assert.equal(guard(),false,'Loot or another action has already filled the target');

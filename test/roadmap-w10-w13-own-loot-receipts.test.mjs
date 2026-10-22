@@ -375,3 +375,44 @@ test('W13 read-only gear-demand hints never accept explicit null or overstacked 
   proofs:proof,inventory:[{...ring,q:2}],reserve:()=>0,now:200}),[],
   'without game stack definitions the hint cannot assume a stackable item');
 });
+
+test('W10/W13 chest attribution requires real item definitions, not object prototypes',()=>{
+ const G={items:{ring:{},hpot0:{s:9999}}};
+ for(const name of ['constructor','toString','__proto__','missing']){
+  const forged=chest([{name}],5);
+  assert.equal(ownChestShare(forged,'Priest',G),null,name);
+ }
+ const f=fixture();
+ f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'constructor'}],5)),false);
+ f.items[1]={name:'constructor'};f.setGold(105);f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+});
+test('W10/W13 server-attributed loot obeys exact physical stack limits',()=>{
+ const f=fixture(),G=f.p.G;
+ for(const [name,q] of [['ring',2],['hpot0',10000],['ring',null],
+  ['hpot0',0],['hpot0',1.5],['hpot0',NaN]]){
+  assert.equal(ownChestShare(chest([{name,q}],5),'Priest',G),null,
+   'unphysical chest amount: '+name+':'+String(q));
+ }
+ assert.equal(ownChestShare(chest([{name:'hpot0',q:9999}],5),
+  'Priest',G)?.items.size,1,'maximum legitimate stack stays admissible');
+ assert.equal(ownChestShare(chest([{name:'ring'}],5),'Priest',G)?.items.size,1);
+ // Corrupted OTHER character entries also invalidate the overall attribution,
+ // rather than turning a partial server record into own physical proof.
+ assert.equal(ownChestShare(chest([
+  {name:'ring',looter:'Priest'},
+  {name:'ring',q:2,looter:'Ranger'}],5),'Priest',G),null);
+});
+test('W13 impossible chest quantity cannot gain a receipt from matching inventory delta',()=>{
+ const f=fixture();f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'ring',q:2}],5)),false);
+ f.items[1]={name:'ring'};f.items[2]={name:'ring'};
+ f.setGold(105);f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+ assert.equal(f.receipts.heartbeat().length,0);
+ const valid=fixture();valid.receipts.beforeLoot('X');
+ assert.equal(valid.receipts.observeChest(chest([{name:'hpot0',q:2}],5)),true);
+ valid.items[1]={name:'hpot0',q:2};valid.setGold(105);valid.receipts.sample();
+ assert.equal(valid.receipts.status().physicalConfirmed,1);
+});

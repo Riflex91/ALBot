@@ -1,3 +1,19 @@
+## W06/G09 – Marktvarianten und Standabgleich fail-closed (22.10.2026)
+
+Der vorhandene Merchant-Marktpfad validiert `G.items` jetzt ausschließlich über echte Katalogeigenschaften. Physisch plausible, aber zyklische oder unlesbare Varianten dürfen weder bestätigte Sales, autonome Listvorschläge noch Stand-Fingerprints oder verzögerte `unequip`-Reclaimaktionen authorisieren. `proposal`, `posted` und `expire` verwenden identische ausfallsichere Varianten-/Fingerprintprüfungen; der Executor und seine physische Vor-/Nachherquittung bleiben erhalten. Regressionen in `test/roadmap-w06-g09-market-demand-evidence.test.mjs`. Vollständiger Account-Tauschmarkt, Markt-Liveabnahme und W14 bleiben offen.
+
+## W10/W13 – nur katalogechte und physisch mögliche Chest-Ereignisse (22.10.2026)
+
+Der vorhandene `createOwnLootReceipts`-Ablauf validiert jetzt auch die einzelnen offiziellen `chest_opened`-Einträge gegen die physischen `G.items[name].s`-Grenzen und eigene Katalogeinträge. Vererbte JS-Objektfelder sind keine Spielitems, übergroße/unmögliche Mengen (auch von fremden Lootempfängern) sind keine vollständige Zuordnung. Die bisherige Pre-Loot-Baseline, Deltaquittung, Eigentümerzuweisung und konservative Session-/Realm-Sperre bleiben unverändert. Regressionen in `test/roadmap-w10-w13-own-loot-receipts.test.mjs`. **Dies ist keine vollständige rollenverteilte Lootmission, keine live bestätigte Eigentumsquittung und kein signierter Release.**
+
+## W03 – bekannte Quellstapelgrenzen im Produktions-Kapazitätsbeleg (22.10.2026)
+
+Der bestehende gemeinsame `capacityAfterConsumption`-Prüfer erhält optional das aktuelle `G.items`-Metadatenwörterbuch und verweigert bei bekannten Gegenständen physisch übergroße Quellenbestände, auch wenn sie nur indirekt einen freien Ausgabeslot finanzieren. `actionCapacity` übergibt diese Metadaten jetzt in den bestehenden Produktionspfad. Fehlende Metadaten werden nicht erfunden und lösen keine zusätzlichen Wertaktionen aus. Regressionen in `test/shared-physical-capacity.test.mjs`; Build- und CI-Nachweise getrennt prüfen. **Keine vollständige W02/W03/W04-Transaktions-Recovery oder W14-Liveabnahme.**
+
+## N05 – dynamische Scout-Wegfreiheit (22.10.2026)
+
+Der vorhandene begrenzte lokale Scout überprüft die native `can_move_to`-Wegfreiheit jetzt mit demselben ausfallsicheren Adapter vor Planung, unmittelbar beim Dispatch und während der aktiven Bewegung. Verlorene Wegfreiheit, fehlende/werfende API oder aktivierter Stand brechen den Scout kontrolliert ab; das einmalige Kill-Ticket wird nicht erneut verwendet. Tests in `test/roadmap-n05-approved-local-scout-hop.test.mjs`. **Teilabsicherung, keine N05/N10-Vollabnahme, kein Live- oder Respawn-Zeitbeleg.** Linux-/Windows-CI und Artefakt-Synchronisierung gesondert prüfen.
+
 ## 21.10.2026 — W03/W04 physische Stackgrenzen bei Bank-Reclaim und Rollback
 
 Die bestehende persistente Bank-Reclaim-/NPC-Verkaufs-/Rücklagerungskette überprüft jetzt jeden passenden Bank- und Inventarstapel zusätzlich gegen `G.items[name].s`. Defekte oder übergroße Komponenten dürfen keine belegte Vorher-/Nachher-Summe, Offsite-Verkaufsfreigabe oder Rücklagerung bestätigen. Auch eine ausdrücklich gesetzte `q:null`-Quellmenge ist keine einzelne physische Einheit. Bisheriger V2-Journaltyp, Originalslots, geschützter Executor und unterbrochene Transaktionen bleiben unverändert; unklare Zustände werden nicht automatisch erneut ausgeführt. Regressionen in `test/roadmap-w04-reclaim-recovery.test.mjs` und `test/roadmap-w03-w04-bank-recovery-quantity-proof.test.mjs` sowie Rollback-Integrationstest. Vollständige Bankfolgen-/W14-Liveabnahme bleibt offen.

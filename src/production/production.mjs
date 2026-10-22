@@ -1,4 +1,5 @@
 import {knowledgeFingerprint} from '../world/knowledge.mjs';
+import {marketRuleApproved} from '../merchant/market-purchase-policy.mjs';
 import {gearCompatible,merchantSelfEquipDecision} from './gear.mjs';
 import {purposeReservations} from './purpose-allocation.mjs';
 import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} from './helpers.mjs';
@@ -181,7 +182,8 @@ export function gearChainReady(g,stock,meta){
 export function actionCapacity(items,consumed=[],output=null,G={},outputs=1,{inventorySize}={}){
  if(!Number.isSafeInteger(outputs)||outputs<0)return false;
  const planned=capacityAfterConsumption(items,consumed,output,
-   output?G.items?.[output.name]:null,{inventorySize});
+   output?G.items?.[output.name]:null,
+   {inventorySize,itemDefinitions:G.items??null});
  return !!planned&&(output?planned.units>=outputs:planned.free>=outputs);
 }
 // Release only the part of other goals' gross demand already backed by
@@ -849,7 +851,7 @@ export function createProduction(bot){
    if(!needsProductionStock(qty(g.item,g.level,g),needed))continue;
    const holder=g.sourceOwner&&g.sourceOwner!==me.name?bot.transport.fresh(g.sourceOwner):null;if(holder?.running&&holder.realm===p.realm()&&holder.stock?.some(i=>i.name===g.item&&(i.level??0)===(g.sourceLevel??g.level))&&qty(g.item,g.sourceLevel??g.level,g)<1){planningReason='Vorhandenes Gear von '+g.sourceOwner+' anfordern';continue;}
    try{goal=g;
-    const permit=(name,level,kind)=>{if(materialContract?.goal===goalKey(g)&&materialContract.step?.item===name&&materialContract.step.level===level&&kind!=='farm')return false;if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const item={name,level},phase=phaseOf(kind),r=e.explicit(item,phase);return r?r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level):!!cfg.production.autonomy;};
+    const permit=(name,level,kind)=>{if(materialContract?.goal===goalKey(g)&&materialContract.step?.item===name&&materialContract.step.level===level&&kind!=='farm')return false;if(kind==='marketBuy')return marketRuleApproved(e.explicit({name,level},'acquisition'));if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const item={name,level},phase=phaseOf(kind),r=e.explicit(item,phase);if(kind==='farm'&&r?.action==='marketBuy')return cfg.production.autonomy===true;return r?r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level):!!cfg.production.autonomy;};
     // Historical profiles retain their explicit-rule planner and fixed ordering.
     const options=cfg.production.autonomy?{permit,recipeFor:(name,level)=>e.explicit({name,level},'production')?.recipe??'',helpers:(name,level,kind)=>{
      const r=e.explicit({name,level},'production'),grade=p.call('item_grade',{name,level}),scroll=r?.scroll||((kind==='compound'?'cscroll':'scroll')+grade);
@@ -907,7 +909,7 @@ export function createProduction(bot){
  }
  function routeScore(step){
   const farmEstimates=new Map();
-  const cacheKey=JSON.stringify([step.item,step.level,step.quantity,step.sources]);if(routeCache.has(cacheKey))return effectiveRouteScore(routeCache.get(cacheKey),step.kind);const key=step.item+':'+step.level,permit=(name,level,kind)=>{if(kind==='exchange'&&step.sources?.length===1&&name!==step.sources[0][0])return false;if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const r=e.explicit({name,level},phaseOf(kind));return !r||r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level);};
+  const cacheKey=JSON.stringify([step.item,step.level,step.quantity,step.sources]);if(routeCache.has(cacheKey))return effectiveRouteScore(routeCache.get(cacheKey),step.kind);const key=step.item+':'+step.level,permit=(name,level,kind)=>{if(kind==='exchange'&&step.sources?.length===1&&name!==step.sources[0][0])return false;if(kind==='marketBuy')return marketRuleApproved(e.explicit({name,level},'acquisition'));if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const r=e.explicit({name,level},phaseOf(kind));if(kind==='farm'&&r?.action==='marketBuy')return cfg.production.autonomy===true;return !r||r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level);};
   const capped=(name,level,price)=>{const r=e.explicit({name,level},'acquisition');return Number.isFinite(price)&&price>0&&price<=(r?.maxPrice??(cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.helperMaxPrice))?price:Infinity;};
   const rows=estimateRoutes({G:p.G,item:step.item,level:step.level,quantity:step.quantity,stock:(name,level)=>name+':'+level===key?0:qty(name,level),bank:(name,level,wanted)=>name+':'+level===key?0:bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((v,i)=>v+(i?.name===name&&(i.level??0)===level&&e.safe(i)&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),allowed:cfg.production.acquireBy,permit,
    marketAvailable:(name,level)=>bot.market?.hasVisibleBuyOffer?.({name,level},{strict:true,rule:e.rules({name,level},'acquisition')})===true,
@@ -959,8 +961,11 @@ export function createProduction(bot){
   }
   const step=plan[0],item={name:step.item,level:step.level,...(step.item===goal.item?goal.variant:{})};
   const r=e.rules(item,['buy','retrieve','farm','marketBuy'].includes(step.kind)?'acquisition':'production');
-  if(!r||r.action!==step.kind){const reason='Produktionskette benötigt passende '+step.kind+'-Regel für '+step.item;e.note(reason);bot.event?.('production.blocked',{goal:goal.name,item:step.item,step:step.kind,reason});return false;}
-  if(!e.remaining(r))return false;
+  // Explicit market permission must not prohibit proven material farming
+  // when an unaffordable or absent seller causes a production fallback.
+  const farmInsteadOfMarket=step.kind==='farm'&&r?.action==='marketBuy'&&cfg.production.autonomy===true;
+  if(!r||r.action!==step.kind&&!farmInsteadOfMarket){const reason='Produktionskette benötigt passende '+step.kind+'-Regel für '+step.item;e.note(reason);bot.event?.('production.blocked',{goal:goal.name,item:step.item,step:step.kind,reason});return false;}
+  if(!farmInsteadOfMarket&&!e.remaining(r))return false;
   const attempt=fn=>{bot.reason='Produktionsschritt '+step.kind+' / '+step.item+': Voraussetzungen prüfen';const accepted=fn();
    // Market discovery journeys are not confirmed purchases. Preserve admission
    // hysteresis only for an actual market transaction or another admitted action.
@@ -987,8 +992,9 @@ export function createProduction(bot){
    const ruleSignature=rule=>JSON.stringify([rule?.action,rule?.enabled,
     rule?.item,rule?.minLevel,rule?.maxLevel,rule?.targetCount,
     rule?.maxCount,rule?.batch,rule?.maxPrice,rule?.goldBudget,
-    rule?.priceSource,rule?.character,rule?.role]);
+    rule?.priceSource,rule?.marketPercent,rule?.character,rule?.role]);
    const signature=ruleSignature(r);
+   if(!marketRuleApproved(e.explicit(item,'acquisition'))||e.explicit(item,'acquisition')!==r)return false;
    return attempt(()=>bot.market.buy(item,r,{
     quantity:step.quantity,
     admit:()=>bot.running&&cfg.production.enabled&&
@@ -997,7 +1003,8 @@ export function createProduction(bot){
      liveStep.kind==='marketBuy'&&
      Number.isSafeInteger(liveStep.quantity)&&liveStep.quantity>0&&
      cfg.production.acquireBy.includes('market')&&
-     e.remaining(r)&&ruleSignature(r)===signature&&
+     e.remaining(r)&&marketRuleApproved(e.explicit(item,'acquisition'))&&
+     e.explicit(item,'acquisition')===r&&ruleSignature(r)===signature&&
      ruleSignature(e.rules(item,'acquisition'))===signature
    }));
   }

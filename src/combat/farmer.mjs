@@ -140,6 +140,22 @@ export function selectMarchHealingPatient(character,roster,{realm,now=Date.now()
   h.hp>0&&h.hp/h.max_hp<threshold).sort((a,b)=>
    a.hp/a.max_hp-b.hp/b.max_hp||a.name.localeCompare(b.name))[0]??null;
 }
+// Narrow last-resort basic-fire permission during an ALREADY ENGAGED attack.
+// This does not approve boss hunting, movement into a hazard, AoE, neutral
+// pulls, stale entities or any attack when the defender is critically weak.
+export function engagedEmergencyBasicDefense(character,monster,teamNames,{
+ minimumHpRatio=.45,maximumDistance=300
+}={}){
+ if(!character||character.rip||!monster?.id||monster.type!=='monster'||
+   !(monster.hp>0)||monster.dead||monster.invincible||
+   !monster.target||!Array.isArray(teamNames)||!teamNames.includes(monster.target)||
+   !samePlace(character,monster)||
+   !Number.isFinite(character.hp)||!Number.isFinite(character.max_hp)||
+   character.max_hp<=0||character.hp/character.max_hp<minimumHpRatio||
+   !Number.isFinite(character.range)||character.range<=0||
+   distance(character,monster)>Math.min(character.range,maximumDistance))return false;
+ return true;
+}
 export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
@@ -160,7 +176,7 @@ export function potionResource(c,threshold=300){
 export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
-  let lastRoadAggroAt=0;
+  let lastRoadAggroAt=0,lastDefensiveShot={id:null,at:0};
   const observeTransitBlock=createTransitBlockObserver();
   let marchGraph=null,marchGraphG=null;
   const travelPlan=()=>bot.teamPlan?.heartbeat?.()??
@@ -751,6 +767,35 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
           },attack.invoke,{delay:100,onSettle:attack.settle});
         }
         return;
+      }
+      // When a verified aggressive mob is ALREADY striking the team, the
+      // TTK forecast cannot prohibit all defensive fire: the victim would
+      // otherwise absorb hits while healthy nearby farmers stand idle.
+      // Basic single-target attacks only; the regular viability gate still
+      // owns voluntary boss pulls, all offensive skills and unsafe chases.
+      if(assessment?.reason==='insufficient-time-to-kill'&&
+         isNaturallyAggressive(p.G,danger)&&
+         engagedEmergencyBasicDefense(c,danger,bot.farmers??[])&&
+         !bot.monsters().some(m=>m.id!==danger.id&&m.target===c.name&&m.hp>0&&!m.dead)&&
+         p.call('can_attack',danger)&&!p.call('is_on_cooldown','attack')){
+       bot.target=danger;
+       bot.reason='Notwehr: Teammitglied vor '+danger.mtype+' schützen';
+       bot.skills.rotation(null);
+       const shot=trackedAttack(danger.id);
+       exec.run('attack',['attack','mana'],()=>{
+        const live=bot.entity(danger.id);
+        return live&&isNaturallyAggressive(p.G,live)&&
+         engagedEmergencyBasicDefense(p.c,live,bot.farmers??[])&&
+         !bot.monsters().some(m=>m.id!==live.id&&m.target===p.c.name&&m.hp>0&&!m.dead)&&
+         p.call('can_attack',live)&&!p.call('is_on_cooldown','attack');
+       },shot.invoke,{delay:100,onSettle:shot.settle});
+       if(lastDefensiveShot.id!==danger.id||now-lastDefensiveShot.at>=12000){
+        lastDefensiveShot={id:danger.id,at:now};
+        bot.event?.('combat.emergencyBasicDefense',{
+         monster:danger.mtype,monsterId:danger.id,victim:danger.target,
+         reason:'already-engaged-insufficient-time-to-kill'});
+       }
+       return;
       }
       // Regroup toward the endangered Priest without rushing into an
       // unverified kill. This also escapes the normal "group march paused"

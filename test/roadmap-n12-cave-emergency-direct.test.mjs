@@ -277,3 +277,60 @@ test('N12 active escape order keeps exclusive priority over Cave defense',()=>{
  assert.equal(moves(f).length,1);
  assert.deepEqual(forbidden(f),[]);
 });
+
+test('N12 unlocated second live monster cannot disappear from emergency threat count',()=>{
+ const f=fixture(),spurious={id:'unknown',type:'monster',hp:30,
+  x:-50,y:0,dead:false,target:null};
+ f.bot.monsters=()=>[f.monster,spurious];
+ const s=f.bot.caveEmergency.status();
+ assert.equal(s.ready,false);
+ assert.equal(s.reason,'unverified-cave-monster-location');
+ assert.equal(f.bot.caveEmergency.tick(),false);
+ assert.deepEqual(moves(f),[]);
+ assert.deepEqual(forbidden(f),[]);
+});
+test('N12 malformed, throwing and oversized Cave monster frames never allow emergency movement',()=>{
+ const frames=[
+  ()=>{throw Error('transient-entity-observation-fault');},
+  ()=>[fixture().monster,null],
+  ()=>[fixture().monster,{}],
+  ()=>[fixture().monster,{id:'unknown',hp:10,map:''}],
+  ()=>Array.from({length:513},()=>null)
+ ];
+ for(const source of frames){
+  const f=fixture();
+  f.bot.monsters=source;
+  assert.equal(f.bot.caveEmergency.status().ready,false);
+  assert.equal(f.bot.caveEmergency.tick(),false);
+  assert.deepEqual(moves(f),[]);
+  assert.deepEqual(forbidden(f),[]);
+ }
+});
+test('N12 provably off-floor neutral monster does not suppress otherwise safe emergency',()=>{
+ const f=fixture(),other={id:'other',type:'monster',map:'main',
+  in:'main',hp:80,target:null,dead:false};
+ f.bot.monsters=()=>[f.monster,other];
+ assert.equal(f.bot.caveEmergency.status().ready,true,
+  'remote known harmless enemy should not be counted as Cave threat');
+ assert.equal(f.bot.caveEmergency.tick(),true);
+ assert.equal(moves(f).length,1);
+});
+test('N12 deferred Cave emergency rechecks unknown second monster and refuses queued move',()=>{
+ const f=fixture();
+ f.bot.exec.beginFrame();
+ assert.equal(f.bot.caveEmergency.tick(),true);
+ assert.equal(moves(f).length,0);
+ f.bot.monsters=()=>[f.monster,{id:'unknown',hp:50,target:null}];
+ f.bot.exec.flush();
+ assert.deepEqual(moves(f),[]);
+ assert.deepEqual(forbidden(f),[]);
+});
+test('N12 one Cave emergency admission reads the bounded monster frame once',()=>{
+ const f=fixture();
+ let calls=0;
+ f.bot.monsters=()=>{calls++;return calls===1?[f.monster]:[
+   f.monster,{id:'extra',map,in:map,hp:70,target:null}];};
+ const p=caveEmergencyDirectPreflight(f.bot,{now:f.state.at,hostChecks:false});
+ assert.equal(p.ready,true,p.reason);
+ assert.equal(calls,1);
+});

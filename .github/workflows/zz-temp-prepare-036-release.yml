@@ -18,6 +18,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:bootstrap:auto
       - run: npm run build:editor
       - run: npm run build:konfigurator
       - name: Verify unchanged personal settings and auto bootstrap

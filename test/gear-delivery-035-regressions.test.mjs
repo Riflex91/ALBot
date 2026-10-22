@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fitHeartbeat} from '../src/party/transport.mjs';
 import {createGear} from '../src/production/gear.mjs';
 import {pendingDeliveryRuleNeeds,physicalGearAllowanceFromSelectedRule} from '../src/production/production.mjs';
-import {identity} from '../src/core/policy.mjs';
+import {createGearAllocation} from '../src/production/allocation.mjs';
 
 const slots=['mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
 function gearProof(mainhand={name:'staff',level:3},amulet=null){
@@ -89,4 +89,26 @@ test('physical skullamulet +2 send remains one reserved copy and one selected fa
  assert.equal(physicalGearAllowanceFromSelectedRule([rule],[item],item,'My_Ranger2'),1);
  assert.equal(physicalGearAllowanceFromSelectedRule([rule],[item],item,'My_Ranger1'),0);
  assert.equal(physicalGearAllowanceFromSelectedRule([rule],[{...item,l:true}],item,'My_Ranger2'),0);
+});
+
+test('skullamulet +2 sender allocation can construct a session-bound offer after heartbeat trimming',()=>{
+ const item={name:'skullamulet',level:2};
+ const original={name:'My_Ranger2',realm:'EUII',running:true,rip:false,
+  items:[],materials:[],gear:{...gearProof(),class:'ranger',session:'ranger2-session'},
+  performance:'p'.repeat(2200),stock:'s'.repeat(1700)};
+ const compact=fitHeartbeat(original),peer={...compact,session:'ranger2-session'};
+ assert.ok(compact?.gear,'gear required for item allocation');
+ const bot={me:{name:'My_Merchant'},session:'merchant-session',
+  cfg:{general:{messageTtlMs:10000},party:{merchant:'My_Merchant'}},
+  p:{c:{items:[item]},realm:()=> 'EUII',read:()=>null},
+  gear:{goals:()=>[{name:'Gear for Ranger2',recipient:'My_Ranger2',
+    item:'skullamulet',level:2,gearSlot:'amulet',quantity:1}]},
+  transport:{fresh:()=>peer}};
+ const alloc=createGearAllocation(bot),offer=alloc.offer(item,'My_Ranger2');
+ assert.equal(offer?.slot,'amulet');
+ assert.equal(offer?.goal,'Gear for Ranger2');
+ assert.ok(typeof offer?.expected==='string');
+ delete peer.gear;
+ assert.equal(alloc.offer(item,'My_Ranger2'),false,
+  'no full gear proof must remain a hard refusal');
 });

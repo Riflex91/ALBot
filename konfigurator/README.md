@@ -1,5 +1,15 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+
+## Native Einstellungsansichten (22.10.2026)
+
+Die Menüpunkte **Kampf & Fähigkeiten**, **Farmen & Welt**, **Merchant & Produktion** und **Team & Charaktere** sind keine statischen Platzhalter mehr. Sie beziehen ihre Felddefinitionen ausschließlich aus dem vorhandenen vollständigen Full-v1-Schema der Ingame-Runtime; die Worker-Route \`GET /api/profile-schema\` gibt dieses Schema nur unter erfolgreicher Cloudflare-Access-Prüfung aus. Änderungen an Schwellwerten, Listen und Objekten verwenden strikte Typ-/Grenzprüfung und editieren einen lokalen, flüchtigen Entwurf des vollständigen GitHub-Profils. Für ältere oder fehlende Profile wird **kein** neues Vollprofil stillschweigend generiert: der Erstimport erfolgt weiterhin in \`/classic.html\`.
+
+Alle Tabs teilen denselben Entwurf. Der Knopf **Profil auf GitHub speichern** ruft ausschließlich \`PUT /api/profile\` mit dem letzten aus \`GET /api/profile\` bekannten SHA auf; der Worker prüft das vollständige ALBot-Schema samt Abhängigkeiten, und eine konkurrierende Änderung durch die klassische Werkstatt verursacht HTTP 409 statt blindem Überschreiben. Ein erneutes Laden verwirft einen ungespeicherten Entwurf nur nach Bestätigung. Die getrennten, bisherigen globalen Itemrichtlinien bleiben unter \`PUT /api/policy\` und können nicht versehentlich aus den Profileditoren heraus überschrieben werden.
+
+**Weder Bearbeitung noch GitHub-Speicherung aktiviert die Konfiguration im Spiel.** Erst ein gesondert implementierter, überprüfter signierter Konfigurationskanal mit Runtime-ACK dürfte diesen Status ändern. Sensible Tokens werden vom Web-Editor weder abgefragt noch gespeichert. Die klassische Werkstatt bleibt für große Listen und zusätzliche Profilbereiche verfügbar. Kein neues kostenpflichtiges Cloudflare-Produkt, kein neues D1-Schema und keine Anpassung des Ingame-Bootstraps.
+
+
 ## Aktueller Stand (21.10.2026)
 
 Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die spätere Runtime 0.32 benötigt eine separate Ingame-Abnahme. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.

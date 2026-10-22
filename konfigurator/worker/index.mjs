@@ -245,7 +245,9 @@ export async function handleRequest(request,env,ctx={},deps={}){
   if(current.sha!==value.sha)return failure('Die Konfiguration wurde zwischenzeitlich verändert. Bitte neu laden.',409);
   const s=settings(env);
   const write=await github(env,path,'PUT',{
-   message:'config: update ALBot item policy from authenticated Konfigurator',
+   message:path==='/api/profile'?
+    'config: update ALBot full profile from authenticated Konfigurator':
+    'config: update ALBot item policy from authenticated Konfigurator',
    branch:s.branch,content:b64(JSON.stringify(document,null,2)+'\n'),
    ...(current.sha?{sha:current.sha}:{})
   },fetcher);
@@ -257,6 +259,7 @@ export async function handleRequest(request,env,ctx={},deps={}){
   telemetryLimits:{minIntervalSeconds:TELEMETRY_MIN_INTERVAL_MS/1000,
    maxCharacters:MAX_STORED_CHARACTERS,maxBankPacks:MAX_STORED_BANK_PACKS},
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
+ if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});
  if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);
   return current instanceof Response?current:json({ok:true,...current,published:false,applied:false});

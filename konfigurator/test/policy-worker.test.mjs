@@ -220,3 +220,34 @@ test('Access relay accepts only authenticated same-origin JSON, while legacy ing
  assert.equal(oldRoute.status,401);
  assert.equal(writes.length,1);
 });
+
+
+test('canonical profile schema is read-only and behind Cloudflare Access',async()=>{
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',
+  CF_ACCESS_AUD:'aud1',ALLOWED_EMAIL:'user@example.com'};
+ const noToken=await handleRequest(new Request(
+  'https://albot.example.com/api/profile-schema'),env);
+ assert.equal(noToken.status,401);
+ const {token,certs}=await credential();
+ const fetcher=async url=>{
+  if(String(url).includes('/cdn-cgi/access/certs'))
+   return new Response(JSON.stringify(certs));
+  throw Error('Schema must never contact GitHub or another service');
+ };
+ const authorized=await handleRequest(new Request(
+  'https://albot.example.com/api/profile-schema',{
+   headers:{'CF-Access-Jwt-Assertion':token}
+  }),env,{}, {fetcher});
+ assert.equal(authorized.status,200);
+ const body=await authorized.json();
+ assert.equal(body.descriptor.schemaId,'albot.full/v1');
+ assert.equal(body.descriptor.schema.properties.farming.properties.autoTargets.type,'boolean');
+ assert.equal(body.descriptor.schema.properties.merchant.properties.maxSpendPerHour.type,'integer');
+ const denied=await handleRequest(new Request(
+  'https://albot.example.com/api/profile-schema',{
+   method:'PUT',headers:{'CF-Access-Jwt-Assertion':token,
+    origin:'https://albot.example.com','content-type':'application/json'},
+   body:'{}'
+  }),env,{}, {fetcher});
+ assert.equal(denied.status,405);
+});

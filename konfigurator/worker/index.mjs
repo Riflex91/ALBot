@@ -6,6 +6,10 @@ import {TELEMETRY_MIN_INTERVAL_MS} from '../public/free-tier.mjs';
 import {GAME_ORIGINS} from '../public/relay-protocol.mjs';
 import {latestBankPackViews} from './bank-view.mjs';
 import {syncPreflight,SYNC_PREFLIGHT_FORMAT} from '../public/config-sync-contract.mjs';
+import {signer,preparePrivateRelease,previousRelease,releaseInfo}
+ from './private-config-release.mjs';
+import {githubReleaseFile,assertPrivateRepository,ReleaseStorageError}
+ from './private-release-store.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -218,6 +222,59 @@ export async function handleRequest(request,env,ctx={},deps={}){
   try{return await ingest(request,env,false);}
   catch{return failure('Telemetrie-Datenbankfehler',503);}
  }
+ // Publication requires an explicit same-origin, authenticated action. No
+ // profile bytes or signing key may originate in a browser request.
+ if(path==='/api/profile-sync/prepare'){
+  if(request.method!=='PUT')return failure('Methode nicht erlaubt',405);
+  if(request.headers.get('origin')!==url.origin)return failure('Ungültige Request-Herkunft',403);
+  if((request.headers.get('content-type')??'').split(';')[0].trim().toLowerCase()!=='application/json')
+   return failure('JSON erforderlich',415);
+  const size=Number(request.headers.get('content-length')??0);
+  if(size>1024)return failure('Anfrage zu groß',413);
+  let body;try{
+   const raw=await request.text();
+   if(raw.length>1024)throw Error();
+   body=JSON.parse(raw);
+  }catch{return failure('Ungültige Veröffentlichungsbestätigung');}
+  if(!body||typeof body!=='object'||Array.isArray(body)||
+   Object.keys(body).sort().join(',')!=='confirm,githubSha,previousReleaseSha,sha256'||
+   body.confirm!==true||!/^[a-f0-9]{40}$/.test(body.githubSha??'')||
+   !/^[a-f0-9]{64}$/.test(body.sha256??'')||
+   body.previousReleaseSha!==null&&!/^[a-f0-9]{40}$/.test(body.previousReleaseSha??''))
+   return failure('Explizite und vollständige Revisionsbestätigung erforderlich',422);
+  if(!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
+   return failure('Separater privater Konfigurationssignierer nicht eingerichtet',503);
+  try{
+   const source=await github(env,'/api/profile','GET',null,fetcher);
+   if(source instanceof Response)return source;
+   if(source.missing||source.sha!==body.githubSha)
+    return failure('Privates Profil wurde zwischenzeitlich geändert',409);
+   const preflight=await syncPreflight({profile:source.document,githubSha:source.sha});
+   if(preflight.profile.sha256!==body.sha256)
+    return failure('Profil-Fingerprint hat sich geändert',409);
+   const identity=await signer(env);
+   const previous=await githubReleaseFile(env,{fetcher});
+   if(previous.sha!==body.previousReleaseSha)
+    return failure('Signierter Release wurde zwischenzeitlich geändert',409);
+   if(previous.document){
+    await previousRelease(previous.document,identity);
+    if(previous.document.sha256===body.sha256&&previous.document.expiresAt>Date.now())
+     return failure('Diese Profilrevision ist bereits aktuell signiert',409);
+   }
+   // Never commit private profile contents into a public repository.
+   await assertPrivateRepository(env,fetcher);
+   const release=await preparePrivateRelease({
+    profile:source.document,prior:previous.document,identity});
+   const saved=await githubReleaseFile(env,{method:'PUT',
+    document:release,sha:previous.sha,fetcher});
+   return json({ok:true,signerReady:true,keyFingerprint:identity.keyId,
+    ...releaseInfo(release,body.sha256,saved.sha),commit:saved.commit});
+  }catch(error){
+   if(error instanceof ReleaseStorageError)
+    return failure(error.message,error.status);
+   return failure('Private Signaturvorbereitung gescheitert',503);
+  }
+ }
  if(!['GET','HEAD','PUT'].includes(request.method))return failure('Methode nicht erlaubt',405);
  if(request.method==='PUT'){
   if(request.headers.get('origin')!==url.origin)return failure('Ungültige Request-Herkunft',403);
@@ -260,17 +317,26 @@ export async function handleRequest(request,env,ctx={},deps={}){
   telemetryLimits:{minIntervalSeconds:TELEMETRY_MIN_INTERVAL_MS/1000,
    maxCharacters:MAX_STORED_CHARACTERS,maxBankPacks:MAX_STORED_BANK_PACKS},
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
- // Deliberately read-only: no release signature, distribution or ACK exists yet.
- // Never send the private profile to a synchronisation status observer.
+ // Read-only status: private prepared artifacts are NEVER delivered here.
  if(path==='/api/profile-sync/status'){
   const source=await github(env,'/api/profile','GET',null,fetcher);
   if(source instanceof Response)return source;
   if(source.missing||source.sha===null)
    return json({ok:true,format:SYNC_PREFLIGHT_FORMAT,configured:false,
+    signerReady:false,releasePrepared:false,releaseSha:null,
     signed:false,published:false,applied:false,acknowledged:false});
-  try{return json({ok:true,configured:true,
-   ...await syncPreflight({profile:source.document,githubSha:source.sha})});}
-  catch{return failure('Profilrevision konnte nicht kryptografisch geprüft werden',503);}
+  try{
+   const preflight=await syncPreflight({profile:source.document,githubSha:source.sha});
+   if(!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
+    return json({ok:true,configured:true,signerReady:false,
+     releasePrepared:false,releaseSha:null,...preflight});
+   const identity=await signer(env);
+   const previous=await githubReleaseFile(env,{fetcher});
+   if(previous.document)await previousRelease(previous.document,identity);
+   return json({ok:true,configured:true,...preflight,
+    signerReady:true,keyFingerprint:identity.keyId,
+    ...releaseInfo(previous.document,preflight.profile.sha256,previous.sha)});
+  }catch{return failure('Privater Konfigurationssignierer oder Release nicht überprüfbar',503);}
  }
  if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});
  if(path==='/api/policy'||path==='/api/profile'){

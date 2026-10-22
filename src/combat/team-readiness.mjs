@@ -1,5 +1,6 @@
 import {runtimeConditionGate,currentConditionEvidence} from '../core/action-admission.mjs';
 import {distance,samePlace,xy} from '../core/policy.mjs';
+import {spawnLocations} from '../world/knowledge.mjs';
 import {outgoingDamageEstimate} from './damage-model.mjs';
 import {assessQuestDetachment} from './quest-detachment.mjs';
 
@@ -89,7 +90,7 @@ function verifiedFollowerSpawnTarget(actor,monster,{plan,leader,peers,
     !samePlace(actor,plan)||!samePlace(monster,plan)||
     !samePlace(leader,plan)||
     !sharedSpawnPositionEvidence(actor,leader,monster,plan,{
-      maxAnchorGap:maxDistance,maxSupportGap:maxDistance*2}).allowed||
+      maxAnchorGap:maxDistance,maxSupportGap:maxDistance*2,game}).allowed||
     distance(actor,monster)>maxDistance||
     !Number.isFinite(actor.hp)||!(actor.max_hp>0)||
     actor.hp/actor.max_hp<.85||
@@ -180,6 +181,42 @@ export function verifiedFarmSpawnRectangle(plan){
   return null;
  return {map,minX,minY,maxX,maxY};
 }
+// Only *official* neighboring areas of the same monster species can
+// extend the selected farm's attack territory. Matching monster type alone
+// does not authorize roaming across a map or into another farm objective.
+// A neighboring area must be adjacent to the selected source's rectangle,
+// both shapes must come from the live G.maps catalog, and the player must
+// still be physically in range of each individual enemy.
+const adjacentCatalogCache=new WeakMap();
+export function verifiedAdjacentFarmSpawns(plan,game,{maxGap=175}={}){
+ const original=verifiedFarmSpawnRectangle(plan);
+ if(!original||!plan?.target||!game?.maps?.[plan.map]||
+    game.maps[plan.map].instance||game.maps[plan.map].pvp||
+    !Number.isFinite(maxGap)||maxGap<0)return [];
+ const key=plan.map+'|'+plan.target+'|'+JSON.stringify(plan.bounds)+'|'+maxGap;
+ let catalog=adjacentCatalogCache.get(game);
+ if(catalog?.has(key))return catalog.get(key);
+ if(!catalog){catalog=new Map();adjacentCatalogCache.set(game,catalog);}
+ const rows=spawnLocations(game,[plan.target],[],false);
+ const sameBounds=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&
+   a.length===5&&b.length===5&&a.every((v,i)=>v===b[i]);
+ // Do not use an unverified plan as a key for other official spawn regions.
+ if(!rows.some(r=>r.map===plan.map&&sameBounds(r.bounds,plan.bounds))){
+  catalog.set(key,[]);return [];
+ }
+ const separation=(a,b)=>Math.hypot(
+   Math.max(a.minX-b.maxX,b.minX-a.maxX,0),
+   Math.max(a.minY-b.maxY,b.minY-a.maxY,0));
+ const nearby=rows.filter(r=>r.map===plan.map&&r.target===plan.target&&
+    !sameBounds(r.bounds,plan.bounds))
+  .map(r=>({row:r,rect:verifiedFarmSpawnRectangle(r)}))
+  .filter(r=>r.rect&&separation(original,r.rect)<=maxGap)
+  .sort((a,b)=>separation(original,a.rect)-separation(original,b.rect)||
+    a.row.key.localeCompare(b.row.key))
+  .map(({row,rect})=>({key:row.key,rect}));
+ catalog.set(key,nearby);return nearby;
+}
+
 export function distanceFromFarmRectangle(point,rect){
  if(!point||!rect)return Infinity;
  return Math.hypot(Math.max(rect.minX-point.x,point.x-rect.maxX,0),
@@ -190,7 +227,7 @@ export function distanceFromFarmRectangle(point,rect){
 // Canonical bounds are verified against the selected spawn identity by
 // teamPlan.target()/valid() before combat uses this area.
 export function sharedSpawnPositionEvidence(actor,leader,monster,plan,{
- maxAnchorGap=190,maxSupportGap=285
+ maxAnchorGap=190,maxSupportGap=285,game=null
 }={}){
  const own=combatPosition(actor),lead=combatPosition(leader),
    mob=combatPosition(monster),anchor=combatPosition(plan);
@@ -212,18 +249,37 @@ export function sharedSpawnPositionEvidence(actor,leader,monster,plan,{
    pointDistance(p,anchor);
  const actorGap=distanceToArea(own),
    leaderGap=distanceToArea(lead),
-   targetGap=distanceToArea(mob),
-   teamGap=pointDistance(own,lead);
- const evidence={...observed,rect,actorGap,leaderGap,
-  targetGap,teamGap};
+   primaryTargetGap=distanceToArea(mob),
+   teamGap=pointDistance(own,lead),
+   targetRange=pointDistance(own,mob);
  const actorLimit=rect?Math.min(95,maxAnchorGap):maxAnchorGap;
  const leaderLimit=rect?Math.min(95,maxAnchorGap):maxAnchorGap;
  const targetLimit=rect?65:maxAnchorGap;
+ const evidence={...observed,rect,actorGap,leaderGap,
+  targetGap:primaryTargetGap,primaryTargetGap,teamGap,targetRange,
+  areaKind:'primary',adjacentKey:null};
  if(actorGap>actorLimit)return {allowed:false,reason:'actor-outside-spawn',...evidence};
  if(leaderGap>leaderLimit)return {allowed:false,reason:'leader-outside-spawn',...evidence};
- if(targetGap>targetLimit)return {allowed:false,reason:'target-outside-spawn',...evidence};
  if(teamGap>maxSupportGap)return {allowed:false,reason:'team-support-gap',...evidence};
- return {allowed:true,reason:'verified-shared-spawn-position',...evidence};
+ if(primaryTargetGap<=targetLimit)
+  return {allowed:true,reason:'verified-shared-spawn-position',...evidence};
+ // Adjacent official spawns are optional additional target regions, never
+ // a license to move the squad's farm anchor, map, monster type, or realm.
+ // The cast/attack still needs the existing live can_attack/range guard.
+ const nearby=verifiedAdjacentFarmSpawns(plan,game);
+ for(const {key,rect:neighbor} of nearby){
+  const gap=distanceFromFarmRectangle(mob,neighbor);
+  if(gap>65)continue;
+  const boundedRange=Number.isFinite(actor?.range)&&actor.range>5?
+    Math.min(actor.range-5,340):0;
+  if(!(targetRange<=boundedRange))continue;
+  return {allowed:true,reason:'verified-adjacent-spawn-position',
+    ...evidence,targetGap:gap,areaKind:'adjacent',
+    adjacentKey:key,adjacentGap:gap};
+ }
+ return {allowed:false,reason:nearby.length?
+  'target-outside-verified-nearby-spawns':'target-outside-spawn',
+  ...evidence,adjacentCount:nearby.length};
 }
 // The leader chooses species+spawn; all selected farmers may fight separate
 // low-threat monsters inside the source's actual verified spawn rectangle.
@@ -247,7 +303,7 @@ export function assessFollowerSharedSpawn(actor,monster,{
     now-leader.received>4000)
    return deny('leader-or-spawn-proof-stale');
  const position=sharedSpawnPositionEvidence(actor,leader,monster,plan,{
-   maxAnchorGap});
+   maxAnchorGap,game});
  if(!position.allowed)return position;
  if(!Number.isFinite(actor.hp)||!(actor.max_hp>0)||
     actor.hp/actor.max_hp<.75||

@@ -111,7 +111,7 @@ test('U02 ordinary exchange remains available; inactive, unverifiable and expiri
 });
 
 test('U02 execution guard rechecks event and NPC mapping after planning, without dispatch',()=>{
- const G={items:{ticket:{e:2,quest:'quest1',event:'season'},prize:{}},drops:{ticket:[[1,'prize']]},events:{season:{}},npcs:{quest_npc:{quest:'quest1'}},maps:{main:{npcs:[['quest_npc',10,20]]}}};
+ const G={items:{ticket:{e:2,s:9999,quest:'quest1',event:'season'},prize:{}},drops:{ticket:[[1,'prize']]},events:{season:{}},npcs:{quest_npc:{quest:'quest1'}},maps:{main:{npcs:[['quest_npc',10,20]]}}};
  let guard=null,notes=[];const p={G,c:{items:[{name:'ticket',q:4},...Array(6).fill(null)],slots:{},s:{}},root:{S:{season:{live:true}}},parent:{},read:()=>null};
  const e={remaining:()=>true,spare:()=>4,count:()=>4,explicit:()=>null,at:()=>true,npcAt:()=>true,destination:()=>({map:'main',x:10,y:20}),travel:()=>true,npcTravel:()=>true,value:()=>2,note:x=>notes.push(x),perform:(kind,args)=>{guard=args.guard;return true;}};
  const bot={p,me:{name:'M',role:'merchant'},economy:e,cfg:{general:{testLogging:1},production:{enabled:true,exchange:true,goals:[]},merchant:{minFreeSlots:0},party:{}},exec:{pending:new Set()},free:()=>6,transport:{fresh:()=>null}};

@@ -45,6 +45,8 @@ test('direct telemetry sends automatically, credential only in Authorization hea
  f.advance(1);assert.deepEqual(await f.sender.sendOnce(),{character:true,bank:true});
  assert.equal(JSON.parse(f.requests[3].options.body).data.pack,'items1');
  assert.equal(f.sender.status().lastBankSuccess,1760000120000);
+ assert.equal(f.sender.status().lastAttempt,1760000120000);
+ assert.equal(f.sender.status().lastError,null);
  f.sender.dispose();
  await f.sender.sendOnce();assert.equal(f.requests.length,4);
 });
@@ -73,6 +75,7 @@ test('failed upload is throttled and does not leak server response or credential
  });
  assert.equal((await sender.sendOnce()).character,false);
  assert.equal(sender.status().lastResult,'character-rejected-401');
+ assert.equal(sender.status().lastError,'character-rejected-401');
  assert.equal(JSON.stringify(sender.status()).includes('SECRET'),false);
  assert.equal((await sender.sendOnce()).character,false);
  assert.equal(calls.length,1);
@@ -91,4 +94,56 @@ test('automatic integration has no browser popup, user-activation step or public
  assert.doesNotMatch(auto,/window\.open|postMessage|localStorage|GITHUB_TOKEN|CF_ACCESS/);
  assert.doesNotMatch(main,/\bBearer\s+[A-Za-z0-9_-]{32,}/);
  assert.doesNotMatch(auto,/\bBearer\s+[A-Za-z0-9_-]{32,}/);
+});
+
+test('getter failures are safe to diagnose without displaying or contacting a secret',async()=>{
+ let called=0;
+ const sender=createAutomaticTelemetrySender({
+  fetcher:async()=>{called++;throw Error('must not send');},
+  getCredential:()=>{throw Error('PRIVATE-KEY-READ-FAILED');},
+  getCharacter:()=>null,getRealm:()=> 'EUII',getBankDefinitions:()=>({}),
+  now:()=>1760000000000
+ });
+ const status=sender.status();
+ assert.equal(status.mode,'automatic');
+ assert.equal(status.configured,false);
+ assert.equal(status.lastAttempt,null);
+ assert.equal(JSON.stringify(status).includes('PRIVATE-KEY'),false);
+ await sender.sendOnce();
+ assert.equal(called,0);
+ sender.dispose();
+});
+
+test('disposal aborts an in-flight browser upload and frees the sender',async()=>{
+ let signal=null;
+ const sender=createAutomaticTelemetrySender({
+  fetcher:(_url,options)=>{
+   signal=options.signal;
+   return new Promise((_resolve,reject)=>{
+    signal.addEventListener('abort',()=>reject(Error('abort')), {once:true});
+   });
+  },
+  getCredential:()=>key,getCharacter:()=>({name:'My_Ranger1',map:'main',
+   level:10,hp:200,mp:100,max_hp:200,max_mp:100,x:1,y:1,items:[]}),
+  getRealm:()=> 'EUII',getBankDefinitions:()=>({}),
+  now:()=>1760000000000
+ });
+ const pending=sender.sendOnce();
+ assert.equal(sender.status().inFlight,true);
+ assert.ok(signal instanceof AbortSignal);
+ sender.dispose();
+ await pending;
+ assert.equal(signal.aborted,true);
+ assert.equal(sender.status().inFlight,false);
+ assert.equal(sender.status().disposed,true);
+ assert.equal(sender.status().lastResult,'character-network-error');
+ assert.equal(sender.status().lastError,'character-network-error');
+});
+
+test('runtime status reports automatic mode even without private credential',async()=>{
+ const main=await readFile(new URL('../../src/main.mjs',import.meta.url),'utf8');
+ assert.match(main,/telemetryStatus:\(\)=>telemetryAuto\?\{/);
+ assert.match(main,/active:!disposed&&bot\.running&&telemetryAutoInterval!==null/);
+ assert.match(main,/relay:telemetryRelay\?\.status\(\)\?\?null/);
+ assert.doesNotMatch(main,/telemetryAuto\?\.status\(\)\.configured\?telemetryAuto\.status\(\)/);
 });

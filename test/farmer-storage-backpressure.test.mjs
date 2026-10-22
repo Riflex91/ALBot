@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {farmingStoragePressure,defensiveFarmTarget}
  from '../src/combat/storage-backpressure.mjs';
 import {createFarmer} from '../src/combat/farmer.mjs';
+import {createLootBacklog} from '../src/items/loot-departure.mjs';
 import {fitHeartbeat} from '../src/party/transport.mjs';
 
 const online={running:true,rip:false,realm:'EUII',storagePressure:true};
@@ -54,7 +55,7 @@ function farmerFixture({free=10,signal=null,engaged=false,monsters=true}={}){
   world:{excludedMaps:[]}};
  const bot={cfg,me:{name:'Farmer',role:'farmer'},
   p:{c,G:{maps:{main:{pvp:false}},items:{}},parent:{is_pvp:false},
-   realm:()=> 'EUII',
+   realm:()=> 'EUII',has:name=>name==='loot',
    call:(method)=>method==='is_on_cooldown'?false:
      method==='can_attack'?true:method==='can_move_to'?true:null},
   running:true,reason:'',target:null,teamNames:['Farmer'],
@@ -109,6 +110,9 @@ test('new pulls automatically resume when a fresh Merchant heartbeat clears its 
  let state={...online};
  const f=farmerFixture({free:15});
  f.bot.transport.fresh=()=>state;
+ // Collection is deliberately owned by the scheduler, not farmer.tick().
+ f.bot.lootBacklog=createLootBacklog(f.bot);
+ f.bot.lootBacklog.tick();
  f.bot.farmer.tick();
  assert.deepEqual(f.attacks.filter(x=>x==='attack'),[],
   'pressure blocks NEW attacks but not collecting already dropped loot');

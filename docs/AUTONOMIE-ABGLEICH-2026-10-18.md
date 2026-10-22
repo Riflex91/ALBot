@@ -1,3 +1,55 @@
+## W06/G09 – Marktvarianten und Standabgleich fail-closed (22.10.2026)
+
+Der vorhandene Merchant-Marktpfad validiert `G.items` jetzt ausschließlich über echte Katalogeigenschaften. Physisch plausible, aber zyklische oder unlesbare Varianten dürfen weder bestätigte Sales, autonome Listvorschläge noch Stand-Fingerprints oder verzögerte `unequip`-Reclaimaktionen authorisieren. `proposal`, `posted` und `expire` verwenden identische ausfallsichere Varianten-/Fingerprintprüfungen; der Executor und seine physische Vor-/Nachherquittung bleiben erhalten. Regressionen in `test/roadmap-w06-g09-market-demand-evidence.test.mjs`. Vollständiger Account-Tauschmarkt, Markt-Liveabnahme und W14 bleiben offen.
+
+## W10/W13 – nur katalogechte und physisch mögliche Chest-Ereignisse (22.10.2026)
+
+Der vorhandene `createOwnLootReceipts`-Ablauf validiert jetzt auch die einzelnen offiziellen `chest_opened`-Einträge gegen die physischen `G.items[name].s`-Grenzen und eigene Katalogeinträge. Vererbte JS-Objektfelder sind keine Spielitems, übergroße/unmögliche Mengen (auch von fremden Lootempfängern) sind keine vollständige Zuordnung. Die bisherige Pre-Loot-Baseline, Deltaquittung, Eigentümerzuweisung und konservative Session-/Realm-Sperre bleiben unverändert. Regressionen in `test/roadmap-w10-w13-own-loot-receipts.test.mjs`. **Dies ist keine vollständige rollenverteilte Lootmission, keine live bestätigte Eigentumsquittung und kein signierter Release.**
+
+## W03 – bekannte Quellstapelgrenzen im Produktions-Kapazitätsbeleg (22.10.2026)
+
+Der bestehende gemeinsame `capacityAfterConsumption`-Prüfer erhält optional das aktuelle `G.items`-Metadatenwörterbuch und verweigert bei bekannten Gegenständen physisch übergroße Quellenbestände, auch wenn sie nur indirekt einen freien Ausgabeslot finanzieren. `actionCapacity` übergibt diese Metadaten jetzt in den bestehenden Produktionspfad. Fehlende Metadaten werden nicht erfunden und lösen keine zusätzlichen Wertaktionen aus. Regressionen in `test/shared-physical-capacity.test.mjs`; Build- und CI-Nachweise getrennt prüfen. **Keine vollständige W02/W03/W04-Transaktions-Recovery oder W14-Liveabnahme.**
+
+## N05 – dynamische Scout-Wegfreiheit (22.10.2026)
+
+Der vorhandene begrenzte lokale Scout überprüft die native `can_move_to`-Wegfreiheit jetzt mit demselben ausfallsicheren Adapter vor Planung, unmittelbar beim Dispatch und während der aktiven Bewegung. Verlorene Wegfreiheit, fehlende/werfende API oder aktivierter Stand brechen den Scout kontrolliert ab; das einmalige Kill-Ticket wird nicht erneut verwendet. Tests in `test/roadmap-n05-approved-local-scout-hop.test.mjs`. **Teilabsicherung, keine N05/N10-Vollabnahme, kein Live- oder Respawn-Zeitbeleg.** Linux-/Windows-CI und Artefakt-Synchronisierung gesondert prüfen.
+
+## W03/W04 — Stackgrenzen in Bank-Reclaim-Quittungen (21.10.2026)
+
+Alle neu bewerteten Reclaim-Belege nutzen die echte G-Metadatenobergrenze für jedes physische Quellen-/Zwischenstapelitem. Ungültige Mengen und unbekannte Quelle werden unbestätigt gehalten. Der vorhandene irreversible NPC-/Bank-Executor bleibt die einzige Ausführungsinstanz; kein Wiederholen ungeklärter Antworten. Restarbeiten: vollständige mehrstufige Slotfolgen und echte Ingame-Quittierung.
+
+## W06/G09 — physisch nachweisbare Marktbeobachtungen (21.10.2026)
+
+Die vorhandene automatische Marktnachfrage wird jetzt vor der Ratenschätzung gegen reale Stackgrößen und Replay-belastete gespeicherte Handelsmengen geschützt. Der Rückzug eigener Angebote akzeptiert nur eine echte, unveränderte Standmenge. Die neue Prüfung verhindert Phantom-Marktsignale, autorisiert aber keine zusätzlichen Käufe/Verkäufe, ersetzt keine echten Handelsquittungen und schließt W06/G09 oder W14 nicht vollständig ab.
+
+## G09 — strikter Own-Trade-Offer-Lebenszyklus (21.10.2026)
+
+Auch dieser Wertpfad verwendet nun den direkt gespeicherten `cstore_`-Datensatz statt des fehlertoleranten Adventure-Land-`get()`. Unklare Initialreads, beschädigte Einträge, konkurrierende Schreibvorgänge und fehlende Read-back-Belege blockieren weitere Listings und das Einbuchen eines Swaps. Das ersetzt keine fehlenden Serverbelege, erzeugt keinen automatischen Repost und verändert keine persönliche Konfiguration. Vollständige Markt-/Tauschautonomie offen.
+
+## Fortschritt W12/N12 — eng begrenzte Cave-Pre-Dispatch-Recovery (21.10.2026)
+
+Ein nach Sessionwechsel verbliebener, garantiert noch nicht versendeter Cave-`prepared`-Checkpoint blockiert die nächste tatsächliche Berechtigungsprüfung nicht dauerhaft: Nur eine danach frische `cave_info`-Antwort, dieselbe Run-/Rosteridentität, Current-Realm-Prüfung und freie Wert-/Vote-/Crypt-Journale ermöglichen lokales Journal-Reset. Die schon implementierte Server-Dispatch-Unbekannt- und Exit-Recovery bleiben strikt gesperrt. Kein erfundener Cave-Exit, keine Erhöhung täglicher Versuche und keine neue API. Vollständiger W12/N12-/W14-Livebetrieb weiterhin offen.
+
+## Fortschritt W10/W13 — physische Lootquittung (21.10.2026)
+
+Die passive Chest-/Inventardelta-Korrelation validiert jetzt alle aktuellen Bestandszeilen gegen reale Stackgrenzen, schützt vor einer veralteten Game-Definition und verweigert unbestätigte eigene Loot- oder readonly-Nutzungsbelege. Sie führt keine zusätzliche Loot-Aktion und keine neue Waren-/Gear-Disposition aus. Die vollständige Rollen-Lootmission und ihr echter W14-Livetest bleiben offen.
+
+## W02: Stacklimit bei vorbeugender Disposition (21.10.2026)
+
+Die vorhandene reversible Lager-/Bankstrategie erhält einen echten `G.items[name].s`-Nachweis für alle tatsächlich zur Verlustfreigabe gezählten lokalen und aktuellen Bankstapel. Ein q:2-Gegenstand ohne Stackfähigkeit kann deshalb nicht länger als zwei physische Quellen die letzte Produktionsreserve schützen. Echt vorhandene Einzelkopien behalten ihre Wirkung. Langzeit-/Liveabnahme bleibt offen.
+
+## W06/G09 – Materialquoten ohne Überlauf / ohne Phantomarbeit (21.10.2026)
+
+Der bestehende Quotenplan stoppt weitere Farming-Aufträge, wenn die kontoweite Addition physisch gemeldeter Mengen den sicheren Integerbereich überschreitet oder Peer-/Roster-Evidenz unzuverlässig wird. Bereits vorhandene Mengen werden nicht als null gerundet. Der bestehende Produktions- und Versandpfad wird nicht dupliziert; Markt-Tausch und Live-Belege sind weiterhin offen.
+
+## W12/N11 — vor Dispatch sicherer Crypt-Restart (21.10.2026)
+
+Bei Sessionwechsel kann das vorhandene Crypt-Journal eine eindeutig noch nicht versendete `prepared`-Absicht nach strengem Realm-/Slot-/Fingerprint-/Keybestand- und Guard-Abgleich automatisch, dauerhaft und **ohne Spielaufruf** freigeben. Jeder unsichere Dispatch-/Instanzzustand bleibt blockiert. Dies löst ausschließlich den ersten eingrenzbaren Recovery-Schritt, nicht den gesamten Crypt-Run oder dessen Exit-/Loot-Belege.
+
+## Fortschritt W03/G01 — physische Source-/Slot-Integrität (21.10.2026)
+
+Der vorhandene gemeinsame Kapazitätsprüfer unterscheidet jetzt konsequent fehlendes `q` von `q:null`; die W03-Slotfolgensuche schließt leere Ausgangspositionen aus. Diese Änderungen verhindern eine Phantomfreigabe bei Einkauf, Produktion, Transfer und Reward-Mail, sind aber **keine** serverbestätigte mehrstufige Inventar-Recovery. Vollständige W03- und W14-Liveabnahme bleiben offen.
+
 # Autonomie-Abgleich und Umsetzung 0.10.11-candidate
 
 Verglichener Main: [2d0ce11243c273a6445765d9c28a4c760f20e0e2](https://github.com/Riflex91/ALBot/commit/2d0ce11243c273a6445765d9c28a4c760f20e0e2), 18.10.2026. Umsetzungs-PR: [#167](https://github.com/Riflex91/ALBot/pull/167). Fachliche Grundlage: die Implementierungsroadmap, der Tiefenvergleich und die KI-Übergabe vom 18.10.2026. Diese Dateien wurden gelesen; sie erteilen selbst keine neuen Berechtigungen. Der Benutzer hat Umsetzung und automatischen Merge nach Main ausdrücklich beauftragt.

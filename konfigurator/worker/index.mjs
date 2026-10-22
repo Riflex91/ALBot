@@ -3,7 +3,9 @@ import {FULL_DESCRIPTOR} from '../../src/config/full.mjs';
 import {importProfile,envelope} from '../../editor/lib/contract.mjs';
 import {storeTelemetry,MAX_STORED_CHARACTERS,MAX_STORED_BANK_PACKS,SNAPSHOT_READ_TTL_MS} from './telemetry-store.mjs';
 import {TELEMETRY_MIN_INTERVAL_MS} from '../public/free-tier.mjs';
+import {GAME_ORIGINS} from '../public/relay-protocol.mjs';
 import {latestBankPackViews} from './bank-view.mjs';
+import {syncPreflight,SYNC_PREFLIGHT_FORMAT} from '../public/config-sync-contract.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -177,12 +179,13 @@ const secureHeaders={
  'referrer-policy':'no-referrer','cache-control':'no-store',
  'content-security-policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 };
-function telemetryCors(req,env){
- const raw=asString(env.INGEST_ALLOWED_ORIGIN)||'https://adventure.land';
+function telemetryCors(req){
+ // Both official Adventure Land game origins share the same private ingest
+ // path. Reflect ONLY a known exact origin; never mirror arbitrary hosts.
  const origin=req.headers.get('origin');
  if(!origin)return {};
- if(origin!==raw||!/^https:\/\/[a-zA-Z0-9.-]+$/.test(raw))return null;
- return {'access-control-allow-origin':raw,'vary':'Origin',
+ if(!GAME_ORIGINS.includes(origin))return null;
+ return {'access-control-allow-origin':origin,'vary':'Origin',
   'access-control-allow-methods':'POST, OPTIONS',
   'access-control-allow-headers':'Authorization, Content-Type',
   'access-control-max-age':'600'};
@@ -190,7 +193,7 @@ function telemetryCors(req,env){
 export async function handleRequest(request,env,ctx={},deps={}){
  const url=new URL(request.url),path=url.pathname,fetcher=deps.fetcher??fetch;
  if(path==='/api/ingest'){
-  const cors=telemetryCors(request,env);
+  const cors=telemetryCors(request);
   if(cors===null)return failure('Origin nicht freigegeben',403);
   if(request.method==='OPTIONS')
    return new Response(null,{status:204,headers:cors});
@@ -243,7 +246,9 @@ export async function handleRequest(request,env,ctx={},deps={}){
   if(current.sha!==value.sha)return failure('Die Konfiguration wurde zwischenzeitlich verändert. Bitte neu laden.',409);
   const s=settings(env);
   const write=await github(env,path,'PUT',{
-   message:'config: update ALBot item policy from authenticated Konfigurator',
+   message:path==='/api/profile'?
+    'config: update ALBot full profile from authenticated Konfigurator':
+    'config: update ALBot item policy from authenticated Konfigurator',
    branch:s.branch,content:b64(JSON.stringify(document,null,2)+'\n'),
    ...(current.sha?{sha:current.sha}:{})
   },fetcher);
@@ -255,6 +260,19 @@ export async function handleRequest(request,env,ctx={},deps={}){
   telemetryLimits:{minIntervalSeconds:TELEMETRY_MIN_INTERVAL_MS/1000,
    maxCharacters:MAX_STORED_CHARACTERS,maxBankPacks:MAX_STORED_BANK_PACKS},
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
+ // Deliberately read-only: no release signature, distribution or ACK exists yet.
+ // Never send the private profile to a synchronisation status observer.
+ if(path==='/api/profile-sync/status'){
+  const source=await github(env,'/api/profile','GET',null,fetcher);
+  if(source instanceof Response)return source;
+  if(source.missing||source.sha===null)
+   return json({ok:true,format:SYNC_PREFLIGHT_FORMAT,configured:false,
+    signed:false,published:false,applied:false,acknowledged:false});
+  try{return json({ok:true,configured:true,
+   ...await syncPreflight({profile:source.document,githubSha:source.sha})});}
+  catch{return failure('Profilrevision konnte nicht kryptografisch geprüft werden',503);}
+ }
+ if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});
  if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);
   return current instanceof Response?current:json({ok:true,...current,published:false,applied:false});

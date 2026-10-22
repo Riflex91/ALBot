@@ -73,13 +73,18 @@ export function bankCapacityPressure(rows,workspace=2,localMap=null){
 // A revoked/not-reproducible emergency sale can be rolled back by storing
 // the exact retrieved, unmodified stack into the SAME empty bank slot.
 // Never guess a slot or clear the checkpoint on incomplete evidence.
-export function reclaimRollbackEvidence(record,carried,bankSlot,bankCount){
- if(!record?.item||!Number.isSafeInteger(record.before)||
+export function reclaimRollbackEvidence(record,carried,bankSlot,bankCount,G=null){
+ const meta=G?.items?.[record?.item?.name];
+ const max=meta?.s===true?9999:
+  Number.isSafeInteger(meta?.s)&&meta.s>1?meta.s:1;
+ if((G&&!meta)||!record?.item||!Number.isSafeInteger(record.before)||
     !Number.isSafeInteger(record.quantity)||record.quantity<=0||
     !Number.isSafeInteger(record.bankBefore)||record.bankBefore<record.quantity||
     !carried||bankSlot!==null||
     identity(carried)!==identity(record.item)||
-    (carried.q??1)!==record.quantity||
+    (carried.q===undefined?1:carried.q)!==record.quantity||
+    (record.item.q===undefined?1:record.item.q)!==record.quantity||
+    (G&&record.quantity>max)||
     !Number.isSafeInteger(bankCount)||
     bankCount!==record.bankBefore-record.quantity)
   return false;
@@ -101,7 +106,7 @@ export function createBank(bot){
  if(pending&&!validPending(pending)){
   bot.inventoryBlocked=true;e.note('Bank-Teilentnahme: alter oder ungültiger Checkpoint; Bestand prüfen');
  }
- if(reclaiming&&!validateBankReclaimRecord(reclaiming,{owner:me.name,realm:p.realm()}).valid){
+ if(reclaiming&&!validateBankReclaimRecord(reclaiming,{owner:me.name,realm:p.realm(),G:p.G}).valid){
   bot.inventoryBlocked=true;e.note('Bankfreigabe: altes oder ungültiges Journal; Wertaktionen gesperrt');
  }
  // Two independent bank value intents must never be interpreted as one
@@ -911,7 +916,7 @@ export function createBank(bot){
    expectedSaleGold:e.value(item)*q,reason,explicitOnly,
    prepared:{at:Date.now(),kind:'bank.reclaim',session:bot.session,
     realm:p.realm(),pack,slot,dest,sourcePrint:fp}};
-  if(!validateBankReclaimRecord(record,{owner:me.name,realm:p.realm()}).valid)
+  if(!validateBankReclaimRecord(record,{owner:me.name,realm:p.realm(),G:p.G}).valid)
    return false;
   if(!p.write(reclaimKey,record))return false;
   reclaiming=record;
@@ -922,7 +927,7 @@ export function createBank(bot){
     const current=reclaiming;
     if(current!==record||classifyBankReclaimRecord(current,{
      owner:me.name,realm:p.realm(),inventory:p.c.items,
-     bank:p.c.bank,map:p.c.map,packMap}).phase!=='unchanged'){
+     bank:p.c.bank,map:p.c.map,packMap,G:p.G}).phase!=='unchanged'){
      bot.inventoryBlocked=true;
      throw Error('Bankfreigabe: Quelle vor API-Aufruf nicht eindeutig');
     }
@@ -930,7 +935,7 @@ export function createBank(bot){
      at:Date.now(),kind:'bank.reclaim',session:bot.session,
      realm:current.realm,pack:current.pack,slot:current.slot,
      dest:current.dest,sourcePrint:current.sourcePrint}};
-    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm()}).valid||
+    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm(),G:p.G}).valid||
        p.write(reclaimKey,next)!==true){
      bot.inventoryBlocked=true;
      e.note('Bankfreigabe: API-Dispatch-Beleg nicht dauerhaft gespeichert');
@@ -950,7 +955,7 @@ export function createBank(bot){
   if(!accepted&&!bot.journal&&!bot.exec?.busy?.('inventory')){
    const evidence=classifyBankReclaimRecord(record,{
     owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
-    map:p.c.map,packMap});
+    map:p.c.map,packMap,G:p.G});
    if(evidence.phase==='unchanged'&&p.write(reclaimKey,null)===true)
     reclaiming=null;
   }
@@ -1107,7 +1112,7 @@ export function createBank(bot){
  }
  function dispatchRollback(record){
   const state=classifyBankReclaimRecord(record,{owner:me.name,realm:p.realm(),
-   inventory:p.c.items,bank:p.c.bank,map:p.c.map,packMap});
+   inventory:p.c.items,bank:p.c.bank,map:p.c.map,packMap,G:p.G});
   if(state.phase==='restored'){
    if(p.write(reclaimKey,null)===true)reclaiming=null;else bot.inventoryBlocked=true;
    return true;
@@ -1117,17 +1122,17 @@ export function createBank(bot){
   }
   if(state.phase!=='rollback-prepared')return true;
   const phase=()=>classifyBankReclaimRecord(record,{owner:me.name,realm:p.realm(),
-   inventory:p.c.items,bank:p.c.bank,map:p.c.map,packMap}).phase;
+   inventory:p.c.items,bank:p.c.bank,map:p.c.map,packMap,G:p.G}).phase;
   const guard=()=>reclaiming===record&&phase()==='rollback-prepared'&&
    e.safe(p.c.items[record.dest])&&
    reclaimRollbackEvidence(record,p.c.items[record.dest],
     p.c.bank?.[record.pack]?.[record.slot]??null,
-    variantCount(p.c.bank?.[record.pack]??[],record.item));
+    variantCount(p.c.bank?.[record.pack]??[],record.item),p.G);
   e.perform('bank.store',{slots:[record.dest],guard,
    call:()=>{
     if(!guard()){bot.inventoryBlocked=true;throw Error('Rücklagerung: Slotbeleg verändert');}
     const next={...record,rollback:{...record.rollback,dispatchedAt:Date.now()}};
-    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm()}).valid||
+    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm(),G:p.G}).valid||
        p.write(reclaimKey,next)!==true){
      bot.inventoryBlocked=true;throw Error('Rücklagerung: Dispatchbeleg fehlt');
     }
@@ -1135,11 +1140,11 @@ export function createBank(bot){
    },
    observe:()=>!!reclaiming&&classifyBankReclaimRecord(reclaiming,{
     owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
-    map:p.c.map,packMap}).phase==='restored',
+    map:p.c.map,packMap,G:p.G}).phase==='restored',
    onConfirmed:()=>{
     if(!reclaiming||classifyBankReclaimRecord(reclaiming,{
      owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
-     map:p.c.map,packMap}).phase!=='restored')return false;
+     map:p.c.map,packMap,G:p.G}).phase!=='restored')return false;
     if(p.write(reclaimKey,null)!==true){bot.inventoryBlocked=true;return false;}
     reclaiming=null;return true;
    },
@@ -1163,7 +1168,7 @@ export function createBank(bot){
   let r=reclaiming;
   const evidence=classifyBankReclaimRecord(r,{
    owner:me.name,realm:p.realm(),inventory:p.c.items,bank:p.c.bank,
-   map:p.c.map,packMap});
+   map:p.c.map,packMap,G:p.G});
   if(evidence.phase==='invalid'){
    bot.inventoryBlocked=true;
    e.note('Bankfreigabe: ungültiges Journal ('+evidence.reason+'); Wertaktionen gesperrt');
@@ -1179,7 +1184,7 @@ export function createBank(bot){
     return true;
    }
    const offsite=inspectOffsiteBankReclaim(r,{
-    owner:me.name,realm:p.realm(),inventory:p.c.items});
+    owner:me.name,realm:p.realm(),inventory:p.c.items,G:p.G});
    if(!offsite.eligible){
     ready(r.pack,true); // re-prove the bank source before any further value step
     e.note('Bankfreigabe: Quellbank nicht beobachtet ('+offsite.reason+'); Rückkehr zur Bank');
@@ -1220,7 +1225,7 @@ export function createBank(bot){
      dest:r.dest,sourcePrint:r.sourcePrint,
      inventoryCount:r.before+r.quantity,
      bankCount:r.bankBefore-r.quantity}};
-    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm()}).valid||
+    if(!validateBankReclaimRecord(next,{owner:me.name,realm:p.realm(),G:p.G}).valid||
        p.write(reclaimKey,next)!==true){
      bot.inventoryBlocked=true;
      e.note('Bankfreigabe: Entnahmebeleg nicht dauerhaft gespeichert');
@@ -1253,11 +1258,11 @@ export function createBank(bot){
   if(!r.rollback&&r.dispatch&&r.withdrawal&&e.safe(item)&&
      p.c.map===packMap(r.pack)&&Array.isArray(p.c.bank?.[r.pack])&&
      reclaimRollbackEvidence(r,item,p.c.bank[r.pack][r.slot]??null,
-      variantCount(p.c.bank[r.pack],r.item))){
+      variantCount(p.c.bank[r.pack],r.item),p.G)){
    const at=Date.now();
    const next={...r,rollback:{at,session:bot.session,realm:r.realm,
     pack:r.pack,source:r.dest,dest:r.slot,sourcePrint:r.sourcePrint}};
-   if(validateBankReclaimRecord(next,{owner:me.name,realm:p.realm()}).valid&&
+   if(validateBankReclaimRecord(next,{owner:me.name,realm:p.realm(),G:p.G}).valid&&
       p.write(reclaimKey,next)===true){reclaiming=next;return dispatchRollback(next);}
    bot.inventoryBlocked=true;e.note('Bankrücklagerung: Journal nicht gespeichert');return true;
   }
@@ -1272,13 +1277,13 @@ export function createBank(bot){
    partial=pending?partialEvidence(pending):null,
    reclaim=reclaiming?classifyBankReclaimRecord(reclaiming,{
     owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items,
-    bank:p.c?.bank,map:p.c?.map,packMap}):null,
+    bank:p.c?.bank,map:p.c?.map,packMap,G:p.G}):null,
    singleResult=single?singleEvidence(single):null,
     storeResult=storing?storeEvidence(storing):null,
     swapResult=swapping?swapEvidence(swapping):null,
    offsite=reclaiming&&reclaim?.phase==='unobserved'?
     inspectOffsiteBankReclaim(reclaiming,{
-     owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items}):null;
+     owner:me.name,realm:p.realm?.()??'',inventory:p.c?.items,G:p.G}):null;
   const needsReview=collision||
    ['ambiguous','invalid'].includes(partial?.phase)||
    (pending&&partial&&partial.phase!=='unobserved'&&

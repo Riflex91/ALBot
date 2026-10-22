@@ -51,3 +51,64 @@ test('post-consumption plan rejects invalid or double-accounted inputs',()=>{
  assert.equal(capacityAfterConsumption(inv,[{slot:0,quantity:2},{slot:0,quantity:2}],potion,G.items.hpot0),null);
  assert.equal(actionCapacity(inv,[{slot:0,quantity:345}],null,G),false);
 });
+
+test('W03/G01 rejects absent item source and explicitly malformed physical quantity',()=>{
+ const inv=[{name:'seashell',q:10},...fillers(41)];
+ const cases=[null,0,-1,1.5,Infinity,NaN];
+ for(const q of cases){
+  inv[0].q=q;
+  assert.equal(capacityAfterConsumption(inv,[{slot:0,quantity:1}],null),null,
+   'cannot consume a fictional source q='+String(q));
+  assert.equal(actionCapacity(inv,[{slot:0,quantity:1}],{name:'ring'},G,1),false);
+  assert.equal(purchaseFits(inv,potion,1,G.items.hpot0),false,
+   'corrupt physical stock is not a receiving promise');
+ }
+ inv[0]={name:'seashell',q:10};
+ assert.equal(capacityAfterConsumption(inv,[{slot:42,quantity:1}],null),null,
+   'out-of-range slot cannot be a consumed item');
+ assert.equal(capacityAfterConsumption(inv,[{slot:41,quantity:1}],null)?.free,1,
+   'the actually occupied last slot may be removed');
+ inv[41]=null;
+ assert.equal(capacityAfterConsumption(inv,[{slot:41,quantity:1}],null),null);
+ assert.equal(capacityAfterConsumption(inv,[{slot:0,quantity:10}],null)?.free,2,
+  'preexisting empty slot and fully consumed stack provide two physical slots');
+});
+
+test('W03/G01 matching overstack never finances a separate free-slot transfer',()=>{
+ const inv=[{...potion,q:10000},...fillers(40),null];
+ assert.equal(capacityAfterConsumption(inv,[],potion,G.items.hpot0),null);
+ assert.equal(purchaseFits(inv,potion,1,G.items.hpot0),false);
+ assert.equal(physicalReceiveCapacity(inv,potion,G.items.hpot0),0);
+ inv[0].q=9998;
+ assert.equal(physicalReceiveCapacity(inv,potion,G.items.hpot0),10000);
+});
+
+test('W03/G01 output q must itself satisfy the physical stack limit',()=>{
+ const inv=[null,...fillers(41)];
+ for(const q of [null,0,10000,1.5,Infinity]){
+  assert.equal(capacityAfterConsumption(inv,[],{...potion,q},G.items.hpot0),null);
+ }
+ assert.equal(capacityAfterConsumption(inv,[],{...potion,q:9999},G.items.hpot0)?.units,
+  9999);
+ assert.equal(capacityAfterConsumption(inv,[],{name:'ring',q:2},G.items.ring),null);
+ assert.equal(capacityAfterConsumption(inv,[],{name:'ring'},G.items.ring)?.units,1);
+});
+
+test('W03 known per-item stack caps reject phantom consumption workspace',()=>{
+ const impossibleGear=[{name:'ring',q:2},...fillers(41)];
+ const consumeGear=[{slot:0,quantity:2}];
+ assert.equal(capacityAfterConsumption(impossibleGear,consumeGear,
+  {name:'ring'},G.items.ring,{itemDefinitions:G.items}),null);
+ assert.equal(actionCapacity(impossibleGear,consumeGear,{name:'ring'},G,1),false);
+ const impossiblePotion=[{...potion,q:10000},...fillers(41)];
+ assert.equal(actionCapacity(impossiblePotion,[{slot:0,quantity:10000}],
+  {name:'ring'},G,1),false);
+ assert.equal(actionCapacity(impossiblePotion,[],{name:'ring'},G,1),false,
+  'even an unrelated overstack invalidates the known physical snapshot');
+ const legitimateGear=[{name:'ring'},...fillers(41)];
+ assert.equal(actionCapacity(legitimateGear,[{slot:0,quantity:1}],
+  {name:'ring'},G,1),true);
+ const legitimatePotion=[{...potion,q:9999},...fillers(41)];
+ assert.equal(actionCapacity(legitimatePotion,[{slot:0,quantity:9999}],
+  {name:'ring'},G,1),true);
+});

@@ -87,3 +87,23 @@ test('IPC-only configuration without IPC records a failed transport attempt',asy
  assert.equal(s.lastFailure.reason,'channel');assert.equal(f.queue.length,0);
  a.close();b.close();
 });
+
+test('repeatedly unreachable offline character is probed sparingly while active peers stay fresh',async()=>{
+ const f=fixture(),entry=f.bots.Ranger,send=entry.bot.p.call;
+ // A configured, inactive teammate is still discoverable on initial probes.
+ entry.transport.roster.push('OfflineWarrior');
+ const sent=[];entry.bot.p.call=(kind,to,m)=>{
+  sent.push(to);
+  return to==='OfflineWarrior'?{receivers:[]}:send(kind,to,m);
+ };
+ for(let k=0;k<8;k++){
+  entry.transport.heartbeat();
+  await Promise.resolve();
+  await Promise.resolve();
+ }
+ assert.ok(sent.filter(n=>n==='OfflineWarrior').length<=3,
+  'offline peer receives initial checks then at most one 30-second discovery probe');
+ assert.equal(sent.filter(n=>n==='Merchant').length,8,
+  'healthy team links remain unthrottled');
+ entry.transport.close();f.bots.Merchant.transport.close();
+});

@@ -44,8 +44,10 @@ export function classifyBankSingleRecord(r,{
   return {phase:'unobserved',reason:'inventory-or-bank-map-unknown'};
  let sourceMap;
  try{sourceMap=packMap(r.pack);}catch{return {phase:'unobserved',reason:'bank-pack-map-unresolved'};}
+ // A truncated local source pack is NOT a complete transaction before/after
+ // image, even when every addressed slot happens to be in its prefix.
  if(sourceMap!==map||!bank||!Array.isArray(bank[r.pack])||
-    bank[r.pack].length>42)
+    bank[r.pack].length!==42)
   return {phase:'unobserved',reason:'addressed-bank-pack-not-current'};
  const pack=bank[r.pack],source=pack[r.slot],dest=inventory[r.dest];
  const carried=verifiedBankVariantCount(inventory,r.item),bankCount=verifiedBankVariantCount(pack,r.item);

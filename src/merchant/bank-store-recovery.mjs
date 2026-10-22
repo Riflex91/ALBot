@@ -37,8 +37,10 @@ export function classifyBankStoreRecord(r,{
  try{bankMap=packMap(r.pack);}catch{
   return {phase:'unobserved',reason:'bank-map-unresolved'};
  }
+ // A truncated local source pack is NOT a complete transaction before/after
+ // image, even when every addressed slot happens to be in its prefix.
  if(bankMap!==map||!bank||!Array.isArray(bank[r.pack])||
-    bank[r.pack].length>42)
+    bank[r.pack].length!==42)
   return {phase:'unobserved',reason:'addressed-pack-not-current'};
  const source=inventory[r.source],dest=bank[r.pack][r.dest];
  if(source&&fingerprint(source)===r.sourcePrint&&!dest)

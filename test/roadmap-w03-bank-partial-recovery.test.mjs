@@ -278,3 +278,32 @@ test('W03 partial journal refuses split/return confirmation with invalid quantit
  inventory[2]=null;
  assert.equal(inspect().phase,'returned');
 });
+
+test('W03 partial-bank recovery rejects every phase with a truncated source pack',()=>{
+ const r=checkpoint(),steps=[
+  {source:{...material},dest:null,split:null,want:'original'},
+  {source:null,dest:{...material},split:null,want:'withdrawn'},
+  {source:null,dest:{name:'beewing',q:31},
+   split:{name:'beewing',q:100},want:'split'},
+  {source:{name:'beewing',q:31},dest:null,
+   split:{name:'beewing',q:100},want:'returned'}
+ ];
+ for(const step of steps){
+  const inventory=blank(),full=blank();
+  inventory[0]=step.dest;inventory[1]=step.split;full[7]=step.source;
+  const classify=pack=>classifyBankPartialRecord(r,{owner,realm,now,
+   inventory,bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+  assert.equal(classify(full).phase,step.want);
+  for(const size of [8,22,41]){
+   const result=classify(full.slice(0,size));
+   assert.equal(result.phase,'unobserved');
+   assert.equal(result.confirmed,false);
+  }
+ }
+ const f=fixture(checkpoint({at:Date.now()}));
+ f.pack.length=8;
+ assert.equal(f.bot.bank.recoveryStatus().partial.phase,'unobserved');
+ assert.equal(f.bot.bank.recover(),true);
+ assert.equal(f.calls.length,0,'no multi-step bank action on partial source pack');
+ assert.equal(f.bot.bank.pending,true);
+});

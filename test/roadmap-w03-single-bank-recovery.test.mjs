@@ -164,3 +164,29 @@ test('W03 single journal does not accept cancellation of malformed sibling stack
  inventory[2]=null;
  assert.equal(inspect(sent).phase,'withdrawn');
 });
+
+test('W03 single-bank recovery requires the full observed source pack',()=>{
+ const r=record(),d=dispatched(r);
+ for(const [checkpoint,source,target,phase] of [
+  [r,{...item},null,'prepared-unchanged'],
+  [d,{...item},null,'dispatched-unchanged'],
+  [d,null,{...item},'withdrawn']
+ ]){
+  const inventory=blank(),full=blank();
+  inventory[0]=target;full[7]=source;
+  const classify=pack=>classifyBankSingleRecord(checkpoint,{owner,realm,inventory,
+   bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+  assert.equal(classify(full).phase,phase);
+  for(const size of [8,24,41]){
+   assert.equal(classify(full.slice(0,size)).phase,'unobserved',
+    'addressed slot 7 is visible, but '+size+' rows are incomplete');
+  }
+ }
+ const f=fixture(dispatched(record()));
+ f.pack.length=8;
+ assert.equal(f.bot.bank.recoveryStatus().single.phase,'unobserved');
+ assert.equal(f.bot.bank.recover(),true);
+ assert.equal(f.bot.bank.pending,true);
+ assert.ok(f.store.get(key),'incomplete pack cannot clear a durable receipt');
+ assert.equal(f.calls.length,0);
+});

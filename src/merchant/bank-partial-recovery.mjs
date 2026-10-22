@@ -85,8 +85,10 @@ export function classifyBankPartialRecord(r,{
   return {phase:'unobserved',reason:'inventory-or-map-not-observed',confirmed:false};
  let packLocation=null;
  try{packLocation=packMap(r.pack);}catch{}
+ // A truncated local source pack is NOT a complete transaction before/after
+ // image, even when every addressed slot happens to be in its prefix.
  if(!packLocation||packLocation!==map||!bank||
-    !Array.isArray(bank[r.pack])||bank[r.pack].length>42)
+    !Array.isArray(bank[r.pack])||bank[r.pack].length!==42)
   return {phase:'unobserved',reason:'live-bank-pack-not-observed',confirmed:false};
  const row=bank[r.pack],original=row[r.bankSlot],
   dest=inventory[r.dest],split=inventory[r.splitSlot],

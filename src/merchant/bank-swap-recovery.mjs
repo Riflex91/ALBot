@@ -32,8 +32,10 @@ export function classifyBankSwapRecord(r,{owner,realm,now=Date.now(),bank,map,pa
  if(!v.valid)return {phase:'invalid',reason:v.reason};
  let actual;
  try{actual=packMap?.(r.pack);}catch{}
+ // A truncated local source pack is NOT a complete transaction before/after
+ // image, even when every addressed slot happens to be in its prefix.
  if(!map||actual!==map||!Array.isArray(bank?.[r.pack])||
-    bank[r.pack].length>42)return {phase:'unobserved',reason:'pack-not-current'};
+    bank[r.pack].length!==42)return {phase:'unobserved',reason:'pack-not-current'};
  const a=bank[r.pack][r.a],b=bank[r.pack][r.b];
  if(fingerprint(a)===r.fa&&fingerprint(b)===r.fb)
   return {phase:r.dispatch?'dispatched-unchanged':'prepared-unchanged',

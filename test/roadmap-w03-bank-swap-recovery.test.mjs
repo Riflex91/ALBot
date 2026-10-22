@@ -132,3 +132,26 @@ test('W03 bank_swap guard rejects drift, limit changes and revoked consolidation
  f.bot.p.G.items.ore.s=15;assert.equal(guard(),false);
  assert.equal(f.calls.length,0);
 });
+
+test('W03 bank-swap recovery needs a full pack to verify merge or unchanged phase',()=>{
+ const original=record(),sentRecord=sent(original);
+ for(const [checkpoint,a,b,phase] of [
+  [original,{...first},{...second},'prepared-unchanged'],
+  [sentRecord,{...first},{...second},'dispatched-unchanged'],
+  [sentRecord,null,{name:'ore',q:16},'merged-b'],
+  [sentRecord,{name:'ore',q:16},null,'merged-a']
+ ]){
+  const full=blank();full[3]=a;full[7]=b;
+  const classify=pack=>classifyBankSwapRecord(checkpoint,{owner,realm,
+   bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+  assert.equal(classify(full).phase,phase);
+  for(const size of [8,30,41])
+   assert.equal(classify(full.slice(0,size)).phase,'unobserved');
+ }
+ const f=fixture(sent(record()));
+ f.bank[3]=null;f.bank[7]={name:'ore',q:16};f.bank.length=8;
+ assert.equal(f.bot.bank.recoveryStatus().swap.phase,'unobserved');
+ assert.equal(f.bot.bank.recover(),true);
+ assert.ok(f.memory.get(key),'incomplete merge observation is not a receipt');
+ assert.equal(f.bot.bank.pending,true);
+});

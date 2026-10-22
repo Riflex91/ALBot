@@ -45,7 +45,10 @@ export function caveEmergencyDirectPreflight(bot,{
   return caveEvadeDenied('durable-run-unverified',scope);
  // Unlike combat readiness, a wounded Ranger MUST be allowed to request
  // isolation while a fully healthy trio would not need any emergency step.
- const team=bot.caveTeam?.healStatus?.();
+ let team;
+ try{team=bot.caveTeam?.healStatus?.();}catch{
+  return caveEvadeDenied('verified-healing-trio-required',scope);
+ }
  if(team?.ready!==true||team.run!==live.run||
     team.floor!==live.floor||team.map!==live.map||
     team.members?.length!==3||team.priest===c.name)

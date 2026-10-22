@@ -97,6 +97,10 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
   const held=carrier();
   if(held==='unknown'){reason='inventory-unknown';return false;}
   if(!held){reason='carrier-not-held';pendingAt=0;return false;}
+  // The official client treats a tracker socket reply as a Tracktrix UI
+  // event. Repeating this query in a visible game window reopens the
+  // Monster/Exchange popup. Headless polling is safe and remains available.
+  if(p.headless===false){reason='browser-tracker-ui-protected';return false;}
   const now=clock();
   if(pendingAt&&now-pendingAt<timeout)return false;
   if(pendingAt){pendingAt=0;reason='server-timeout';}

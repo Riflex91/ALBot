@@ -238,7 +238,7 @@ export async function handleRequest(request,env,ctx={},deps={}){
   }catch{return failure('Ungültige Veröffentlichungsbestätigung');}
   if(!body||typeof body!=='object'||Array.isArray(body)||
    Object.keys(body).sort().join(',')!=='confirm,githubSha,previousReleaseSha,sha256'||
-   body.confirm!==true||!^[a-f0-9]{40}$/.test(body.githubSha??'')||
+   body.confirm!==true||!/^[a-f0-9]{40}$/.test(body.githubSha??'')||
    !/^[a-f0-9]{64}$/.test(body.sha256??'')||
    body.previousReleaseSha!==null&&!/^[a-f0-9]{40}$/.test(body.previousReleaseSha??''))
    return failure('Explizite und vollständige Revisionsbestätigung erforderlich',422);

@@ -5,6 +5,7 @@ import {storeTelemetry,MAX_STORED_CHARACTERS,MAX_STORED_BANK_PACKS,SNAPSHOT_READ
 import {TELEMETRY_MIN_INTERVAL_MS} from '../public/free-tier.mjs';
 import {GAME_ORIGINS} from '../public/relay-protocol.mjs';
 import {latestBankPackViews} from './bank-view.mjs';
+import {syncPreflight,SYNC_PREFLIGHT_FORMAT} from '../public/config-sync-contract.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -259,6 +260,18 @@ export async function handleRequest(request,env,ctx={},deps={}){
   telemetryLimits:{minIntervalSeconds:TELEMETRY_MIN_INTERVAL_MS/1000,
    maxCharacters:MAX_STORED_CHARACTERS,maxBankPacks:MAX_STORED_BANK_PACKS},
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
+ // Deliberately read-only: no release signature, distribution or ACK exists yet.
+ // Never send the private profile to a synchronisation status observer.
+ if(path==='/api/profile-sync/status'){
+  const source=await github(env,'/api/profile','GET',null,fetcher);
+  if(source instanceof Response)return source;
+  if(source.missing||source.sha===null)
+   return json({ok:true,format:SYNC_PREFLIGHT_FORMAT,configured:false,
+    signed:false,published:false,applied:false,acknowledged:false});
+  try{return json({ok:true,configured:true,
+   ...await syncPreflight({profile:source.document,githubSha:source.sha})});}
+  catch{return failure('Profilrevision konnte nicht kryptografisch geprüft werden',503);}
+ }
  if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});
  if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);

@@ -41,18 +41,18 @@ export function prioritizeAdmittedProductionGoal(ranked,{
 // Higher-priority urgent work wins immediately above the bounded deficit.
 export function prioritizeContinuingMaterialGoal(ranked,{
  heldKey=null,heldAt=0,now=Date.now(),keyOf,scoreOf,
- maxHoldMs=90000,maxPriorityDeficit=10
+ maxHoldMs=90000,maxPriorityDeficit=10,committed=false
 }={}){
  if(!Array.isArray(ranked)||ranked.length<2||
     typeof keyOf!=='function'||typeof scoreOf!=='function'||
     typeof heldKey!=='string'||!heldKey||
     !Number.isFinite(heldAt)||heldAt<=0||
     !Number.isFinite(now)||now<heldAt||
-    now-heldAt>=maxHoldMs)return ranked;
+    !committed&&now-heldAt>=maxHoldMs)return ranked;
  const i=ranked.findIndex(g=>keyOf(g)===heldKey);
  if(i<=0)return ranked;
  const gap=scoreOf(ranked[0])-scoreOf(ranked[i]);
- if(!Number.isFinite(gap)||gap>maxPriorityDeficit)return ranked;
+ if(!Number.isFinite(gap)||(!committed&&gap>maxPriorityDeficit)||(committed&&scoreOf(ranked[0])>=300&&gap>0))return ranked;
  const next=[...ranked],current=next.splice(i,1)[0];next.unshift(current);
  return next;
 }

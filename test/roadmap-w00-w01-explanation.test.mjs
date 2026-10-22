@@ -71,7 +71,7 @@ test('W01: API explanation never invokes the auto planner, sends actions or requ
    safe:()=>true,
    rules:()=>{dispatches++;throw Error('planner used');}
   },
-  production:{reservedQuantity:()=>0},
+  production:{observedReservation:()=>0,reservedQuantity:()=>{throw Error('reservation planner used');}},
   event:()=>{dispatches++;},
   transport:{peers:new Map()},
   bank:null

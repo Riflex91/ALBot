@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 22,
-      "version": "0.22.0-candidate",
+      "sequence": 33,
+      "version": "0.33.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 909990,
-      "sha256": "e4834ae4c80370d19337b808bfd2b155f4ab25709911ea1f1e1836f1c8f3fccb"
+      "bytes": 937137,
+      "sha256": "6d98c645633c5f23cac5390f571a7dff033a0b5e1d6897c5ee48738ef0e9ee75"
     },
     "observedLoadedUrl": null,
-    "note": "Signierte Sequenz 22 / 0.22.0-candidate am 21.10.2026 nach PR #341 und PR #343 über GitHub Actions 39625179422 erfolgreich veröffentlicht. Koordinaten, Spawn-Rechteck-Verifikation und echte gezielte 3shot/5shot-Ausführung offline einschließlich Linux und Windows verifiziert. V2-Bootstrap, EC-Prüfschlüssel und persönliche Konfiguration unverändert. Live-Ingame-Wirksamkeit noch nicht bestätigt."
+    "note": "Signierte ALBot 0.33.0-candidate Runtime Sequence 33 aus PR #396 / Main 8987bbc57afbddf65c9d17bbe265aaf81a8e541d. Linux/Windows CI 39672422581 grün; geschützter Signierworkflow 39672789116 einschließlich ECDSA-P-256, SHA-256, 937137 Bytes und voller Offline-Suite erfolgreich. Release-Runtime byteidentisch mit Main (GitHub Blob-SHA 814cecfc63754ea960e1e66d10ea3b214288f82b). V2-Loader, öffentlicher Schlüssel, Manifest-/Runtime-URLs und persönliche ALBotConfig unverändert; Ingame-Liveabnahme von Merchant-Zustellung, Gear und Tracktrix noch offen."
   }
 }

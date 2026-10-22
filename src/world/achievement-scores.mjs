@@ -64,18 +64,24 @@ export function achievementMilestoneBias(row){
 export function createAchievementScores(bot,clock=()=>Date.now()){
  const {p}=bot,interval=120000,ttl=600000,timeout=15000;
  let socket=null,lastRequestAt=0,pendingAt=0,receivedAt=0,entries=null,
-  reason='not-observed',closed=false;
+  reason='not-observed',closed=false,pendingModal=null;
  function carrier(){
   const held=carriedAchievementCarrier(p.c?.items);
   if(!held||held==='unknown'){
    // A carrier gap invalidates account-score proof. An old response or
    // re-equipped carrier must not resurrect stale achievement priorities.
-   entries=null;receivedAt=0;pendingAt=0;
+   entries=null;receivedAt=0;pendingAt=0;pendingModal=null;
   }
   return held;
  }
  function receive(data){
-  if(!pendingAt||closed||!carrier()||carrier()==='unknown')return false;
+  if(!pendingAt||closed)return false;
+  // The game's own socket listener renders Tracktrix synchronously before
+  // this later-registered bot observer. Close only our newly appended view,
+  // preserving user modals that were present before this request.
+  const modal=pendingModal;pendingModal=null;
+  if(modal){try{p.closeRequestedTrackerModal?.(modal);}catch{}}
+  if(!carrier()||carrier()==='unknown')return false;
   pendingAt=0;
   const rows=verifiedTrackerScores(data,p.G);
   if(!rows){
@@ -99,7 +105,7 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
   if(!held){reason='carrier-not-held';pendingAt=0;return false;}
   const now=clock();
   if(pendingAt&&now-pendingAt<timeout)return false;
-  if(pendingAt){pendingAt=0;reason='server-timeout';}
+  if(pendingAt){pendingAt=0;pendingModal=null;reason='server-timeout';}
   if(lastRequestAt&&now-lastRequestAt<interval)return false;
   const live=p.trackerSocket?.();
   if(!live||typeof live.on!=='function'||typeof live.emit!=='function'||
@@ -108,9 +114,13 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
   }
   if(socket!==live){detach();try{live.on('tracker',receive);socket=live;}
     catch{socket=null;reason='tracker-listener-failed';return false;}}
-  lastRequestAt=now;pendingAt=now;reason='requested';
+  // Refuse automatic browser polling when the exact modal cannot be
+  // identified and closed without touching another game dialog.
+  const modal=p.headless===false?p.snapshotTrackerModal?.()??null:null;
+  if(p.headless===false&&!modal){reason='tracker-modal-close-unavailable';return false;}
+  lastRequestAt=now;pendingAt=now;pendingModal=modal;reason='requested';
   try{live.emit('tracker');return true;}
-  catch{pendingAt=0;reason='tracker-request-failed';return false;}
+  catch{pendingAt=0;pendingModal=null;reason='tracker-request-failed';return false;}
  }
  function status(){
   const held=carrier(),now=clock();
@@ -137,5 +147,5 @@ export function createAchievementScores(bot,clock=()=>Date.now()){
      typeof monster!=='string')return 0;
   return achievementMilestoneBias(entries?.find(row=>row.monster===monster));
  }
- return {poll,status,bonus,milestones,close(){closed=true;pendingAt=0;detach();}};
+ return {poll,status,bonus,milestones,close(){closed=true;pendingAt=0;pendingModal=null;detach();}};
 }

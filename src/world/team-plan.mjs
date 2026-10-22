@@ -356,14 +356,14 @@ export function createTeamPlan(bot){
  }
  function candidates(){const explicit=me.farmTargets?.length?me.farmTargets:cfg.farming.targets;return cfg.farming.autoTargets===false||me.farmTargets?.length?explicit:Object.keys(p.G.monsters??{}).filter(id=>{const m=p.G.monsters[id];return !m.boss&&!(m.respawn<0)&&!m.cooperative&&!m.stationary;});}
  function allowed(id){return candidates().includes(id)&&materialEvent(p.G,id,p.root.S??p.parent.S).active&&bot.strategy.safeTarget(id,undefined,true,true);}
- function materialRequests(){return bot.transport.fresh(cfg.party.merchant)?.materials??[];}
+ function materialRequests(){const h=bot.transport.fresh(cfg.party.merchant);return h?.running===true&&h.realm===p.realm()?h.materials??[]:[];}
  function valid(plan){if(!Number.isInteger(bot.decisionEpoch))return validRaw(plan);if(validEpoch!==bot.decisionEpoch){validEpoch=bot.decisionEpoch;validCache.clear();}if(!validCache.has(plan))validCache.set(plan,validRaw(plan));return validCache.get(plan);}
  function validRaw(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir','hunt'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
   const source=spawnLocations(p.G,[plan.target],cfg.world.excludedMaps,cfg.farming.pvp).find(s=>s.key===plan.key);if(!source||areaQuarantined(plan.key)||plan.definition!==source.definition||bot.content?.approve('farm:'+plan.map+':'+plan.target,[p.G.monsters[plan.target],p.G.maps[plan.map]?.monsters?.filter(s=>s.type===plan.target)])===false)return false;
   if(!plan.objective)return true;if(plan.kind==='elixir')return bot.elixirs?.objective()?.objective===plan.objective||bot.transport.fresh(plan.leader)?.elixir?.item===plan.item;
   return materialRequests().some(r=>r.objective===plan.objective&&
-    (!r.expires||r.expires>Date.now())&&r.monster===plan.target&&
-    materialRequestHasWork(r,bot.farmers));
+    (!r.expires||r.expires>Date.now())&&r.monster===plan.target&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]]))&&
+    (materialRequestHasWork(r,bot.farmers)||r.quantity>0));
  }
  function observe(){if(me.name!==bot.leader)return;const now=Date.now(),dt=Math.max(0,Math.min(5000,now-previous));previous=now;if(!current||!samePlace(p.c,current)||distance(p.c,current)>220){area=null;lastXp=p.c.xp??0;lastGold=p.c.gold??0;return;}
   const id=areaKey(current.key,now),old=verifiedAreaHistory(history[id],now)??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
@@ -465,7 +465,7 @@ export function createTeamPlan(bot){
      samePlace(p.c,current)&&distance(p.c,current)<=65)
    current.arrivedAt=Date.now();
   if(Date.now()-last<Math.min(10000,cfg.world.cacheTtlMs)&&valid(current))return;last=Date.now();capabilities();const raw=knowledgeFingerprint([p.G.monsters,p.G.maps]);if(raw!==definition){definition=raw;graph=mapGraph(p.G);if(current&&!valid(current)){bot.event('plan.drift',{id:current.id,reason:'Spawn-/Monsterdefinition geändert'});current=null;}}
-  const materials=materialRequests(),requests=materials.filter(r=>materialRequestHasWork(r,bot.farmers)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
+  const materials=materialRequests(),requests=materials.filter(r=>(materialRequestHasWork(r,bot.farmers)||r.objective===current?.objective&&r.quantity>0)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>Number(b.objective===current?.objective)-Number(a.objective===current?.objective)||(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
   const combat=combatMembers(bot,true),composition=compositionOptions(bot,true);
   // Availability, not a legacy global AoE opt-out, governs farmer density.
   const aoeAvailable=(bot.farmers??[]).some(name=>{
@@ -523,7 +523,7 @@ export function createTeamPlan(bot){
   // and a separately approved safe spawn can take ordinary farm priority.
   const milestone=(!hunt||hunt.phase==='blocked')?
    selectVerifiedStatMilestoneArea(ranking,bot.progression?.milestones?.()??[],p.G):null;
-  if(selected.kind==='farm'&&milestone&&(request?.priority??0)<300){
+  if(selected.kind==='farm'&&milestone&&!request){
    selected={...selected,area:milestone.area,kind:'achievement'};
    bot.event?.('achievement.statMilestonePriority',{
     monster:milestone.milestone.monster,score:milestone.milestone.score,
@@ -532,19 +532,19 @@ export function createTeamPlan(bot){
     estimatedSeconds:milestone.estimatedSeconds,
     source:'official-tracker-and-verified-safe-spawn'});
   }
-  // A high-priority Seashell refill must select an approved spawn rather
-  // than merely rewarding it in the ordinary XP/Gold ranking.
-  const shellRefill=request?.item==='seashell'&&request.priority>=300;
-  if(shellRefill){const source=ranking.find(r=>r.target===request.monster);
+  // Accepted material/elixir work selects an approved source explicitly.
+  // Existing ordinary travel still finishes its arrival observation window.
+  const materialRequested=!!request;
+  if(materialRequested){const source=ranking.find(r=>r.target===request.monster);
    if(source)selected={kind:'farm',area:source,deferred:null};}
-  let next=selected.area,selectedRequest=selected.kind!=='achievement'&&(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
+  let next=selected.area,selectedRequest=selected.kind!=='achievement'&&!!request&&next?.target===request?.monster?request:null;
   const old=ranking.find(r=>r.key===current?.key);
   // Keep existing hold-time for safe ordinary farming while waiting for
   // the active farmer's quest NPC or an independently verified hunt spawn.
   // A hunt -> ordinary-farm transition does not imply travel to a different
   // spawn of the SAME monster. Keep the physical location's hold time even
   // when the plan kind and reason change.
-  const holdOrdinary=shouldHoldOrdinaryLocation(current,next,selected.kind,shellRefill);
+  const holdOrdinary=shouldHoldOrdinaryLocation(current,next,selected.kind,materialRequested);
   switchAdvice=null;
   // Monsterhunt priority must not erase *location* hysteresis. A switch
   // between two osnake spawns is still an ordinary travel decision, not a
@@ -560,7 +560,7 @@ export function createTeamPlan(bot){
     scope:'same-monsterhunt'};
    next=choice.choice;
   }
-  if(holdOrdinary&&old&&valid(current)){
+  if(holdOrdinary&&(!request||current?.kind==='farm'||current?.objective===request.objective)&&old&&valid(current)){
    const choice=chooseCommittedFarmArea({
     current,candidate:next,currentRank:old,character:p.c,now:Date.now(),
     holdMs:cfg.farming.planHoldMs??60000,
@@ -570,7 +570,7 @@ export function createTeamPlan(bot){
     from:old.key,to:next?.key??null};
    next=choice.choice;
   }
-  selectedRequest=selected.kind!=='achievement'&&(shellRefill||!hunt)&&next?.target===request?.monster?request:null;
+  selectedRequest=selected.kind!=='achievement'&&!!request&&next?.target===request?.monster?request:null;
   const fallbackKey=selected.deferred?selected.deferred+':'+hunt?.owner+':'+(hunt?.monster??''):null;
   if(fallbackKey!==huntFallback){
    huntFallback=fallbackKey;
@@ -600,7 +600,7 @@ export function createTeamPlan(bot){
     selected.deferred?'Sicheres Zwischenfarming: '+selected.deferred+' ('+hunt.owner+')':
     selectedRequest?'Gemeinsamer Material-/Elixierbedarf':
     'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
-  if(!same){bot.target=null;if(!sameFarmDestination(current,proposal)&&['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
+  if(!same){if(current?.objective&&current.objective!==proposal.objective)bot.event('farmOrder.suspended',{objective:current.objective,reason:proposal.objective?'higher-priority-material-work':'merchant-order-unavailable-or-source-not-approved'});bot.target=null;if(!sameFarmDestination(current,proposal)&&['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
  return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
   if(!valid(current)||bot.strategy.busy)return false;

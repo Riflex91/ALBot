@@ -142,9 +142,32 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
      p.call('enter','crypt',target);
    },{value:true,timeout:25000,delay:1000,observe:()=>false});
  }
+ // W12/N11: PREPARED is a durable pre-dispatch intent, not proof an
+ // external enter() was invoked. An old session's prepared intent may be
+ // retired automatically only when the same *real* unspent key and
+ // identical local source still exist. Dispatch-unknown is NEVER retried
+ // or cleared here. No server API is called from this reconciliation.
+ function reconcileStalePrepared(){
+  if(!record||record.phase!=='prepared'||
+     !validCryptEntryRecord(record)||
+     record.owner!==me.name||record.realm!==p.realm()||
+     record.session===bot.session||
+     !plainSafe()||live()||!cryptEntryTime(now())||
+     now()<record.at)return false;
+  if(record.mode==='open'){
+   const fresh=preflightInput();
+   if(!fresh||fresh.keySlot!==record.keySlot||
+      fresh.keyPrint!==record.keyPrint||
+      fresh.keyBefore!==record.keyBefore)return false;
+  }
+  // Guard the persisted storage contents too: durable() refuses a
+  // stale-memory overwrite if another live owner changed the checkpoint.
+  return durable(null);
+ }
  function sample(){
-  if(closed||readFailed||writeFailed||
-     !record||record.phase!=='dispatch-unknown'||
+  if(closed||readFailed||writeFailed||!record)return false;
+  if(record.phase==='prepared')return reconcileStalePrepared();
+  if(record.phase!=='dispatch-unknown'||
      record.owner!==me.name||record.realm!==p.realm()||
      !bot.running)return false;
   const where=live(),at=now();

@@ -1,3 +1,38 @@
+// Adventure Land's official tracker socket response calls render_tracker(),
+// which unconditionally calls show_modal(). Capture its existing top modal
+// before OUR request, then close ONLY the newly appended Tracktrix view.
+// Never call hide_modals(): it would destroy unrelated user-opened windows.
+export function snapshotTrackerModal(parent){
+ const doc=parent?.document;
+ if(typeof parent?.hide_modal!=='function'||
+    !Number.isSafeInteger(parent.modal_count)||parent.modal_count<0||
+    typeof doc?.querySelectorAll!=='function')return null;
+ try{
+  const rows=doc.querySelectorAll('.modal');
+  if(rows.length!==parent.modal_count)return null;
+  return {count:rows.length,previous:rows.length?rows[rows.length-1]:null};
+ }catch{return null;}
+}
+export function closeRequestedTrackerModal(parent,snapshot){
+ if(!snapshot||!Number.isSafeInteger(snapshot.count)||snapshot.count<0||
+    typeof parent?.hide_modal!=='function'||
+    parent.modal_count!==snapshot.count+1||
+    typeof parent.document?.querySelectorAll!=='function')return false;
+ try{
+  const rows=parent.document.querySelectorAll('.modal');
+  if(rows.length!==snapshot.count+1||
+     (snapshot.count>0&&rows[snapshot.count-1]!==snapshot.previous))return false;
+  const current=rows[rows.length-1];
+  if(!current||current===snapshot.previous||
+     typeof current.querySelector!=='function'||
+     !current.querySelector('.trackers.trackerm')||
+     !current.querySelector('.trackers.trackere'))return false;
+  // The actual game close operation removes one modal and restores the
+  // previously hidden UI beneath it (if any).
+  parent.hide_modal();
+  return true;
+ }catch{return false;}
+}
 export function createPorts(root){
   let parent;try{parent=root.parent??root;}catch{parent=root;}
   const h=parent.headless,headless=!!(h||parent.caracAL);
@@ -11,6 +46,18 @@ export function createPorts(root){
   const rotationCode=typeof parent.the_code==='string'?parent.the_code:null;
   const validSlot=()=>['string','number'].includes(typeof rotationSlot)&&String(rotationSlot).trim()!=='';
   const directSave=()=>rotationCode!==null&&rotationCode.length>0&&!!find('upload_code');
+  // Value-bearing journals must never use the game's forgiving get(),
+  // which maps a corrupted serialized record to an apparently empty slot.
+  const strictJournalValue=(key,category='Cave')=>{
+   const storage=root.localStorage??parent.localStorage;
+   if(!storage||typeof storage.getItem!=='function')
+    throw Error('Strict '+category+' journal storage unavailable');
+   const raw=storage.getItem('cstore_'+key);
+   if(raw===null)return null;
+   if(typeof raw!=='string'||raw.length>65536)
+    throw Error('Invalid '+category+' journal storage payload');
+   return JSON.parse(raw);
+  };
   return {root,parent,headless,ipc,h,
     has:name=>!!find(name),
     rewardMailCapability(){
@@ -118,8 +165,11 @@ export function createPorts(root){
      return ()=>{if(typeof socket.off==='function')socket.off('chest_opened',handler);
       else socket.removeListener('chest_opened',handler);};
     },
-    // Only a read-only tracker observation request; no user-item operations.
+    // The server tracker query also opens the game's Tracktrix modal.
+    // Bound observation/close operates on exactly that response, browser only.
     trackerSocket(){return parent?.socket??null;},
+    snapshotTrackerModal(){return headless?null:snapshotTrackerModal(parent);},
+    closeRequestedTrackerModal(snapshot){return headless?false:closeRequestedTrackerModal(parent,snapshot);},
     call(name,...args){const f=find(name);if(!f)throw Error('Spiel-API fehlt: '+name);return f[1].apply(f[0],args);},
     get c(){return root.character;},get G(){return root.G??parent.G;},get entities(){return parent.entities??{};},
     realm(){return String(parent.server_region??root.server_region??'')+String(parent.server_identifier??root.server_identifier??'');},
@@ -132,14 +182,15 @@ export function createPorts(root){
     readCaveJournal(key){
      if(typeof key!=='string'||!/^albot:(?:cave-(?:lifecycle|vote)|crypt-lifecycle):[A-Za-z0-9_]{1,100}$/.test(key))
       throw Error('Invalid Cave journal key');
-     const storage=root.localStorage??parent.localStorage;
-     if(!storage||typeof storage.getItem!=='function')
-      throw Error('Strict Cave journal storage unavailable');
-     const raw=storage.getItem('cstore_'+key);
-     if(raw===null)return null;
-     if(typeof raw!=='string'||raw.length>65536)
-      throw Error('Invalid Cave journal storage payload');
-     return JSON.parse(raw);
+     return strictJournalValue(key,'Cave');
+    },
+    readTradeOfferJournal(key){
+     // Same cstore_ key used by the normal set() port, but never convert
+     // parse/read errors into a false 'no previous offer' permission.
+     if(typeof key!=='string'||
+        !/^albot:trade-offer:v1:[A-Za-z0-9_]{1,100}$/.test(key))
+      throw Error('Invalid trade offer journal key');
+     return strictJournalValue(key,'trade offer');
     },
     readCryptJournal(key){
      // Reuse strict journal read semantics; a corrupt key cannot be

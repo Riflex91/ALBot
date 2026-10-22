@@ -1,3 +1,4 @@
+import {craftGearCandidates} from './craft-gear.mjs';
 import {automaticOperatingStockRule} from '../items/operating-stock.mjs';
 import {identity,variantCount,surplusQuantity,protectedItem} from '../core/policy.mjs';
 import {isAchievementCarrier} from '../items/achievement-utility.mjs';
@@ -29,7 +30,31 @@ export function progressionChance(G,name,level,kind){
  return Number.isFinite(value)&&value>0&&value<=1?value:null;
 }
 export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluated=[],at=0,allocation=[],chances=new Map(),props=new Map(),propsVersion=p.G.version,profitAt=0,profits=[],stockEpoch=-1,stocks=null;
- const helperQuotes=new Map(),missingHelperEvents=new Map();
+ // Live callers only read the last completed generation. Work is advanced by
+ // the scheduler, never by a heartbeat, inventory guard or report.
+ let work=null,advancing=false,completed=false,revision=0;
+ const clock=()=>globalThis.performance?.now?.()??Date.now();
+ function enabled(){return cfg.production.optimizeGear!==false&&cfg.production.autoGear&&cfg.production.gear&&cfg.general.testLogging!==undefined;}
+ function targets(){
+  if(!enabled())return [];
+  // Standalone/headless module consumers without a scheduler retain the
+  // synchronous API; the same reentrancy guard applies even after a long call.
+  if(!Number.isInteger(bot.decisionEpoch)&&!bot.diagnosticRead&&!advancing)advance(Infinity,Infinity);
+  return evaluated;
+ }
+ function advance(maxSteps=24,budgetMs=4){
+  if(bot.diagnosticRead||advancing)return;
+  if(!enabled()){work=null;evaluated=[];allocation=[];completed=false;return;}
+  if(!work&&completed&&Date.now()-at<cfg.general.planningTickMs)return;
+  if(!work)work=evaluateTargets();
+  advancing=true;const started=clock();
+  try{for(let n=0;n<maxSteps;n++){
+   const next=work.next();if(next.done){work=null;completed=true;at=Date.now();revision++;break;}
+   if(clock()-started>=budgetMs)break;
+  }}catch(error){work=null;at=Date.now();completed=true;bot.event?.('planning.gear.failed',{message:error?.message??String(error)});}
+  finally{advancing=false;}
+ }
+ const helperQuotes=new Map(),missingHelperEvents=new Map(),observedDispositionRules=new Map();
  function chanceEvidenceKey(name,level,kind,scroll,offering=''){
   return JSON.stringify([p.G.version,p.G.items?.[name],kind,level,scroll,
    p.G.items?.[scroll],offering,offering?p.G.items?.[offering]:null]);
@@ -46,14 +71,23 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  function stockItems(){if(stocks&&Number.isInteger(bot.decisionEpoch)&&stockEpoch===bot.decisionEpoch)return stocks;const result=p.c.items.filter(i=>i&&bot.economy.safe(i)).map(i=>({item:i,owner:me.name}));for(const row of bot.bank?.catalogStock?.()??(bot.bank?.packs?.()??[]).flatMap(([pack,items])=>
    items.filter(i=>i&&bot.economy.safe(i)).map(item=>({pack,item}))))
    if(row.item&&bot.economy.safe(row.item))result.push({item:row.item,owner:me.name,pack:row.pack,
-    observedAt:row.evidence?.observedAt??null});for(const [name] of bot.transport.peers){const h=bot.transport.fresh(name);if(h?.running&&!h.rip&&h.realm===p.realm())for(const row of h.stock??[])result.push({item:row,owner:name});}stocks=result.slice(0,400);stockEpoch=bot.decisionEpoch;return stocks;} function targets(){if(cfg.production.optimizeGear===false||!cfg.production.autoGear||!cfg.production.gear||cfg.general.testLogging===undefined)return [];if(Date.now()-at<cfg.general.planningTickMs)return evaluated;at=Date.now();evaluated=[];allocation=[];const ownedStock=stockItems();
+    observedAt:row.evidence?.observedAt??null});for(const [name] of bot.transport.peers){const h=bot.transport.fresh(name);if(h?.running&&!h.rip&&h.realm===p.realm())for(const row of h.stock??[])result.push({item:row,owner:name});}stocks=result.slice(0,400);stockEpoch=bot.decisionEpoch;return stocks;} function* evaluateTargets(){const nextTargets=[],nextAllocation=[],ownedStock=stockItems(),craftCandidates=craftGearCandidates(p.G,cfg.production),craftSet=new Set(craftCandidates),craftQuotes=new Map(),names=[...new Set([...cfg.production.autoGearItems,...craftCandidates,...ownedStock.map(r=>r.item.name)])];
   for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?bot.gear.snapshot():bot.gear.profile(member.name);if(!profile)continue;const role=member.gearRole==='auto'?profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps':member.gearRole;
    for(const [slot,old] of Object.entries(Object.fromEntries([...new Set([...Object.keys(profile.slots),'mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'])].map(slot=>[slot,profile.slots[slot]??null])))){if(old?.l||old?.b||cfg.production.gearTargets.some(g=>g.enabled&&g.character===member.name&&g.slot===slot))continue;let previous=0;try{previous=old?gearScore(properties(old),role,profile.class):0;}catch{continue;}
-    let best=null;for(const name of new Set([...cfg.production.autoGearItems,...ownedStock.map(r=>r.item.name)])){if(!gearCompatible(p.G,profile,{name,level:0},slot))continue;const meta=p.G.items[name];for(let level=0;level<=(meta.upgrade||meta.compound?autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot):0);level++){if(old?.name===name&&old.level>=level)continue;const explicit=bot.economy.explicit({name,level:Math.max(0,level-1)},'production');if(level>0&&explicit&&(explicit.action==='keep'||explicit.targetLevel<level))continue;
-     const owned=ownedStock.filter(r=>r.item.name===name&&(r.item.level??0)<=level).sort((a,b)=>(b.item.level??0)-(a.item.level??0))[0];let chance=1,cost=owned?0:meta.g??Infinity;for(let l=owned?.item.level??0;l<level;l++){const c=mutationChance(name,l,meta.compound?'compound':'upgrade');if(c===null){chance=0;break;}const grade=p.call('item_grade',{name,level:l}),scroll=(meta.compound?'cscroll':'scroll')+grade;cost=(cost*(meta.compound?3:1)+(p.G.items[scroll]?.g??Infinity))/c;chance*=c;}
+    let best=null;for(const name of names){if(!gearCompatible(p.G,profile,{name,level:0},slot))continue;const meta=p.G.items[name];for(let level=0;level<=(meta.upgrade||meta.compound?autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot):0);level++){yield;if(old?.name===name&&old.level>=level)continue;const explicit=bot.economy.explicit({name,level:Math.max(0,level-1)},'production');if(level>0&&explicit&&(explicit.action==='keep'||explicit.targetLevel<level))continue;
+     const owned=ownedStock.filter(r=>r.item.name===name&&(r.item.level??0)<=level).sort((a,b)=>(b.item.level??0)-(a.item.level??0))[0];let chance=1,cost=owned?0:meta.g??Infinity;
+      if(!owned&&craftSet.has(name)){
+       // Account-wide craft acquisition is owned by the merchant. Farmers
+       // retain cheap local/ordinary gear evaluation and receive hub orders.
+       if(me.role!=='merchant')continue;
+       if(!craftQuotes.has(name)){try{craftQuotes.set(name,bot.production?.estimateAcquisition?.(name,0,1)??null);}catch{craftQuotes.set(name,null);}}
+       const route=craftQuotes.get(name);
+       if(!route||route.speculative||!Number.isFinite(route.gold)||!Number.isFinite(route.hours)||route.hours>cfg.production.maxFarmHours)continue;
+       cost=route.gold+route.hours*Math.max(1,cfg.production.goldPerHour??100000);
+      }for(let l=owned?.item.level??0;l<level;l++){const c=mutationChance(name,l,meta.compound?'compound':'upgrade');if(c===null){chance=0;break;}const grade=p.call('item_grade',{name,level:l}),scroll=(meta.compound?'cscroll':'scroll')+grade;cost=(cost*(meta.compound?3:1)+(p.G.items[scroll]?.g??Infinity))/c;chance*=c;}
      if(chance<cfg.production.minChance||cfg.merchant.budgetMode!=='account-loss'&&cost>cfg.production.autoGearBudget||!Number.isFinite(cost))continue;let score;try{const nextStats=properties({name,level}),oldStats=old?properties(old):null;if(!gearSuitability(oldStats,nextStats,role,profile.class,member.merchantMobility).ok)continue;score=gearScore(nextStats,role,profile.class);}catch{continue;}const improvement=score-previous,utility=improvement*chance/(1+cost/Math.max(1,cfg.production.autoGearBudget));if(improvement<Math.abs(previous)*cfg.production.minImprovement||utility<=0)continue;if(!best||utility>best.utility)best={name:'Optimiertes Gear '+member.name+' '+slot,item:name,level,quantity:1,character:member.name,slot,enabled:true,budget:cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.autoGearBudget,priority:(member.catchUp?35:15)+gearSlotPriority(slot,profile.class),utility,chance,estimatedCost:cost,sourceOwner:owned?.owner??null,sourceLevel:owned?.item.level??0,variant:owned?{stat_type:owned.item.stat_type??'',p:owned.item.p??'',title:owned.item.title??''}:undefined};
-    }}if(best){evaluated.push(best);allocation.push({character:member.name,slot,item:best.item,level:best.level,utility:best.utility,state:'reserved',recipientSession:bot.transport.fresh(member.name)?.session??null});}}
-  }return evaluated;
+    }}if(best){nextTargets.push(best);nextAllocation.push({character:member.name,slot,item:best.item,level:best.level,utility:best.utility,state:'reserved',recipientSession:bot.transport.fresh(member.name)?.session??null});}}
+  }evaluated=nextTargets;allocation=nextAllocation;
  }
  function gearUse(i){
  const meta=p.G.items?.[i?.name];
@@ -118,6 +152,8 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
  }
  // A feasible, already planned +level gear allocation still reserves
  // the source, even if the item at its current level is not useful.
+ if((me.role==='merchant'||me.name===cfg.party.merchant)&&enabled()&&Number.isInteger(bot.decisionEpoch)&&(!completed||work))
+   return {state:'unknown',reason:'economic-gear-plan-pending',checked,horizon};
  if((me.role==='merchant'||me.name===cfg.party.merchant)&&
     targets().some(g=>g.item===i.name&&g.level>=(i.level??0)&&
       g.sourceLevel<=(i.level??0)&&
@@ -269,10 +305,12 @@ function mutationEconomics(i,{heldOverride=null}={}){
    expectedValue:choice?.ev??null,nextStep:rule?.action??'keep',
    reason:choice?.reason??gear.reason,
    stopReason:rule?'':gear.state==='unknown'?'gear-evidence-unverified':'no-eligible-auto-rule'};
+  if(rule){observedDispositionRules.set(key,rule);if(observedDispositionRules.size>64)observedDispositionRules.delete(observedDispositionRules.keys().next().value);}
   decisionLedger.delete(key);decisionLedger.set(key,entry);
   if(decisionLedger.size>24)decisionLedger.delete(decisionLedger.keys().next().value);
  }
   function disposition(i){
+   if(bot.diagnosticRead)return observedDispositionRules.get(identity(i))??null;
    if(cfg.production.autoDisposition!==true||!bot.economy.safe(i)||isAchievementCarrier(i))return null;
    // A goal only protects its exact-variant allocation; other held copies
    // remain available for normal economic decision making.
@@ -354,7 +392,7 @@ function mutationEconomics(i,{heldOverride=null}={}){
    const travelBudget=external?Math.max(0,(cfg.production.goldPerHour??0)/120):0;
    if((choice.ev-bot.economy.value(i))*accessible<=travelBudget)continue;const goal={name:'Gewinnproduktion '+i.name+' +'+choice.level,enabled:true,item:i.name,level:choice.level,quantity:1,recipient:'',priority:-100,budget:cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:Math.min(cfg.production.lossBudget,cfg.production.helperMaxPrice),variant:{stat_type:i.stat_type,p:i.p,title:i.title,data:i.data}};if(!result.some(g=>g.item===goal.item&&g.level===goal.level&&JSON.stringify(g.variant)===JSON.stringify(goal.variant)))result.push(goal);}profitAt=Date.now();profits=result.slice(0,16);return profits;}
  function rules(){const candidates=[...p.c.items.filter(Boolean)];if(me.role==='merchant')for(const [,h] of bot.transport.peers)if(h.running&&h.realm===p.realm())for(const row of h.items??[])if(row.to===me.name&&row.surplus>0)candidates.push(row.variant??{name:row.item,level:0});return [...new Map(candidates.filter(i=>!bot.economy.explicit(i)).map(i=>[identity(i),disposition(i)])).values()].filter(Boolean).slice(0,64);}
- return {recordHelpers(item,choice){if(helperQuotes.size>=32)helperQuotes.clear();helperQuotes.set(mutationContext(bot,item),{at:Date.now(),choice});},targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value,{scroll='',offering=''}={}){
+ return {advance,recordHelpers(item,choice){if(helperQuotes.size>=32)helperQuotes.clear();helperQuotes.set(mutationContext(bot,item),{at:Date.now(),choice});},targets,disposition,rules,profitGoals,futureGear,gearUse,mutationEconomics,stockItems,chance:mutationChance,recordChance(name,level,kind,value,{scroll='',offering=''}={}){
   if(Number.isFinite(value)&&value>0&&value<=1&&scroll&&p.G.items?.[scroll]){
    if(chances.size>128)chances.clear();
    const key=chanceEvidenceKey(name,level,kind,scroll,offering);
@@ -369,10 +407,10 @@ function mutationEconomics(i,{heldOverride=null}={}){
    const observed=item?decisionLedger.get(identity(item))??null:null;
    return describeInventoryDisposition({item,slot,inventory:p.c.items??[],inventorySize:p.c.isize,
     G:p.G,explicit,autoDecision:observed,
-    reserved:item?bot.production?.reservedQuantity?.(item)??0:0,
+    reserved:item?bot.production?.observedReservation?.(item)??null:0,
     actionRemaining:explicit?bot.economy?.remaining?.(explicit)??true:true,
     valueBlocked:!!(bot.journal||bot.inventoryBlocked),now:Date.now()});
-  },status:()=>({targets:evaluated,allocations:allocation,decisions:[...decisionLedger.values()],bankEvidence:bot.bank?.catalogStatus?.()??null}),invalidate(){at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}
+  },status:()=>({planning:{state:work?'calculating':completed?'ready':'pending',completedAt:at,revision},targets:evaluated,allocations:allocation,decisions:[...decisionLedger.values()],bankEvidence:bot.bank?.catalogStatus?.()??null}),invalidate(){work=null;completed=false;at=0;profitAt=0;stockEpoch=-1;stocks=null;}};}
 
 
 // W01: an observation, not an alternate planning/dispatch authority.

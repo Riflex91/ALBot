@@ -388,3 +388,47 @@ test('W04 reclaim journal and offsite NPC admission reject malformed quantity of
   owner,realm,now,inventory}).eligible,false,
   'an offsite NPC purchase/sale path cannot accept a malformed copy');
 });
+
+test('W03/W04 no reclaimed value receipt from overstacked local inventory or bank rows',()=>{
+ const G={items:{ore:{type:'material',s:99}}};
+ const r=record({before:10,bankBefore:110});
+ // Record source q10 is valid, but a matching extra row with q100 is not.
+ const inventory=empty(),bankPack=empty();
+ inventory[0]={name:'ore',q:10};
+ bankPack[27]={name:'ore',q:10};
+ bankPack[28]={name:'ore',q:100};
+ let current=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
+  bank:{items0:bankPack},map:'bank',packMap:()=> 'bank',G});
+ assert.equal(current.phase,'ambiguous');
+ bankPack[28]={name:'ore',q:90};
+ current=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
+  bank:{items0:bankPack},map:'bank',packMap:()=> 'bank',G});
+ assert.equal(current.phase,'ambiguous','bank total cannot silently validate an altered before image');
+ assert.equal(validateBankReclaimRecord(record({item:{name:'ore',q:100},
+  quantity:100,bankBefore:100,sourcePrint:fingerprint({name:'ore',q:100})}),
+  {owner,realm,now,G}).valid,false);
+ assert.equal(validateBankReclaimRecord(record({item:{name:'ore',q:null},
+  quantity:1,bankBefore:1,sourcePrint:fingerprint({name:'ore',q:null})}),
+  {owner,realm,now,G}).valid,false);
+});
+test('W03/W04 offsite receipt refuses forged inventory stack after a legitimate withdraw',()=>{
+ const original=record({before:100,bankBefore:20,
+  withdrawal:{at:now,realm,pack,slot:27,dest:0,
+   sourcePrint:fingerprint(item),inventoryCount:110,bankCount:10}});
+ const held=empty();
+ held[0]={...item};held[1]={name:'ore',q:100};
+ const out=inspectOffsiteBankReclaim(original,{owner,realm,now,inventory:held,
+  G:{items:{ore:{s:99}}}});
+ assert.equal(out.eligible,false);
+ assert.equal(out.reason,'offsite-source-slot-or-variant-count-changed');
+});
+
+test('W04 truncated bank pack cannot prove an empty addressed source slot',()=>{
+ const r=record();
+ const inventory=empty(),pack=Array(27).fill(null);
+ inventory[0]={...item};
+ const result=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
+  bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+ assert.equal(result.phase,'unobserved');
+ assert.equal(result.confirmed,false);
+});

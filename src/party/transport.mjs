@@ -72,11 +72,19 @@ export function fitHeartbeat(data,maxLength=4200){
  const d={...data,items:[...(data.items??[])],materials:[...(data.materials??[])]};
  const length=()=>JSON.stringify(d).length;
  if(length()<=maxLength)return d;
+ // Bound malformed evidence; retain valid small material counts through
+ // farmPlan trimming so missing telemetry cannot permanently freeze quotas.
+ const progress=d.materialProgress;
+ if(progress!==undefined&&(!Array.isArray(progress)||progress.length>5||
+   JSON.stringify(progress).length>1200||progress.some(r=>
+    typeof r?.objective!=='string'||r.objective.length>120||
+    !Number.isSafeInteger(r.quantity)||r.quantity<0)))delete d.materialProgress;
+ if(length()<=maxLength)return d;
  // Keep verified material stock counts as long as possible: the Merchant
  // uses these counts to avoid allocating duplicate farming quotas. They
  // matter more than optional diagnostic/skill/market telemetry, but lose
  // priority to the core identity, item demand and material requests below.
- for(const key of ['lootReceipts','itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','roles','activity','skills','mluck','supplies','materialProgress','farmPlan']){
+ for(const key of ['lootReceipts','itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','roles','activity','skills','mluck','supplies','farmPlan']){
   delete d[key];if(length()<=maxLength)return d;
  }
  // bankOwner is required for conservative G11 collision detection;

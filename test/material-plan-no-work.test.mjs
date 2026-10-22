@@ -90,12 +90,13 @@ test('real TeamPlan starts a material objective only for a verified assigned sha
  assert.equal(current.kind,'material');
  assert.equal(current.objective,request.objective);
 });
-test('an in-flight material plan returns to normal farming when all quotas disappear',()=>{
+test('an in-flight material plan pauses new pulls without abandoning its objective when quotas disappear',()=>{
  const bot=plannerFixture([{name:'Ranger1',quantity:5}]);
  bot.teamPlan.tick();
  assert.equal(bot.teamPlan.heartbeat()?.kind,'material');
  bot.setMerchant({running:true,realm:'EUII',materials:[{...request,quotas:[]}]});
  bot.teamPlan.tick();
- assert.equal(bot.teamPlan.heartbeat()?.kind,'farm');
- assert.equal(bot.teamPlan.heartbeat()?.objective,null);
+ assert.equal(bot.teamPlan.heartbeat()?.kind,'material');
+ assert.equal(bot.teamPlan.heartbeat()?.objective,request.objective);
+ assert.equal(bot.teamPlan.wantsCombat(),false);
 });

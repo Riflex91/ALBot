@@ -264,3 +264,15 @@ test('W03 cyclic or oversized incoming variants cannot fabricate slot feasibilit
   }
  }
 });
+
+test('W03 unoccupied slots are never executable source removals or mergers',()=>{
+ const items=[null,...fill(41)];
+ const phantom=proof(items,[remove('phantom',0)]);
+ assert.equal(phantom.feasible,false);
+ assert.equal(phantom.reason,'no-proven-physical-sequence');
+ assert.equal(proof(items,[merge('phantom-merge',0,1)]).feasible,false);
+ assert.equal(proof(items,[merge('phantom-merge',0,0)]).feasible,false);
+ const real=proof(items,[remove('real',1)]);
+ assert.equal(real.feasible,true);
+ assert.equal(real.steps[0].freedNormalSlots,1);
+});

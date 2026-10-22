@@ -7,30 +7,45 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={})
  if(!Number.isSafeInteger(quantity)||quantity<1||
    !Array.isArray(names)||typeof fresh!=='function')
   return {remaining:0,quotas:[]};
+ const frozen=()=>({remaining:quantity,quotas:[]});
+ // An invalid capacity threshold must not turn negative/unknown free-space
+ // into permission to harvest. Bound the selected roster before touching
+ // any peer or building account-wide material assignments.
+ if(!Number.isSafeInteger(freeReserve)||freeReserve<0||
+    names.length>128)return frozen();
  const selected=new Set(),holders=[];
  for(const name of names){
   if(typeof name!=='string'||!name||selected.has(name))continue;
   selected.add(name);
-  const h=fresh(name);
+  let h;
+  try{h=fresh(name);}catch{return frozen();}
   if(!h?.running||h.rip||h.realm!==realm)continue;
   // fitHeartbeat may drop this OPTIONAL evidence if the team heartbeat
   // exceeds its wire budget. Missing evidence is NOT proof of zero stock.
   // Freeze fresh quotas across the whole active group until all currently
   // participating Farmers have reported their quantities again.
-  if(!Array.isArray(h.materialProgress))return {remaining:quantity,quotas:[]};
+  if(!Array.isArray(h.materialProgress)||
+     h.materialProgress.length>128)return frozen();
   const matches=h.materialProgress.filter(x=>x?.objective===request.objective);
-  if(matches.length>1)return {remaining:quantity,quotas:[]};
+  if(matches.length>1)return frozen();
   const raw=matches.length?matches[0].quantity:0;
   // A malformed quantity is unknown, not zero. Continuing allocation among
   // other Farmers would duplicate stock already present in this inventory.
-  if(!Number.isSafeInteger(raw)||raw<0)return {remaining:quantity,quotas:[]};
+  if(!Number.isSafeInteger(raw)||raw<0)return frozen();
   // Unknown physical free space cannot authorize MORE farming. Current
   // observed stock still contributes to the global material balance.
   const free=h.free,eligible=h.inventoryBlocked===false&&
     Number.isSafeInteger(free)&&free>freeReserve;
   holders.push({name,held:raw,eligible});
  }
- const total=holders.reduce((sum,h)=>sum+h.held,0);
+ // Every authenticated per-Farmer number is a safe integer, but THEIR
+ // SUM need not be. Never round an unsafe account aggregate into a false
+ // 'fulfilled' order, or silently reallocate unknown existing stock.
+ let total=0;
+ for(const h of holders){
+  if(!Number.isSafeInteger(total+h.held))return frozen();
+  total+=h.held;
+ }
  const remaining=Math.max(0,quantity-total);
  const eligible=holders.filter(h=>h.eligible);
  if(!eligible.length)return {remaining,quotas:[]};
@@ -38,8 +53,12 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={})
  // configured farmers), which overproduces and strands work on offline
  // characters. Stable roster order avoids unnecessary retargeting.
  const portion=Math.floor(remaining/eligible.length),extra=remaining%eligible.length;
- const quotas=eligible.map((h,index)=>({name:h.name,
-   quantity:h.held+portion+(index<extra?1:0)}));
+ const quotas=[];
+ for(const [index,h] of eligible.entries()){
+  const count=h.held+portion+(index<extra?1:0);
+  if(!Number.isSafeInteger(count)||count<0)return frozen();
+  quotas.push({name:h.name,quantity:count});
+ }
  return {remaining,quotas};
 }
 

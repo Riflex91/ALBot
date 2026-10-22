@@ -5,6 +5,20 @@ import {identity,protectedItem,verifiedExactGoalIdentity} from '../core/policy.m
 // inventory deposit unless a pre-loot baseline and exact delta both exist.
 const W13_LOOT_WINDOW=3500,W13_LOOT_MAX=64;
 const w13Amount=i=>i?.q===undefined?1:i.q;
+// Proof of a physical inventory row needs the game's actual stack size.
+// Without G, an unstackable singleton is the only defensible hint.
+function physicalLootUnits(item,G){
+ if(!item||typeof item!=='object'||Array.isArray(item)||
+    typeof item.name!=='string'||!item.name)return null;
+ const n=w13Amount(item),catalog=G?.items;
+ // A prototype property such as `constructor` is not a game item.
+ const meta=catalog&&Object.hasOwn(catalog,item.name)?catalog[item.name]:null;
+ if(!Number.isSafeInteger(n)||n<1||n>1000000||
+    (G!==undefined&&(!meta||typeof meta!=='object')))return null;
+ const max=meta?.s===true?9999:
+  Number.isSafeInteger(meta?.s)&&meta.s>1?meta.s:1;
+ return n<=max?n:null;
+}
 // Server loot events and account objectives can contain opaque or malformed
 // variant data. Never let JSON cycles abort the loot/status heartbeat path.
 function w13Identity(item){
@@ -21,14 +35,13 @@ function w13GearTargetMatches(g,item,variant){
  if(g.variant===null||g.variant===undefined)return true;
  return verifiedExactGoalIdentity(g)===variant;
 }
-function w13Stock(items){
+function w13Stock(items,G){
  if(!Array.isArray(items)||items.length>256)return null;
  const rows=new Map();
  for(const item of items){
-  if(!item)continue;
-  const n=w13Amount(item),key=w13Identity(item);
-  if(typeof item.name!=='string'||!item.name||!key||
-     !Number.isSafeInteger(n)||n<1||n>1000000)return null;
+  if(item===null||item===undefined)continue;
+  const n=physicalLootUnits(item,G),key=w13Identity(item);
+  if(n===null||!key)return null;
   rows.set(key,(rows.get(key)??0)+n);
   if(!Number.isSafeInteger(rows.get(key))||rows.size>128)return null;
  }
@@ -48,14 +61,21 @@ export function ownChestShare(row,name,G){
     row.items?.length>64||!G?.items)return null;
  const items=new Map();
  for(const entry of row.items??[]){
-  if(!entry||typeof entry.name!=='string'||!G.items[entry.name])return null;
+  if(!entry||typeof entry.name!=='string'||
+     !Object.hasOwn(G.items,entry.name)||
+     !G.items[entry.name]||typeof G.items[entry.name]!=='object')return null;
   // Lost-and-found drops have no recipient; they are not own loot.
   if(entry.lostandfound===true&&entry.looter===null)continue;
   if(typeof entry.looter!=='string'||!entry.looter||
      entry.lostandfound===true)return null;
+  // A malformed other-character entry makes the full server attribution
+  // ambiguous as well; never certify a partial forged chest event.
+  if(physicalLootUnits(entry,G)===null)return null;
   if(entry.looter!==name)continue;
-  const n=w13Amount(entry),key=w13Identity(entry);
-  if(!Number.isSafeInteger(n)||n<1||n>1000000||!key)return null;
+  // Even an exact later inventory delta cannot prove an impossible
+  // server-side amount (e.g. two unstackable rings in one entry).
+  const n=physicalLootUnits(entry,G),key=w13Identity(entry);
+  if(n===null||!key)return null;
   items.set(key,(items.get(key)??0)+n);
   if(!Number.isSafeInteger(items.get(key))||items.size>32)return null;
  }
@@ -68,10 +88,11 @@ export function ownChestShare(row,name,G){
 // Read-only joins of fully confirmed receipts and CURRENT physical stock.
 // A matching gear target is a suggestion, not permission to allocate/send.
 export function lootPurposeEvidence({proofs=[],inventory=[],reserve=()=>null,
- gearGoals=[],activeGoal=null,now=Date.now()}={}){
+ gearGoals=[],activeGoal=null,G,now=Date.now()}={}){
  if(!Array.isArray(proofs)||!Array.isArray(inventory)||
     !Array.isArray(gearGoals)||inventory.length>256||
-    proofs.length>16||gearGoals.length>128)return [];
+    proofs.length>16||gearGoals.length>128||
+    !w13Stock(inventory,G))return [];
  const grouped=new Map();
  for(const proof of proofs){
   if(!proof?.physical||!Number.isSafeInteger(proof.at)||
@@ -101,8 +122,8 @@ export function lootPurposeEvidence({proofs=[],inventory=[],reserve=()=>null,
    // establish an uncommitted copy for ANY purpose.
    if(!stockVariant)return [];
    if(stockVariant!==entry.variant)continue;
-   const count=x.q??1;
-   if(!Number.isSafeInteger(count)||count<1||count>1000000){
+   const count=physicalLootUnits(x,G);
+   if(count===null){
     complete=false;break;
    }
    held+=count;if(protectedItem(x))protectedUnits+=count;
@@ -159,9 +180,9 @@ export function createOwnLootReceipts(bot,{now=()=>Date.now()}={}){
   if(typeof id!=='string'||!id||id.length>160||!bot.running||
      bot.journal||bot.inventoryBlocked||bot.logistics?.reserved||
      bot.bank?.pending||!Number.isSafeInteger(p.c?.gold))return;
-  const stock=w13Stock(p.c.items);
+  const stock=w13Stock(p.c.items,p.G);
   if(stock)baselines.set(id,{at:now(),stock,gold:p.c.gold,
-   owner:me.name,realm,session});
+   definitions:p.G?.version??null,owner:me.name,realm,session});
   if(baselines.size>16)baselines.delete(baselines.keys().next().value);
  }
  function beforeLoot(arg){
@@ -203,13 +224,14 @@ export function createOwnLootReceipts(bot,{now=()=>Date.now()}={}){
  function sample(){
   resetIfChanged();
   if(!pending.length)return;
-  const stock=w13Stock(p.c?.items??[]),gold=p.c?.gold;
+  const stock=w13Stock(p.c?.items??[],p.G),gold=p.c?.gold;
   if(!stock||!Number.isSafeInteger(gold)||bot.journal||
      bot.inventoryBlocked||bot.bank?.pending||bot.logistics?.reserved)
    return;
   for(const row of [...pending]){
    if(!pending.includes(row))continue; // invalidated by a preceding proof
-   if(!w13SameDelta(row.basis.stock,stock,row.wanted)||
+   if(row.basis.definitions!==(p.G?.version??null)||
+      !w13SameDelta(row.basis.stock,stock,row.wanted)||
       gold!==row.basis.gold+row.gold)continue;
    const result={id:row.id,at:now(),source:row.source,
     opener:row.opener,state:'own-physical-receipt-confirmed',
@@ -243,7 +265,7 @@ export function createOwnLootReceipts(bot,{now=()=>Date.now()}={}){
    physicalConfirmed:recent.filter(x=>x.physical).length,
    serverOnly:recent.filter(x=>!x.physical).length,
    recent:recent.slice(-8).map(x=>({...x})),
-   purposeHints:lootPurposeEvidence({proofs:confirmed,inventory:p.c.items,
+   purposeHints:lootPurposeEvidence({proofs:confirmed,inventory:p.c.items,G:p.G,
     reserve:item=>bot.production?.reservedQuantity?.(item)??null,
     gearGoals:bot.gear?.goals?.()??[],activeGoal:bot.production?.activeGoal??null,
     now:now()})};

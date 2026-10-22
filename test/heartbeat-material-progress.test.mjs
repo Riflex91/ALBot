@@ -81,3 +81,27 @@ test('G11 oversized bank owner cannot be hidden to make a heartbeat fit',()=>{
  assert.equal(fitHeartbeat(d,4200),null,
   'missing a live bank claim would make account access appear safe');
 });
+
+test('bounded material counts survive a large farmPlan that previously forced their removal',()=>{
+ const d={...data(),farmPlan:{id:'plan',reason:'x'.repeat(3000)},corePadding:''};
+ d.corePadding='p'.repeat(4200-JSON.stringify(d).length+50);
+ const result=fitHeartbeat(d,4200);assert.ok(result);
+ assert.deepEqual(result.materialProgress,d.materialProgress);
+ assert.equal(result.farmPlan,undefined);
+});
+
+test('W06 suspicious aggregate material progress cannot trigger extra pulls after heartbeat transport',()=>{
+ const objective='material:gem0',request={objective,item:'gem0',quantity:20};
+ const producer=name=>({
+  name,realm:'EUII',running:true,rip:false,
+  free:8,inventoryBlocked:false,materialProgress:[{
+   objective,item:'gem0',quantity:name==='A'?Number.MAX_SAFE_INTEGER:3}]
+ });
+ const outgoingA=fitHeartbeat(producer('A'),4200),
+  outgoingB=fitHeartbeat(producer('B'),4200);
+ const peers={A:outgoingA,B:outgoingB};
+ assert.ok(outgoingA?.materialProgress&&outgoingB?.materialProgress);
+ const plan=planMaterialQuotas(request,['A','B'],
+  name=>peers[name],'EUII',{freeReserve:4});
+ assert.deepEqual(plan,{remaining:20,quotas:[]});
+});

@@ -314,3 +314,105 @@ test('W10 own-loot status tolerates corrupted gear objectives without creating s
  assert.deepEqual(status.purposeHints[0]?.candidateRecipients,[]);
  assert.equal(status.purposeHints[0]?.dispatchAuthorized,false);
 });
+
+test('W10/W13 a physically impossible post-loot potion stack never confirms own receipt',()=>{
+ const f=fixture();
+ f.items[0]={name:'hpot0',q:9999};
+ f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'hpot0',q:1}],5)),true);
+ f.items[0]={name:'hpot0',q:10000};
+ f.setGold(105);f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+ f.advance(3501);
+ assert.equal(f.receipts.status().serverOnly,1);
+ const good=fixture();
+ good.items[0]={name:'hpot0',q:9998};
+ good.receipts.beforeLoot('X');
+ assert.equal(good.receipts.observeChest(chest([{name:'hpot0',q:1}],5)),true);
+ good.items[0]={name:'hpot0',q:9999};
+ good.setGold(105);good.receipts.sample();
+ assert.equal(good.receipts.status().physicalConfirmed,1,
+  'one real unit can fill the server-defined last stack slot');
+});
+
+test('W10/W13 malformed unrelated stock denies both baseline and later physical proof',()=>{
+ for(const phase of ['before','after']){
+  const f=fixture();
+  if(phase==='before')f.items[0]={name:'sword',q:2};
+  f.receipts.beforeLoot('X');
+  assert.equal(f.receipts.observeChest(chest([{name:'ring'}],5)),true);
+  f.items[1]={name:'ring'};
+  if(phase==='after')f.items[0]={name:'sword',q:2};
+  f.setGold(105);f.receipts.sample();
+  assert.equal(f.receipts.status().physicalConfirmed,0,phase);
+  assert.equal(f.receipts.heartbeat().length,0);
+ }
+});
+
+test('W10/W13 current item definition drift blocks a pre-loot receipt',()=>{
+ const f=fixture();f.p.G.version=3;
+ f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'ring'}],5)),true);
+ f.p.G.version=4;
+ f.items[1]={name:'ring'};f.setGold(105);f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+});
+
+test('W13 read-only gear-demand hints never accept explicit null or overstacked inventory',()=>{
+ const ring={name:'ring',level:0},
+  variant=JSON.stringify(['ring',0,'','','','','','','']),
+  proof=[{id:'X',physical:true,at:100,items:[{variant,quantity:1}]}],
+  G={items:{ring:{},gem0:{s:99}}};
+ const hint=inventory=>lootPurposeEvidence({
+  proofs:proof,inventory,G,reserve:()=>0,now:200});
+ assert.equal(hint([ring])[0]?.currentUnits,1);
+ assert.deepEqual(hint([{...ring,q:null}]),[]);
+ assert.deepEqual(hint([ring,{name:'gem0',q:100}]),[],
+  'a physically impossible unrelated row invalidates the entire hint snapshot');
+ assert.deepEqual(hint([ring,{name:'ring',q:2}]),[]);
+ assert.deepEqual(hint([ring,{name:'forged',q:1}]),[]);
+ assert.deepEqual(lootPurposeEvidence({
+  proofs:proof,inventory:[{...ring,q:2}],reserve:()=>0,now:200}),[],
+  'without game stack definitions the hint cannot assume a stackable item');
+});
+
+test('W10/W13 chest attribution requires real item definitions, not object prototypes',()=>{
+ const G={items:{ring:{},hpot0:{s:9999}}};
+ for(const name of ['constructor','toString','__proto__','missing']){
+  const forged=chest([{name}],5);
+  assert.equal(ownChestShare(forged,'Priest',G),null,name);
+ }
+ const f=fixture();
+ f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'constructor'}],5)),false);
+ f.items[1]={name:'constructor'};f.setGold(105);f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+});
+test('W10/W13 server-attributed loot obeys exact physical stack limits',()=>{
+ const f=fixture(),G=f.p.G;
+ for(const [name,q] of [['ring',2],['hpot0',10000],['ring',null],
+  ['hpot0',0],['hpot0',1.5],['hpot0',NaN]]){
+  assert.equal(ownChestShare(chest([{name,q}],5),'Priest',G),null,
+   'unphysical chest amount: '+name+':'+String(q));
+ }
+ assert.equal(ownChestShare(chest([{name:'hpot0',q:9999}],5),
+  'Priest',G)?.items.size,1,'maximum legitimate stack stays admissible');
+ assert.equal(ownChestShare(chest([{name:'ring'}],5),'Priest',G)?.items.size,1);
+ // Corrupted OTHER character entries also invalidate the overall attribution,
+ // rather than turning a partial server record into own physical proof.
+ assert.equal(ownChestShare(chest([
+  {name:'ring',looter:'Priest'},
+  {name:'ring',q:2,looter:'Ranger'}],5),'Priest',G),null);
+});
+test('W13 impossible chest quantity cannot gain a receipt from matching inventory delta',()=>{
+ const f=fixture();f.receipts.beforeLoot('X');
+ assert.equal(f.receipts.observeChest(chest([{name:'ring',q:2}],5)),false);
+ f.items[1]={name:'ring'};f.items[2]={name:'ring'};
+ f.setGold(105);f.receipts.sample();
+ assert.equal(f.receipts.status().physicalConfirmed,0);
+ assert.equal(f.receipts.heartbeat().length,0);
+ const valid=fixture();valid.receipts.beforeLoot('X');
+ assert.equal(valid.receipts.observeChest(chest([{name:'hpot0',q:2}],5)),true);
+ valid.items[1]={name:'hpot0',q:2};valid.setGold(105);valid.receipts.sample();
+ assert.equal(valid.receipts.status().physicalConfirmed,1);
+});

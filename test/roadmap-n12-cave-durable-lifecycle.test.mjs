@@ -431,3 +431,116 @@ test('W12/N12 Cave entry and exit cannot overlap an unresolved Crypt journal',()
   'a genuinely settled alternate admission permits the old prepared Cave');
  assert.deepEqual(f.calls,['cave_enter']);
 });
+
+test('N12 stale never-dispatched Cave new-entry checkpoint clears only after fresh cave_info',()=>{
+ const shared=new Map(),first=fixture({store:shared});
+ assert.equal(first.lifecycle.prepare(),true);
+ assert.equal(first.lifecycle.status().state,'prepared');
+ const second=fixture({store:shared,session:'restarted'});
+ second.state.at=time+2000;
+ second.p.c={name:'P',map:'main',in:'main',cave:null,rip:false};
+ second.bot.exec={pending:new Map()};
+ second.bot.cave.status=()=>({live:second.state.live,
+  entryPreflight:second.state.preflight,
+  visit:{available:true,resume:null,
+   observedAt:second.state.at,serverTime:second.state.at}});
+ second.lifecycle.sample();
+ assert.equal(second.lifecycle.status().state,'empty');
+ assert.equal(shared.get('albot:cave-lifecycle:P'),null);
+ assert.deepEqual([...first.calls,...second.calls],[],
+  'clearing an un-dispatched checkpoint never sends cave_enter');
+ assert.equal(second.lifecycle.prepare(),true,
+  'a separate new explicit entry preparation is required');
+});
+
+test('N12 stale prepared Cave checkpoint cannot clear on missing/stale/conflicting visit',()=>{
+ for(const kind of ['missing-visit','stale-visit','before-prepare',
+  'permission-used','new-resume','party-changed','other-realm',
+  'crypt-pending','vote-pending','busy','outside','no-executor']){
+  const store=new Map(),first=fixture({store});
+  assert.equal(first.lifecycle.prepare(),true);
+  const second=fixture({store,session:'after-restart'});
+  second.state.at=time+4000;
+  second.p.c={name:'P',map:'main',in:'main',cave:null,rip:false};
+  second.bot.exec={pending:new Map()};
+  let v={available:true,resume:null,observedAt:time+4000,
+   serverTime:time+4000};
+  if(kind==='missing-visit')v=null;
+  if(kind==='stale-visit')v={...v,observedAt:time-35000};
+  if(kind==='before-prepare')v={...v,observedAt:time};
+  if(kind==='permission-used')v={...v,available:false};
+  if(kind==='new-resume')v={...v,resume:{run,server:'EUI'}};
+  if(kind==='party-changed')second.state.preflight={...preflight(),
+   party:['P','R']};
+  if(kind==='other-realm')second.p.realm=()=> 'USI';
+  if(kind==='crypt-pending')
+   second.bot.cryptLifecycle={status:()=>({blocked:true})};
+  if(kind==='vote-pending')
+   second.bot.caveVoteJournal={status:()=>({blocked:true})};
+  if(kind==='busy')second.bot.exec.pending.set('work',true);
+  if(kind==='outside')second.p.c.map='bank';
+  if(kind==='no-executor')delete second.bot.exec;
+  second.bot.cave.status=()=>({live:null,
+   entryPreflight:second.state.preflight,visit:v});
+  second.lifecycle.sample();
+  assert.equal(second.lifecycle.status().blocked,true,kind);
+  assert.equal(store.get('albot:cave-lifecycle:P')?.phase,'prepared',kind);
+  assert.deepEqual(second.calls,[],kind);
+ }
+});
+
+test('N12 a dispatched cave_enter is never cleared by a later fresh visit',()=>{
+ const store=new Map(),first=fixture({store});
+ assert.equal(first.lifecycle.prepare(),true);
+ assert.equal(first.lifecycle.markDispatchUnknown(),true);
+ const after=fixture({store,session:'reboot'});
+ after.state.at=time+2000;
+ after.p.c={name:'P',map:'main',in:'main'};
+ after.bot.exec={pending:new Map()};
+ after.bot.cave.status=()=>({live:null,entryPreflight:preflight(),
+  visit:{available:true,resume:null,observedAt:time+2000,serverTime:time+2000}});
+ after.lifecycle.sample();
+ assert.equal(after.lifecycle.status().state,'dispatch-unknown');
+ assert.equal(store.get('albot:cave-lifecycle:P')?.phase,'dispatch-unknown');
+ assert.deepEqual(after.calls,[]);
+});
+
+test('N12 resumed run prepared checkpoint needs the same fresh server resumable run',()=>{
+ const store=new Map(),first=fixture({store,mode:'resume'});
+ assert.equal(first.lifecycle.prepare(),true);
+ const second=fixture({store,session:'restart',mode:'resume'});
+ second.state.at=time+2000;
+ second.p.c={name:'P',map:'main',in:'main',cave:null};
+ second.bot.exec={pending:new Map()};
+ let v={available:false,resume:{run:other,server:'EUI'},
+  observedAt:time+2000,serverTime:time+2000};
+ second.bot.cave.status=()=>({live:null,
+  entryPreflight:second.state.preflight,visit:v});
+ second.lifecycle.sample();
+ assert.equal(second.lifecycle.status().state,'prepared');
+ v={...v,resume:{run,server:'USI'}};
+ second.lifecycle.sample();
+ assert.equal(second.lifecycle.status().state,'prepared');
+ v={...v,resume:{run,server:'EUI'}};
+ second.lifecycle.sample();
+ assert.equal(second.lifecycle.status().state,'empty');
+ assert.deepEqual(second.calls,[]);
+});
+
+test('N12 strict journal race prevents stale prepared cleanup',()=>{
+ const store=new Map(),first=fixture({store});
+ first.lifecycle.prepare();
+ const second=fixture({store,session:'restart'});
+ second.state.at=time+2000;
+ second.p.c={name:'P',map:'main',in:'main'};
+ second.bot.exec={pending:new Map()};
+ second.bot.cave.status=()=>({live:null,entryPreflight:preflight(),
+  visit:{available:true,resume:null,observedAt:time+2000,
+   serverTime:time+2000}});
+ store.set('albot:cave-lifecycle:P',{...store.get('albot:cave-lifecycle:P'),
+  createdAt:time+1});
+ second.lifecycle.sample();
+ assert.equal(second.lifecycle.status().state,'storage-uncertain');
+ assert.equal(store.get('albot:cave-lifecycle:P')?.createdAt,time+1);
+ assert.deepEqual(second.calls,[]);
+});

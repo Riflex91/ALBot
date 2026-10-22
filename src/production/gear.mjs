@@ -48,9 +48,67 @@ export function autoGearTargetLevel(configured,characterLevel,slot){
  const progressionCap=Math.floor(Math.max(1,Number(characterLevel)||1)/10)+3;
  return Math.max(0,Math.min(userCap,slot==='mainhand'?8:7,progressionCap));
 }
+// A merchant's own equipment is the LAST consumer of an upgrade. A
+// production goal or an unreserved copy does not prove that live farmers
+// cannot use it. Do not call the expensive optimizer here: this read-only
+// check runs at selection and again at delayed equip dispatch.
+export function merchantSelfEquipDecision(bot,item,{now=Date.now()}={}){
+ if(bot.me?.role!=='merchant')return {allowed:true,reason:'not-merchant'};
+ const {p,cfg}=bot,selected=Array.isArray(bot.farmers)?bot.farmers:
+  (cfg.characters??[]).filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
+ const names=[...new Set(selected)];
+ const slots=['mainhand','offhand','helmet','chest','pants','shoes','gloves',
+  'amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
+ if(!item||!p.G?.items?.[item.name]||!Number.isSafeInteger(item.level??0)||
+    !Number.isSafeInteger(now)||now<=0)
+  return {allowed:false,reason:'invalid-item-or-clock'};
+ for(const name of names){
+  const member=(cfg.characters??[]).find(c=>c.enabled&&
+   c.role==='farmer'&&c.name===name);
+  const peer=bot.transport?.fresh?.(name),profile=bot.gear?.profile?.(name);
+  // Only current-session, realm-bound, complete gear evidence can EXCLUDE
+  // farmer demand. A fresh heartbeat cannot refresh stale equipment.
+  if(!member||!peer?.running||peer.rip===true||peer.realm!==p.realm()||
+     !peer.session||!profile?.complete||typeof profile.class!=='string'||!profile.class||
+     !Number.isSafeInteger(profile.level)||profile.level<1||
+     profile.session!==peer.session||
+     profile.realm!==peer.realm||!Number.isSafeInteger(profile.at)||
+     profile.at>now||now-profile.at>120000||
+     !profile.slots||slots.some(slot=>!Object.hasOwn(profile.slots,slot)))
+   return {allowed:false,reason:'farmer-gear-unverified',farmer:name};
+  const role=member.gearRole==='auto'?
+   (profile.class==='priest'?'healer':'dps'):member.gearRole;
+  if(!['healer','tank','economy','dps'].includes(role))
+   return {allowed:false,reason:'farmer-role-unverified',farmer:name};
+  for(const slot of slots){
+   if(!gearCompatible(p.G,profile,item,slot))continue;
+   const old=profile.slots[slot];
+   if(old?.l||old?.b)continue;
+   let next,previous;
+   try{
+    next=p.call('item_properties',item);
+    previous=old?p.call('item_properties',old):null;
+   }catch{
+    return {allowed:false,reason:'farmer-stats-unverified',farmer:name};
+   }
+   if(!next||old&&!previous)
+    return {allowed:false,reason:'farmer-stats-unverified',farmer:name};
+   if(!gearSuitability(previous,next,role,profile.class,member.merchantMobility).ok)
+    continue;
+   const score=gearScore(next,role,profile.class);
+   const current=old?gearScore(previous,role,profile.class):0;
+   const improvement=Math.max(0,cfg.production?.minImprovement??0);
+   if(!Number.isFinite(score)||!Number.isFinite(current))
+    return {allowed:false,reason:'farmer-score-unverified',farmer:name};
+   if(score>0&&(!old||score>current*(1+improvement)))
+    return {allowed:false,reason:'farmer-gear-upgrade',farmer:name,slot};
+  }
+ }
+ return {allowed:true,reason:'farmer-needs-excluded'};
+}
 export function createGear(bot,{now=()=>Date.now()}={}){
  const {p,cfg,me}=bot,e=bot.economy;
- let lastLocalSnapshot=null,observedGearChanges=[];
+ let lastLocalSnapshot=null,observedGearChanges=[],observedTargets=[],observedGoals=[];
  const key='albot:gear:'+me.name+':profiles';let profiles=cfg.production.offlineProfiles?(p.read(key)??{}):{},lastSave=0;
  if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))profiles={};
  profiles=Object.fromEntries(Object.entries(profiles).filter(([name,x])=>bot.teamNames.includes(name)&&x&&typeof x==='object'&&x.slots&&typeof x.slots==='object'&&Number.isFinite(x.at)).slice(0,20));
@@ -120,7 +178,7 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   if(['weapon','tool'].includes(type)){if(target==='mainhand'){if(!Object.hasOwn(cls.mainhand??{},w)&&!Object.hasOwn(cls.doublehand??{},w))return false;if(Object.hasOwn(cls.doublehand??{},w)&&p.c.slots.offhand)return false;}else if(target!=='offhand'||!Object.hasOwn(cls.offhand??{},w)||Object.hasOwn(cls.doublehand??{},p.G.items[p.c.slots.mainhand?.name]?.wtype??''))return false;}
   else if(['shield','source','quiver','misc_offhand'].includes(type)){if(target!=='offhand'||!Object.hasOwn(cls.offhand??{},type))return false;}
   else if(!['ring','earring'].includes(type)&&target!==type)return false;
-  const current=p.c.slots[target];if(current?.l||current?.b||bot.allocation?.equipGuard(item,target)===false)return false;
+  const current=p.c.slots[target];if(current?.l||current?.b||bot.allocation?.equipGuard(item,target)===false||!merchantSelfEquipDecision(bot,item).allowed)return false;
   const role=me.gearRole==='auto'?(p.c.ctype==='priest'?'healer':p.c.ctype==='merchant'?'economy':'dps'):me.gearRole;
   let nextScore,oldScore;try{const next=p.call('item_properties',item),previous=current?p.call('item_properties',current):null;
    const assessment=gearSuitability(previous,next,role,p.c.ctype,me.merchantMobility);
@@ -128,7 +186,7 @@ export function createGear(bot,{now=()=>Date.now()}={}){
    nextScore=gearScore(next,role,p.c.ctype);oldScore=previous?gearScore(previous,role,p.c.ctype):0;}catch{return false;}
   if(current&&nextScore<oldScore*(1+cfg.production.minImprovement))return false;
   const oldId=identity(current);
-  return e.perform('gear.equip',{slots:[slot],rule:r,guard:()=>identity(p.c.slots[target])===oldId&&bot.allocation?.equipGuard(item,target)!==false&&
+  return e.perform('gear.equip',{slots:[slot],rule:r,guard:()=>identity(p.c.slots[target])===oldId&&identity(p.c.items[slot])===identity(item)&&bot.allocation?.equipGuard(item,target)!==false&&merchantSelfEquipDecision(bot,p.c.items[slot]).allowed&&
     gearSuitability(p.c.slots[target]?p.call('item_properties',p.c.slots[target]):null,p.call('item_properties',p.c.items[slot]),role,p.c.ctype,me.merchantMobility).ok,call:()=>p.call('equip',slot,target),observe:()=>identity(p.c.slots[target])===identity(item),details:{item:item.name,slot:target}});
  }
  function suggestions(){const result=[];if(!cfg.production.gear)return result;for(const [name,profile] of Object.entries(profiles)){
@@ -138,6 +196,7 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   }
  }return result.slice(0,20);}
  function targets(){
+  if(bot.diagnosticRead)return observedTargets;
   const optimized=bot.intelligence?.targets()??[];
   const fairness=g=>{
    const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
@@ -240,9 +299,9 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
    result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)+fairness({character:member.name,slot})});
-  }}return result;
+  }}observedTargets=result;return result;
  }
- function goals(){if(!cfg.production.gear)return [];return targets().flatMap(g=>{
+ function goals(){if(bot.diagnosticRead)return observedGoals;if(!cfg.production.gear)return [];return observedGoals=targets().flatMap(g=>{
   const profile=g.character===me.name?snapshot():profiles[g.character];if(!profile||!gearCompatible(p.G,profile,{name:g.item,level:g.level},g.slot))return [];
   const old=profile.slots[g.slot];if(old?.l||old?.b||old?.name===g.item&&old.level>=g.level)return [];
   const member=cfg.characters.find(c=>c.name===g.character),role=member?.gearRole==='auto'?(profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps'):member?.gearRole;

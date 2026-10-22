@@ -1,5 +1,25 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Sicherer Konfigurationsabgleich – Revision/Signaturvertrag (22.10.2026)
+
+Im Bereich **System & Synchronisierung** lässt sich der private GitHub-Profilstand jetzt **ausdrücklich und read-only** prüfen. Die unter Cloudflare Access geschützte Route `GET /api/profile-sync/status` lädt und validiert das Full-v1-Profil serverseitig und berechnet einen deterministischen SHA-256-Fingerprint über kanonisch sortierte JSON-Daten. Die Antwort enthält nur GitHub-SHA, Profil-SHA-256, Schemabezeichnung und Anzahl Bytes, niemals die enthaltenen Profiloptionen oder Zugangsdaten. Fehlende, ungültige oder nicht lesbare Profile gelten nicht als veröffentlicht. Ein Abruf erfolgt nur beim Öffnen des Systembereichs oder durch erneuten Nutzerklick; es gibt kein schnelles Polling oder eine neue D1-Tabelle.
+
+**Sicherheitszustand:** `signed:false`, `published:false`, `applied:false`, `acknowledged:false`. Das ist keine vorübergehende kosmetische Anzeige, sondern der aktuelle technische Vertrag. Der Fingerprint bestätigt die Identität einer gespeicherten GitHub-Fassung, **nicht deren Signierung oder Annahme durch einen laufenden Bot**. Er gibt keinerlei Befugnis zu Verkäufen, Transfers oder Ingame-Konfigurationsänderungen.
+
+Das neue reine Prüfmodul `konfigurator/public/config-sync-contract.mjs` definiert außerdem den späteren signierten Konfigurationsvertrag `albot-config-release/v1`: SHA-256 über kanonisches Full-v1-Profil, separat fest eingebauter ECDSA-P-256-Public-Key, exakte Zielaccount-Bindung, zeitlich begrenzte Gültigkeit und monoton steigende Sequenz. Tests prüfen manipulierte Daten, falsche Zielaccounts, abgelaufene Ausgaben, fremde Schlüssel und Replay/Rollback. Der Prüfer nimmt **selbst keine Anwendung vor**; vor einer Freigabe müssen mindestens ein ausdrücklich eingerichteter privater Signierkanal, eine dauerhafte gegen Rollback geschützte Sequenz, eine neue signierte Runtime mit sicherem Anwendungspunkt und ein authentischer Charakter-ACK real implementiert und abgenommen sein.
+
+Es wird kein Schlüssel erzeugt, kein Token rotiert, kein Ingame-Loader geändert und kein Cloudflare-Access-Bypass erweitert. **Das private Full-Profil wird nicht in den öffentlichen Runtime-/Release-Branch kopiert.**
+
+
+## Native Einstellungsansichten (22.10.2026)
+
+Die Menüpunkte **Kampf & Fähigkeiten**, **Farmen & Welt**, **Merchant & Produktion** und **Team & Charaktere** sind keine statischen Platzhalter mehr. Sie beziehen ihre Felddefinitionen ausschließlich aus dem vorhandenen vollständigen Full-v1-Schema der Ingame-Runtime; die Worker-Route `GET /api/profile-schema` gibt dieses Schema nur unter erfolgreicher Cloudflare-Access-Prüfung aus. Änderungen an Schwellwerten, Listen und Objekten verwenden strikte Typ-/Grenzprüfung und editieren einen lokalen, flüchtigen Entwurf des vollständigen GitHub-Profils. Für ältere oder fehlende Profile wird **kein** neues Vollprofil stillschweigend generiert: der Erstimport erfolgt weiterhin in `/classic.html`.
+
+Alle Tabs teilen denselben Entwurf. Der Knopf **Profil auf GitHub speichern** ruft ausschließlich `PUT /api/profile` mit dem letzten aus `GET /api/profile` bekannten SHA auf; der Worker prüft das vollständige ALBot-Schema samt Abhängigkeiten, und eine konkurrierende Änderung durch die klassische Werkstatt verursacht HTTP 409 statt blindem Überschreiben. Ein erneutes Laden verwirft einen ungespeicherten Entwurf nur nach Bestätigung. Die getrennten, bisherigen globalen Itemrichtlinien bleiben unter `PUT /api/policy` und können nicht versehentlich aus den Profileditoren heraus überschrieben werden.
+
+**Weder Bearbeitung noch GitHub-Speicherung aktiviert die Konfiguration im Spiel.** Erst ein gesondert implementierter, überprüfter signierter Konfigurationskanal mit Runtime-ACK dürfte diesen Status ändern. Sensible Tokens werden vom Web-Editor weder abgefragt noch gespeichert. Die klassische Werkstatt bleibt für große Listen und zusätzliche Profilbereiche verfügbar. Kein neues kostenpflichtiges Cloudflare-Produkt, kein neues D1-Schema und keine Anpassung des Ingame-Bootstraps.
+
+
 ## Aktueller Stand (21.10.2026)
 
 Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die spätere Runtime 0.32 benötigt eine separate Ingame-Abnahme. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.
@@ -12,46 +32,46 @@ Die neue Startseite zeigt ausschließlich **empfangene**, nach Datenalter eingeo
 ## Sicherheit und Funktionsstand
 
 - Die neue Oberfläche bietet Dashboard, Charakterstatus mit Inventar und schematischer Positionsdarstellung, Bankfächer und globale Itemrichtlinien.
-- Globale Itemrichtlinien und das vollständige Profil werden als **zwei getrennte, SHA-versionierte Dateien im privaten GitHub-Konfigurationsrepository** gespeichert. Speichern ändert derzeit **nicht** die laufende \`ALBotConfig\`, verkauft keine Items und veröffentlicht keinen signierten Release.
-- Der klassische vollständige Item-/Skill-/Charaktereditor wird unter \`/classic.html\` aus dem aktuellen Editor-Build kopiert. Über einen kleinen isolierten Cloud-Adapter kann er das vollständige Profil aus dem **privaten GitHub-Repo laden und zurückspeichern**; sein lokaler JSON-/CODE-Export bleibt unverändert. Bei vorhandenem lokalem Entwurf fragt er vor dem Ersetzen nach.
+- Globale Itemrichtlinien und das vollständige Profil werden als **zwei getrennte, SHA-versionierte Dateien im privaten GitHub-Konfigurationsrepository** gespeichert. Speichern ändert derzeit **nicht** die laufende `ALBotConfig`, verkauft keine Items und veröffentlicht keinen signierten Release.
+- Der klassische vollständige Item-/Skill-/Charaktereditor wird unter `/classic.html` aus dem aktuellen Editor-Build kopiert. Über einen kleinen isolierten Cloud-Adapter kann er das vollständige Profil aus dem **privaten GitHub-Repo laden und zurückspeichern**; sein lokaler JSON-/CODE-Export bleibt unverändert. Bei vorhandenem lokalem Entwurf fragt er vor dem Ersetzen nach.
 - Die Bank- und Charakteransichten lesen ausschließlich Cloudflare-D1-Telemetriesnapshots. Fehlende oder alte Bank-Maps zählen nicht als leere Bestände. Kein Snapshot autorisiert eine Bankaktion.
 - Für alle Web-Seiten, statischen Assets und Konfigurations-APIs wird **eine kryptografisch überprüfte Cloudflare-Access-JWT** inklusive Signatur, Issuer, Audience, Ablauf und E-Mail-Whitelist benötigt. Für die klassische Werkstatt gelten exakte SHA-256-CSP-Hashes ihrer eingebetteten Script-/Style-Blöcke, kein generelles `unsafe-inline`.
-- Der Telemetrie-Endpunkt \`/api/ingest\` ist davon getrennt und erfordert ein Worker-Secret \`INGEST_TOKEN\` (mindestens 32 zufällige Zeichen). Niemals in das öffentliche Runtime-Bundle schreiben.
-- \`GITHUB_TOKEN\` ist ein Worker-Secret mit Schreibrechten **nur auf ein separates privates Konfigurationsrepository**, nicht auf \`Riflex91/ALBot\`. Der öffentliche Source- und Runtime-Branch bleibt davon getrennt.
-- Der Worker ruft den jeweils aktuellen öffentlichen Item-Katalog und Build-Metadaten aus \`Riflex91/ALBot/main\` ab. Es gibt noch keinen Live-Config-Update-Mechanismus für Adventure Land/Headless; dieser benötigt einen gesonderten, signierten Bootstrap-/Versionsvertrag.
+- Der Telemetrie-Endpunkt `/api/ingest` ist davon getrennt und erfordert ein Worker-Secret `INGEST_TOKEN` (mindestens 32 zufällige Zeichen). Niemals in das öffentliche Runtime-Bundle schreiben.
+- `GITHUB_TOKEN` ist ein Worker-Secret mit Schreibrechten **nur auf ein separates privates Konfigurationsrepository**, nicht auf `Riflex91/ALBot`. Der öffentliche Source- und Runtime-Branch bleibt davon getrennt.
+- Der Worker ruft den jeweils aktuellen öffentlichen Item-Katalog und Build-Metadaten aus `Riflex91/ALBot/main` ab. Es gibt noch keinen Live-Config-Update-Mechanismus für Adventure Land/Headless; dieser benötigt einen gesonderten, signierten Bootstrap-/Versionsvertrag.
 - Der produktive Worker wurde am 21.10.2026 nach Linux-/Windows-CI über den bestehenden Workflow deployed (siehe [Actions-Lauf 39644211739](https://github.com/Riflex91/ALBot/actions/runs/39644211739)). Dies belegt den Deployment-Aufruf, nicht die private Access-Ausnahme, die Secret-Provisionierung oder einen echten Ingame-Direktupload.
 
 ## Lokale und CI-Prüfung (ohne Cloudflare)
 
 Im Repository:
 
-\`\`\`bash
+```bash
 npm ci --ignore-scripts
 npm run build
 npm run build:editor
 npm run build:konfigurator
 node --test konfigurator/test/*.test.mjs
-\`\`\`
+```
 
-Die Browseroberfläche steht unter \`konfigurator/public/index.html\`, der Worker unter \`konfigurator/worker/index.mjs\`.
+Die Browseroberfläche steht unter `konfigurator/public/index.html`, der Worker unter `konfigurator/worker/index.mjs`.
 
 ## Cloudflare-Einrichtung – erst nach der Codeabnahme
 
-1. Bei Cloudflare **Workers & Pages** einen Worker für \`konfigurator/\` erstellen. Wrangler installiert und konfiguriert denselben Code. Für alle Assets ist \`run_worker_first=true\` aktiviert.
+1. Bei Cloudflare **Workers & Pages** einen Worker für `konfigurator/` erstellen. Wrangler installiert und konfiguriert denselben Code. Für alle Assets ist `run_worker_first=true` aktiviert.
 2. Cloudflare **Zero Trust / Access** konfigurieren und die Worker-Domain nur für die eigene E-Mail erlauben. Die Access-Audience, den Team-Domain-Namen und die freigegebene E-Mail notieren.
-3. Eine **private** GitHub-Repository \`<Konto>/albot-private-config\` erstellen, den leeren Branch \`main\` initialisieren und einen feingranularen GitHub-Token mit **Contents: Read & write** ausschließlich für diese Repo anlegen. Kein Token auf dem öffentlichen ALBot-Code.
+3. Eine **private** GitHub-Repository `<Konto>/albot-private-config` erstellen, den leeren Branch `main` initialisieren und einen feingranularen GitHub-Token mit **Contents: Read & write** ausschließlich für diese Repo anlegen. Kein Token auf dem öffentlichen ALBot-Code.
 4. Worker-Secrets setzen:
-   - \`GITHUB_TOKEN\`: der eingeschränkte private GitHub-Token
-   - \`CONFIG_REPO\`: \`<Konto>/albot-private-config\`
-   - \`CF_ACCESS_TEAM_DOMAIN\`: \`<Team>.cloudflareaccess.com\`
-   - \`CF_ACCESS_AUD\`: Access Application Audience Tag
-   - \`ALLOWED_EMAIL\`: exakte erlaubte E-Mail
-   - \`INGEST_TOKEN\`: mindestens 32 zufällige Zeichen, später nur in privater Clientkonfiguration verwendet
-5. Für \`/api/ingest\` eine **eigene, exakte Access-Anwendungspfad-Ausnahme** konfigurieren (Bypass ausschließlich für diesen einzelnen Endpunkt); im Worker bleiben ein langer privater Bearer-Token und eine fest definierte CORS-Allowlist für **beide** offiziellen Origins \`https://adventure.land\` und \`https://www.adventure.land\` verpflichtend. Keine allgemeine Domain-Bypass-Policy setzen. Browser-Preflight \`OPTIONS\` auf diesem Pfad darf nicht von Access abgefangen werden. Dashboard, HTML und alle anderen \`/api/*\` müssen Access-authentifiziert bleiben.
-6. Cloudflare D1-Datenbank \`albot-konfigurator\` anlegen, die **echte** \`database_id\` in \`wrangler.toml\` eintragen und \`schema.sql\` einmalig migrieren.
-7. \`cd konfigurator && npx wrangler deploy\` erst danach ausführen. Browser-Login und Access-Prüfung im Live-Worker überprüfen, bevor echte Itemrichtlinien gespeichert werden.
+   - `GITHUB_TOKEN`: der eingeschränkte private GitHub-Token
+   - `CONFIG_REPO`: `<Konto>/albot-private-config`
+   - `CF_ACCESS_TEAM_DOMAIN`: `<Team>.cloudflareaccess.com`
+   - `CF_ACCESS_AUD`: Access Application Audience Tag
+   - `ALLOWED_EMAIL`: exakte erlaubte E-Mail
+   - `INGEST_TOKEN`: mindestens 32 zufällige Zeichen, später nur in privater Clientkonfiguration verwendet
+5. Für `/api/ingest` eine **eigene, exakte Access-Anwendungspfad-Ausnahme** konfigurieren (Bypass ausschließlich für diesen einzelnen Endpunkt); im Worker bleiben ein langer privater Bearer-Token und eine fest definierte CORS-Allowlist für **beide** offiziellen Origins `https://adventure.land` und `https://www.adventure.land` verpflichtend. Keine allgemeine Domain-Bypass-Policy setzen. Browser-Preflight `OPTIONS` auf diesem Pfad darf nicht von Access abgefangen werden. Dashboard, HTML und alle anderen `/api/*` müssen Access-authentifiziert bleiben.
+6. Cloudflare D1-Datenbank `albot-konfigurator` anlegen, die **echte** `database_id` in `wrangler.toml` eintragen und `schema.sql` einmalig migrieren.
+7. `cd konfigurator && npx wrangler deploy` erst danach ausführen. Browser-Login und Access-Prüfung im Live-Worker überprüfen, bevor echte Itemrichtlinien gespeichert werden.
 
-**Wichtig:** \`Cloudflare Access\` muss vor der Worker-Domain aktiviert sein; bei fehlenden Access-Secrets gibt die Anwendung HTTP 503 statt einer ungeschützten Website zurück. Ohne Datenbank sind die Liveansichten leer, nicht erfunden. Der persönliche Ingame-Bootstrap bleibt bis zu einer gesonderten validierten Konfigurationssignatur unverändert.
+**Wichtig:** `Cloudflare Access` muss vor der Worker-Domain aktiviert sein; bei fehlenden Access-Secrets gibt die Anwendung HTTP 503 statt einer ungeschützten Website zurück. Ohne Datenbank sind die Liveansichten leer, nicht erfunden. Der persönliche Ingame-Bootstrap bleibt bis zu einer gesonderten validierten Konfigurationssignatur unverändert.
 
 ## Reproduzierbares Auto-Deployment nach `main` (Cloudflare Free)
 
@@ -68,7 +88,7 @@ Eine gruene PR-CI **alleine ist kein Cloudflare-Deployment**. Nur ein erfolgreic
 
 ## Voraussetzungen für echte Konfigurationsübernahme
 
-Für Hot-Reload muss künftig eine serverseitig signierte versionierte Konfiguration in einen allein lesbaren, bereinigten Clientkanal veröffentlicht werden. Der bestehende Ingame-Loader besitzt aktuell nur den verifizierten Runtime-Download mit persönlicher \`ALBotConfig\`. Weder GitHub-Commit noch Worker-Speichern alleine aktualisiert laufende Bots. Signaturvalidierung, Rollbackschutz, kompatible Schema-Migration, sichere Entscheidungspunkte und Charakter-ACK müssen vor Aktivierung implementiert und im Browser sowie Headless überprüft werden.
+Für Hot-Reload muss künftig eine serverseitig signierte versionierte Konfiguration in einen allein lesbaren, bereinigten Clientkanal veröffentlicht werden. Der bestehende Ingame-Loader besitzt aktuell nur den verifizierten Runtime-Download mit persönlicher `ALBotConfig`. Weder GitHub-Commit noch Worker-Speichern alleine aktualisiert laufende Bots. Signaturvalidierung, Rollbackschutz, kompatible Schema-Migration, sichere Entscheidungspunkte und Charakter-ACK müssen vor Aktivierung implementiert und im Browser sowie Headless überprüft werden.
 
 ## Verbindliche Betriebsregel: Cloudflare Free, keine Kosten
 
@@ -90,13 +110,13 @@ Offizielle Cloudflare-Dokumentation:
 
 ## Profilimport und private Speicherung
 
-Nach der Cloudflare-Einrichtung die Seite \`/classic.html\` öffnen. Falls im privaten Repo noch kein \`albot/profile.json\` existiert, das aktuelle eigene Profil **einmalig** über „Profil öffnen“ (JSON) oder einen bereits vorhandenen lokalen Entwurf übernehmen. Erst danach „☁ Profil auf GitHub speichern“ wählen. Bei folgenden Aufrufen lädt der Adapter automatisch das private GitHub-Profil, ohne einen lokalen Entwurf ungefragt zu überschreiben. Die globale Item-Richtlinie bleibt unter \`albot/item-policies.json\` und ist nicht mit den bisher aktiven \`config.items\` identisch.
+Nach der Cloudflare-Einrichtung die Seite `/classic.html` öffnen. Falls im privaten Repo noch kein `albot/profile.json` existiert, das aktuelle eigene Profil **einmalig** über „Profil öffnen“ (JSON) oder einen bereits vorhandenen lokalen Entwurf übernehmen. Erst danach „☁ Profil auf GitHub speichern“ wählen. Bei folgenden Aufrufen lädt der Adapter automatisch das private GitHub-Profil, ohne einen lokalen Entwurf ungefragt zu überschreiben. Die globale Item-Richtlinie bleibt unter `albot/item-policies.json` und ist nicht mit den bisher aktiven `config.items` identisch.
 
-**Absichtlich noch keine automatische Signierung/Distribution:** Ein erfolgreicher GitHub-Commit bestätigt nur Speicherung. Die Ingame-Runtime verwendet weiterhin die im vorhandenen Bootstrap bereitgestellte persönliche \`ALBotConfig\`. Die neue Plattform darf niemals behaupten, dass ein Cloud-Profil ohne einen implementierten signierten Konfigurationskanal übernommen wurde.
+**Absichtlich noch keine automatische Signierung/Distribution:** Ein erfolgreicher GitHub-Commit bestätigt nur Speicherung. Die Ingame-Runtime verwendet weiterhin die im vorhandenen Bootstrap bereitgestellte persönliche `ALBotConfig`. Die neue Plattform darf niemals behaupten, dass ein Cloud-Profil ohne einen implementierten signierten Konfigurationskanal übernommen wurde.
 
 ## Browser-Telemetrie und Cloudflare Access
 
-Ein Ingame-Browser sendet bei \`POST /api/ingest\` mit \`Authorization\` einen CORS-Preflight (\`OPTIONS\`). Deshalb darf nur dieser **exakte Pfad** außerhalb der Login-Weiterleitung liegen. Der \`POST\` besitzt unabhängig vom Browser-Origin eine verpflichtende Bearer-Token-Prüfung. Der Worker antwortet auf CORS-Preflight nur für die **beiden exakt definierten offiziellen Spiel-Origins** \`https://adventure.land\` und \`https://www.adventure.land\`; alle anderen Origins erhalten 403. Eine konfigurierte \`INGEST_ALLOWED_ORIGIN\`-Umgebungsvariable wird nicht mehr verwendet. Kein generischer Origin-Reflector, keine fremden Websites und keine Geheimhaltungsgarantie für private Token im Game-CODE-Frame.
+Ein Ingame-Browser sendet bei `POST /api/ingest` mit `Authorization` einen CORS-Preflight (`OPTIONS`). Deshalb darf nur dieser **exakte Pfad** außerhalb der Login-Weiterleitung liegen. Der `POST` besitzt unabhängig vom Browser-Origin eine verpflichtende Bearer-Token-Prüfung. Der Worker antwortet auf CORS-Preflight nur für die **beiden exakt definierten offiziellen Spiel-Origins** `https://adventure.land` und `https://www.adventure.land`; alle anderen Origins erhalten 403. Eine konfigurierte `INGEST_ALLOWED_ORIGIN`-Umgebungsvariable wird nicht mehr verwendet. Kein generischer Origin-Reflector, keine fremden Websites und keine Geheimhaltungsgarantie für private Token im Game-CODE-Frame.
 
 ## Read-only Telemetrie-Snapshot (Stufe 1)
 

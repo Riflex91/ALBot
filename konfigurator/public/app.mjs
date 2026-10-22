@@ -1,11 +1,17 @@
 import {defaultPolicy,validatePolicyDocument,previewGlobalItem} from './policy.mjs';
 import {DASHBOARD_REFRESH_MS,SNAPSHOT_FRESH_MS} from './free-tier.mjs';
 import {telemetrySummary} from './telemetry-summary.mjs';
+import {profileView,checkedProfileDocument,setProfileScalar,
+ addProfileArrayItem,removeProfileArrayItem,profileEnvelope} from './profile-model.mjs';
+import {renderProfileSections} from './profile-editor.mjs';
 
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);if(cls)e.className=cls;return e;};
 const state={view:'dashboard',policy:{version:1,items:[]},sha:null,configured:false,dirty:false,saving:false,
  characters:[],bank:[],telemetryErrors:{characters:null,bank:null},catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
+const profileState={document:null,descriptor:null,sha:null,loaded:false,loading:false,
+ dirty:false,saving:false,error:'',fieldErrors:new Map()};
+const syncState={data:null,loading:false,loaded:false,error:''};
 const fmt=x=>typeof x==='number'&&Number.isFinite(x)?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(x):'—';
 const age=t=>!Number.isFinite(t)?'unbekannt':Math.max(0,Math.floor((Date.now()-t)/1000))+' s';
 const fresh=t=>Number.isFinite(t)&&Date.now()-t<SNAPSHOT_FRESH_MS;
@@ -26,8 +32,43 @@ function labelField(text,value,min,max,type='number'){
 function metric(title,value,foot){const c=card();c.classList.add('metric');c.append(node('div',title,'label'),node('div',value,'value'),node('div',foot,'foot'));return c;}
 function notice(text,info=false){return node('div',text,'notice'+(info?' info':''));}
 function markDirty(){state.dirty=true;const s=$('saved-state');s.textContent='Ungespeicherte Änderungen';$('save').disabled=false;}
-function setSaveState(){const s=$('saved-state');s.textContent=state.dirty?'Ungespeicherte Änderungen':
- state.loaded?'GitHub-Stand geladen (nicht im Spiel aktiv)':'GitHub nicht verbunden';$('save').disabled=!state.dirty||state.saving||!state.configured;}
+function setSaveState(){
+ const s=$('saved-state'),button=$('save');
+ if(profileView(state.view)){
+  s.textContent=profileState.loading?'GitHub-Profil wird geladen':
+   profileState.dirty?'Ungespeicherte Profiländerungen':
+   profileState.loaded?'Privates GitHub-Profil · nicht im Spiel aktiv':
+   'Privates Profil nicht geladen';
+  button.textContent=profileState.saving?'Speichere Profil …':'Profil auf GitHub speichern';
+  button.disabled=!profileState.loaded||!profileState.dirty||
+   profileState.saving||profileState.loading||profileState.fieldErrors.size>0;
+ }else{
+  s.textContent=state.dirty?'Ungespeicherte Richtlinien':
+   state.loaded?'GitHub-Richtlinien · nicht im Spiel aktiv':'GitHub nicht verbunden';
+  button.textContent=state.saving?'Speichere …':'Itemrichtlinien speichern';
+  button.disabled=!state.dirty||state.saving||!state.configured;
+ }
+}
+async function refreshSyncStatus(){
+ if(syncState.loading)return;
+ syncState.loading=true;syncState.error='';
+ if(state.view==='settings')render();
+ try{
+  const result=await api('/api/profile-sync/status');
+  if(result?.ok!==true||result?.signed!==false||
+   result?.published!==false||result?.applied!==false||
+   result?.acknowledged!==false)
+   throw Error('Unerwarteter Synchronisationsstatus');
+  syncState.data=result;
+  syncState.loaded=true;
+ }catch(error){
+  syncState.data=null;syncState.loaded=true;
+  syncState.error=String(error?.message??error).slice(0,180);
+ }finally{
+  syncState.loading=false;
+  if(state.view==='settings')render();
+ }
+}
 async function api(path,init={}){
  const response=await fetch(path,{credentials:'same-origin',cache:'no-store',...init});
  let body;try{body=await response.json();}catch{throw Error('Unerwartete Serverantwort');}
@@ -76,6 +117,7 @@ async function refreshLive(){
  }finally{refreshingLive=false;}
 }
 function save(){
+ if(profileView(state.view)){void saveProfile();return;}
  if(!state.configured||state.saving||!state.dirty)return;
  const errors=validatePolicyDocument(state.policy);
  if(errors.length){toast(errors.join(' · '));return;}
@@ -250,6 +292,127 @@ function items(){
  const a=node('a','Klassische Item-/Skill-Regeln bearbeiten');a.href='./classic.html';a.rel='noopener';refs.append(a);
  content.append(refs);
 }
+
+async function loadProfile({force=false}={}){
+ if(profileState.loading||profileState.saving)return;
+ if(!force&&profileState.loaded)return;
+ if(force&&profileState.dirty&&!window.confirm(
+  'Ungespeicherte Änderungen verwerfen und die aktuelle GitHub-Version laden?'))return;
+ profileState.loading=true;profileState.error='';setSaveState();render();
+ try{
+  const [schema,source]=await Promise.all([
+   api('/api/profile-schema'),api('/api/profile')]);
+  if(schema?.descriptor?.schemaId!=='albot.full/v1')
+   throw Error('Das erforderliche Full-v1-Schema ist nicht verfügbar.');
+  if(!source?.document)throw Error(
+   'Noch kein privates ALBot-Profil gespeichert. Erstelle oder importiere es zunächst in der klassischen Bot-Werkstatt.');
+  const verified=checkedProfileDocument(source.document,schema.descriptor);
+  profileState.descriptor=schema.descriptor;
+  profileState.document=verified;
+  profileState.sha=source.sha??null;
+  profileState.loaded=true;profileState.dirty=false;
+  profileState.fieldErrors.clear();
+ }catch(error){
+  if(!profileState.dirty){
+   profileState.loaded=false;profileState.document=null;profileState.descriptor=null;
+  }
+  profileState.error=String(error?.message??error).slice(0,220);
+ }finally{profileState.loading=false;setSaveState();render();}
+}
+async function saveProfile(){
+ if(!profileState.loaded||!profileState.dirty||profileState.loading||
+    profileState.saving||profileState.fieldErrors.size>0)return;
+ const staged=JSON.stringify(profileState.document);
+ profileState.saving=true;setSaveState();
+ try{
+  // The Worker validates the complete authoritative ALBot profile, including
+  // cross-field rules. The optimistic SHA rejects concurrent Classic edits.
+  const result=await api('/api/profile',{
+   method:'PUT',headers:{'content-type':'application/json'},
+   body:JSON.stringify({sha:profileState.sha,
+    document:profileEnvelope(profileState.document)})
+  });
+  profileState.sha=result.sha;
+  syncState.loaded=false;syncState.data=null;
+  if(JSON.stringify(profileState.document)===staged)profileState.dirty=false;
+  profileState.error='';
+  toast('Profil versioniert auf GitHub gespeichert. Keine Änderung wurde im Spiel aktiviert.');
+ }catch(error){
+  profileState.error=String(error?.message??error).slice(0,220);
+  toast('Profil nicht gespeichert: '+profileState.error);
+ }finally{profileState.saving=false;setSaveState();render();}
+}
+function profileFieldChange(path,raw){
+ const key=path.join('/');
+ try{
+  setProfileScalar(profileState.document,profileState.descriptor,path,raw);
+  profileState.fieldErrors.delete(key);
+  profileState.dirty=true;profileState.error='';
+  setSaveState();
+  return null;
+ }catch(error){
+  const message=String(error?.message??error).slice(0,130);
+  profileState.fieldErrors.set(key,message);
+  setSaveState();
+  return message;
+ }
+}
+function profileListChange(kind,path,index){
+ if(profileState.saving)return;
+ if(kind==='remove'&&!window.confirm('Diesen Profileintrag entfernen? Die Änderung bleibt bis zum Speichern ein Entwurf.'))return;
+ try{
+  if(kind==='add')addProfileArrayItem(profileState.document,profileState.descriptor,path);
+  else removeProfileArrayItem(profileState.document,profileState.descriptor,path,index);
+  // Removed/reindexed fields no longer have meaningful validation errors.
+  profileState.fieldErrors.clear();
+  profileState.dirty=true;profileState.error='';
+ }catch(error){toast('Profil nicht geändert: '+String(error?.message??error));}
+ setSaveState();render();
+}
+function profileEditorView(view){
+ const descriptions={
+  combat:'Skill- und Kampfregeln des privaten vollständigen ALBot-Profils.',
+  farming:'Farm- und Weltoptionen aus dem vollständigen ALBot-Schema.',
+  merchant:'Logistik, Budgetgrenzen, Produktion und Gearplanung.',
+  team:'Gruppeneinstellungen und die bekannten Charaktere.'
+ };
+ const title={combat:'Kampf & Fähigkeiten',farming:'Farmen & Welt',
+  merchant:'Merchant & Produktion',team:'Team & Charaktere'}[view];
+ content.append(heading(title,descriptions[view]));
+ content.append(notice(
+  'Änderungen werden ausschließlich nach ausdrücklichem Speichern in das private GitHub-Profil übernommen. Die aktuell laufenden Bots verwenden weiterhin ihre bestehende Konfiguration.',true));
+ if(profileState.error)content.append(notice('Profil: '+profileState.error));
+ if(profileState.fieldErrors.size)content.append(notice(
+  'Ungültige Eingaben verhindern das Speichern: '+
+  [...profileState.fieldErrors.entries()].slice(0,3)
+   .map(([path,error])=>path+': '+error).join(' · ')));
+ const actionBar=node('div',undefined,'toolbar');
+ const reload=node('button','Aktuelle GitHub-Version laden','button');
+ reload.type='button';reload.disabled=profileState.loading||profileState.saving;
+ reload.onclick=()=>{void loadProfile({force:true});};
+ const classic=node('a','Klassische Werkstatt öffnen','button');
+ classic.href='./classic.html';classic.rel='noopener';
+ actionBar.append(reload,classic);content.append(actionBar);
+ if(profileState.loading){
+  content.append(empty('Profil wird geladen','Cloudflare Access und privates GitHub-Profil werden geprüft.'));
+  return;
+ }
+ if(!profileState.loaded){
+  content.append(empty('Kein bearbeitbares GitHub-Profil',
+   'Ein vollständiges Profil kann zunächst über die klassische Werkstatt importiert und gespeichert werden.'));
+  return;
+ }
+ renderProfileSections(content,{
+  document:profileState.document,descriptor:profileState.descriptor,
+  view,editable:!profileState.saving,
+  onField:profileFieldChange,
+  onAdd:path=>profileListChange('add',path),
+  onRemove:(path,index)=>profileListChange('remove',path,index)
+ });
+ content.append(node('p',
+  'Schema-Validierung und Konfliktprüfung erfolgen beim Speichern serverseitig. Änderungen in der klassischen Werkstatt können nur nach einem erneuten Laden übernommen werden.','help'));
+}
+
 function placeholder(view){
  const names={combat:'Kampf & Fähigkeiten',farming:'Farmen & Welt',merchant:'Merchant',team:'Team'};
  content.append(heading(names[view],'Konfiguration der bestehenden ALBot-Runtime.'));
@@ -279,6 +442,34 @@ function settings(){
  }
  b.append(node('p','Die private ALBot-Telemetrie wird direkt aus Adventure Land übertragen. Das Relay ist nur ein optionaler Ausweichweg. Kein Token wird auf dieser Seite abgefragt oder angezeigt.','help'));
  b.append(node('p',sourceNote,'help'));
+ const sync=card('Konfigurationsabgleich · Vorbereitungsstufe');
+ sync.append(notice('Nur gespeicherte Revisionen werden geprüft. Es existiert derzeit weder ein signierter Konfigurationskanal noch eine bestätigte Ingame-Übernahme.',true));
+ const check=node('button',syncState.loading?'Prüfe Revision …':'Gespeicherte Revision prüfen','button');
+ check.type='button';check.disabled=syncState.loading;
+ check.onclick=()=>void refreshSyncStatus();
+ sync.append(check);
+ if(syncState.error)sync.append(notice('Abgleich fehlgeschlagen: '+syncState.error));
+ const entry=syncState.data;
+ if(entry?.configured===false)sync.append(node('p',
+  'Im privaten GitHub-Repository liegt noch kein vollständiges Profil vor.','help'));
+ if(entry?.configured===true){
+  const info=[['Privater GitHub-SHA',entry.profile?.githubSha??'—'],
+   ['Profil-SHA-256',entry.profile?.sha256??'—'],
+   ['Profilformat',entry.profile?.schemaId??'—'],
+   ['Signiert','Nein'],
+   ['Ins Spiel veröffentlicht','Nein'],
+   ['Vom Spiel bestätigt','Nein']];
+  for(const [key,value] of info){
+   const line=node('div',undefined,'row sync-revision');
+   line.append(node('span',key,'muted'),node('strong',value));
+   sync.append(line);
+  }
+  if(profileState.loaded&&profileState.sha!==entry.profile?.githubSha)
+   sync.append(notice('Die im Browser geladene Profilrevision stimmt nicht mit dem zuletzt gespeicherten GitHub-Stand überein. Vor der Bearbeitung erneut laden.'));
+  if(profileState.dirty||state.dirty)
+   sync.append(notice('Im Browser gibt es zusätzliche ungespeicherte Änderungen. Diese sind nicht Bestandteil des angezeigten Fingerprints.'));
+ }
+ content.append(sync);
  const link=node('a','GitHub-Implementierungsstand und Einrichtung');link.href='https://github.com/Riflex91/ALBot/blob/main/konfigurator/README.md';link.rel='noopener noreferrer';b.append(link);grid.append(a,b);content.append(grid);
 }
 function render(){
@@ -287,11 +478,20 @@ function render(){
  $('page-subtitle').textContent=names[state.view]?.[1]??'';
  for(const b of document.querySelectorAll('[data-view]'))b.classList.toggle('active',b.dataset.view===state.view);
  content.replaceChildren();
- ({dashboard,characters,bank,items,settings}[state.view]??(()=>placeholder(state.view)))();
+ ({dashboard,characters,bank,items,settings}[state.view]??
+  (profileView(state.view)?()=>profileEditorView(state.view):()=>placeholder(state.view)))();
 }
 for(const b of document.querySelectorAll('[data-view]'))b.addEventListener('click',()=>{
- state.view=b.dataset.view;state.selected=null;document.body.classList.remove('menu-open');render();content.focus();
+ state.view=b.dataset.view;state.selected=null;document.body.classList.remove('menu-open');
+ setSaveState();render();
+ if(profileView(state.view))void loadProfile();
+ if(state.view==='settings'&&!syncState.loaded)void refreshSyncStatus();
+ content.focus();
 });
 $('menu-toggle').addEventListener('click',()=>document.body.classList.toggle('menu-open'));
 $('save').addEventListener('click',save);
+window.addEventListener('beforeunload',event=>{
+ if(!state.dirty&&!profileState.dirty)return;
+ event.preventDefault();event.returnValue='';
+});
 render();bootstrap();setInterval(refreshLive,DASHBOARD_REFRESH_MS);

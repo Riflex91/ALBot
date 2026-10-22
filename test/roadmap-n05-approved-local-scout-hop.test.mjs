@@ -349,3 +349,36 @@ test('N05 queued scout lease is revoked if an unrelated native path starts befor
  f.bot.movement.nativeActive=false;
  assert.equal(lease(),true,'the order remains pending and must still pass all other checks');
 });
+
+test('N05 active scout aborts when native reachability or stand state changes',()=>{
+ for(const invalidate of [
+  f=>f.setCanMove(false),
+  f=>{f.p.has=()=>false;},
+  f=>{f.p.call=()=>{throw Error('native route unavailable');};},
+  f=>{f.character.stand=true;}
+ ]){
+  const f=fixture();f.killThenMiss();
+  assert.equal(f.calendar.scout(f.plan),true);
+  invalidate(f);f.advance(2000);
+  assert.doesNotThrow(()=>f.calendar.sample());
+  assert.equal(f.stops,1);
+  assert.equal(f.bot.movement.order,null);
+  assert.equal(f.calendar.status().localScoutHop.state,'safety-aborted');
+  assert.equal(f.calendar.scout(f.plan),false,'one-use scout is not replayed');
+ }
+});
+test('N05 deferred scout admission fails closed on changing native route',()=>{
+ for(const invalidate of [
+  f=>f.setCanMove(false),
+  f=>{f.p.has=()=>false;},
+  f=>{f.p.call=()=>{throw Error('route API failure');};}
+ ]){
+  const f=fixture();f.killThenMiss();
+  assert.equal(f.calendar.scout(f.plan),true);
+  const admit=f.bot.movement.dispatchAdmission;
+  assert.equal(admit(),true);
+  invalidate(f);
+  assert.doesNotThrow(()=>admit());
+  assert.equal(admit(),false);
+ }
+});

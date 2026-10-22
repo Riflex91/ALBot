@@ -73,11 +73,12 @@ export async function preparePrivateRelease({profile,prior,identity,now=Date.now
   throw Error('Signatur-Selbsttest fehlgeschlagen');
  return release;
 }
-export function releaseInfo(release,sourceDigest,sha){
+export function releaseInfo(release,sourceDigest,sha,now=Date.now()){
  const matches=!!release&&release.sha256===sourceDigest;
+ const expired=!!release&&release.expiresAt<=now;
  return {releasePrepared:!!release,releaseMatchesCurrent:matches,
-  releaseSha:sha??null,
+  releaseExpired:expired,releaseSha:sha??null,
   release:release?{sequence:release.sequence,sha256:release.sha256,
    issuedAt:release.issuedAt,expiresAt:release.expiresAt}:null,
-  signed:matches,published:false,applied:false,acknowledged:false};
+  signed:matches&&!expired,published:false,applied:false,acknowledged:false};
 }

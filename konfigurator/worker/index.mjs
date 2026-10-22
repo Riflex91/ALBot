@@ -245,7 +245,9 @@ export async function handleRequest(request,env,ctx={},deps={}){
   if(current.sha!==value.sha)return failure('Die Konfiguration wurde zwischenzeitlich verändert. Bitte neu laden.',409);
   const s=settings(env);
   const write=await github(env,path,'PUT',{
-   message:'config: update ALBot item policy from authenticated Konfigurator',
+   message:path==='/api/profile'?
+    'config: update ALBot full profile from authenticated Konfigurator':
+    'config: update ALBot item policy from authenticated Konfigurator',
    branch:s.branch,content:b64(JSON.stringify(document,null,2)+'\n'),
    ...(current.sha?{sha:current.sha}:{})
   },fetcher);

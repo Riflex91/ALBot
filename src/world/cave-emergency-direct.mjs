@@ -45,7 +45,10 @@ export function caveEmergencyDirectPreflight(bot,{
   return caveEvadeDenied('durable-run-unverified',scope);
  // Unlike combat readiness, a wounded Ranger MUST be allowed to request
  // isolation while a fully healthy trio would not need any emergency step.
- const team=bot.caveTeam?.healStatus?.();
+ let team;
+ try{team=bot.caveTeam?.healStatus?.();}catch{
+  return caveEvadeDenied('verified-healing-trio-required',scope);
+ }
  if(team?.ready!==true||team.run!==live.run||
     team.floor!==live.floor||team.map!==live.map||
     team.members?.length!==3||team.priest===c.name)
@@ -86,12 +89,34 @@ export function caveEmergencyDirectPreflight(bot,{
     !caveEvadeFinite(priestEntity.y)||
     Math.hypot(priestEntity.x-priest.x,priestEntity.y-priest.y)>8)
   return caveEvadeDenied('fresh-visible-priest-and-support-required',scope);
- const monsters=bot.monsters?.();
+ // The one-monster emergency mode can prove isolation only from ONE
+ // bounded local frame. Previously rows without a map/in were silently
+ // filtered out: an unknown second attacker could be mistaken for absence.
+ // Missing, malformed or throwing observations never authorize escape.
+ let monsters;
+ try{monsters=bot.monsters?.();}catch{
+  return caveEvadeDenied('complete-cave-monster-snapshot-required',scope);
+ }
  if(!Array.isArray(monsters)||monsters.length>512)
   return caveEvadeDenied('complete-cave-monster-snapshot-required',scope);
- const liveMobs=monsters.filter(m=>m&&m.dead!==true&&
-    !(caveEvadeFinite(m.hp)&&m.hp<=0)&&
-    (m.map===live.map||m.in===live.map||names.includes(m.target)));
+ const liveMobs=[];
+ for(const m of monsters){
+  if(!m||typeof m!=='object'||Array.isArray(m))
+   return caveEvadeDenied('unverified-cave-monster-row',scope);
+  // Explicit observed deaths are not a second live threat. All other rows
+  // require an actual location or a real original-trio target witness.
+  if(m.dead===true||caveEvadeFinite(m.hp)&&m.hp<=0)continue;
+  const scoped=m.map===live.map||m.in===live.map;
+  const targetingTrio=names.includes(m.target);
+  const located=typeof m.map==='string'&&!!m.map||
+   typeof m.in==='string'&&!!m.in;
+  if(!scoped&&!targetingTrio){
+   if(!located)
+    return caveEvadeDenied('unverified-cave-monster-location',scope);
+   continue;
+  }
+  liveMobs.push(m);
+ }
  if(liveMobs.length!==1)
   return caveEvadeDenied('only-one-visible-engaged-monster-supported',{
    ...scope,monsterCount:liveMobs.length});

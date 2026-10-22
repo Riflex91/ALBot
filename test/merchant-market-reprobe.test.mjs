@@ -23,6 +23,7 @@ function fixture(){
  const market=createMarket(bot);
  const rule={enabled:true,item:'poison',action:'marketBuy',
   priceSource:'fixed',maxPrice:100,batch:3,targetCount:20,maxCount:100};
+ bot.economy.explicit=()=>rule;
  return {market,bot,c,entities,rule,travel,events,orders,
   setAtMarket:yes=>{atMarket=yes;bot.movement.order=null;},
   purchases:()=>accepted};

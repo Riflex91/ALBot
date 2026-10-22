@@ -1,4 +1,5 @@
 import {identity,fingerprint,distance,samePlace} from '../core/policy.mjs';
+import {marketRuleApproved,marketPurchaseCeiling,independentSellerMedian} from './market-purchase-policy.mjs';
 import {capacityAfterConsumption} from '../items/physical-capacity.mjs';
 // A read-only Ponty survey is not an approved market purchase and should
 // not drive bank <-> market travel every minute. Active approved acquisition
@@ -16,7 +17,7 @@ export function createMarket(bot){
  let funding=p.read?.(fundingKey)??null;
  const deniedFunding=new Map(),FUNDING_TTL_MS=600000;
  const ruleStamp=r=>JSON.stringify([r?.action,r?.enabled,r?.item,r?.minLevel,
-  r?.maxLevel,r?.batch,r?.maxCount,r?.targetCount,r?.maxPrice,r?.goldBudget,r?.priceSource]);
+  r?.maxLevel,r?.batch,r?.maxCount,r?.targetCount,r?.maxPrice,r?.goldBudget,r?.priceSource,r?.marketPercent]);
  const validFunding=()=>!!funding&&funding.realm===p.realm()&&
   Number.isSafeInteger(funding.required)&&funding.required>0&&
   Number.isSafeInteger(funding.cost)&&funding.cost>0&&
@@ -67,7 +68,7 @@ export function createMarket(bot){
   if(!funding)return false;
   if(!validFunding()){clearFunding('Auftrag abgelaufen oder Realm verändert');return false;}
   const rule=e.rules(funding.item,'acquisition');
-  if(!rule||ruleStamp(rule)!==funding.ruleStamp||
+  if(!approvedMarketBuy(funding.item,rule)||ruleStamp(rule)!==funding.ruleStamp||
     funding.goal&&bot.production?.activeGoal?.name!==funding.goal||
     e.committedGold()!==funding.commitments){
    clearFunding('Angebotsregel, Produktionsziel oder Handelszusagen verändert');return false;
@@ -153,19 +154,26 @@ export function createMarket(bot){
   (offer.acc??'')===(item.acc??'')&&
   JSON.stringify(offer.data)===JSON.stringify(item.data)&&
   !offer.l&&!offer.bound&&!offer.locked;
+ const approvedMarketBuy=(item,rule)=>marketRuleApproved(rule)&&e.explicit?.(item,'acquisition')===rule;
  const historyKey='albot:market:'+bot.me.name+':offers';let history=[],lastObserve=0;
  const cached=cfg.merchant.marketHistory?p.read(historyKey):null;if(Array.isArray(cached))history=cached.filter(x=>x&&typeof x.item?.name==='string'&&Number.isFinite(x.price)&&x.price>0&&Number.isFinite(x.at)&&x.at<=Date.now()&&Date.now()-x.at<(cfg.merchant.marketHistoryTtlMs??21600000)).slice(-128);
  function observe(){if(!cfg.merchant.marketHistory||Date.now()-lastObserve<10000)return;lastObserve=Date.now();history=history.filter(x=>Date.now()-x.at<cfg.merchant.marketHistoryTtlMs);
   for(const player of Object.values(p.entities))if(player.name!==p.c.name)for(const [slot,i] of Object.entries(player.slots??{}))if(slot.startsWith('trade')&&i?.name&&!i.giveaway&&Number.isFinite(i.price)&&i.price>0){const item={name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''},seller=player.name??player.id,side=i.b?'BUY':'SELL',old=history.find(x=>x.seller===seller&&x.side===side&&variant(x.item,item)&&x.price===i.price);if(old){old.at=Date.now();old.quantity=i.q??1;}else history.push({item,price:i.price,quantity:i.q??1,side,at:Date.now(),seller});}
   history=history.slice(-128);p.write(historyKey,history);
  }
- function quote(item){observe();const rows=[];if(cfg.merchant.marketHistory)rows.push(...history.filter(x=>Date.now()-x.at<(cfg.merchant.marketHistoryTtlMs??21600000)&&variant(x.item,item)&&(!x.side||x.side==='SELL')));
+ function quote(item,{trusted=false}={}){observe();const rows=[];if(cfg.merchant.marketHistory)rows.push(...history.filter(x=>Date.now()-x.at<(cfg.merchant.marketHistoryTtlMs??21600000)&&variant(x.item,item)&&(!x.side||x.side==='SELL')));
   else for(const player of Object.values(p.entities))if(player.name!==p.c.name)for(const [slot,i] of Object.entries(player.slots??{}))if(slot.startsWith('trade')&&variant(i,item)&&!i.b&&!i.giveaway&&Number.isFinite(i.price)&&i.price>0)rows.push({price:i.price,seller:player.name??player.id});
   if(cfg.general.testLogging!==undefined&&new Set(rows.map(x=>x.seller)).size<(cfg.merchant.marketMinSamples??3))return null;
+  if(trusted)return independentSellerMedian(rows,Math.max(3,cfg.merchant.marketMinSamples??3));
   const values=rows.map(x=>x.price).sort((a,b)=>a-b);return values.length?values[Math.floor(values.length/2)]:null;}
  function price(item,r,sell=false){
   let result=sell?r.minPrice:r.maxPrice;
   if(r.priceSource==='npc')result=e.value(item);
+  if(r.priceSource==='marketRatio'){
+   if(sell)return null;
+   result=marketPurchaseCeiling(r,quote(item,{trusted:true}));
+   if(result===null)return null;
+  }
   if(r.priceSource==='market'&&cfg.general.testLogging!==undefined){result=quote(item);if(!result)return null;}else if(r.priceSource==='market'){const values=[];for(const player of Object.values(p.entities))if(player.name!==p.c.name)for(const [slot,i] of Object.entries(player.slots??{}))if(slot.startsWith('trade')&&variant(i,item)&&!i.b&&!i.giveaway&&Number.isFinite(i.price)&&i.price>0)values.push(i.price);if(!values.length){result=quote(item);if(!result)return null;}else{values.sort((a,b)=>a-b);result=values[Math.floor(values.length/2)];}}
   return Number.isFinite(result)&&result>0?Math.floor(sell?Math.max(r.minPrice,result):Math.min(r.maxPrice,result)):null;
  }
@@ -193,7 +201,7 @@ export function createMarket(bot){
   const room=strict&&rule?
    Math.min(rule.batch,rule.targetCount-held,rule.maxCount-held):null;
   if(strict&&rule&&(
-   rule.action!=='marketBuy'||rule.enabled===false||
+   !approvedMarketBuy(item,rule)||
    !Number.isSafeInteger(ceiling)||ceiling<1||
    !Number.isSafeInteger(held)||held<0||
    !Number.isSafeInteger(room)||room<1))return false;
@@ -214,6 +222,10 @@ export function createMarket(bot){
   return hasVisibleBuyOffer(item)?0:Math.max(0,(noOffers.get(identity(item))??0)-Date.now());
  }
  function buy(item,r,scope=null){
+  if(!approvedMarketBuy(item,r)){
+   if(funding)clearFunding('Explizite Marktkauffreigabe fehlt oder wurde entfernt');
+   return false;
+  }
   const pinned=funding?.source==='market'&&validFunding()&&
    p.c.gold>=funding.required&&e.at(funding.origin,35)?funding:null;
   if(funding&&!pinned)return fundingTick();
@@ -280,7 +292,7 @@ export function createMarket(bot){
     // the funding checkpoint cannot be durably retired before the handoff.
     if(pinned&&!clearFunding())return false;
     let response=null,dispatchGold=null;
-    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return (!finite||scope.admit()===true&&q<=scope.quantity&&
+    return e.perform('market.buy',{cost,rule:r,guard:()=>{const live=bot.entity(player.id??player.name),current=live?.slots?.[slot];const limit=price(item,r);return approvedMarketBuy(item,r)&&(!finite||scope.admit()===true&&q<=scope.quantity&&
       e.count(item)===before&&Number.isSafeInteger(current?.q??1)&&
       (current?.q??1)>0&&Number.isSafeInteger(current?.price))&&
       fits()&&live?.type==='character'&&!!live.stand&&samePlace(p.c,live)&&distance(p.c,live)<=300&&current?.rid===rid&&current.price===unitPrice&&Number.isFinite(limit)&&unitPrice<=limit&&(finite?materialVariant(current,item):variant(current,item))&&(current.q??1)>=q&&!current.b&&!current.giveaway&&!current.buy&&e.count(item)+q<=Math.min(r.targetCount,r.maxCount)&&bot.free()>cfg.merchant.minFreeSlots;},call:()=>{dispatchGold=p.c.gold;return Promise.resolve(p.call('trade_buy',bot.entity(player.id??player.name),slot,q)).then(result=>{response=result;return result;});},
@@ -343,15 +355,14 @@ export function createMarket(bot){
   const d=e.destination('secondhands');if(!d)return false;
   const approvedDemand=(cfg.items??[]).some(r=>r?.enabled===true&&
     r.action==='marketBuy'&&typeof r.item==='string'&&
-    (typeof e.remaining!=='function'||e.remaining(r)))||
-    bot.production?.status?.()?.steps?.[0]?.kind==='marketBuy';
+    (typeof e.remaining!=='function'||e.remaining(r)));
   if(pontyScanDue({now:Date.now(),last:lastScan,approvedDemand})){
    if(!e.npcTravel(d,'Ponty'))return true;const token=++scanGeneration;
    const accepted=exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{if(bot.running&&token===scanGeneration)secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});if(accepted)lastScan=Date.now();return accepted;}
-  for(const i of secondhand){const item={...i};delete item.rid;const r=e.rules(item,'acquisition');if(r?.action!=='marketBuy'||!e.remaining(r)||!i.rid||!e.safe(i))continue;
+  for(const i of secondhand){const item={...i};delete item.rid;const r=e.rules(item,'acquisition');if(!approvedMarketBuy(item,r)||!e.remaining(r)||!i.rid||!e.safe(i))continue;
    const factor=p.G.multipliers?.[p.G.items[i.name]?.cash?'secondhands_cash_mult':'secondhands_mult']??(p.G.items[i.name]?.cash?3:2);
-   const price=Math.ceil(e.value(i)*factor*(i.q??1)),q=i.q??1,before=e.count(item),reference=thisReference(item,r);
-   if(!Number.isFinite(price)||price<=0||!reference||price>Math.min(r.maxPrice*q,cfg.merchant.pontyMaxSpend)||price>reference*q*cfg.merchant.bargainRatio||before+q>Math.min(r.targetCount,r.maxCount)||q>r.batch||bot.free()<=cfg.merchant.minFreeSlots)continue;
+   const price=Math.ceil(e.value(i)*factor*(i.q??1)),q=i.q??1,before=e.count(item),reference=thisReference(item,r),purchaseLimit=priceLimitFor(item,r);
+   if(!Number.isFinite(price)||price<=0||!reference||!purchaseLimit||price>Math.min(purchaseLimit*q,cfg.merchant.pontyMaxSpend)||price>reference*q*cfg.merchant.bargainRatio||before+q>Math.min(r.targetCount,r.maxCount)||q>r.batch||bot.free()<=cfg.merchant.minFreeSlots)continue;
    if(!Number.isSafeInteger(price)||!Number.isSafeInteger(q)||q<1)continue;
    if(e.budget?.(price,0,r)===false){
     const offerKey='ponty:'+identity(item)+':'+i.rid;
@@ -360,9 +371,10 @@ export function createMarket(bot){
      unitPrice:price/q,offerKey,source:'ponty',finite:false});
    }
    if(!e.npcTravel(d,'Ponty-Kauf'))return true;
-   const accepted=e.perform('ponty.buy',{cost:price,rule:r,guard:()=>e.npcAt(d)&&e.count(item)===before,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(item)>=before+q,details:{item:i.name,variant:identity(item),offerRid:i.rid,quantity:q,before}});if(accepted)secondhand=secondhand.filter(x=>x.rid!==i.rid);return accepted;
+   const accepted=e.perform('ponty.buy',{cost:price,rule:r,guard:()=>approvedMarketBuy(item,r)&&e.npcAt(d)&&e.count(item)===before&&priceLimitFor(item,r)>=price/q,call:()=>p.call('buy_secondhand',i.rid,10000),observe:()=>e.count(item)>=before+q,details:{item:i.name,variant:identity(item),offerRid:i.rid,quantity:q,before}});if(accepted)secondhand=secondhand.filter(x=>x.rid!==i.rid);return accepted;
   }return false;
  }
+ function priceLimitFor(item,r){return price(item,r);}
  function thisReference(item,r){if(r.priceSource==='fixed')return r.maxPrice;if(r.priceSource==='npc')return e.value(item);return price(item,r);}
  // The official trade_sell API selects an inventory slot server-side. Every
  // same-name/level stack must therefore be safe to consume, not just the slot

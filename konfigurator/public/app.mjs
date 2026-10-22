@@ -373,7 +373,7 @@ function profileEditorView(view){
  const descriptions={
   combat:'Skill- und Kampfregeln des privaten vollständigen ALBot-Profils.',
   farming:'Farm- und Weltoptionen aus dem vollständigen ALBot-Schema.',
-  merchant:'Logistik, Budgetgrenzen, Produktion und Gearplanung.',
+  merchant:'Logistik, Budgetgrenzen, Gearplanung und ausdrücklich freigegebene Marktkäufe. Im Bereich Alle Items · Regeln: Aktion Markt kaufen, Preisquelle Prozentual zum beobachteten Marktpreis, Anteil (%) und absolute Obergrenze festlegen.',
   team:'Gruppeneinstellungen und die bekannten Charaktere.'
  };
  const title={combat:'Kampf & Fähigkeiten',farming:'Farmen & Welt',

@@ -22,7 +22,7 @@ function fixture({bankGold=1000,budgetAllowed=true}={}){
    budgetMode:'account-loss',marketHistory:false,position:{enabled:false}}},
   event:(type,detail)=>events.push({type,detail}),free:()=>42,
   movement:{order:null},entity:id=>id==='seller'?seller:null};
- const e={count:()=>0,committedGold:()=>300,rules:()=>rule,
+ const e={count:()=>0,committedGold:()=>300,rules:()=>rule,explicit:()=>rule,
   budget:cost=>c.gold-300>=cost,
   budgetAtGold:(gold,cost)=>budgetAllowed&&gold-300>=cost,
   budgetExplanation:()=> 'policy denied',note:reason=>events.push({type:'note',detail:reason}),

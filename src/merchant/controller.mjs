@@ -866,8 +866,12 @@ export function createMerchant(bot){
   if(productionContinuation&&!bot.movement.order&&resumeProductionAtNpc())return;
   // A delivery of already finished, allocated gear can release a physical
   // slot without selling protected production stock.
-  if(bot.free()>(cfg.merchant.minFreeSlots??4)&&
-    bot.logistics?.actionableGearDelivery?.()){
+  // A physically held, assigned gear shipment frees an inventory slot.
+  // Blocking delivery at or below the free-slot reserve traps the Merchant
+  // in capacity recovery with valuable farmer equipment still carried.
+  // The logistics route/dispatch retains independent bank, gold, journal,
+  // live receiver, reserve and safe-visit guards.
+  if(bot.logistics?.actionableGearDelivery?.()){
    bot.logistics.travel?.();
    if(bot.movement.order?.owner==='logistics'||bot.logistics?.handoffActive||
     (bot.farmers??[]).some(n=>{const h=bot.transport?.fresh?.(n);

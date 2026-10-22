@@ -258,8 +258,8 @@ export async function handleRequest(request,env,ctx={},deps={}){
     return failure('Signierter Release wurde zwischenzeitlich geändert',409);
    if(previous.document){
     await previousRelease(previous.document,identity);
-    if(previous.document.sha256===body.sha256)
-     return failure('Diese Profilrevision wurde bereits signiert',409);
+    if(previous.document.sha256===body.sha256&&previous.document.expiresAt>Date.now())
+     return failure('Diese Profilrevision ist bereits aktuell signiert',409);
    }
    // Never commit private profile contents into a public repository.
    await assertPrivateRepository(env,fetcher);

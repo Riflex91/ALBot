@@ -23,7 +23,7 @@ function fixture({offerQuantity=8}={}){
   general:{testLogging:true}},me:{name:'M'},running:true,
   event:()=>{},free:()=>10,
   entity:id=>p.entities[id],movement:{order:null},exec:{}};
- bot.economy={count:()=>held,value:()=>3,
+ bot.economy={count:()=>held,value:()=>3,explicit:()=>rule,
   perform:(kind,job)=>{jobs.push({kind,job});return true;},
   destination:()=>null,npcAt:()=>false};
  const market=createMarket(bot),item={name:'raremat',level:0};
@@ -310,4 +310,45 @@ test('W06 explicit market discovery remains independent of finite-production pri
  assert.equal(f.market.hasVisibleBuyOffer(f.item),true);
  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true}),true);
  assert.equal(f.market.hasVisibleBuyOffer(f.item,{strict:true,rule:f.rule}),false);
+});
+
+test('no explicit item marketBuy means no auto-production or standalone gold spend',()=>{
+ const f=fixture();
+ f.bot.economy.explicit=()=>null;
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
+ assert.equal(f.market.buy(f.item,f.rule),false);
+ assert.deepEqual(f.jobs,[]);
+ assert.deepEqual(f.calls,[]);
+});
+test('revoking explicit purchase approval after scheduling invalidates delayed trade',()=>{
+ const f=fixture();
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ const job=f.jobs[0].job;
+ assert.equal(job.guard(),true);
+ f.rule.enabled=false;
+ assert.equal(job.guard(),false);
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false);
+ assert.deepEqual(f.calls,[]);
+});
+test('percent-of-median needs three independent sellers even when logging is disabled',()=>{
+ const f=fixture();
+ f.rule.priceSource='marketRatio';f.rule.marketPercent=80;
+ f.seller.slots.trade2.price=10;
+ f.p.entities.B={id:'B',name:'B',type:'character',stand:true,
+  map:'main',in:'main',x:110,y:0,slots:{trade1:{
+   name:'raremat',level:0,price:20,q:1,rid:'B'}}};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),false,
+  'two visible sellers never establish a trusted reference price');
+ assert.equal(f.jobs.length,0);
+ f.p.entities.C={id:'C',name:'C',type:'character',stand:true,
+  map:'main',in:'main',x:90,y:0,slots:{trade1:{
+   name:'raremat',level:0,price:30,q:1,rid:'C'}}};
+ assert.equal(f.market.buy(f.item,f.rule,f.scope(2)),true);
+ assert.equal(f.jobs.length,1);
+ assert.equal(f.jobs[0].job.details.unitPrice,10);
+ assert.equal(f.jobs[0].job.guard(),true);
+ f.p.entities.C.slots.trade1.price=1;
+ assert.equal(f.jobs[0].job.guard(),false,
+  'lower trusted median revokes the old purchase price at dispatch');
+ assert.deepEqual(f.calls,[]);
 });

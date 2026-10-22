@@ -116,24 +116,23 @@ test('W03 off-map pack cannot confirm and double bank journal is conflict',()=>{
  assert.equal(b.bot.bank.recoveryStatus().store.phase,'conflict');
 });
 
-test('W03 store recovery refuses truncated bank-pack before and after images',()=>{
- const r=record(),s=sent(r),items=blank();
- for(const [checkpoint,source,destination,expected] of [
+test('W03 store recovery accepts compact and empty physical bank packs',()=>{
+ const r=record(),s=sent(r),inventory=blank();
+ for(const [journal,source,dest,expected] of [
   [r,{...item},null,'prepared-unchanged'],
   [s,{...item},null,'dispatched-unchanged'],
   [s,null,{...item},'stored']
  ]){
-  const bankPack=blank();bankPack[7]=destination;items[0]=source;
-  const classify=pack=>classifyBankStoreRecord(checkpoint,{owner,realm,
-   inventory:items,bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
-  assert.equal(classify(bankPack).phase,expected);
-  for(const len of [8,33,41])
-   assert.equal(classify(bankPack.slice(0,len)).phase,'unobserved');
+  const pack=blank();pack[7]=dest;inventory[0]=source;
+  const check=rows=>classifyBankStoreRecord(journal,{owner,realm,
+   inventory,bank:{items0:rows},map:'bank',packMap:()=> 'bank'}).phase;
+  assert.equal(check(pack),expected);
+  assert.equal(check(dest?pack.slice(0,8):[]),expected);
+  const bad=pack.slice(0,9);bad[8]={name:'other',q:null};
+  assert.equal(check(bad),'ambiguous');
+  assert.equal(check(Array(43).fill(null)),'unobserved');
  }
- const f=fixture(sent(record()));f.items[0]=null;f.pack[7]={...item};
- f.pack.length=8;
- assert.equal(f.bot.bank.recoveryStatus().store.phase,'unobserved');
- assert.equal(f.bot.bank.recover(),true);
- assert.ok(f.db.get(key),'a truncated deposit image cannot clear the checkpoint');
- assert.equal(f.bot.bank.pending,true);
+ const f=fixture();f.pack.length=0;
+ assert.equal(f.bot.bank.store(0,f.rule),true);
+ assert.equal(f.events[0].params.guard(),true);
 });

@@ -423,55 +423,32 @@ test('W03/W04 offsite receipt refuses forged inventory stack after a legitimate 
  assert.equal(out.reason,'offsite-source-slot-or-variant-count-changed');
 });
 
-test('W04 truncated bank pack cannot prove an empty addressed source slot',()=>{
- const r=record();
- const inventory=empty(),pack=Array(27).fill(null);
- inventory[0]={...item};
- const result=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
-  bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
- assert.equal(result.phase,'unobserved');
- assert.equal(result.confirmed,false);
+test('W04 observed compact bank packs can prove exact physical states',()=>{
+ const r=record(),inventory=empty(),full=empty();
+ full[27]={...item};
+ const classify=(checkpoint,pack)=>classifyBankReclaimRecord(checkpoint,{
+  owner,realm,now,inventory,bank:{items0:pack},map:'bank',
+  packMap:()=> 'bank'});
+ assert.equal(classify(r,full).phase,'unchanged');
+ assert.equal(classify(r,full.slice(0,28)).phase,'unchanged');
+ const after=empty();inventory[0]={...item};
+ assert.equal(classify(r,after).phase,'withdrawn');
+ assert.equal(classify(r,[]).phase,'withdrawn',
+  'empty compact bank pack still represents 42 empty slots');
+ inventory[0]=null;
+ assert.equal(classify(record({saleConfirmed:true}),[]).phase,'sold');
+ assert.equal(classify(r,Array(43).fill(null)).phase,'unobserved');
+ const invalid=full.slice(0,30);invalid[28]={name:'ore',q:null};
+ assert.equal(classify(r,invalid).phase,'ambiguous');
 });
-
-test('W04 truncated source pack cannot validate any bank reclaim before/after phase',()=>{
- const recordFresh=record();
- const cases=[
-  {source:{...item},carried:null,phase:'unchanged'},
-  {source:null,carried:{...item},phase:'withdrawn'},
-  {source:null,carried:null,phase:'sold',saleConfirmed:true}
- ];
- for(const scenario of cases){
-  const r=record({...scenario.saleConfirmed?{saleConfirmed:true}:{}});
-  const inventory=empty();inventory[0]=scenario.carried;
-  const complete=empty();complete[27]=scenario.source;
-  assert.equal(classifyBankReclaimRecord(r,{owner,realm,now,inventory,
-   bank:{items0:complete},map:'bank',packMap:()=> 'bank'}).phase,
-   scenario.phase,'complete 42-slot pack is valid');
-  for(const size of [28,35,41]){
-   const truncated=complete.slice(0,size);
-   const result=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
-    bank:{items0:truncated},map:'bank',packMap:()=> 'bank'});
-   assert.equal(result.phase,'unobserved',
-    'bank pack size '+size+' cannot prove '+scenario.phase);
-   assert.equal(result.confirmed,false);
-  }
- }
-});
-
-test('W04 incomplete local bank pack cannot use offsite withdrawal to sell',()=>{
- const r=record({at:Date.now()});
- const withdrawal={at:r.at,realm,pack,slot:27,dest:0,
-  sourcePrint:r.sourcePrint,inventoryCount:10,bankCount:0};
+test('W04 already-proven offsite withdrawal continues with compact bank snapshot',()=>{
+ const r=record({at:Date.now()}),withdrawal={
+  at:r.at,realm,pack,slot:27,dest:0,sourcePrint:r.sourcePrint,
+  inventoryCount:10,bankCount:0};
  const f=fixture({saved:{...r,withdrawal},bankItem:null,carried:{...item}});
- f.bankPack.length=28; // addressed slot 27 is visible but pack is incomplete
- assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'unobserved');
- assert.equal(f.bot.bank.recoverCapacity(),true);
- assert.equal(f.sales.length,0,'no NPC sale while the local bank is incomplete');
- assert.equal(f.bot.bank.pending,true,'durable record remains unresolved');
- assert.notEqual(f.store.get('albot:bank-reclaim:M').saleConfirmed,true);
- // A later complete pack recovers normally from the original checked source.
- f.bankPack.length=42;f.bankPack.fill(null,28);
+ f.bankPack.length=0;
  assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'withdrawn');
  assert.equal(f.bot.bank.recoverCapacity(),true);
- assert.equal(f.sales.length,1,'full local evidence authorizes the old guarded sale');
+ assert.equal(f.sales.length,1);
+ assert.equal(f.bot.bank.pending,true);
 });

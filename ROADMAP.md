@@ -1,3 +1,7 @@
+## W10/W13 – nur katalogechte und physisch mögliche Chest-Ereignisse (22.10.2026)
+
+Der vorhandene `createOwnLootReceipts`-Ablauf validiert jetzt auch die einzelnen offiziellen `chest_opened`-Einträge gegen die physischen `G.items[name].s`-Grenzen und eigene Katalogeinträge. Vererbte JS-Objektfelder sind keine Spielitems, übergroße/unmögliche Mengen (auch von fremden Lootempfängern) sind keine vollständige Zuordnung. Die bisherige Pre-Loot-Baseline, Deltaquittung, Eigentümerzuweisung und konservative Session-/Realm-Sperre bleiben unverändert. Regressionen in `test/roadmap-w10-w13-own-loot-receipts.test.mjs`. **Dies ist keine vollständige rollenverteilte Lootmission, keine live bestätigte Eigentumsquittung und kein signierter Release.**
+
 ## W03 – bekannte Quellstapelgrenzen im Produktions-Kapazitätsbeleg (22.10.2026)
 
 Der bestehende gemeinsame `capacityAfterConsumption`-Prüfer erhält optional das aktuelle `G.items`-Metadatenwörterbuch und verweigert bei bekannten Gegenständen physisch übergroße Quellenbestände, auch wenn sie nur indirekt einen freien Ausgabeslot finanzieren. `actionCapacity` übergibt diese Metadaten jetzt in den bestehenden Produktionspfad. Fehlende Metadaten werden nicht erfunden und lösen keine zusätzlichen Wertaktionen aus. Regressionen in `test/shared-physical-capacity.test.mjs`; Build- und CI-Nachweise getrennt prüfen. **Keine vollständige W02/W03/W04-Transaktions-Recovery oder W14-Liveabnahme.**

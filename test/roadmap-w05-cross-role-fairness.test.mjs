@@ -168,3 +168,29 @@ test('W05 invalid target slots and unspecified role cannot earn invented vacancy
   assert.equal(crossRoleGearPriority(weak,cohort,{role,slot:'mainhand',now}),0);
  }
 });
+
+test('W05 named comparisons require one genuine owner and independent peer',()=>{
+ const weak=profile('priest',[]),strong=profile('ranger',Object.keys(slots));
+ const a={name:'Priest',profile:weak,role:'healer'},b={name:'Ranger',profile:strong,role:'dps'};
+ const check=cohort=>crossRoleGearPriority(weak,cohort,{
+  role:'healer',character:'Priest',slot:'mainhand',now});
+ assert.ok(check([a,b])>0);
+ assert.equal(check([b]),0,'no actual owner');
+ assert.equal(check([{...a,profile:structuredClone(weak)},b]),0,'substituted owner');
+ assert.equal(check([{...a,role:'tank'},b]),0,'owner role mismatch');
+ assert.equal(check([a,a,b]),0,'duplicate owner');
+ assert.equal(check([a,b,{...b}]),0,'duplicate peer is not independent');
+ assert.equal(check([a,{...b,role:'invalid'}]),0,'no default invented peer role');
+ assert.equal(check([a,{...b,name:''}]),0,'anonymous peer');
+ assert.equal(check([a,{...b,profile:{...strong,realm:'US'}}]),0,'foreign realm');
+});
+test('W05 named comparisons preserve genuine offline peer and bounded waiting age',()=>{
+ const weak=profile('priest',[]),offline=profile('warrior',Object.keys(slots),now-2*86400000);
+ const cohort=[{name:'Priest',profile:weak,role:'healer'},
+  {name:'Warrior',profile:offline,role:'tank'}];
+ const args={character:'Priest',role:'healer',slot:'mainhand',now};
+ const current=crossRoleGearPriority(weak,cohort,args);
+ const waiting=crossRoleGearPriority(weak,cohort,{...args,lastImprovedAt:now-5*86400000});
+ assert.ok(current>0&&waiting>=current&&waiting-current<=12);
+ assert.equal(crossRoleGearPriority(weak,cohort,{...args,character:'Unknown'}),0);
+});

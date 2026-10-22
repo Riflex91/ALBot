@@ -201,14 +201,20 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   const fairness=g=>{
    const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
    if(!member)return 0;
+   // Cache exactly one observed profile per account character during this
+   // ranking pass. The live snapshot must not acquire a new timestamp when
+   // it is re-read as its own comparison peer.
    const current=name=>name===me.name?snapshot():profiles[name];
-   const profile=current(g.character);
-   const sameRole=cfg.characters.filter(c=>c.enabled&&c.role===member.role).map(c=>current(c.name));
+   const enabled=cfg.characters.filter(c=>c.enabled);
+   const observed=new Map(enabled.map(c=>[c.name,current(c.name)]));
+   const profile=observed.get(g.character);
+   const sameRole=enabled.filter(c=>c.role===member.role)
+    .map(c=>observed.get(c.name));
    const classify=(c,p)=>c.gearRole==='auto'?
     (p?.class==='priest'?'healer':p?.class==='merchant'?'economy':'dps'):
-    (['healer','tank','economy','dps'].includes(c.gearRole)?c.gearRole:'dps');
-   const cohort=cfg.characters.filter(c=>c.enabled).map(c=>({
-    profile:current(c.name),role:classify(c,current(c.name))}));
+    (['healer','tank','economy','dps'].includes(c.gearRole)?c.gearRole:null);
+   const cohort=enabled.map(c=>({
+    name:c.name,profile:observed.get(c.name),role:classify(c,observed.get(c.name))}));
    // Only confirmed equip receipts can start the bounded waiting-age clock.
    // A missing receipt never implies that another character has waited.
    const receipts=bot.allocation?.status?.()??[];
@@ -218,7 +224,7 @@ export function createGear(bot,{now=()=>Date.now()}={}){
    return Math.min(75,gearCatchUpPriority(profile,sameRole,{now:Date.now()})+
     crossRoleGearPriority(profile,cohort,{
      role:classify(member,profile),slot:g.slot,
-     lastImprovedAt:last||null})+
+     character:g.character,lastImprovedAt:last||null})+
     measuredSlotUtilityPriority(g,optimized,{profile,now:Date.now()}));
   };
   const automatic=optimized.map(g=>({...g,priority:(g.priority??0)+fairness(g)}));

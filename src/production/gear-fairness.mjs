@@ -60,15 +60,33 @@ function roleCoverage(p,role){
  return {ratio:filled/21,pivotal:top[0]};
 }
 export function crossRoleGearPriority(profile,cohort,{
- role='dps',slot='',now=Date.now(),lastImprovedAt=null
+ role='dps',slot='',now=Date.now(),lastImprovedAt=null,character=null
 }={}){
  const own=roleCoverage(profile,role);
  // Freshness AND realm come from actual versioned per-character gear
  // snapshots. A remote or missing-realm cached profile is not evidence.
  if(!own||!SLOT_KEYS.includes(slot)||!SLOT_PRIORITIES[role]||
     !Array.isArray(cohort)||!freshGearEvidence(profile,now))return 0;
- const values=cohort.filter(x=>freshGearEvidence(x?.profile,now)&&
-  x.profile.realm===profile.realm)
+ // The actual production cohort identifies each configured character by
+ // name. Repeated names, a substituted owner observation or an unknown
+ // role are not evidence of independent teammates. Legacy read-only
+ // anonymous comparisons remain available when character is omitted.
+ let comparable=cohort;
+ if(character!==null){
+  if(typeof character!=='string'||!character||character.length>100)return 0;
+  const names=new Map();
+  for(const row of cohort){
+   if(typeof row?.name!=='string'||!row.name||row.name.length>100)continue;
+   names.set(row.name,(names.get(row.name)??0)+1);
+  }
+  const owners=cohort.filter(row=>row?.name===character);
+  if(owners.length!==1||owners[0].profile!==profile||
+     owners[0].role!==role)return 0;
+  comparable=cohort.filter(row=>typeof row?.name==='string'&&
+   row.name.length>0&&row.name.length<=100&&names.get(row.name)===1);
+ }
+ const values=comparable.filter(x=>SLOT_PRIORITIES[x?.role]&&
+   freshGearEvidence(x?.profile,now)&&x.profile.realm===profile.realm)
   .map(x=>roleCoverage(x.profile,x.role)).filter(Boolean);
  if(values.length<2)return 0;
  const gap=Math.max(0,Math.max(...values.map(x=>x.ratio))-own.ratio);

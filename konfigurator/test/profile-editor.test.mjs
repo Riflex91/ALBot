@@ -84,3 +84,27 @@ test('browser editors explicitly do not claim activation or store credentials',a
  assert.doesNotMatch(app+schema+model,/localStorage|eval\(|new Function\(/);
  assert.doesNotMatch(schema,/innerHTML/);
 });
+
+test('Merchant view edits explicitly approved market purchase item rules and relative price caps',()=>{
+ assert.ok(PROFILE_VIEWS.merchant.includes('items'),
+  'merchant purchase rules must be editable in the native Konfigurator');
+ const p=fresh(),initial=p.config.items.length;
+ addProfileArrayItem(p,descriptor,['items']);
+ const path=['items',initial];
+ setProfileScalar(p,descriptor,[...path,'name'],'Testkauf nur mit Freigabe');
+ setProfileScalar(p,descriptor,[...path,'item'],'seashell');
+ setProfileScalar(p,descriptor,[...path,'role'],'merchant');
+ setProfileScalar(p,descriptor,[...path,'action'],'marketBuy');
+ setProfileScalar(p,descriptor,[...path,'enabled'],true);
+ setProfileScalar(p,descriptor,[...path,'priceSource'],'marketRatio');
+ setProfileScalar(p,descriptor,[...path,'marketPercent'],'80');
+ setProfileScalar(p,descriptor,[...path,'maxPrice'],'150000');
+ assert.equal(p.config.items[initial].marketPercent,80);
+ assert.equal(p.config.items[initial].maxPrice,150000);
+ assert.equal(p.config.items[initial].enabled,true);
+ assert.equal(p.config.items[initial].action,'marketBuy');
+ assert.throws(()=>setProfileScalar(p,descriptor,[...path,'marketPercent'],'151'));
+ assert.throws(()=>setProfileScalar(p,descriptor,[...path,'marketPercent'],'0'));
+ assert.equal(p.config.items[initial].marketPercent,80);
+ assert.equal(validateProfile(descriptor,importProfile(descriptor,p)).length,0);
+});

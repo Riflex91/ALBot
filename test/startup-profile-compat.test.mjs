@@ -45,6 +45,10 @@ test('old saved personalized CODE starts after missing merchant fields are compl
  // the conservative `hold` default without rewriting personal settings.
  for(const rule of expected.items??[])if(!Object.hasOwn(rule,'excessAction'))
   rule.excessAction='hold';
+ // Percentages are an additive optional rule field; legacy value decisions
+ // stay unchanged because existing priceSource is not marketRatio.
+ for(const rule of expected.items??[])if(!Object.hasOwn(rule,'marketPercent'))
+  rule.marketPercent=80;
  assert.deepEqual(repaired,expected,
   'no existing custom farmer, merchant or world settings are changed');
 });

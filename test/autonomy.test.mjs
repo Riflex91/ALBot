@@ -199,6 +199,9 @@ test('published special order, status and receipt agree; paused Merchant does no
 test('market failure defers its route rather than hiding the whole farmable goal',()=>{
  const {bot,cfg}=materialMerchant();cfg.production.acquireBy=['market','farm'];let unavailable=false,live=true;
  bot.market={quote:()=>1,hasVisibleBuyOffer:()=>live,offerWaitMs:()=>unavailable?120000:0,buy:()=>{unavailable=true;live=false;return false;}};
+ const rule={enabled:true,action:'marketBuy',item:'mat',priceSource:'fixed',maxPrice:100,maxCount:10,targetCount:10,batch:2,goldBudget:100};
+ bot.economy.explicit=(item,phase)=>item.name==='mat'&&phase==='acquisition'?rule:null;
+ bot.economy.rules=(item,phase)=>bot.economy.explicit(item,phase)??bot.production.derivedRule(item,phase);
  bot.production.planGoals();assert.equal(bot.production.status().steps[0].kind,'marketBuy');
  bot.production.tick();assert.ok(bot.production.status().waiting.length);
  bot.production.planGoals();assert.equal(bot.production.activeGoal.item,'mat');assert.equal(bot.production.status().steps[0].kind,'farm');

@@ -3,7 +3,7 @@
 export const PROFILE_VIEWS=Object.freeze({
  combat:['skills','rules'],
  farming:['farming','world'],
- merchant:['merchant','production'],
+ merchant:['merchant','production','items'],
  team:['party','characters']
 });
 const own=(obj,key)=>Object.prototype.hasOwnProperty.call(obj,key);

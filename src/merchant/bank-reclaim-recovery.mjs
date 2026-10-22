@@ -1,5 +1,5 @@
 import {fingerprint,protectedItem} from '../core/policy.mjs';
-import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
+import {verifiedBankVariantCount,observedBankPackPhysical} from './bank-recovery-quantities.mjs';
 
 // W03/W04/G11: one read-only proof over a durable bank-reclaim before-image.
 // No guess about missing bank packs or a checkpoint written by older code
@@ -123,11 +123,15 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
  let bankMap;try{bankMap=packMap(record.pack);}catch{
   return {phase:'unobserved',reason:'bank-map-unresolved',confirmed:false};
  }
+ // Compact Adventure Land bank packs omit trailing empty slots. Refuse
+ // unobserved sources or malformed physical rows, not the compact format.
  if(bankMap!==map||!bank||!Array.isArray(bank[record.pack])||
-    bank[record.pack].length>42||record.slot>=bank[record.pack].length)
+    bank[record.pack].length>42)
   return {phase:'unobserved',reason:'addressed-local-bank-pack-unavailable',confirmed:false};
- const pack=bank[record.pack],source=pack[record.slot],
-  target=inventory[record.dest];
+ const pack=bank[record.pack];
+ if(!observedBankPackPhysical(pack,G))
+  return {phase:'ambiguous',reason:'invalid-observed-bank-pack',confirmed:false};
+ const source=pack[record.slot],target=inventory[record.dest];
  const count=verifiedBankVariantCount(inventory,record.item,G),
   bankCount=verifiedBankVariantCount(pack,record.item,G);
  if(!safe(count)||!safe(bankCount))

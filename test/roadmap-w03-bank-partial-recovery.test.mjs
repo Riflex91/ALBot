@@ -278,3 +278,26 @@ test('W03 partial journal refuses split/return confirmation with invalid quantit
  inventory[2]=null;
  assert.equal(inspect().phase,'returned');
 });
+
+test('W03 partial bank recovery accepts compact packs after each confirmed step',()=>{
+ const r=checkpoint(),states=[
+  {source:{...material},dest:null,split:null,expected:'original'},
+  {source:null,dest:{...material},split:null,expected:'withdrawn'},
+  {source:null,dest:{name:'beewing',q:31},
+   split:{name:'beewing',q:100},expected:'split'},
+  {source:{name:'beewing',q:31},dest:null,
+   split:{name:'beewing',q:100},expected:'returned'}
+ ];
+ for(const s of states){
+  const inventory=blank(),pack=blank();
+  inventory[0]=s.dest;inventory[1]=s.split;pack[7]=s.source;
+  const check=rows=>classifyBankPartialRecord(r,{owner,realm,now,
+   inventory,bank:{items0:rows},map:'bank',packMap:()=> 'bank'});
+  assert.equal(check(pack).phase,s.expected);
+  for(const length of [8,22,41])
+   assert.equal(check(pack.slice(0,length)).phase,s.expected);
+  const bad=pack.slice(0,9);bad[8]={name:'other',q:null};
+  assert.equal(check(bad).phase,'ambiguous');
+  assert.equal(check(Array(43).fill(null)).phase,'unobserved');
+ }
+});

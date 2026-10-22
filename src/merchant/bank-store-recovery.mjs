@@ -1,3 +1,4 @@
+import {observedBankPackPhysical} from './bank-recovery-quantities.mjs';
 import {fingerprint,protectedItem} from '../core/policy.mjs';
 
 // Read-only proof of exactly one addressed bank deposit; no account-wide lock.
@@ -37,9 +38,13 @@ export function classifyBankStoreRecord(r,{
  try{bankMap=packMap(r.pack);}catch{
   return {phase:'unobserved',reason:'bank-map-unresolved'};
  }
+ // Compact bank arrays omit trailing null slots. Physical row corruption,
+ // not a short array alone, invalidates a receipt.
  if(bankMap!==map||!bank||!Array.isArray(bank[r.pack])||
     bank[r.pack].length>42)
   return {phase:'unobserved',reason:'addressed-pack-not-current'};
+ if(!observedBankPackPhysical(bank[r.pack]))
+  return {phase:'ambiguous',reason:'invalid-bank-pack-rows'};
  const source=inventory[r.source],dest=bank[r.pack][r.dest];
  if(source&&fingerprint(source)===r.sourcePrint&&!dest)
   return r.dispatch?{phase:'dispatched-unchanged',reason:'sent-unconfirmed'}:

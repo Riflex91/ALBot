@@ -1,5 +1,25 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+**Aktueller Betrieb, 22.10.2026:** Signierte ALBot-Runtime **0.34.0-candidate, Sequenz 34** (geschützter Signierworkflow #39808164061; Main-Runtime und Release-Runtime byteidentisch). Der Web-Konfigurator hat den privaten Full-v1-Signierablauf aus [PR #410](https://github.com/Riflex91/ALBot/pull/410), aber der gesonderte Konfigurationsschlüssel `CONFIG_SIGNING_JWK` und die stabile Zielkennung `CONFIG_SIGNING_TARGET` müssen vor einer tatsächlichen privaten Signierung ausdrücklich in Cloudflare eingerichtet sein. Ingame-Pull, atomare Übernahme und authentischer ACK sind weiterhin **nicht implementiert**. Der frühere 0.31-Banktelemetrie-Test bestätigt keine 0.34-Konfigurationssynchronisierung.
+
+
+## Privaten signierten Profilstand vorbereiten (22.10.2026)
+
+Der Konfigurator bietet unter **System & Synchronisierung** jetzt einen manuell bestätigten Signierschritt. `PUT /api/profile-sync/prepare` erfordert die **vollständig validierte Cloudflare-Access-JWT**, eine Same-Origin-Anfrage mit JSON, `confirm:true`, den exakten SHA-256-Fingerprint, den GitHub-SHA des gespeicherten Full-v1-Profils und den vorherigen Release-GitHub-SHA (oder `null`). Der Browser übermittelt niemals ein neues Profil oder den Signierschlüssel. Bei jeder Änderung dieser Werte wird mit 409 abgebrochen.
+
+Der Worker liest das vollständige Profil ausschließlich aus dem bereits eingerichteten privaten GitHub-Konfigurationsrepository, berechnet den kanonischen SHA-256 erneut, kontrolliert den bisherigen signierten Release einschließlich historischer Signatur und Sequenz, bestätigt die **GitHub-Repositorysichtbarkeit `private:true`** und signiert eine neue Sequenz mit einem **separaten** ECDSA-P-256-Schlüssel. Der signierte vollständige Profilstand landet ausschließlich in einer separaten Datei **im privaten Konfigurationsrepository**, standardmäßig `albot/private-signed-release.json`, unter GitHub-SHA-Optimistic-Locking. Er wird weder in `Riflex91/ALBot` noch in D1 oder öffentliche Website-Dateien kopiert. Ein existierender Release mit anderer Signatur, Schlüsselidentität oder Zieldomäne verhindert die Erstellung des nächsten Releases.
+
+### Erforderliche, noch manuell einzurichtende Worker-Einstellungen
+
+- `CONFIG_SIGNING_JWK`: **Worker-Secret**, privater, separat zu generierender ECDSA-P-256-Schlüssel als JSON-Web-Key mit `kty,crv,x,y,d`. **Nicht** den Runtime-Release-Schlüssel oder das Telemetrie-`INGEST_TOKEN` wiederverwenden.
+- `CONFIG_SIGNING_TARGET`: exakter und stabiler Zielaccount-Identifier, z. B. `ALBot/MeinAccount`, als Worker-Secret oder geschützte Variable. Er muss später bytegenau mit der gepinnten Zielkennung in der Ingame-Runtime übereinstimmen.
+- `CONFIG_RELEASE_PATH`: optionaler separater Pfad im **privaten** Konfigurationsrepository, nicht identisch mit Profil- oder Richtliniendatei. Standard `albot/private-signed-release.json`.
+
+Ohne beide Signiereinstellungen meldet die Website **Nicht eingerichtet** und bietet keine funktionsfähige Signierung an. Die signierte Revision enthält ein für 24 Stunden gültiges Paket, signiert ohne Wechsel des vertrauenswürdigen Runtime-Schlüssels. Ein Schlüsselwechsel oder Entfernen der Release-Datei erfordert später einen separaten kontrollierten Schlüssel-/Sequenzmigrationsprozess; niemals eine stillschweigende Rücksetzung.
+
+**Begrenzung:** `signed:true` bedeutet ausschließlich, dass die **aktuelle** gespeicherte Revision in diesem **privaten Repository** signiert vorbereitet wurde. `published:false`, `applied:false`, `acknowledged:false` bleiben ausdrücklich unverändert. Es gibt noch **keine** öffentliche oder Ingame-Zustellroute, keine weitere Cloudflare-Access-Bypassregel, keinen Runtime-Autoupdater und keinen authentifizierten Charakter-ACK. Die Signatur-/Profilbytes dürfen erst nach Pinning des Public Keys im separat signierten Ingame-Code, sicherem Pull-Transport, dauerhaftem Rollback-Cursor und einem atomaren Safe-Point mit ACK verteilt bzw. aktiviert werden.
+
+
 ## Sicherer Konfigurationsabgleich – Revision/Signaturvertrag (22.10.2026)
 
 Im Bereich **System & Synchronisierung** lässt sich der private GitHub-Profilstand jetzt **ausdrücklich und read-only** prüfen. Die unter Cloudflare Access geschützte Route `GET /api/profile-sync/status` lädt und validiert das Full-v1-Profil serverseitig und berechnet einen deterministischen SHA-256-Fingerprint über kanonisch sortierte JSON-Daten. Die Antwort enthält nur GitHub-SHA, Profil-SHA-256, Schemabezeichnung und Anzahl Bytes, niemals die enthaltenen Profiloptionen oder Zugangsdaten. Fehlende, ungültige oder nicht lesbare Profile gelten nicht als veröffentlicht. Ein Abruf erfolgt nur beim Öffnen des Systembereichs oder durch erneuten Nutzerklick; es gibt kein schnelles Polling oder eine neue D1-Tabelle.
@@ -22,7 +42,7 @@ Alle Tabs teilen denselben Entwurf. Der Knopf **Profil auf GitHub speichern** ru
 
 ## Aktueller Stand (21.10.2026)
 
-Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die spätere Runtime 0.32 benötigt eine separate Ingame-Abnahme. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.
+Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die inzwischen offiziell signierte Runtime **0.34.0-candidate (Sequenz 34)** ist im Release-Kanal vorhanden; ihre tatsächliche Ingame-Abnahme und insbesondere jede Ingame-Konfigurationsübernahme bleiben getrennt nachzuweisen. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.
 
 Die neue Startseite zeigt ausschließlich **empfangene**, nach Datenalter eingeordnete Telemetrie. Ein Snapshot innerhalb der letzten fünf Minuten ist kein beweiskräftiger Online-Status; fehlende Bankfächer bedeuten nicht, dass sie leer sind oder dass der komplette Bankbestand bekannt ist. Bei D1-/API-Fehlern dürfen alte Caches keine scheinbar aktuellen Zähler erzeugen. Die automatische Übertragung benötigt das private Ingame-CODE-Token, **niemals eine Eingabe im Konfigurator**. Ein Relay-Fenster ist lediglich ein optionaler Ausweichweg.
 

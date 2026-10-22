@@ -221,3 +221,49 @@ test('N12 running Cave hop is stopped when an encounter appears',()=>{
  assert.equal(nativeMoves(f).length,1,'no second movement');
  assert.ok(f.calls.some(([type])=>type==='stop'));
 });
+
+test('N12 Cave direct cannot launder a first-frame encounter via a second monster read',()=>{
+ const f=fixture(),enemy={id:'f1',map,in:map,target:null,hp:100};
+ let reads=0;
+ f.bot.monsters=()=>{reads++;return reads===1?[enemy]:[];};
+ const result=caveDirectCohesionPreflight(f.bot,{now:time,hostChecks:false});
+ assert.equal(result.ready,false);
+ assert.equal(result.reason,'visible-cave-encounter-blocks-cohesion');
+ assert.equal(reads,1,'one immutable monster observation for each admission');
+ assert.equal(nativeMoves(f).length,0);
+});
+
+test('N12 empty, thrown, truncated or unlocated monster evidence denies Cave movement',()=>{
+ const cases=[
+  ()=>null,()=>({}),()=>{throw Error('frame-read-failed');},
+  ()=>Array(129).fill(null),
+  ()=>[null],()=>[undefined],()=>[{id:'m',hp:20}],
+  ()=>[{id:'m',map:'',in:'',hp:20}],()=>[{id:'m',hp:20,dead:true}]
+ ];
+ for(const source of cases){
+  const f=fixture();f.bot.monsters=source;
+  const status=f.bot.caveDirect.status();
+  assert.equal(status.ready,false,status.reason);
+  assert.equal(f.bot.caveDirect.tick(),false);
+  assert.deepEqual(nativeMoves(f),[]);
+  assert.deepEqual(nativeSmarts(f),[]);
+ }
+ const safe=fixture();
+ safe.state.monsters=[{id:'outside',map:'main',in:'main',hp:10,target:null}];
+ assert.equal(safe.bot.caveDirect.status().ready,true,
+  'a provably off-floor neutral monster is not a current Cave threat');
+});
+
+test('N12 queued Cave move rejects newly incomplete monster observations at dispatch',()=>{
+ for(const source of [()=>null,()=>Array(129).fill(null),
+  ()=>[{id:'unlocated',hp:100,target:null}]]){
+  const f=fixture();
+  f.bot.exec.beginFrame();
+  assert.equal(f.bot.caveDirect.tick(),true);
+  f.bot.monsters=source;
+  f.bot.exec.flush();
+  assert.deepEqual(nativeMoves(f),[],
+   'deferred move never trusts the earlier, still empty threat list');
+  assert.equal(f.bot.movement.order,null);
+ }
+});

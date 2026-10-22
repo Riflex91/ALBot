@@ -114,6 +114,7 @@ export function orderedGearRecipients(recipients,item,{role='',gearEnabled=false
 export function createLogistics(bot){
   const {p,cfg,me,exec,transport}=bot;let job=null,incoming=null,serial=0,summaryOffset=0,lastCapacityWarning=0,lastDeliveryRetarget=0,pickupCycle=false,pickupOnSiteAt=0,pickupOnSiteName='';const completed=new Map(),nextOffer=new Map(),recentVisit=new Map(),clock=()=>exec.now();let serviceSite=null;const ONSITE_MS=12000;
   const counters={offersSent:0,offersReceived:0,acceptsSent:0,acceptsReceived:0,sendsStarted:0,receiptsSent:0,receiptsReceived:0,doneSent:0,doneReceived:0,timeouts:0};
+  const gearProofNotice=new Map();
   const offerKey=(to,item)=>to+'\u0000'+item;
   const ruleFor=(item)=>bot.rule(item);
   const context=()=>({role:me.role,character:me.name,map:p.c.map,server:p.realm(),task:bot.task?.()??(me.role==='merchant'?'supply':'farm')});
@@ -469,8 +470,17 @@ export function createLogistics(bot){
         if(!item||!p.G?.items?.[item.name]||
           p.G.items[item.name].type==='pot')return false;
         const rule=sendRule(item,name);
-        return !!rule&&availableTransfer(slot,rule)>0&&
-          !!bot.allocation?.offer(signature(item),name);
+        if(!rule||availableTransfer(slot,rule)<1)return false;
+        if(!peer.gear){
+         const key=name+':'+item.name+':'+(item.level??0),now=Date.now();
+         if(now-(gearProofNotice.get(key)??0)>60000){
+          gearProofNotice.set(key,now);
+          bot.event?.('logistics.gearProofMissing',{peer:name,item:item.name,
+           level:item.level??0,reason:'Empfaenger-Gear-Snapshot fehlt im frischen Heartbeat'});
+         }
+         return false;
+        }
+        return !!bot.allocation?.offer(signature(item),name);
       });
     });
   }

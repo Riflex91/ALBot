@@ -164,3 +164,23 @@ test('W03 single journal does not accept cancellation of malformed sibling stack
  inventory[2]=null;
  assert.equal(inspect(sent).phase,'withdrawn');
 });
+
+test('W03 single-bank recovery accepts compact pack but rejects invalid actual rows',()=>{
+ const r=record(),d=dispatched(r);
+ for(const [journal,source,carried,expected] of [
+  [r,{...item},null,'prepared-unchanged'],
+  [d,{...item},null,'dispatched-unchanged'],
+  [d,null,{...item},'withdrawn']
+ ]){
+  const inventory=blank(),pack=blank();
+  inventory[0]=carried;pack[7]=source;
+  const check=rows=>classifyBankSingleRecord(journal,{owner,realm,
+   inventory,bank:{items0:rows},map:'bank',packMap:()=> 'bank'}).phase;
+  assert.equal(check(pack),expected);
+  for(const length of [8,24,41])
+   assert.equal(check(pack.slice(0,length)),expected);
+  assert.equal(check(Array(43).fill(null)),'unobserved');
+  const bad=pack.slice(0,9);bad[8]={name:'other',q:0};
+  assert.equal(check(bad),'ambiguous');
+ }
+});

@@ -116,3 +116,41 @@ test('W06/G09 unstackable own stand rejects a forged multi-item stack',()=>{
  assert.equal(f.market.expire(),false);
  assert.equal(f.calls.length,0);
 });
+
+test('W06/G09 market rejects prototype item names as actual game definitions',()=>{
+ const f=fixture();
+ for(const name of ['constructor','toString','__proto__','unknown']){
+  assert.equal(f.market.sale(trade(1,'B',name)),false,name);
+  assert.equal(f.market.proposal({name},rule),null,name);
+ }
+ assert.equal(f.market.status().confirmedTrades,0);
+});
+test('W06/G09 cyclic item metadata cannot crash real demand planning',()=>{
+ const f=fixture(),cycle={self:null};cycle.self=cycle;
+ const bad={name:'cake',data:cycle,price:100};
+ assert.doesNotThrow(()=>f.market.sale({item:bad,seller:'A',buyer:'B'}));
+ assert.equal(f.market.sale({item:bad,seller:'A',buyer:'C'}),false);
+ assert.doesNotThrow(()=>f.market.proposal(bad,rule));
+ assert.equal(f.market.proposal(bad,rule),null);
+ assert.equal(f.market.status().confirmedTrades,0);
+ const normal=fixture();
+ for(const buyer of ['B','C','D'])normal.market.sale(trade(1,buyer));
+ assert.equal(normal.market.proposal(item,rule)?.action,'list',
+  'malformed variants must not disable real, independently evidenced proposals');
+});
+test('W06/G09 stored or live malformed stand variants cannot dispatch a reclaim',()=>{
+ const f=fixture({ttl:0}),cycle={self:null};cycle.self=cycle;
+ f.bot.p.c.slots.trade1={name:'cake',price:100,data:cycle};
+ assert.doesNotThrow(()=>f.market.posted('trade1',item,{_autoMarket:true}));
+ assert.equal(f.market.posted('trade1',item,{_autoMarket:true}),false);
+ assert.equal(f.market.status().ownedListings,0);
+ assert.doesNotThrow(()=>f.market.expire());
+ assert.equal(f.market.expire(),false);
+ assert.equal(f.calls.length,0);
+ f.bot.p.c.slots.trade1={name:'cake',price:100};
+ assert.equal(f.market.posted('trade1',item,{_autoMarket:true}),true);
+ f.bot.p.c.slots.trade1={name:'cake',price:100,data:cycle};
+ assert.doesNotThrow(()=>f.market.expire());
+ assert.equal(f.market.expire(),false);
+ assert.equal(f.calls.length,0);
+});

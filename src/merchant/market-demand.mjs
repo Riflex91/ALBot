@@ -5,7 +5,9 @@ export function createMarketDemand(bot){
  // item quantity can physically exist in ONE game trade stack. Explicit
  // q:null is not a singleton and cannot increase estimated market demand.
  const stackLimit=name=>{
-  if(typeof name!=='string'||!name||!p.G?.items?.[name])return null;
+  if(typeof name!=='string'||!name||
+     !p.G?.items||!Object.hasOwn(p.G.items,name)||
+     !p.G.items[name]||typeof p.G.items[name]!=='object')return null;
   const s=p.G.items[name].s;
   return s===true?9999:Number.isSafeInteger(s)&&s>1?s:1;
  };
@@ -32,17 +34,28 @@ export function createMarketDemand(bot){
  let listed=Array.isArray(saved?.listed)?saved.listed.filter(r=>r&&/^trade([1-9]|1[0-6])$/.test(r.slot)&&Number.isFinite(r.at)&&r.item).slice(0,16):[],cooldowns=saved?.cooldowns??{},seen=new Map();
  const save=()=>p.write(key,{version:1,sales,listed,cooldowns});
  const normalized=i=>({name:i.name,level:i.level??0,stat_type:i.stat_type,p:i.p,title:i.title,data:i.data});
- const listingProof=i=>JSON.stringify([fingerprint(i),i?.price,i?.b,i?.giveaway]);
+ // Malformed or circular variant metadata must not crash a Merchant tick,
+ // nor become an executable delayed stand reclaim after a reload.
+ const marketVariant=i=>{
+  if(physicalUnits(i)===null)return null;
+  try{const k=identity(normalized(i));
+   return typeof k==='string'&&k.length>0&&k.length<=2048?k:null;
+  }catch{return null;}
+ };
+ const listingProof=i=>{
+  if(physicalUnits(i)===null)return null;
+  try{const proof=JSON.stringify([fingerprint(i),i?.price,i?.b,i?.giveaway]);
+   return typeof proof==='string'&&proof.length<=4096?proof:null;
+  }catch{return null;}
+ };
  function sale(d){
   const i=d?.item,q=physicalUnits(i);
   if(q===null||!Number.isSafeInteger(i.price)||i.price<1||
      typeof d.seller!=='string'||!d.seller||
      typeof d.buyer!=='string'||!d.buyer||
      d.seller===d.buyer)return false;
-  let variant;
-  try{variant=identity(normalized(i));}
-  catch{return false;}
-  if(typeof variant!=='string'||variant.length>2048)return false;
+  const variant=marketVariant(i);
+  if(!variant)return false;
   const now=Date.now(),
    id=JSON.stringify([d.seller,d.buyer,variant,i.price,q,d.slot]);
   for(const [k,t] of seen)if(now-t>2000)seen.delete(k);if(seen.has(id))return false;seen.set(id,now);if(seen.size>128)seen.delete(seen.keys().next().value);
@@ -50,9 +63,10 @@ export function createMarketDemand(bot){
  }
  function proposal(item,r){
   if(!cfg.merchant.autoMarket||!r?._autoDisposition||
-     r.action!=='sell'||physicalUnits(item)===null||
-     e.explicit(item)||bot.production.reservedQuantity(item)>0)return null;
-  const k=identity(normalized(item)),rows=sales.filter(x=>x.variant===k&&Date.now()-x.at<604800000);
+     r.action!=='sell')return null;
+  const k=marketVariant(item);
+  if(!k||e.explicit(item)||bot.production.reservedQuantity(item)>0)return null;
+  const rows=sales.filter(x=>x.variant===k&&Date.now()-x.at<604800000);
   if(rows.length<3||cooldowns[k]>Date.now()||!Number.isFinite(p.c.tax)||p.c.tax<0||p.c.tax>=1)return null;
   const prices=rows.map(x=>x.price).sort((a,b)=>a-b),price=Math.floor(prices[Math.floor(prices.length/2)]*.95);
   const observedHours=Math.max(1,(Date.now()-Math.min(...rows.map(x=>x.at)))/3600000);
@@ -65,7 +79,10 @@ export function createMarketDemand(bot){
   return {...r,action:'list',slot,priceSource:'fixed',minPrice:price,maxPrice:price,batch:1,_autoMarket:true};
  }
  function posted(slot,item,rule){if(!rule._autoMarket)return true;
-  const row={slot,item:normalized(item),fingerprint:listingProof(p.c.slots[slot]),at:Date.now()};
+  const print=listingProof(p.c.slots[slot]);
+  if(!/^trade([1-9]|1[0-6])$/.test(slot)||!marketVariant(item)||!print)
+   return false;
+  const row={slot,item:normalized(item),fingerprint:print,at:Date.now()};
   const previous=listed;listed=[...listed.filter(r=>r.slot!==slot),row];if(!save()){listed=previous;return false;}return true;
  }
  function expire(){
@@ -73,17 +90,20 @@ export function createMarketDemand(bot){
   for(const row of [...listed]){
    const current=p.c.slots[row.slot];
    if(!current){listed=listed.filter(r=>r!==row);save();continue;}
-   if(Date.now()-row.at<cfg.merchant.listingTtlMs||listingProof(current)!==row.fingerprint||bot.free()<=cfg.merchant.minFreeSlots)continue;
+   const proof=listingProof(current),variant=marketVariant(row.item);
+   if(Date.now()-row.at<cfg.merchant.listingTtlMs||!proof||
+      proof!==row.fingerprint||!variant||
+      bot.free()<=cfg.merchant.minFreeSlots)continue;
    const before=e.count(row.item),quantity=physicalUnits(current);
    if(quantity===null||!Number.isSafeInteger(before)||before<0||
       !Number.isSafeInteger(before+quantity))continue;
    return e.perform('market.expire',{guard:()=>
-    listingProof(p.c.slots[row.slot])===row.fingerprint&&
+    listingProof(p.c.slots[row.slot])===proof&&
     physicalUnits(p.c.slots[row.slot])===quantity&&
     bot.free()>cfg.merchant.minFreeSlots,
     call:()=>p.call('unequip',row.slot),observe:()=>!p.c.slots[row.slot]&&
      e.count(row.item)>=before+quantity,
-    onConfirmed:()=>{listed=listed.filter(r=>r!==row);cooldowns=Object.fromEntries(Object.entries(cooldowns).filter(([,until])=>until>Date.now()).slice(-127));cooldowns[identity(row.item)]=Date.now()+cfg.merchant.listingTtlMs;return save();},
+    onConfirmed:()=>{listed=listed.filter(r=>r!==row);cooldowns=Object.fromEntries(Object.entries(cooldowns).filter(([,until])=>until>Date.now()).slice(-127));cooldowns[variant]=Date.now()+cfg.merchant.listingTtlMs;return save();},
     details:{item:row.item.name,slot:row.slot,quantity,before}});
   }return false;
  }

@@ -11,7 +11,7 @@ const state={view:'dashboard',policy:{version:1,items:[]},sha:null,configured:fa
  characters:[],bank:[],telemetryErrors:{characters:null,bank:null},catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
 const profileState={document:null,descriptor:null,sha:null,loaded:false,loading:false,
  dirty:false,saving:false,error:'',fieldErrors:new Map()};
-const syncState={data:null,loading:false,loaded:false,error:''};
+const syncState={data:null,loading:false,preparing:false,loaded:false,error:''};
 const fmt=x=>typeof x==='number'&&Number.isFinite(x)?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(x):'—';
 const age=t=>!Number.isFinite(t)?'unbekannt':Math.max(0,Math.floor((Date.now()-t)/1000))+' s';
 const fresh=t=>Number.isFinite(t)&&Date.now()-t<SNAPSHOT_FRESH_MS;
@@ -55,7 +55,7 @@ async function refreshSyncStatus(){
  if(state.view==='settings')render();
  try{
   const result=await api('/api/profile-sync/status');
-  if(result?.ok!==true||result?.signed!==false||
+  if(result?.ok!==true||typeof result?.signed!=='boolean'||
    result?.published!==false||result?.applied!==false||
    result?.acknowledged!==false)
    throw Error('Unerwarteter Synchronisationsstatus');
@@ -67,6 +67,38 @@ async function refreshSyncStatus(){
  }finally{
   syncState.loading=false;
   if(state.view==='settings')render();
+ }
+}
+async function preparePrivateProfile(){
+ const latest=syncState.data;
+ if(syncState.loading||syncState.preparing||!latest?.configured||
+  latest.signerReady!==true||latest.releaseMatchesCurrent===true||
+  profileState.dirty||state.dirty)return;
+ if(!window.confirm('Diese exakt geprüfte GitHub-Revision privat signieren?\\n'+
+  'SHA-256: '+latest.profile.sha256+'\\n'+
+  'GitHub: '+latest.profile.githubSha+'\\n\\n'+
+  'Es erfolgt ausdrücklich KEINE Übernahme im Spiel.'))return;
+ syncState.preparing=true;syncState.error='';
+ if(state.view==='settings')render();
+ try{
+  const response=await api('/api/profile-sync/prepare',{
+   method:'PUT',headers:{'content-type':'application/json'},
+   body:JSON.stringify({confirm:true,
+    githubSha:latest.profile.githubSha,sha256:latest.profile.sha256,
+    previousReleaseSha:latest.releaseSha??null})
+  });
+  if(response?.signed!==true||response?.releasePrepared!==true||
+    response?.published!==false||response?.applied!==false)
+   throw Error('Private Veröffentlichung wurde nicht bestätigt');
+  toast('Profilrevision privat signiert. Keine Ingame-Änderung vorgenommen.');
+  syncState.loaded=false;
+ }catch(error){
+  syncState.error=String(error?.message??error).slice(0,180);
+  toast('Private Signatur fehlgeschlagen: '+syncState.error);
+ }finally{
+  syncState.preparing=false;
+  if(!syncState.error)void refreshSyncStatus();
+  else if(state.view==='settings')render();
  }
 }
 async function api(path,init={}){
@@ -443,7 +475,7 @@ function settings(){
  b.append(node('p','Die private ALBot-Telemetrie wird direkt aus Adventure Land übertragen. Das Relay ist nur ein optionaler Ausweichweg. Kein Token wird auf dieser Seite abgefragt oder angezeigt.','help'));
  b.append(node('p',sourceNote,'help'));
  const sync=card('Konfigurationsabgleich · Vorbereitungsstufe');
- sync.append(notice('Nur gespeicherte Revisionen werden geprüft. Es existiert derzeit weder ein signierter Konfigurationskanal noch eine bestätigte Ingame-Übernahme.',true));
+ sync.append(notice('Gespeicherte Revisionen können mit einem separat geschützten Signierschlüssel privat vorbereitet werden. Eine Zustellung oder Übernahme durch ALBot ist noch nicht eingerichtet.',true));
  const check=node('button',syncState.loading?'Prüfe Revision …':'Gespeicherte Revision prüfen','button');
  check.type='button';check.disabled=syncState.loading;
  check.onclick=()=>void refreshSyncStatus();
@@ -456,7 +488,13 @@ function settings(){
   const info=[['Privater GitHub-SHA',entry.profile?.githubSha??'—'],
    ['Profil-SHA-256',entry.profile?.sha256??'—'],
    ['Profilformat',entry.profile?.schemaId??'—'],
-   ['Signiert','Nein'],
+   ['Privater Signierer',entry.signerReady?'Eingerichtet':'Nicht eingerichtet'],
+   ['Signierte Revision',entry.signed?'Aktuelle Revision signiert':
+    entry.releasePrepared?'Andere Revision signiert':'Noch keine'],
+   ['Signatursequenz',entry.release?.sequence??'—'],
+   ['Signatur gültig bis',entry.release?.expiresAt?
+    new Date(entry.release.expiresAt).toLocaleString('de-DE'):'—'],
+   ['Signaturschlüssel-Kennung',entry.keyFingerprint??'—'],
    ['Ins Spiel veröffentlicht','Nein'],
    ['Vom Spiel bestätigt','Nein']];
   for(const [key,value] of info){
@@ -464,6 +502,19 @@ function settings(){
    line.append(node('span',key,'muted'),node('strong',value));
    sync.append(line);
   }
+  if(entry.signerReady!==true)
+   sync.append(node('p',
+    'Private Signierung ist noch gesperrt: CONFIG_SIGNING_JWK und CONFIG_SIGNING_TARGET müssen als Worker-Secrets/Variablen getrennt vom Ingest-Token eingerichtet werden.','help'));
+  if(entry.releasePrepared===true&&!entry.releaseMatchesCurrent)
+   sync.append(notice('Die vorhandene signierte Revision stimmt nicht mit dem aktuell gespeicherten Profil überein.'));
+  const prepare=node('button',syncState.preparing?'Signiere privat …':
+   'Aktuelle Profilrevision privat signieren','button');
+  prepare.type='button';
+  prepare.disabled=syncState.loading||syncState.preparing||
+   entry.signerReady!==true||entry.releaseMatchesCurrent===true||
+   profileState.dirty||state.dirty;
+  prepare.onclick=()=>void preparePrivateProfile();
+  sync.append(prepare);
   if(profileState.loaded&&profileState.sha!==entry.profile?.githubSha)
    sync.append(notice('Die im Browser geladene Profilrevision stimmt nicht mit dem zuletzt gespeicherten GitHub-Stand überein. Vor der Bearbeitung erneut laden.'));
   if(profileState.dirty||state.dirty)

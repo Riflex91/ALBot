@@ -78,17 +78,30 @@ export function caveDirectCohesionPreflight(bot,{
     !caveDirectFinite(visible.x)||!caveDirectFinite(visible.y)||
     Math.hypot(visible.x-priest.x,visible.y-priest.y)>12)
   return caveDirectDeny('visible-priest-anchor-required',scope);
- if(!Array.isArray(bot.monsters?.()))
+ // One bounded, immutable decision observation: fetching twice can read
+ // a threatened first frame and an empty second frame, spuriously granting
+ // movement. A missing/throwing or oversized frame proves no safe absence.
+ let monsters;
+ try{monsters=bot.monsters?.();}catch{
   return caveDirectDeny('complete-local-monster-list-required',scope);
- // A direct movement cannot evaluate unknown encounter geometry. Reject
- // EVERY visible live/unknown-health monster on this Cave floor, and any
- // monster targeting our trio regardless of its claimed map.
- const monsters=bot.monsters();
- if(monsters.some(m=>m&&(
-    names.includes(m.target)||
-    ((m.map===live.map||m.in===live.map)&&
-     (m.dead!==true||!caveDirectFinite(m.hp)||m.hp>0)))))
-  return caveDirectDeny('visible-cave-encounter-blocks-cohesion',scope);
+ }
+ if(!Array.isArray(monsters)||monsters.length>128)
+  return caveDirectDeny('complete-local-monster-list-required',scope);
+ // A malformed or unlocated live row cannot be proven to be off-floor.
+ // Explicitly located different-map monsters remain outside this step.
+ for(const m of monsters){
+  if(!m||typeof m!=='object'||Array.isArray(m))
+   return caveDirectDeny('unverified-local-monster-evidence',scope);
+  if(names.includes(m.target))
+   return caveDirectDeny('visible-cave-encounter-blocks-cohesion',scope);
+  const locationKnown=typeof m.map==='string'&&!!m.map||
+   typeof m.in==='string'&&!!m.in;
+  if(!locationKnown)
+   return caveDirectDeny('unverified-local-monster-evidence',scope);
+  if((m.map===live.map||m.in===live.map)&&
+     (m.dead!==true||!caveDirectFinite(m.hp)||m.hp>0))
+   return caveDirectDeny('visible-cave-encounter-blocks-cohesion',scope);
+ }
  const d=Math.hypot(c.x-visible.x,c.y-visible.y);
  if(!caveDirectFinite(d)||d<=130||d>240)
   return caveDirectDeny('no-bounded-direct-step-required',scope);

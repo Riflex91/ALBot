@@ -662,6 +662,10 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const emergency=bot.combatAssessment?.emergency?.();
     const endangeredPeer=emergency?.critical?.some(h=>
      h?.name!==c.name&&h?.threats>0);
+    // A rare live attacker must preempt ordinary march/follow short-circuits.
+    const urgentRareAggro=bot.monsters().some(m=>m.hp>0&&!m.dead&&
+     (bot.farmers??[]).includes(m.target)&&isNaturallyAggressive(p.G,m)&&
+     (m.mtype==='greenjr'||p.G.monsters?.[m.mtype]?.boss===true));
     const marchLeader=bot.transport?.fresh?.(bot.leader);
     // A live personal Monsterhunt errand owns the Priest's route until
     // Daisy confirms it or the emergency handler deliberately interrupts it.
@@ -670,7 +674,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
      cfg.party.enabled&&bot.leader&&me.name!==bot.leader?
      sharedFarmMarchDestination(c,marchLeader,p.realm()):null;
     const actualBlock=blockingMonster();
-    if(marchDestination&&!samePlace(c,marchLeader)&&!actualBlock&&!endangeredPeer){
+    if(marchDestination&&!samePlace(c,marchLeader)&&!actualBlock&&!endangeredPeer&&!urgentRareAggro){
      if(marchGraphG!==p.G){marchGraphG=p.G;marchGraph=mapGraph(p.G);}
      const ownHops=mapHops(marchGraph,c.map,marchDestination.map),
       leadHops=mapHops(marchGraph,marchLeader.map,marchDestination.map);
@@ -685,14 +689,14 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     if(marchDestination&&samePlace(c,marchLeader)&&samePlace(c,marchDestination)&&
        distance(c,marchLeader)>Math.max(100,cfg.party.followDistance??180)&&
        distance(c,marchDestination)+60<distance(marchLeader,marchDestination)&&
-       !actualBlock&&!endangeredPeer){
+       !actualBlock&&!endangeredPeer&&!urgentRareAggro){
      if(bot.movement.order?.owner==='follow')bot.movement.stop();
      bot.target=null;bot.reason='Gruppenreise: auf Leader warten';
      bot.skills?.rotation?.(null);return;
     }
     if(marchDestination&&samePlace(c,marchLeader)&&
        distance(c,marchLeader)>Math.max(100,cfg.party.followDistance??180)&&
-       !actualBlock&&!endangeredPeer){
+       !actualBlock&&!endangeredPeer&&!urgentRareAggro){
      const order=bot.movement.order;
      if(order?.owner==='follow'&&(!order.dest||!samePlace(order.dest,marchLeader)||distance(order.dest,marchLeader)>80))bot.movement.stop();
      if(!bot.movement.order)bot.movement.go({...marchLeader,radius:65},'follow');
@@ -702,12 +706,12 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     // A healthy Priest whose route was cancelled by the old range gate must
     // resume the trusted march, instead of feeding the same gate forever.
     if(marchDestination&&!bot.movement.order&&!bot.strategy?.busy&&
-       !actualBlock&&!endangeredPeer&&c.hp/c.max_hp>=.6&&
+       !actualBlock&&!endangeredPeer&&!urgentRareAggro&&c.hp/c.max_hp>=.6&&
        bot.monsters().some(m=>m.hp>0&&!m.dead&&(bot.teamNames??[]).includes(m.target))){
      bot.target=null;bot.movement.go(marchDestination,'follow');
      bot.skills?.rotation?.(null);return;
     }
-    if(road?.continueRoute&&!endangeredPeer){
+    if(road?.continueRoute&&!endangeredPeer&&!urgentRareAggro){
       bot.target=null;
       bot.reason='Gruppenreise trotz Weg-Aggro: Route halten, Tränke und Heiler';
       if(now-lastRoadAggroAt>=10000){lastRoadAggroAt=now;

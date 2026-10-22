@@ -36,7 +36,7 @@ test('preflight never declares an unsigned GitHub profile published or applied',
 });
 
 test('tampered or unsafe profile objects never yield authoritative digests',async()=>{
- const nested=profile();nested.config.general.__proto__={}; // own assignment not guaranteed
+ const nested=profile();
  Object.defineProperty(nested.config.general,'__proto__',{enumerable:true,
   configurable:true,value:'bad'});
  await assert.rejects(profileDigest(nested,subtle),/Unsicherer/);

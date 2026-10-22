@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 34,
-      "version": "0.34.0-candidate",
+      "sequence": 35,
+      "version": "0.35.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 942181,
-      "sha256": "214d71fb5a06dbbeddad823bc8fed31354dc5c14f067f20f4c30975094078784"
+      "bytes": 946524,
+      "sha256": "afbd66c27d4c3cd7dfee5e9cb082b8265ca0dfa3eb0e2c1bf1f3265b7faf826b"
     },
     "observedLoadedUrl": null,
-    "note": "Signierte ALBot 0.34.0-candidate Runtime Sequence 34 auf Basis von PR #409 / Main 7a067ae335976d05f51e32d8c49f5f6d2e28c8cb; Linux/Windows CI 39807781321 erfolgreich. Geschützter Signierworkflow 39808164061 einschließlich ECDSA-P-256, SHA-256, 942181 Bytes und vollständiger Offline-Suite erfolgreich. Release-Runtime byteidentisch mit Main (Git-Blob a2777c567691ef29e971260195ab9506023ee513). Tracktrix-Popup PR #404, Marktkaufregeln und Green Jr Gruppenverteidigung PR #406 enthalten; V2-Loader, Schlüssel, Manifest-/Runtime-URLs und persönliche ALBotConfig unverändert; Ingame-Liveabnahme noch offen."
+    "note": "Signierte 0.35.0-candidate, Sequenz 35, PR #418, Linux+Windows CI 39818298036 erfolgreich. Release-Workflow 39818750231 erstellte gültiges signiertes ECDSA-P-256 Manifest, 946524 Bytes, SHA-256 afbd66c27d4c3cd7dfee5e9cb082b8265ca0dfa3eb0e2c1bf1f3265b7faf826b. Runtime-Blob 4adbdf96ded25a658a66f055aaff4c5d74611bee identisch mit main. V2-Loader, Signaturschlüssel, Manifest-/Runtime-URLs und persönliche ALBotConfig unverändert; Ingame-Liveabnahme offen."
   }
 }

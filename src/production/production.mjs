@@ -181,7 +181,8 @@ export function gearChainReady(g,stock,meta){
 export function actionCapacity(items,consumed=[],output=null,G={},outputs=1,{inventorySize}={}){
  if(!Number.isSafeInteger(outputs)||outputs<0)return false;
  const planned=capacityAfterConsumption(items,consumed,output,
-   output?G.items?.[output.name]:null,{inventorySize});
+   output?G.items?.[output.name]:null,
+   {inventorySize,itemDefinitions:G.items??null});
  return !!planned&&(output?planned.units>=outputs:planned.free>=outputs);
 }
 // Release only the part of other goals' gross demand already backed by

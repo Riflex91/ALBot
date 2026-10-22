@@ -35,7 +35,7 @@ export function physicalInventoryCapacity(items,{inventorySize}={}){
 // consumed, and only when signed inventory capacity permits it.
 // This is a planning proof, not a reservation or dispatch permission.
 export function capacityAfterConsumption(items,consumed=[],output=null,meta=null,{
- maxNewSlots=Infinity,inventorySize
+ maxNewSlots=Infinity,inventorySize,itemDefinitions=null
 }={}){
  if(!Array.isArray(items)||!Array.isArray(consumed)||(
   maxNewSlots!==Infinity&&(!Number.isSafeInteger(maxNewSlots)||maxNewSlots<0)
@@ -45,6 +45,24 @@ export function capacityAfterConsumption(items,consumed=[],output=null,meta=null
  // slot. In particular, do not silently normalize q:null to one unit.
  if(items.some(item=>item!==null&&item!==undefined&&!validPhysicalRow(item)))
   return null;
+ // If the caller has the live G.items dictionary, source stacks must also
+ // respect each known item's own maximum. A phantom multi-copy gear row or
+ // oversized material stack cannot finance a later craft output slot.
+ // Legacy readers without metadata keep their previous conservative quantity
+ // check; this does not fabricate metadata for unknown game items.
+ if(itemDefinitions!==null){
+  if(!itemDefinitions||typeof itemDefinitions!=='object'||
+     Array.isArray(itemDefinitions))return null;
+  for(const item of items){
+   if(!item)continue;
+   if(!Object.hasOwn(itemDefinitions,item.name))continue;
+   const sourceMeta=itemDefinitions[item.name];
+   if(!sourceMeta||typeof sourceMeta!=='object')return null;
+   const sourceMax=sourceMeta.s===true?9999:
+    Number.isSafeInteger(sourceMeta.s)&&sourceMeta.s>1?sourceMeta.s:1;
+   if(units(item)>sourceMax)return null;
+  }
+ }
  const next=items.slice(),seen=new Set();
  for(const row of consumed){
   if(!Number.isSafeInteger(row?.slot)||row.slot<0||row.slot>=items.length||

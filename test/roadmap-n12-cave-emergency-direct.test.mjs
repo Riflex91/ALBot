@@ -325,12 +325,13 @@ test('N12 deferred Cave emergency rechecks unknown second monster and refuses qu
  assert.deepEqual(moves(f),[]);
  assert.deepEqual(forbidden(f),[]);
 });
-test('N12 one Cave emergency admission reads the bounded monster frame once',()=>{
+test('N12 Cave emergency cannot lose a new monster between team check and local admission',()=>{
  const f=fixture();
  let calls=0;
  f.bot.monsters=()=>{calls++;return calls===1?[f.monster]:[
    f.monster,{id:'extra',map,in:map,hp:70,target:null}];};
  const p=caveEmergencyDirectPreflight(f.bot,{now:f.state.at,hostChecks:false});
- assert.equal(p.ready,true,p.reason);
- assert.equal(calls,1);
+ assert.equal(p.ready,false,'fresh local evidence sees the second Cave monster');
+ assert.equal(p.reason,'only-one-visible-engaged-monster-supported');
+ assert.equal(calls,2,'one Cave-team read and one local emergency admission read');
 });

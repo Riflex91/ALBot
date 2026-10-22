@@ -60,9 +60,11 @@ export async function syncPreflight({profile,githubSha,subtle}={}){
  };
 }
 export function signedConfigMessage(release){
- return 'ALBOT-CONFIG-RELEASE-V1\n'+
-  [release.sequence,release.target,release.issuedAt,release.expiresAt,
-   release.schemaId,release.sha256].join('\n')+'\n';
+ // Length-safe JSON avoids collisions from delimiter characters in metadata.
+ return 'ALBOT-CONFIG-RELEASE-V1\\n'+JSON.stringify([
+  release.format,release.schemaId,release.target,release.sequence,
+  release.issuedAt,release.expiresAt,release.sha256
+ ]);
 }
 function decode64(input){
  if(typeof input!=='string'||!B64.test(input)||input.length!==86)
@@ -84,7 +86,7 @@ export async function verifySignedConfigRelease(release,{
   release.schemaId!=='albot.full/v1'||!Number.isSafeInteger(release.sequence)||
   release.sequence<=minimumSequence||release.sequence<1||
   !Number.isSafeInteger(minimumSequence)||minimumSequence<0||
-  typeof target!=='string'||target.length<1||target.length>128||
+  typeof target!=='string'||!/^[A-Za-z0-9_.:\\/-]{1,128}$/.test(target)||
   release.target!==target||!Number.isSafeInteger(release.issuedAt)||
   !Number.isSafeInteger(release.expiresAt)||release.issuedAt>now||
   release.expiresAt<=now||release.expiresAt-release.issuedAt>7*86400000||

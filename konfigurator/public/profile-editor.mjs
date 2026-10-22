@@ -1,6 +1,6 @@
 import {PROFILE_VIEWS,profileValue,profileView} from './profile-model.mjs';
 
-// No innerHTML: labels and saved values may contain untrusted GitHub content.
+// Construct nodes with textContent: saved GitHub values are untrusted data.
 const make=(tag,text,cls)=>{
  const el=document.createElement(tag);
  if(text!==undefined)el.textContent=String(text);

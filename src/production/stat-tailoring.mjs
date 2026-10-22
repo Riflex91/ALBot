@@ -17,6 +17,11 @@ export function statTailoringCandidate(bot){
     !Array.isArray(cfg.production.gearTargets)||
     !Array.isArray(cfg.characters)||!Array.isArray(p.c?.items)||
     typeof p.call!=='function'||!p.G?.items)return null;
+ // N01/W03: the whole current inventory must be physically possible,
+ // not merely the gear and matching pscroll rows. An unrelated impossible
+ // stack cannot be ignored before an irreversible upgrade call.
+ if(!capacityAfterConsumption(p.c.items,[],null,null,
+    {inventorySize:p.c.isize,itemDefinitions:p.G.items}))return null;
  for(const target of cfg.production.gearTargets){
   if(!target?.enabled||!N01_STAT_TYPES.has(target.statType)||
      typeof target.item!=='string'||!Number.isSafeInteger(target.level)||
@@ -128,7 +133,7 @@ export function destatCandidate(bot){
      !Number.isFinite(rule.goldBudget)||cost>rule.goldBudget)continue;
   const output={name:scrollName,level:0},
    room=capacityAfterConsumption(p.c.items,[],output,scrollMeta,
-    {inventorySize:p.c.isize});
+    {inventorySize:p.c.isize,itemDefinitions:p.G.items});
   if(!room||room.units<needed)continue;
   const beforeValue=e.value?.(item),afterValue=e.value?.({
    ...item,stat_type:undefined});

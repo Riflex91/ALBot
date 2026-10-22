@@ -201,3 +201,23 @@ test('G12 malformed returned scroll baseline blocks planning and false settlemen
  f.items[2].q=10;
  assert.equal(f.operation.observe(),true);
 });
+
+test('W03/G12 de-statting denies unrelated impossible inventory stacks',()=>{
+ const f=fixture();
+ f.p.G.items.ring={};
+ f.p.G.items.hpot0={s:99};
+ for(const row of [{name:'ring',q:2},{name:'hpot0',q:100},
+  {name:'hpot0',q:null}]){
+  f.items[2]=row;
+  assert.equal(destatCandidate(f.bot),null,
+   'impossible unrelated inventory source: '+JSON.stringify(row));
+  assert.equal(f.tailoring.destatTick(),false,
+   'malformed inventory cannot open a de-stat value journal');
+ }
+ f.items[2]={name:'hpot0',q:99};
+ assert.equal(destatCandidate(f.bot)?.needed,10,
+  'maximum valid physical stack permits the original de-stat plan');
+ f.items[2]={name:'ring'};
+ assert.equal(destatCandidate(f.bot)?.needed,10,
+  'real unstackable singleton remains an admissible unrelated source');
+});

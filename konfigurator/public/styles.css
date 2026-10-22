@@ -21,3 +21,9 @@
 .profile-list-header .danger{flex-shrink:0}
 .profile-section .field input:disabled,.profile-section .field select:disabled{opacity:.6}
 @media(max-width:800px){.profile-list-header{flex-wrap:wrap}.profile-list-header>.button{max-width:100%}}
+
+/* Preflight revision hashes are metadata, never a claim of in-game adoption. */
+.sync-revision{gap:16px;padding:11px 0;border-bottom:1px solid var(--border);align-items:start}
+.sync-revision strong{overflow-wrap:anywhere;word-break:break-word;text-align:right;min-width:0;font-size:12px}
+.sync-revision .muted{flex-shrink:0}
+@media(max-width:600px){.sync-revision{flex-wrap:wrap}.sync-revision strong{text-align:left}}

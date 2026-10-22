@@ -23,7 +23,7 @@ function fixture({offerQuantity=8}={}){
   general:{testLogging:true}},me:{name:'M'},running:true,
   event:()=>{},free:()=>10,
   entity:id=>p.entities[id],movement:{order:null},exec:{}};
- bot.economy={count:()=>held,value:()=>3,
+ bot.economy={count:()=>held,value:()=>3,explicit:()=>rule,
   perform:(kind,job)=>{jobs.push({kind,job});return true;},
   destination:()=>null,npcAt:()=>false};
  const market=createMarket(bot),item={name:'raremat',level:0};

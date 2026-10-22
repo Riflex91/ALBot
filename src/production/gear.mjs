@@ -305,9 +305,7 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   // Never convert a locked/kept/assigned item into autonomous stock.
   if(cfg.production.gear&&me.role==='merchant'){
    const stock=p.c.items??[],candidates=[],used=new Map(),supply=new Map();
-   const stockKey=i=>identity({name:i.name,level:i.level??0,
-    stat_type:i.stat_type??'',p:i.p??'',title:i.title??'',
-    ...(i.data===undefined?{}:{data:i.data})});
+   const stockKey=i=>identity(i);
    for(const i of stock){
     if(!i||!e.safe(i)||i.l||i.b)continue;
     const rule=e.explicit?.(i,'inventory');

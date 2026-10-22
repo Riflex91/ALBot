@@ -84,9 +84,13 @@ export function fitHeartbeat(data,maxLength=4200){
  // uses these counts to avoid allocating duplicate farming quotas. They
  // matter more than optional diagnostic/skill/market telemetry, but lose
  // priority to the core identity, item demand and material requests below.
- for(const key of ['lootReceipts','itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','gear','roles','activity','skills','mluck','supplies','farmPlan']){
+ for(const key of ['lootReceipts','itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','roles','activity','skills','mluck','supplies','farmPlan']){
   delete d[key];if(length()<=maxLength)return d;
  }
+ // Full, session-bound gear.slots is required by allocation.offer(), reserve()
+ // and the equip receipt guard. Never silently discard this proof from a
+ // fresh heartbeat; refuse an impossible payload instead of sending a
+ // misleading gear-less status.
  // bankOwner is required for conservative G11 collision detection;
  // never drop a fresh active bank claim to shrink a heartbeat.
  // Keep active team identity if possible, but delivery demand takes precedence.
@@ -119,6 +123,7 @@ export function createTransport(bot){
     for(const name of [...peerCounters.keys()])if(!roster.includes(name)){peerCounters.delete(name);peers.delete(name);seen.delete(name);retired.delete(name);}
   }
   const counters={heartbeatAttempts:0,heartbeatSent:0,heartbeatReceived:0,sendFailed:0,rejected:0,duplicates:0};
+  const unreachableProbed=new Map();
   const peerCounters=new Map(roster.filter(n=>n!==me.name).map(n=>[n,{sent:0,received:0,failed:0}]));
   let lastFailure=null;
   function failure(to,type,reason){
@@ -218,7 +223,17 @@ export function createTransport(bot){
       elixirStock:me.role==='merchant'?[...new Set((c.items??[])
        .filter(i=>i&&!i.l&&!i.b&&p.G.items?.[i.name]?.type==='elixir')
        .map(i=>i.name))].slice(0,8).map(name=>({name})):undefined,
-      stock:(c.items??[]).filter(i=>i&&!i.l&&!i.b&&bot.p.G.items[i.name]&&['weapon','helmet','chest','pants','shoes','ring','earring','amulet','belt','cape','gloves','shield','source','orb','elixir'].includes(bot.p.G.items[i.name].type)).sort((a,b)=>Number(bot.p.G.items[b.name].type==='elixir')-Number(bot.p.G.items[a.name].type==='elixir')).slice(0,16).map(i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''})),capabilities:bot.capabilities?.snapshot(),motion:{moving:!!c.moving,speed:c.speed??0,at:Date.now()},mluck:c.s?.mluck??null,skills:['heal','partyheal','revive','taunt','reflection','energize','rspeed','cleansing_light'].filter(id=>{const s=p.G.skills?.[id];return s&&(!s.class||s.class.includes?.(c.ctype))&&(s.level??0)<=c.level;})};const bounded=fitHeartbeat(d);if(!bounded){bot.report('Team-Heartbeat zu groß; keine unvollständige Statusmeldung gesendet');return;}refreshOwn();for(const n of roster)if(configured.includes(n)||me.name===cfg.party.merchant&&peers.get(n)?.running&&Date.now()-peers.get(n).received<cfg.general.messageTtlMs)send(n,'status',bounded);},
+      stock:(c.items??[]).filter(i=>i&&!i.l&&!i.b&&bot.p.G.items[i.name]&&['weapon','helmet','chest','pants','shoes','ring','earring','amulet','belt','cape','gloves','shield','source','orb','elixir'].includes(bot.p.G.items[i.name].type)).sort((a,b)=>Number(bot.p.G.items[b.name].type==='elixir')-Number(bot.p.G.items[a.name].type==='elixir')).slice(0,16).map(i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''})),capabilities:bot.capabilities?.snapshot(),motion:{moving:!!c.moving,speed:c.speed??0,at:Date.now()},mluck:c.s?.mluck??null,skills:['heal','partyheal','revive','taunt','reflection','energize','rspeed','cleansing_light'].filter(id=>{const s=p.G.skills?.[id];return s&&(!s.class||s.class.includes?.(c.ctype))&&(s.level??0)<=c.level;})};const bounded=fitHeartbeat(d);if(!bounded){bot.report('Team-Heartbeat zu groß; keine unvollständige Statusmeldung gesendet');return;}refreshOwn();const now=Date.now();for(const n of roster){
+      const d=peers.get(n),online=d?.running===true&&now-d.received<cfg.general.messageTtlMs;
+      const configuredPeer=configured.includes(n);
+      if(!configuredPeer&&!(me.name===cfg.party.merchant&&online))continue;
+      // Discovery must remain possible; only repeatedly unreachable peers
+      // are probed infrequently. A fresh peer is never throttled.
+      const bad=(peerCounters.get(n)?.failed??0)>=2&&!online;
+      if(bad&&now-(unreachableProbed.get(n)??0)<30000)continue;
+      if(bad)unreachableProbed.set(n,now);
+      send(n,'status',bounded);
+    }},
     close(){offs.splice(0).forEach(f=>f());peers.clear();seen.clear();retired.clear();}
   };
 }

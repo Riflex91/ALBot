@@ -303,6 +303,77 @@ export function createGear(bot,{now=()=>Date.now()}={}){
     level:best.item.level??0,budget:cfg.production.autoGearBudget??100000,
     priority,urgentVacancy:true});
   }
+  // Existing *better* merchant-held gear is an actionable delivery for an
+  // already-equipped farmer too. The old urgent-starter/vacancy paths only
+  // served empty slots, so staff +5 could sit idle while Priest wore +3.
+  // Require a fresh, complete, session-bound native receiver snapshot;
+  // compare real item_properties, suitability and the configured threshold.
+  // Never convert a locked/kept/assigned item into autonomous stock.
+  if(cfg.production.gear&&me.role==='merchant'){
+   const stock=p.c.items??[],candidates=[],used=new Map(),supply=new Map();
+   const stockKey=i=>{try{return identity(i);}catch{return null;}};
+   for(const i of stock){
+    if(!i||!e.safe(i)||i.l||i.b)continue;
+    const rule=e.explicit?.(i,'inventory');
+    if(rule&&rule.action!=='send')continue;
+    const key=stockKey(i);if(!key)continue;
+    supply.set(key,(supply.get(key)??0)+1);
+   }
+   for(const g of result.filter(g=>g.urgentStarter||g.urgentVacancy)){
+    const i=stock.find(i=>i?.name===g.item&&(i.level??0)===g.level&&
+      (!e.explicit?.(i,'inventory')||e.explicit(i,'inventory').action==='send'&&
+        e.explicit(i,'inventory').recipient===g.character));
+    if(i){const key=stockKey(i);if(key)used.set(key,(used.get(key)??0)+1);}
+   }
+   for(const name of bot.farmers??[]){
+    const member=cfg.characters.find(c=>c.enabled&&c.role==='farmer'&&c.name===name),
+      peer=bot.transport?.fresh?.(name),profile=profiles[name];
+    if(!member||!peer?.running||peer.rip||peer.realm!==p.realm()||
+      !peer.session||!profile?.complete||profile.session!==peer.session||
+      profile.realm!==peer.realm||!Number.isSafeInteger(profile.at)||
+      Date.now()-profile.at>120000||profile.at>Date.now()||!profile.slots)continue;
+    const role=member.gearRole==='auto'?
+      (profile.class==='priest'?'healer':'dps'):member.gearRole;
+    for(const slot of gearSlots){
+     const old=profile.slots[slot];
+     if(!old||old.l||old.b)continue; // empty slots have their own path
+     let oldStats,oldScore;
+     try{oldStats=p.call('item_properties',old);
+       oldScore=gearScore(oldStats,role,profile.class);}catch{continue;}
+     if(!oldStats||!Number.isFinite(oldScore))continue;
+     for(const i of stock){
+      if(!i||!e.safe(i)||i.l||i.b||!gearCompatible(p.G,profile,i,slot))continue;
+      const rule=e.explicit?.(i,'inventory');
+      if(rule&&!(rule.action==='send'&&rule.recipient===name))continue;
+      let next,nextScore;
+      try{next=p.call('item_properties',i);
+        if(!gearSuitability(oldStats,next,role,profile.class,member.merchantMobility).ok)continue;
+        nextScore=gearScore(next,role,profile.class);}catch{continue;}
+      if(!Number.isFinite(nextScore)||nextScore<=oldScore*(1+cfg.production.minImprovement))continue;
+      const key=stockKey(i);if(!key)continue;
+      candidates.push({name,slot,item:i,key,gain:nextScore-oldScore});
+     }
+    }
+   }
+   candidates.sort((a,b)=>b.gain-a.gain||a.name.localeCompare(b.name)||
+      a.slot.localeCompare(b.slot)||(b.item.level??0)-(a.item.level??0));
+   const chosenSlots=new Set();
+   for(const row of candidates){
+    const receiverKey=row.name+':'+row.slot;
+    if(chosenSlots.has(receiverKey)||
+      (used.get(row.key)??0)>=(supply.get(row.key)??0))continue;
+    used.set(row.key,(used.get(row.key)??0)+1);chosenSlots.add(receiverKey);
+    const same=result.find(g=>g.character===row.name&&g.slot===row.slot&&
+      g.item===row.item.name&&g.level===(row.item.level??0));
+    for(let k=result.length-1;k>=0;k--)if(result[k].character===row.name&&
+       result[k].slot===row.slot&&result[k]!==same)result.splice(k,1);
+    if(same){same.priority=Math.max(same.priority??0,960);same.urgentStockUpgrade=true;}
+    else result.unshift({name:'Vorratsupgrade '+row.name+' '+row.slot,
+      enabled:true,character:row.name,slot:row.slot,item:row.item.name,
+      level:row.item.level??0,budget:cfg.production.autoGearBudget??100000,
+      priority:960,urgentStockUpgrade:true});
+   }
+  }
   if(cfg.production.autoGear)for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?snapshot():profiles[member.name];if(!profile)continue;for(const [slot,i] of Object.entries(profile.slots)){if(!i||i.l||i.b||!cfg.production.autoGearItems.includes(i.name)||!p.G.items[i.name]?.upgrade||i.level>=autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot)||result.some(g=>g.character===member.name&&g.slot===slot))continue;
    result.push({name:'Auto-Gear '+member.name+' '+slot+' +'+(i.level+1),enabled:true,character:member.name,slot,item:i.name,level:i.level+1,budget:cfg.production.autoGearBudget,priority:(member.catchUp?30:10)+gearSlotPriority(slot,profile.class)+fairness({character:member.name,slot})});
   }}observedTargets=result;return result;

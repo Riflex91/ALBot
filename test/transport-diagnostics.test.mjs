@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTransport} from '../src/party/transport.mjs';
 
-function fixture(){
+function fixture(names=['Ranger','Merchant']){
  const queue=[],listeners={},bots={};
  const cfg={general:{transport:'auto',allowRemoteCM:false,messageTtlMs:10000},party:{merchant:'Merchant'},
-  characters:['Ranger','Merchant'].map(name=>({name,enabled:true,group:'team1'}))};
- for(const name of ['Ranger','Merchant']){
+  characters:names.map(name=>({name,enabled:true,group:'team1'}))};
+ for(const name of names){
   const c={name,map:'main',in:'main',x:0,y:0,items:[],rip:false,hp:100,max_hp:100,mp:100,max_mp:100,
    ctype:name==='Ranger'?'ranger':'merchant',level:40,attack:100,frequency:1,armor:10,resistance:10,range:200,gold:1000};
   const p={c,G:{items:{},skills:{}},ipc:false,headless:false,parent:{},realm:()=> 'EUII',
@@ -86,4 +86,23 @@ test('IPC-only configuration without IPC records a failed transport attempt',asy
  const s=a.status();assert.equal(s.counters.heartbeatSent,0);assert.equal(s.counters.sendFailed,1);
  assert.equal(s.lastFailure.reason,'channel');assert.equal(f.queue.length,0);
  a.close();b.close();
+});
+
+test('repeatedly unreachable offline character is probed sparingly while active peers stay fresh',async()=>{
+ const f=fixture(['Ranger','Merchant','OfflineWarrior']),entry=f.bots.Ranger,send=entry.bot.p.call;
+ // A configured, inactive teammate is still discoverable on initial probes.
+ const sent=[];entry.bot.p.call=(kind,to,m)=>{
+  sent.push(to);
+  return to==='OfflineWarrior'?{receivers:[]}:send(kind,to,m);
+ };
+ for(let k=0;k<8;k++){
+  entry.transport.heartbeat();
+  await Promise.resolve();
+  await Promise.resolve();
+ }
+ assert.ok(sent.filter(n=>n==='OfflineWarrior').length<=3,
+  'offline peer receives initial checks then at most one 30-second discovery probe');
+ assert.equal(sent.filter(n=>n==='Merchant').length,8,
+  'healthy team links remain unthrottled');
+ entry.transport.close();f.bots.Merchant.transport.close();f.bots.OfflineWarrior.transport.close();
 });

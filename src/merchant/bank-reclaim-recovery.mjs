@@ -123,8 +123,11 @@ export function classifyBankReclaimRecord(record,{owner,realm,now=Date.now(),
  let bankMap;try{bankMap=packMap(record.pack);}catch{
   return {phase:'unobserved',reason:'bank-map-unresolved',confirmed:false};
  }
+ // Bank source totals are before/after proofs over an ENTIRE local pack.
+ // A truncated array can hide further source copies even when the addressed
+ // slot is present, and must never certify a sold/withdrawn/unchanged state.
  if(bankMap!==map||!bank||!Array.isArray(bank[record.pack])||
-    bank[record.pack].length>42||record.slot>=bank[record.pack].length)
+    bank[record.pack].length!==42)
   return {phase:'unobserved',reason:'addressed-local-bank-pack-unavailable',confirmed:false};
  const pack=bank[record.pack],source=pack[record.slot],
   target=inventory[record.dest];

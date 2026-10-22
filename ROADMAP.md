@@ -1,3 +1,7 @@
+## W06/G09 – Marktvarianten und Standabgleich fail-closed (22.10.2026)
+
+Der vorhandene Merchant-Marktpfad validiert `G.items` jetzt ausschließlich über echte Katalogeigenschaften. Physisch plausible, aber zyklische oder unlesbare Varianten dürfen weder bestätigte Sales, autonome Listvorschläge noch Stand-Fingerprints oder verzögerte `unequip`-Reclaimaktionen authorisieren. `proposal`, `posted` und `expire` verwenden identische ausfallsichere Varianten-/Fingerprintprüfungen; der Executor und seine physische Vor-/Nachherquittung bleiben erhalten. Regressionen in `test/roadmap-w06-g09-market-demand-evidence.test.mjs`. Vollständiger Account-Tauschmarkt, Markt-Liveabnahme und W14 bleiben offen.
+
 ## W10/W13 – nur katalogechte und physisch mögliche Chest-Ereignisse (22.10.2026)
 
 Der vorhandene `createOwnLootReceipts`-Ablauf validiert jetzt auch die einzelnen offiziellen `chest_opened`-Einträge gegen die physischen `G.items[name].s`-Grenzen und eigene Katalogeinträge. Vererbte JS-Objektfelder sind keine Spielitems, übergroße/unmögliche Mengen (auch von fremden Lootempfängern) sind keine vollständige Zuordnung. Die bisherige Pre-Loot-Baseline, Deltaquittung, Eigentümerzuweisung und konservative Session-/Realm-Sperre bleiben unverändert. Regressionen in `test/roadmap-w10-w13-own-loot-receipts.test.mjs`. **Dies ist keine vollständige rollenverteilte Lootmission, keine live bestätigte Eigentumsquittung und kein signierter Release.**

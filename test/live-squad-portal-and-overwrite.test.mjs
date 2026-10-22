@@ -37,10 +37,14 @@ test('monsterhunt cannot hijack selected farmer in transit or while teammates st
 test('compact march agreement survives heartbeat size pressure',()=>{
  const source={name:'Priest',items:[],materials:[],realm:'EUII',
   march:{plan:'P4',realm:'EUII',moving:true},
-  performance:'p'.repeat(2500),stock:'x'.repeat(2500),gear:'g'.repeat(2500)};
+  performance:'p'.repeat(2500),stock:'x'.repeat(2500)};
  const packed=fitHeartbeat(source,200);
  assert.deepEqual(packed?.march,source.march);
  assert.ok(JSON.stringify(packed).length<=200);
+ // Unlike arbitrary telemetry, receiver gear is now a required security
+ // proof. An impossible gear payload cannot be shed while still advertising
+ // a fresh but ineligible receiver status.
+ assert.equal(fitHeartbeat({...source,gear:'g'.repeat(2500)},200),null);
 });
 test('two manual exports to the same chosen file overwrite rather than append or auto-rename',async()=>{
  const files=new Map(),handles=new Map();

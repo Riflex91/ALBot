@@ -80,7 +80,7 @@ test('browser editors explicitly do not claim activation or store credentials',a
  assert.match(app,/sha:profileState.sha/);
  assert.match(app,/Keine Änderung wurde im Spiel aktiviert/);
  assert.match(app,/profileState.dirty&&!window.confirm/);
- assert.match(app,/profileView\(state.view\)\?()=>profileEditorView\(state.view\)/);
+ assert.match(app,/profileView\(state.view\)\?\(\)=>profileEditorView\(state.view\)/);
  assert.doesNotMatch(app+schema+model,/localStorage|eval\(|new Function\(/);
  assert.doesNotMatch(schema,/innerHTML/);
 });

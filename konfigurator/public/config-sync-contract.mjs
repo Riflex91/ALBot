@@ -86,7 +86,7 @@ export async function verifySignedConfigRelease(release,{
   release.schemaId!=='albot.full/v1'||!Number.isSafeInteger(release.sequence)||
   release.sequence<=minimumSequence||release.sequence<1||
   !Number.isSafeInteger(minimumSequence)||minimumSequence<0||
-  typeof target!=='string'||!new RegExp('^[A-Za-z0-9_.:/-]{1,128}
+  typeof target!=='string'||!new RegExp('^[A-Za-z0-9_.:/-]{1,128}$').test(target)||
   release.target!==target||!Number.isSafeInteger(release.issuedAt)||
   !Number.isSafeInteger(release.expiresAt)||release.issuedAt>now||
   release.expiresAt<=now||release.expiresAt-release.issuedAt>7*86400000||

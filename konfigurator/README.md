@@ -1,5 +1,16 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Sicherer Konfigurationsabgleich – Revision/Signaturvertrag (22.10.2026)
+
+Im Bereich **System & Synchronisierung** lässt sich der private GitHub-Profilstand jetzt **ausdrücklich und read-only** prüfen. Die unter Cloudflare Access geschützte Route `GET /api/profile-sync/status` lädt und validiert das Full-v1-Profil serverseitig und berechnet einen deterministischen SHA-256-Fingerprint über kanonisch sortierte JSON-Daten. Die Antwort enthält nur GitHub-SHA, Profil-SHA-256, Schemabezeichnung und Anzahl Bytes, niemals die enthaltenen Profiloptionen oder Zugangsdaten. Fehlende, ungültige oder nicht lesbare Profile gelten nicht als veröffentlicht. Ein Abruf erfolgt nur beim Öffnen des Systembereichs oder durch erneuten Nutzerklick; es gibt kein schnelles Polling oder eine neue D1-Tabelle.
+
+**Sicherheitszustand:** `signed:false`, `published:false`, `applied:false`, `acknowledged:false`. Das ist keine vorübergehende kosmetische Anzeige, sondern der aktuelle technische Vertrag. Der Fingerprint bestätigt die Identität einer gespeicherten GitHub-Fassung, **nicht deren Signierung oder Annahme durch einen laufenden Bot**. Er gibt keinerlei Befugnis zu Verkäufen, Transfers oder Ingame-Konfigurationsänderungen.
+
+Das neue reine Prüfmodul `konfigurator/public/config-sync-contract.mjs` definiert außerdem den späteren signierten Konfigurationsvertrag `albot-config-release/v1`: SHA-256 über kanonisches Full-v1-Profil, separat fest eingebauter ECDSA-P-256-Public-Key, exakte Zielaccount-Bindung, zeitlich begrenzte Gültigkeit und monoton steigende Sequenz. Tests prüfen manipulierte Daten, falsche Zielaccounts, abgelaufene Ausgaben, fremde Schlüssel und Replay/Rollback. Der Prüfer nimmt **selbst keine Anwendung vor**; vor einer Freigabe müssen mindestens ein ausdrücklich eingerichteter privater Signierkanal, eine dauerhafte gegen Rollback geschützte Sequenz, eine neue signierte Runtime mit sicherem Anwendungspunkt und ein authentischer Charakter-ACK real implementiert und abgenommen sein.
+
+Es wird kein Schlüssel erzeugt, kein Token rotiert, kein Ingame-Loader geändert und kein Cloudflare-Access-Bypass erweitert. **Das private Full-Profil wird nicht in den öffentlichen Runtime-/Release-Branch kopiert.**
+
+
 ## Native Einstellungsansichten (22.10.2026)
 
 Die Menüpunkte **Kampf & Fähigkeiten**, **Farmen & Welt**, **Merchant & Produktion** und **Team & Charaktere** sind keine statischen Platzhalter mehr. Sie beziehen ihre Felddefinitionen ausschließlich aus dem vorhandenen vollständigen Full-v1-Schema der Ingame-Runtime; die Worker-Route `GET /api/profile-schema` gibt dieses Schema nur unter erfolgreicher Cloudflare-Access-Prüfung aus. Änderungen an Schwellwerten, Listen und Objekten verwenden strikte Typ-/Grenzprüfung und editieren einen lokalen, flüchtigen Entwurf des vollständigen GitHub-Profils. Für ältere oder fehlende Profile wird **kein** neues Vollprofil stillschweigend generiert: der Erstimport erfolgt weiterhin in `/classic.html`.

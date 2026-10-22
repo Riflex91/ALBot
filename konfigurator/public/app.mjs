@@ -11,6 +11,7 @@ const state={view:'dashboard',policy:{version:1,items:[]},sha:null,configured:fa
  characters:[],bank:[],telemetryErrors:{characters:null,bank:null},catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
 const profileState={document:null,descriptor:null,sha:null,loaded:false,loading:false,
  dirty:false,saving:false,error:'',fieldErrors:new Map()};
+const syncState={data:null,loading:false,loaded:false,error:''};
 const fmt=x=>typeof x==='number'&&Number.isFinite(x)?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(x):'—';
 const age=t=>!Number.isFinite(t)?'unbekannt':Math.max(0,Math.floor((Date.now()-t)/1000))+' s';
 const fresh=t=>Number.isFinite(t)&&Date.now()-t<SNAPSHOT_FRESH_MS;
@@ -46,6 +47,26 @@ function setSaveState(){
    state.loaded?'GitHub-Richtlinien · nicht im Spiel aktiv':'GitHub nicht verbunden';
   button.textContent=state.saving?'Speichere …':'Itemrichtlinien speichern';
   button.disabled=!state.dirty||state.saving||!state.configured;
+ }
+}
+async function refreshSyncStatus(){
+ if(syncState.loading)return;
+ syncState.loading=true;syncState.error='';
+ if(state.view==='settings')render();
+ try{
+  const result=await api('/api/profile-sync/status');
+  if(result?.ok!==true||result?.signed!==false||
+   result?.published!==false||result?.applied!==false||
+   result?.acknowledged!==false)
+   throw Error('Unerwarteter Synchronisationsstatus');
+  syncState.data=result;
+  syncState.loaded=true;
+ }catch(error){
+  syncState.data=null;syncState.loaded=true;
+  syncState.error=String(error?.message??error).slice(0,180);
+ }finally{
+  syncState.loading=false;
+  if(state.view==='settings')render();
  }
 }
 async function api(path,init={}){
@@ -312,6 +333,7 @@ async function saveProfile(){
     document:profileEnvelope(profileState.document)})
   });
   profileState.sha=result.sha;
+  syncState.loaded=false;syncState.data=null;
   if(JSON.stringify(profileState.document)===staged)profileState.dirty=false;
   profileState.error='';
   toast('Profil versioniert auf GitHub gespeichert. Keine Änderung wurde im Spiel aktiviert.');
@@ -420,6 +442,34 @@ function settings(){
  }
  b.append(node('p','Die private ALBot-Telemetrie wird direkt aus Adventure Land übertragen. Das Relay ist nur ein optionaler Ausweichweg. Kein Token wird auf dieser Seite abgefragt oder angezeigt.','help'));
  b.append(node('p',sourceNote,'help'));
+ const sync=card('Konfigurationsabgleich · Vorbereitungsstufe');
+ sync.append(notice('Nur gespeicherte Revisionen werden geprüft. Es existiert derzeit weder ein signierter Konfigurationskanal noch eine bestätigte Ingame-Übernahme.',true));
+ const check=node('button',syncState.loading?'Prüfe Revision …':'Gespeicherte Revision prüfen','button');
+ check.type='button';check.disabled=syncState.loading;
+ check.onclick=()=>void refreshSyncStatus();
+ sync.append(check);
+ if(syncState.error)sync.append(notice('Abgleich fehlgeschlagen: '+syncState.error));
+ const entry=syncState.data;
+ if(entry?.configured===false)sync.append(node('p',
+  'Im privaten GitHub-Repository liegt noch kein vollständiges Profil vor.','help'));
+ if(entry?.configured===true){
+  const info=[['Privater GitHub-SHA',entry.profile?.githubSha??'—'],
+   ['Profil-SHA-256',entry.profile?.sha256??'—'],
+   ['Profilformat',entry.profile?.schemaId??'—'],
+   ['Signiert','Nein'],
+   ['Ins Spiel veröffentlicht','Nein'],
+   ['Vom Spiel bestätigt','Nein']];
+  for(const [key,value] of info){
+   const line=node('div',undefined,'row sync-revision');
+   line.append(node('span',key,'muted'),node('strong',value));
+   sync.append(line);
+  }
+  if(profileState.loaded&&profileState.sha!==entry.profile?.githubSha)
+   sync.append(notice('Die im Browser geladene Profilrevision stimmt nicht mit dem zuletzt gespeicherten GitHub-Stand überein. Vor der Bearbeitung erneut laden.'));
+  if(profileState.dirty||state.dirty)
+   sync.append(notice('Im Browser gibt es zusätzliche ungespeicherte Änderungen. Diese sind nicht Bestandteil des angezeigten Fingerprints.'));
+ }
+ content.append(sync);
  const link=node('a','GitHub-Implementierungsstand und Einrichtung');link.href='https://github.com/Riflex91/ALBot/blob/main/konfigurator/README.md';link.rel='noopener noreferrer';b.append(link);grid.append(a,b);content.append(grid);
 }
 function render(){
@@ -435,6 +485,7 @@ for(const b of document.querySelectorAll('[data-view]'))b.addEventListener('clic
  state.view=b.dataset.view;state.selected=null;document.body.classList.remove('menu-open');
  setSaveState();render();
  if(profileView(state.view))void loadProfile();
+ if(state.view==='settings'&&!syncState.loaded)void refreshSyncStatus();
  content.focus();
 });
 $('menu-toggle').addEventListener('click',()=>document.body.classList.toggle('menu-open'));

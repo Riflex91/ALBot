@@ -251,3 +251,64 @@ test('canonical profile schema is read-only and behind Cloudflare Access',async(
   }),env,{}, {fetcher});
  assert.equal(denied.status,405);
 });
+
+
+test('sync preflight is Access-only, read-only and reveals no private profile',async()=>{
+ const {token,certs}=await credential();
+ const fixture=JSON.parse(await readFile(new URL('../../profiles/full-team.json',import.meta.url),'utf8'));
+ const revision='f'.repeat(40);
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
+  ALLOWED_EMAIL:'user@example.com',CONFIG_REPO:'Riflex91/private-albot-config',
+  CONFIG_BRANCH:'main',GITHUB_TOKEN:'private_test_token_only'};
+ const path='https://albot.example.com/api/profile-sync/status';
+ const requests=[];
+ const fetcher=async(url,opts)=>{
+  requests.push(String(url));
+  if(String(url).endsWith('/cdn-cgi/access/certs'))
+   return new Response(JSON.stringify(certs));
+  if(String(url).includes('/contents/albot/profile.json'))
+   return new Response(JSON.stringify({type:'file',sha:revision,
+    content:Buffer.from(JSON.stringify(fixture)).toString('base64')}));
+  throw Error('Unexpected network request');
+ };
+ const unauth=await handleRequest(new Request(path),env,{}, {fetcher});
+ assert.equal(unauth.status,401);
+ assert.equal(requests.length,0);
+ const r=await handleRequest(new Request(path,{headers:{'CF-Access-Jwt-Assertion':token}}),
+  env,{}, {fetcher});
+ assert.equal(r.status,200);
+ const body=await r.json();
+ assert.equal(body.format,'albot-config-sync-preflight/v1');
+ assert.equal(body.profile.githubSha,revision);
+ assert.match(body.profile.sha256,/^[a-f0-9]{64}$/);
+ for(const field of ['signed','published','applied','acknowledged'])
+  assert.equal(body[field],false);
+ assert.equal(JSON.stringify(body).includes('My_Ranger1'),false);
+ assert.equal(JSON.stringify(body).includes('maxAggro'),false);
+ const put=await handleRequest(new Request(path,{method:'PUT',headers:{
+  'CF-Access-Jwt-Assertion':token,origin:'https://albot.example.com',
+  'content-type':'application/json'},body:'{}'}),env,{}, {fetcher});
+ assert.equal(put.status,405);
+});
+
+test('sync status fails closed on unprovisioned and missing private profile',async()=>{
+ const {token,certs}=await credential();
+ const env={CF_ACCESS_TEAM_DOMAIN:'mine.cloudflareaccess.com',CF_ACCESS_AUD:'aud1',
+  ALLOWED_EMAIL:'user@example.com',CONFIG_REPO:'Riflex91/private-albot-config',
+  CONFIG_BRANCH:'main',GITHUB_TOKEN:'private_test_token_only'};
+ const path='https://albot.example.com/api/profile-sync/status';
+ const fetcher=async url=>{
+  if(String(url).endsWith('/cdn-cgi/access/certs'))
+   return new Response(JSON.stringify(certs));
+  return new Response('',{status:404});
+ };
+ const request=new Request(path,{headers:{'CF-Access-Jwt-Assertion':token}});
+ const missing=await handleRequest(request,env,{}, {fetcher});
+ assert.equal(missing.status,200);
+ const body=await missing.json();
+ assert.equal(body.configured,false);
+ assert.equal(body.applied,false);
+ assert.equal(body.signed,false);
+ const unprovisioned=await handleRequest(request,{...env,GITHUB_TOKEN:''},{}, {fetcher});
+ assert.equal(unprovisioned.status,503);
+});

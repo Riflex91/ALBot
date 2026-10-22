@@ -439,4 +439,8 @@ for(const b of document.querySelectorAll('[data-view]'))b.addEventListener('clic
 });
 $('menu-toggle').addEventListener('click',()=>document.body.classList.toggle('menu-open'));
 $('save').addEventListener('click',save);
+window.addEventListener('beforeunload',event=>{
+ if(!state.dirty&&!profileState.dirty)return;
+ event.preventDefault();event.returnValue='';
+});
 render();bootstrap();setInterval(refreshLive,DASHBOARD_REFRESH_MS);

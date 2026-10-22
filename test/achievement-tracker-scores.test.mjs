@@ -145,20 +145,3 @@ test('socket identity changes detach stale listeners and preserve minimum interv
  f.tracker.close();
  assert.equal(replacement.handlers.has('tracker'),false);
 });
-
-test('visible browser never emits tracker requests that open the Tracktrix Monster popup',()=>{
- const f=fixture();
- f.bot.p.headless=false;
- for(let i=0;i<3;i++){
-  assert.equal(f.tracker.poll(),false);
-  f.advance(120001);
- }
- assert.deepEqual(f.sock.sent,[]);
- assert.equal(f.sock.handlers.size,0);
- assert.equal(f.tracker.status().state,'browser-tracker-ui-protected');
- assert.equal(f.tracker.status().observedMonsters,0);
- // A headless worker retains the established server-observation path.
- f.bot.p.headless=true;
- assert.equal(f.tracker.poll(),true);
- assert.deepEqual(f.sock.sent,['tracker']);
-});

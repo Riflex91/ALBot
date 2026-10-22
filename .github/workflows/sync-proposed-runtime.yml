@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
+      - name: Use latest development branch before generating outputs
+        run: git pull --ff-only origin fix/explicit-market-pricing-team-defense-20261022
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

@@ -86,7 +86,26 @@ export async function verifySignedConfigRelease(release,{
   release.schemaId!=='albot.full/v1'||!Number.isSafeInteger(release.sequence)||
   release.sequence<=minimumSequence||release.sequence<1||
   !Number.isSafeInteger(minimumSequence)||minimumSequence<0||
-  typeof target!=='string'||!/^[A-Za-z0-9_.:\\/-]{1,128}$/.test(target)||
+  typeof target!=='string'||!new RegExp('^[A-Za-z0-9_.:/-]{1,128}
+  release.target!==target||!Number.isSafeInteger(release.issuedAt)||
+  !Number.isSafeInteger(release.expiresAt)||release.issuedAt>now||
+  release.expiresAt<=now||release.expiresAt-release.issuedAt>7*86400000||
+  !HEX.test(release.sha256??''))
+  throw Error('Signierte Konfiguration abgelaufen, rückwärts oder nicht für diesen Account');
+ const bytes=decode64(release.signature);
+ const content=await profileDigest(release.profile,subtle);
+ if(content.sha256!==release.sha256)throw Error('Profilinhalt stimmt nicht mit signiertem SHA-256 überein');
+ const key=await subtle.importKey('jwk',pinnedPublicJwk,
+  {name:'ECDSA',namedCurve:'P-256'},false,['verify']);
+ const ok=await subtle.verify({name:'ECDSA',hash:'SHA-256'},key,bytes,
+  encoder.encode(signedConfigMessage(release)));
+ if(!ok)throw Error('Signatur der Konfiguration ungültig');
+ // The caller must separately validate the full descriptor and verify a
+ // durable non-rollback cursor before considering a controlled safe-point.
+ return {verified:true,sequence:release.sequence,sha256:content.sha256,
+  profile:structuredClone(release.profile),applied:false};
+}
+).test(target)||
   release.target!==target||!Number.isSafeInteger(release.issuedAt)||
   !Number.isSafeInteger(release.expiresAt)||release.issuedAt>now||
   release.expiresAt<=now||release.expiresAt-release.issuedAt>7*86400000||

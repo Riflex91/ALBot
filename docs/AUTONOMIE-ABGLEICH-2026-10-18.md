@@ -1,3 +1,7 @@
+## N05 – dynamische Scout-Wegfreiheit (22.10.2026)
+
+Der vorhandene begrenzte lokale Scout überprüft die native `can_move_to`-Wegfreiheit jetzt mit demselben ausfallsicheren Adapter vor Planung, unmittelbar beim Dispatch und während der aktiven Bewegung. Verlorene Wegfreiheit, fehlende/werfende API oder aktivierter Stand brechen den Scout kontrolliert ab; das einmalige Kill-Ticket wird nicht erneut verwendet. Tests in `test/roadmap-n05-approved-local-scout-hop.test.mjs`. **Teilabsicherung, keine N05/N10-Vollabnahme, kein Live- oder Respawn-Zeitbeleg.** Linux-/Windows-CI und Artefakt-Synchronisierung gesondert prüfen.
+
 ## W03/W04 — Stackgrenzen in Bank-Reclaim-Quittungen (21.10.2026)
 
 Alle neu bewerteten Reclaim-Belege nutzen die echte G-Metadatenobergrenze für jedes physische Quellen-/Zwischenstapelitem. Ungültige Mengen und unbekannte Quelle werden unbestätigt gehalten. Der vorhandene irreversible NPC-/Bank-Executor bleibt die einzige Ausführungsinstanz; kein Wiederholen ungeklärter Antworten. Restarbeiten: vollständige mehrstufige Slotfolgen und echte Ingame-Quittierung.

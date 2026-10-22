@@ -24,6 +24,6 @@
       "sha256": "214d71fb5a06dbbeddad823bc8fed31354dc5c14f067f20f4c30975094078784"
     },
     "observedLoadedUrl": null,
-    "note": "22.10.2026: Aktueller öffentlicher signierter Release-Kanal zeigt 0.34.0-candidate, Sequence 34, 942181 Bytes, SHA-256 214d71fb5a06dbbeddad823bc8fed31354dc5c14f067f20f4c30975094078784. Der GitHub-Release-Manifeststand wurde für die Quellprüfung aktualisiert; die vollständige kryptografische Manifest-/Runtime-/SHA-256-Abnahme erfolgt ausschließlich über scripts/verify-bootstrap-channel.mjs in Linux/Windows CI. PR #409 integrierte 0.34 Review-Runtime nach main, ein späterer Main-/Roadmap-Codecommit ist dadurch NICHT automatisch signiert oder live bestätigt. V2-Loader, ECDSA-P-256 Public Key, Manifest-/Runtime-URLs und persönliche ALBotConfig bleiben unverändert."
+    "note": "Signierte ALBot 0.34.0-candidate Runtime Sequence 34 auf Basis von PR #409 / Main 7a067ae335976d05f51e32d8c49f5f6d2e28c8cb; Linux/Windows CI 39807781321 erfolgreich. Geschützter Signierworkflow 39808164061 einschließlich ECDSA-P-256, SHA-256, 942181 Bytes und vollständiger Offline-Suite erfolgreich. Release-Runtime byteidentisch mit Main (Git-Blob a2777c567691ef29e971260195ab9506023ee513). Tracktrix-Popup PR #404, Marktkaufregeln und Green Jr Gruppenverteidigung PR #406 enthalten; V2-Loader, Schlüssel, Manifest-/Runtime-URLs und persönliche ALBotConfig unverändert; Ingame-Liveabnahme noch offen."
   }
 }

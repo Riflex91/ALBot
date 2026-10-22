@@ -1,0 +1,38 @@
+name: Prepare signed-candidate v034 review artifacts
+on:
+  push:
+    branches: [release/0.34-candidate-verified-20261022]
+permissions:
+  contents: write
+concurrency:
+  group: prepare-v034-review
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: "!startsWith(github.event.head_commit.message, 'build(v034):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - run: npm run build:konfigurator
+      - run: npm run check:bootstrap:auto
+      - run: node scripts/verify-bootstrap-contract.mjs
+      - run: npm test
+      - name: Commit verified runtime/editor builds
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/Bot-Werkstatt.html editor/albot.settings.json profiles/ konfigurator/public/
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(v034): sync verified 0.34 candidate review artifacts'
+            git push origin HEAD:release/0.34-candidate-verified-20261022
+          fi

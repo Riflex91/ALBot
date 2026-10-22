@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 36,
-      "version": "0.36.0-candidate",
+      "sequence": 37,
+      "version": "0.37.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 946860,
-      "sha256": "68ab546e675c6fdb0d2e6878f7814c213517f81361d548dda646745d087aec31"
+      "bytes": 948766,
+      "sha256": "8c1f56ae2a3add62f17a54a8208cfa87f53e4dd88ab082236ea2d0df5f897f55"
     },
     "observedLoadedUrl": null,
-    "note": "22.10.2026: ALBot 0.36.0-candidate Sequence 36 signiert im geschützten Releaseworkflow 39821966672. Alle 2440 Offline-Tests grün; ursprünglicher main b9efdc6e100c3e3d9351369d99b220246e6c3f4c Linux/Windows CI im PR #421 erfolgreich. ECDSA-P-256-Signatur per npm run verify:release geprüft, Runtime 946860 Bytes SHA-256 68ab546e675c6fdb0d2e6878f7814c213517f81361d548dda646745d087aec31. Signed release runtime Git blob d76e5f6c2556ff2d9b93d2f065e4df1e9d8bc1a3 byteidentisch mit main; bot.js, generischer Bundler, Auto-Bootstrap und Editor auch Git-blob-identisch. Bootstrap-Public-Key, Channel-URL, persönliches ALBotConfig unverändert. Ingame/W14-Liveabnahme steht aus."
+    "note": "22.10.2026: Signierte ALBot 0.37.0-candidate / Sequence 37 enthält den sicherheitsgeprüften Coat-NPC-Kauf-Stopp (PR #423). Linux/Windows CI 39823195943 erfolgreich; Signierworkflow 39823639584 erfolgreich, ECDSA-P-256, SHA-256 8c1f56ae2a3add62f17a54a8208cfa87f53e4dd88ab082236ea2d0df5f897f55, 948766 Bytes, Git-Blob byteidentisch mit main. Bootstrap-Adresse, Public Key und persönliche ALBotConfig unverändert; Ingame-Abnahme steht aus."
   }
 }

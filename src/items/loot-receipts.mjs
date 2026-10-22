@@ -10,9 +10,11 @@ const w13Amount=i=>i?.q===undefined?1:i.q;
 function physicalLootUnits(item,G){
  if(!item||typeof item!=='object'||Array.isArray(item)||
     typeof item.name!=='string'||!item.name)return null;
- const n=w13Amount(item),meta=G?.items?.[item.name];
+ const n=w13Amount(item),catalog=G?.items;
+ // A prototype property such as `constructor` is not a game item.
+ const meta=catalog&&Object.hasOwn(catalog,item.name)?catalog[item.name]:null;
  if(!Number.isSafeInteger(n)||n<1||n>1000000||
-    (G!==undefined&&!meta))return null;
+    (G!==undefined&&(!meta||typeof meta!=='object')))return null;
  const max=meta?.s===true?9999:
   Number.isSafeInteger(meta?.s)&&meta.s>1?meta.s:1;
  return n<=max?n:null;
@@ -59,14 +61,21 @@ export function ownChestShare(row,name,G){
     row.items?.length>64||!G?.items)return null;
  const items=new Map();
  for(const entry of row.items??[]){
-  if(!entry||typeof entry.name!=='string'||!G.items[entry.name])return null;
+  if(!entry||typeof entry.name!=='string'||
+     !Object.hasOwn(G.items,entry.name)||
+     !G.items[entry.name]||typeof G.items[entry.name]!=='object')return null;
   // Lost-and-found drops have no recipient; they are not own loot.
   if(entry.lostandfound===true&&entry.looter===null)continue;
   if(typeof entry.looter!=='string'||!entry.looter||
      entry.lostandfound===true)return null;
+  // A malformed other-character entry makes the full server attribution
+  // ambiguous as well; never certify a partial forged chest event.
+  if(physicalLootUnits(entry,G)===null)return null;
   if(entry.looter!==name)continue;
-  const n=w13Amount(entry),key=w13Identity(entry);
-  if(!Number.isSafeInteger(n)||n<1||n>1000000||!key)return null;
+  // Even an exact later inventory delta cannot prove an impossible
+  // server-side amount (e.g. two unstackable rings in one entry).
+  const n=physicalLootUnits(entry,G),key=w13Identity(entry);
+  if(n===null||!key)return null;
   items.set(key,(items.get(key)??0)+n);
   if(!Number.isSafeInteger(items.get(key))||items.size>32)return null;
  }

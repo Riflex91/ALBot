@@ -1,5 +1,5 @@
 import {fingerprint,protectedItem} from '../core/policy.mjs';
-import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
+import {verifiedBankVariantCount,observedBankPackPhysical} from './bank-recovery-quantities.mjs';
 
 // Single full-stack bank withdrawal. This read-only evidence check never
 // treats a stale/off-map pack as empty, and is not an account-wide lock.
@@ -44,12 +44,14 @@ export function classifyBankSingleRecord(r,{
   return {phase:'unobserved',reason:'inventory-or-bank-map-unknown'};
  let sourceMap;
  try{sourceMap=packMap(r.pack);}catch{return {phase:'unobserved',reason:'bank-pack-map-unresolved'};}
- // A truncated local source pack is NOT a complete transaction before/after
- // image, even when every addressed slot happens to be in its prefix.
+ // Compact bank arrays omit trailing null slots. Physical row corruption,
+ // not a short array alone, invalidates a receipt.
  if(sourceMap!==map||!bank||!Array.isArray(bank[r.pack])||
-    bank[r.pack].length!==42)
+    bank[r.pack].length>42)
   return {phase:'unobserved',reason:'addressed-bank-pack-not-current'};
- const pack=bank[r.pack],source=pack[r.slot],dest=inventory[r.dest];
+ const pack=bank[r.pack];
+ if(!observedBankPackPhysical(pack))return {phase:'ambiguous',reason:'invalid-bank-pack-rows'};
+ const source=pack[r.slot],dest=inventory[r.dest];
  const carried=verifiedBankVariantCount(inventory,r.item),bankCount=verifiedBankVariantCount(pack,r.item);
  if(!singleSafe(carried)||!singleSafe(bankCount))
   return {phase:'ambiguous',reason:'invalid-observed-quantities'};

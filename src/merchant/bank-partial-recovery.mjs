@@ -1,5 +1,5 @@
 import {fingerprint,protectedItem} from '../core/policy.mjs';
-import {verifiedBankVariantCount} from './bank-recovery-quantities.mjs';
+import {verifiedBankVariantCount,observedBankPackPhysical} from './bank-recovery-quantities.mjs';
 
 // W03: physical evidence for a persisted partial withdrawal. This module is
 // read-only and never schedules, clears or automatically approves an action.
@@ -85,12 +85,15 @@ export function classifyBankPartialRecord(r,{
   return {phase:'unobserved',reason:'inventory-or-map-not-observed',confirmed:false};
  let packLocation=null;
  try{packLocation=packMap(r.pack);}catch{}
- // A truncated local source pack is NOT a complete transaction before/after
- // image, even when every addressed slot happens to be in its prefix.
+ // Compact bank arrays omit trailing null slots. Physical row corruption,
+ // not a short array alone, invalidates a receipt.
  if(!packLocation||packLocation!==map||!bank||
-    !Array.isArray(bank[r.pack])||bank[r.pack].length!==42)
+    !Array.isArray(bank[r.pack])||bank[r.pack].length>42)
   return {phase:'unobserved',reason:'live-bank-pack-not-observed',confirmed:false};
- const row=bank[r.pack],original=row[r.bankSlot],
+ const row=bank[r.pack];
+ if(!observedBankPackPhysical(row))
+  return {phase:'ambiguous',reason:'invalid-bank-pack-rows',confirmed:false};
+ const original=row[r.bankSlot],
   dest=inventory[r.dest],split=inventory[r.splitSlot],
   localCount=verifiedBankVariantCount(inventory,r.item),
   bankCount=verifiedBankVariantCount(row,r.item),

@@ -90,11 +90,13 @@ test('W06/G09 offer expiry rejects physically impossible or changed stand quanti
  const f=fixture({ttl:0});
  const stand=f.bot.p.c.slots;
  stand.trade1={name:'cake',price:100,q:100};
- assert.equal(f.market.posted('trade1',item,{_autoMarket:true}),true);
+ assert.equal(f.market.posted('trade1',item,{_autoMarket:true}),false,
+  'invalid stand stack must not be recorded');
  assert.equal(f.market.expire(),false);
  assert.equal(f.calls.length,0,'invalid stack must not dispatch unequip');
  stand.trade1={name:'cake',price:100,q:null};
- assert.equal(f.market.posted('trade1',item,{_autoMarket:true}),true);
+ assert.equal(f.market.posted('trade1',item,{_autoMarket:true}),false,
+  'explicit null quantity cannot become owned listing');
  assert.equal(f.market.expire(),false);
  assert.equal(f.calls.length,0);
  stand.trade1={name:'cake',price:100,q:99};
@@ -112,7 +114,8 @@ test('W06/G09 offer expiry rejects physically impossible or changed stand quanti
 test('W06/G09 unstackable own stand rejects a forged multi-item stack',()=>{
  const f=fixture({limit:1,ttl:0});
  f.bot.p.c.slots.trade2={name:'cake',price:100,q:2};
- assert.equal(f.market.posted('trade2',item,{_autoMarket:true}),true);
+ assert.equal(f.market.posted('trade2',item,{_autoMarket:true}),false,
+  'nonstackable phantom stand cannot become owned listing');
  assert.equal(f.market.expire(),false);
  assert.equal(f.calls.length,0);
 });

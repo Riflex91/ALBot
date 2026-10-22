@@ -1,3 +1,7 @@
+## W03 – bekannte Quellstapelgrenzen im Produktions-Kapazitätsbeleg (22.10.2026)
+
+Der bestehende gemeinsame `capacityAfterConsumption`-Prüfer erhält optional das aktuelle `G.items`-Metadatenwörterbuch und verweigert bei bekannten Gegenständen physisch übergroße Quellenbestände, auch wenn sie nur indirekt einen freien Ausgabeslot finanzieren. `actionCapacity` übergibt diese Metadaten jetzt in den bestehenden Produktionspfad. Fehlende Metadaten werden nicht erfunden und lösen keine zusätzlichen Wertaktionen aus. Regressionen in `test/shared-physical-capacity.test.mjs`; Build- und CI-Nachweise getrennt prüfen. **Keine vollständige W02/W03/W04-Transaktions-Recovery oder W14-Liveabnahme.**
+
 ## N05 – dynamische Scout-Wegfreiheit (22.10.2026)
 
 Der vorhandene begrenzte lokale Scout überprüft die native `can_move_to`-Wegfreiheit jetzt mit demselben ausfallsicheren Adapter vor Planung, unmittelbar beim Dispatch und während der aktiven Bewegung. Verlorene Wegfreiheit, fehlende/werfende API oder aktivierter Stand brechen den Scout kontrolliert ab; das einmalige Kill-Ticket wird nicht erneut verwendet. Tests in `test/roadmap-n05-approved-local-scout-hop.test.mjs`. **Teilabsicherung, keine N05/N10-Vollabnahme, kein Live- oder Respawn-Zeitbeleg.** Linux-/Windows-CI und Artefakt-Synchronisierung gesondert prüfen.

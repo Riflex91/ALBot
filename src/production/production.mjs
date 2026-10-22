@@ -142,6 +142,44 @@ export function reservationGoalsForUrgentDelivery(goals,item,recipient){
  return urgent?goals.filter(g=>(Number.isFinite(g.priority)?g.priority:0)>=urgent.priority):goals;
 }
 export function needsProductionStock(available,required){return available<required;}
+// For a gear goal, buying another +0 while ANY existing +0..+N
+// compatible input can be upgraded is not legitimate acquisition.
+// A higher-level finished copy may belong to another recipient; exclude it.
+export function physicalGearChainStock(items,g,name,level,{
+ safe=()=>true,explicit=()=>null
+}={}){
+ if(!Array.isArray(items)||!g?.gearSlot||!g.recipient||
+   g.item!==name||!Number.isSafeInteger(level)||level<0||
+   !Number.isSafeInteger(g.level)||level>=g.level)return 0;
+ // Single recipient gear targets require at most one physical unit.
+ // Use real unprotected inputs rather than another goal's speculative
+ // gross reservation, which caused a buy+0 loop with coat+4 in stock.
+ return items.some(i=>{
+  if(i?.name!==name||(i.level??0)!==level||i.l||i.b||
+    (i.q??1)!==1||!safe(i))return false;
+  const r=explicit(i,'inventory');
+  return !r||r.action==='upgrade'||
+    r.action==='send'&&r.recipient===g.recipient;
+ })?1:0;
+}
+export function pendingGearChainInput(items,g,step,{safe=()=>true,explicit=()=>null}={}){
+ if(!g?.gearSlot||!g.recipient||step?.kind!=='buy'||
+   step.item!==g.item||step.level!==0||
+   !Number.isSafeInteger(g.level)||g.level<1)return null;
+ if(!Array.isArray(items))return {blocked:true,reason:'unknown-inventory'};
+ for(const i of items){
+  if(!i||i.name!==g.item)continue;
+  const level=i.level??0,q=i.q??1;
+  if(!Number.isSafeInteger(level)||level<0||!Number.isSafeInteger(q)||q!==1)
+    return {blocked:true,reason:'invalid-physical-gear-input'};
+  if(level>=g.level||i.l||i.b||!safe(i))continue;
+  const rule=explicit(i,'inventory');
+  if(rule&&rule.action!=='upgrade'&&rule.action!=='send')continue;
+  if(rule?.action==='send'&&rule.recipient!==g.recipient)continue;
+  return {blocked:true,reason:'existing-physical-upgrade-input',level};
+ }
+ return null;
+}
 // Prefer already actionable Gear upgrades to a long, remote exchange queue.
 // This only changes ordering: server-proven chances, budgets and user rules
 // still decide if an actual mutation may execute.
@@ -857,7 +895,10 @@ export function createProduction(bot){
      const r=e.explicit({name,level},'production'),grade=p.call('item_grade',{name,level}),scroll=r?.scroll||((kind==='compound'?'cscroll':'scroll')+grade);
      return [{item:scroll,quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];
     },score:step=>routeScore(step,new Set(),0)}:{};
-    plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:qty,bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,state:p.root?.S??p.parent?.S??{},
+    plan=planProduction({G:p.G,item:g.item,level:g.level,quantity:needed,stock:(name,level)=>Math.max(qty(name,level,g),
+       physicalGearChainStock(p.c.items,g,name,level,{
+        safe:i=>e.safe(i),explicit:(i,phase)=>e.explicit(i,phase)
+       })),bank:(name,level,wanted)=>bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((s,i)=>s+(i?.name===name&&(i.level??0)===level&&!i.l&&!i.b&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),canBuy:name=>!!e.npcFor(name),allowed:cfg.production.acquireBy,maxDepth:cfg.production.maxChainDepth,confidence:cfg.production.farmConfidence,state:p.root?.S??p.parent?.S??{},
       farmSources:allowedMonsters(),questAllowed:q=>!!p.c.s?.[q],
       ...options});
    }catch(err){plan=[];goal=null;planningReason=err.message;e.note(err.message);continue;}
@@ -981,7 +1022,24 @@ export function createProduction(bot){
     fingerprint:knowledgeFingerprint(entry.fingerprint),
     reservationCount:entry.reservations.length,reason:entry.reason,until:entry.until
    });}return accepted;};
-  if(step.kind==='buy')return attempt(()=>e.npcBuy(item,{...r,goldBudget:Math.min(r.goldBudget,goal.budget)},step.quantity));
+  if(step.kind==='buy'){
+   const originalGoal=goal,originalStep=step;
+   const guard=()=>{
+    if(goal!==originalGoal||plan[0]!==originalStep||!bot.running||
+       !cfg.production.enabled||bot.inventoryBlocked||bot.journal)return false;
+    const blocked=pendingGearChainInput(p.c.items,originalGoal,originalStep,{
+     safe:i=>e.safe(i),explicit:(i,phase)=>e.explicit(i,phase)});
+    if(!blocked)return true;
+    bot.event?.('production.gearChainPurchaseBlocked',{
+     goal:originalGoal.name,item:originalStep.item,level:blocked.level??null,
+     reason:blocked.reason});
+    return false;
+   };
+   if(!guard())return false;
+   return attempt(()=>e.npcBuy(item,{
+    ...r,goldBudget:Math.min(r.goldBudget,goal.budget)
+   },step.quantity,guard));
+  }
   if(step.kind==='retrieve')return attempt(()=>bot.bank.retrieve(item,r,step.quantity));
   if(step.kind==='craft')return attempt(()=>craft(step.item,r));
   if(step.kind==='marketBuy'){
@@ -1051,6 +1109,13 @@ export function createProduction(bot){
   n+=Math.max(0,...[...waiting.values()].filter(w=>w.until>Date.now()).flatMap(w=>w.reservations.filter(r=>r.item===i.name&&r.level===(i.level??0)).map(r=>r.quantity)));
   if(goal?.recipient&&goal.recipient!==recipient&&goal.item===i.name&&goal.level===(i.level??0))n=Math.max(n,goal.quantity-(deliveries[goalKey(goal)]?.quantity??0));return Math.max(0,n);
  }
+ function protectGearChainInput(item){
+  if(me.role!=='merchant'||!item||typeof item.name!=='string'||item.l||item.b)return false;
+  const level=item.level??0;
+  if(!Number.isSafeInteger(level)||level<0)return true;
+  return goals().some(g=>g.gearSlot&&g.recipient&&g.item===item.name&&
+   g.level>level&&(deliveries[goalKey(g)]?.quantity??0)<g.quantity);
+ }
  function requestHelper(item,quantity=1,guard=null){
   if(me.role!=='merchant'||!cfg.production.enabled||!cfg.production.autonomy||
     !cfg.production.autoHelpers||!cfg.production.acquireBy?.includes('npc')||
@@ -1117,7 +1182,7 @@ export function createProduction(bot){
   e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');
   return false;
  }
- return {gearDeliveryAllowance,observedReservation,estimateAcquisition(item,level=0,quantity=1){routeScore({kind:'farm',item,level,quantity});return routeCache.get(JSON.stringify([item,level,quantity,undefined]))?.[0]??null;},invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(bot.running===false||intentBlocked){lastPublishedMaterials=[];publicationState=bot.running===false?'merchant-paused':'contract-storage-unavailable';return [];}if(cfg.general.testLogging===undefined)return materials;
+ return {gearDeliveryAllowance,protectGearChainInput,observedReservation,estimateAcquisition(item,level=0,quantity=1){routeScore({kind:'farm',item,level,quantity});return routeCache.get(JSON.stringify([item,level,quantity,undefined]))?.[0]??null;},invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(bot.running===false||intentBlocked){lastPublishedMaterials=[];publicationState=bot.running===false?'merchant-paused':'contract-storage-unavailable';return [];}if(cfg.general.testLogging===undefined)return materials;
  const first=bot.seashells?.request?.()??materials[0];
   const state=materialContract?(first?.objective===materialContract.objective?'active':first?'higher-priority-material-work':'waiting-for-approved-source'):'';
   if(state!==publicationState){publicationState=state;if(materialContract)bot.event(state==='active'?'farmOrder.resumed':'farmOrder.suspended',{objective:materialContract.objective,reason:state});}if(!first){lastPublishedMaterials=[];return [];}

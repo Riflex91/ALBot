@@ -1,0 +1,40 @@
+name: Prepare verified coat 037 runtime
+on:
+  push:
+    branches: [fix/coat-purchase-loop-036-20261022]
+permissions:
+  contents: write
+concurrency:
+  group: prepare-coat037
+  cancel-in-progress: true
+jobs:
+  prepare:
+    if: "!startsWith(github.event.head_commit.message, 'build(coat037):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --test test/coat-purchase-chain-safety.test.mjs
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - run: npm run build:konfigurator
+      - run: npm run build:bootstrap:auto
+      - run: npm run check:bootstrap:auto
+      - run: node scripts/verify-bootstrap-contract.mjs
+      - run: npm test
+      - name: Commit source-matched review artifacts
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u -- bot.js dist/ editor/Bot-Werkstatt.html editor/albot.settings.json profiles/ konfigurator/public/
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(coat037): synchronize verified candidate runtime'
+            git push origin HEAD:fix/coat-purchase-loop-036-20261022
+          fi

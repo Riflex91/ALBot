@@ -209,8 +209,8 @@ export function createEconomy(bot){
   if(!budget(q*price,0,r)||!npcTravel(npcFor(item.name),'NPC '+item.name))return false;
   return perform('buy',{cost:q*price,rule:r,guard:()=>extraGuard()&&purchaseFits(p.c.items,item,q,meta,{inventorySize:p.c.isize})&&npcAt(npcFor(item.name))&&count(item)===before&&p.G.items[item.name]?.g===price,call:()=>p.call('buy_with_gold',item.name,q),observe:()=>count(item)>=before+q,details:{item:item.name,variant:identity(item),quantity:q,before}});
  }
- function npcSell(slot,r,{onConfirmed=()=>true}={}){const i=p.c.items[slot],sourceBefore=i?.q??1,q=spare(slot,r),price=value(i);if(!q||!Number.isFinite(price)||price<r.minPrice||!remaining(r)||!budget(0,0,r))return false;const before=count(i),gold=p.c.gold;let receipt=null;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!npcTravel(d,'NPC-Verkauf'))return false;
-  return perform('sell',{slots:[slot],rule:r,onConfirmed,guard:()=>spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>Promise.resolve(p.call('sell',slot,q)).then(result=>{receipt=result;return result;}),observe:()=>{
+ function npcSell(slot,r,{onConfirmed=()=>true}={}){const i=p.c.items[slot],sourceBefore=i?.q??1,q=spare(slot,r),price=value(i);if(r?._autoDisposition===true&&bot.production?.protectGearChainInput?.(i))return false;if(!q||!Number.isFinite(price)||price<r.minPrice||!remaining(r)||!budget(0,0,r))return false;const before=count(i),gold=p.c.gold;let receipt=null;const d=destination('fancypots')??destination('potions')??npcFor('hpot0');if(!npcTravel(d,'NPC-Verkauf'))return false;
+  return perform('sell',{slots:[slot],rule:r,onConfirmed,guard:()=>!(r?._autoDisposition===true&&bot.production?.protectGearChainInput?.(p.c.items[slot]))&&spare(slot,r)>=q&&npcAt(d)&&value(p.c.items[slot])>=r.minPrice,call:()=>Promise.resolve(p.call('sell',slot,q)).then(result=>{receipt=result;return result;}),observe:()=>{
   const live=p.c.items[slot],left=sourceBefore-q;
   const sourceVerified=left===0?!live:identity(live)===identity(i)&&live?.q===left;
   return sourceVerified&&(saleReceiptMatches(receipt,i,q,q*price)||p.c.gold===gold+q*price);

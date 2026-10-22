@@ -432,3 +432,46 @@ test('W04 truncated bank pack cannot prove an empty addressed source slot',()=>{
  assert.equal(result.phase,'unobserved');
  assert.equal(result.confirmed,false);
 });
+
+test('W04 truncated source pack cannot validate any bank reclaim before/after phase',()=>{
+ const recordFresh=record();
+ const cases=[
+  {source:{...item},carried:null,phase:'unchanged'},
+  {source:null,carried:{...item},phase:'withdrawn'},
+  {source:null,carried:null,phase:'sold',saleConfirmed:true}
+ ];
+ for(const scenario of cases){
+  const r=record({...scenario.saleConfirmed?{saleConfirmed:true}:{}});
+  const inventory=empty();inventory[0]=scenario.carried;
+  const complete=empty();complete[27]=scenario.source;
+  assert.equal(classifyBankReclaimRecord(r,{owner,realm,now,inventory,
+   bank:{items0:complete},map:'bank',packMap:()=> 'bank'}).phase,
+   scenario.phase,'complete 42-slot pack is valid');
+  for(const size of [28,35,41]){
+   const truncated=complete.slice(0,size);
+   const result=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
+    bank:{items0:truncated},map:'bank',packMap:()=> 'bank'});
+   assert.equal(result.phase,'unobserved',
+    'bank pack size '+size+' cannot prove '+scenario.phase);
+   assert.equal(result.confirmed,false);
+  }
+ }
+});
+
+test('W04 incomplete local bank pack cannot use offsite withdrawal to sell',()=>{
+ const r=record({at:Date.now()});
+ const withdrawal={at:r.at,realm,pack,slot:27,dest:0,
+  sourcePrint:r.sourcePrint,inventoryCount:10,bankCount:0};
+ const f=fixture({saved:{...r,withdrawal},bankItem:null,carried:{...item}});
+ f.bankPack.length=28; // addressed slot 27 is visible but pack is incomplete
+ assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'unobserved');
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.sales.length,0,'no NPC sale while the local bank is incomplete');
+ assert.equal(f.bot.bank.pending,true,'durable record remains unresolved');
+ assert.notEqual(f.store.get('albot:bank-reclaim:M').saleConfirmed,true);
+ // A later complete pack recovers normally from the original checked source.
+ f.bankPack.length=42;f.bankPack.fill(null,28);
+ assert.equal(f.bot.bank.recoveryStatus().reclaim.phase,'withdrawn');
+ assert.equal(f.bot.bank.recoverCapacity(),true);
+ assert.equal(f.sales.length,1,'full local evidence authorizes the old guarded sale');
+});

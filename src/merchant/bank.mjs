@@ -1175,6 +1175,13 @@ export function createBank(bot){
    return true;
   }
   if(evidence.phase==='unobserved'){
+   // If we ARE on the exact bank map but this pack is incomplete, wait for
+   // a full observation. Do not use the offsite withdrawal exception to
+   // bypass missing local bank proof or launch a speculative NPC sale.
+   if(p.c.map===packMap(r.pack)){
+    e.note('Bankfreigabe: lokales Bankpack unvollständig; auf vollständige Beobachtung warten');
+    return true;
+   }
    // The source bank pack is NOT visible on the NPC map. An already
    // durably confirmed withdrawal can follow its explicitly permitted
    // sale path using the exact LIVE carried stack, but cannot treat the

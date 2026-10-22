@@ -305,18 +305,19 @@ export function createGear(bot,{now=()=>Date.now()}={}){
   // Never convert a locked/kept/assigned item into autonomous stock.
   if(cfg.production.gear&&me.role==='merchant'){
    const stock=p.c.items??[],candidates=[],used=new Map(),supply=new Map();
-   const stockKey=i=>identity(i);
+   const stockKey=i=>{try{return identity(i);}catch{return null;}};
    for(const i of stock){
     if(!i||!e.safe(i)||i.l||i.b)continue;
     const rule=e.explicit?.(i,'inventory');
     if(rule&&rule.action!=='send')continue;
-    const key=stockKey(i);supply.set(key,(supply.get(key)??0)+1);
+    const key=stockKey(i);if(!key)continue;
+    supply.set(key,(supply.get(key)??0)+1);
    }
    for(const g of result.filter(g=>g.urgentStarter||g.urgentVacancy)){
     const i=stock.find(i=>i?.name===g.item&&(i.level??0)===g.level&&
       (!e.explicit?.(i,'inventory')||e.explicit(i,'inventory').action==='send'&&
         e.explicit(i,'inventory').recipient===g.character));
-    if(i){const key=stockKey(i);used.set(key,(used.get(key)??0)+1);}
+    if(i){const key=stockKey(i);if(key)used.set(key,(used.get(key)??0)+1);}
    }
    for(const name of bot.farmers??[]){
     const member=cfg.characters.find(c=>c.enabled&&c.role==='farmer'&&c.name===name),
@@ -343,7 +344,8 @@ export function createGear(bot,{now=()=>Date.now()}={}){
         if(!gearSuitability(oldStats,next,role,profile.class,member.merchantMobility).ok)continue;
         nextScore=gearScore(next,role,profile.class);}catch{continue;}
       if(!Number.isFinite(nextScore)||nextScore<=oldScore*(1+cfg.production.minImprovement))continue;
-      candidates.push({name,slot,item:i,key:stockKey(i),gain:nextScore-oldScore});
+      const key=stockKey(i);if(!key)continue;
+      candidates.push({name,slot,item:i,key,gain:nextScore-oldScore});
      }
     }
    }

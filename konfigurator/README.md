@@ -1,5 +1,8 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+**Aktueller Betrieb, 22.10.2026:** Signierte ALBot-Runtime **0.34.0-candidate, Sequenz 34** (geschützter Signierworkflow #39808164061; Main-Runtime und Release-Runtime byteidentisch). Der Web-Konfigurator hat den privaten Full-v1-Signierablauf aus [PR #410](https://github.com/Riflex91/ALBot/pull/410), aber der gesonderte Konfigurationsschlüssel `CONFIG_SIGNING_JWK` und die stabile Zielkennung `CONFIG_SIGNING_TARGET` müssen vor einer tatsächlichen privaten Signierung ausdrücklich in Cloudflare eingerichtet sein. Ingame-Pull, atomare Übernahme und authentischer ACK sind weiterhin **nicht implementiert**. Der frühere 0.31-Banktelemetrie-Test bestätigt keine 0.34-Konfigurationssynchronisierung.
+
+
 ## Privaten signierten Profilstand vorbereiten (22.10.2026)
 
 Der Konfigurator bietet unter **System & Synchronisierung** jetzt einen manuell bestätigten Signierschritt. `PUT /api/profile-sync/prepare` erfordert die **vollständig validierte Cloudflare-Access-JWT**, eine Same-Origin-Anfrage mit JSON, `confirm:true`, den exakten SHA-256-Fingerprint, den GitHub-SHA des gespeicherten Full-v1-Profils und den vorherigen Release-GitHub-SHA (oder `null`). Der Browser übermittelt niemals ein neues Profil oder den Signierschlüssel. Bei jeder Änderung dieser Werte wird mit 409 abgebrochen.
@@ -39,7 +42,7 @@ Alle Tabs teilen denselben Entwurf. Der Knopf **Profil auf GitHub speichern** ru
 
 ## Aktueller Stand (21.10.2026)
 
-Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die spätere Runtime 0.32 benötigt eine separate Ingame-Abnahme. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.
+Die Cloudflare-Access-Ausnahme für den **exakten Pfad** `/api/ingest` wurde live aus Adventure Land geprüft: CORS-Anfragen erreichen den Worker, ungültige Tokens ergeben HTTP 401; ein gültiger Token wird akzeptiert. Automatische Charakter- und Bankuploads wurden mit der signierten Ingame-Runtime **0.31.0-candidate** bestätigt, zuletzt `bank-success`, `lastError:null`. Die inzwischen offiziell signierte Runtime **0.34.0-candidate (Sequenz 34)** ist im Release-Kanal vorhanden; ihre tatsächliche Ingame-Abnahme und insbesondere jede Ingame-Konfigurationsübernahme bleiben getrennt nachzuweisen. Alle übrigen Dashboard- und API-Pfade bleiben Access-geschützt.
 
 Die neue Startseite zeigt ausschließlich **empfangene**, nach Datenalter eingeordnete Telemetrie. Ein Snapshot innerhalb der letzten fünf Minuten ist kein beweiskräftiger Online-Status; fehlende Bankfächer bedeuten nicht, dass sie leer sind oder dass der komplette Bankbestand bekannt ist. Bei D1-/API-Fehlern dürfen alte Caches keine scheinbar aktuellen Zähler erzeugen. Die automatische Übertragung benötigt das private Ingame-CODE-Token, **niemals eine Eingabe im Konfigurator**. Ein Relay-Fenster ist lediglich ein optionaler Ausweichweg.
 

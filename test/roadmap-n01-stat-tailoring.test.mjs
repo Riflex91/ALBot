@@ -182,3 +182,23 @@ test('N01 a drifted matching scroll in another slot revokes queued mutation',asy
  assert.equal(f.mutation.guard(),false,
   'new matching quantity changes the cross-inventory pre-action proof');
 });
+
+test('W03/N01 stat tailoring rejects physically impossible unrelated item stacks',()=>{
+ const f=fixture();
+ f.G.items.ring={};
+ f.G.items.hpot0={s:99};
+ for(const row of [{name:'ring',q:2},{name:'hpot0',q:100},
+  {name:'hpot0',q:null}]){
+  f.items[2]=row;
+  assert.equal(statTailoringCandidate(f.bot),null,
+   'unrelated phantom inventory source: '+JSON.stringify(row));
+  assert.equal(f.tailoring.tick(),false,
+   'malformed inventory never starts even a stat-preview');
+ }
+ f.items[2]={name:'ring'};
+ assert.equal(statTailoringCandidate(f.bot)?.needed,10,
+  'real unstackable single remains a valid unrelated item');
+ f.items[2]={name:'hpot0',q:99};
+ assert.equal(statTailoringCandidate(f.bot)?.needed,10,
+  'exact server stack cap remains a valid unrelated item');
+});

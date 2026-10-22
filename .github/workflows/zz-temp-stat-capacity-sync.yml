@@ -1,0 +1,34 @@
+name: TEMP Stat mutation runtime synchronization
+on:
+  push:
+    branches:
+      - roadmap/w03-stat-tailoring-physical-snapshot-20261022
+permissions:
+  contents: write
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --test test/roadmap-n01-stat-tailoring.test.mjs test/roadmap-g12-destat.test.mjs
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - name: Commit generated browser and editor artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u bot.js dist editor profiles
+          if ! git diff --cached --quiet; then
+            git commit -m "build: synchronize stat mutation runtime and editor"
+            git push origin "HEAD:roadmap/w03-stat-tailoring-physical-snapshot-20261022"
+          fi

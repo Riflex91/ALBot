@@ -1140,7 +1140,9 @@ test('integration: oversized team status sheds optional fields, not money or del
  const data={name:'A',map:'main',in:'main',realm:'EUII',x:0,y:0,running:true,items:[{item:'hpot0',need:10}],
   goldBalance:12345,bankGoldBalance:54321,goldTransferPending:true,goldTransferAt:Date.now(),
   journal:true,inventoryBlocked:true,reserved:true,
-  gear:{slots:'x'.repeat(7500)},performance:{history:'y'.repeat(6500)},
+  gear:{class:'merchant',level:80,session:'merchant-session',realm:'EUII',at:Date.now(),
+   slots:{mainhand:{name:'staff',level:4},offhand:null,amulet:null}},
+  performance:{history:'y'.repeat(6500)},
   farmPlan:{rows:'z'.repeat(4000)},materials:[{item:'silk',monster:'spider',quantity:1}]};
  const original=JSON.stringify(data);
  const shaped=fitHeartbeat(data);
@@ -1149,7 +1151,9 @@ test('integration: oversized team status sheds optional fields, not money or del
  assert.deepEqual(shaped.items,data.items);
  assert.deepEqual(shaped.materials,data.materials);
  for(const key of ['goldBalance','bankGoldBalance','goldTransferPending','goldTransferAt','journal','inventoryBlocked','reserved','running','realm','map','x','y'])assert.equal(shaped[key],data[key],key);
- assert.equal(shaped.gear,undefined);
+ assert.deepEqual(shaped.gear,data.gear,'live receiver gear cannot be removed from current-session heartbeat');
+ assert.equal(fitHeartbeat({...data,gear:{slots:'x'.repeat(7500)}}),null,
+  'impossible security-critical gear cannot silently become a fresh empty receiver');
  assert.equal(JSON.stringify(data),original,'Status fitting must not mutate other module snapshots');
 });
 test('integration: real team transport delivers bounded large status and account risk honors transfer hold',()=>{
@@ -1173,7 +1177,9 @@ test('integration: real team transport delivers bounded large status and account
   target:null,free:()=>42,monsters:()=>[],farmers:['B'],leader:'B',
   gold:{surplus:()=>0,reserved:false,transferAt:Date.now()},
   logistics:{summary:()=>[{item:'hpot0',need:10,to:'A'}],reserved:false},
-  gear:{snapshot:()=>({stats:'s'.repeat(8000)}),goals:()=>[]},
+  gear:{snapshot:()=>({class:'merchant',level:80,session:'sender-session',
+   realm:'EUII',at:Date.now(),slots:{mainhand:{name:'staff',level:4},
+    offhand:null,amulet:null},stats:{attack:10}}),goals:()=>[]},
   production:{materials:()=>[{item:'silk',monster:'spider',quantity:2}],progress:()=>[{reason:'x'.repeat(4000)}]},
   teamPlan:{heartbeat:()=>({proof:'t'.repeat(6000)}),roles:()=>[]},
   capabilities:{snapshot:()=>({present:'c'.repeat(5000)})},
@@ -1189,6 +1195,8 @@ test('integration: real team transport delivers bounded large status and account
  assert.equal(peer.goldBalance,12000);
  assert.equal(peer.bankGoldBalance,2500);
  assert.deepEqual(peer.items,[{item:'hpot0',need:10,to:'A'}]);
+ assert.equal(peer.gear?.slots?.mainhand?.level,4,
+  'transport must retain current-session equipment evidence alongside financial state');
  const account=createAccount(receiver);
  let risk=account.risk();
  assert.equal(risk.complete,false);

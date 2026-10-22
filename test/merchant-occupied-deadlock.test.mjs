@@ -209,11 +209,22 @@ test('actionable finished gear is routed before speculative bank cleanup',()=>{
  f.bot.logistics.actionableGearDelivery=()=>true;
  f.bot.logistics.travel=()=>{deliveries++;f.bot.movement.order={owner:'logistics'};};
  const merchant=createMerchant(f.bot);
- merchant.tick();assert.equal(merchant.status().capacityRecovery,true);
- for(let i=35;i<39;i++)f.items[i]=null;
  merchant.tick();
- assert.equal(deliveries,1,'an allocated gear handoff should be prioritized');
+ assert.equal(deliveries,1,'ready gear delivery relieves pressure even below the free-slot reserve');
+ assert.equal(f.bot.movement.order?.owner,'logistics');
  assert.deepEqual(f.calls,[],'no speculative bank or sale transfer');
+});
+
+test('fully occupied Merchant can still depart for a proven gear delivery',()=>{
+ const f=merchantFixture({sale:false,bank:false});
+ let deliveries=0;
+ f.bot.logistics.actionableGearDelivery=()=>true;
+ f.bot.logistics.travel=()=>{deliveries++;f.bot.movement.order={owner:'logistics'};};
+ const merchant=createMerchant(f.bot);
+ merchant.tick();
+ assert.equal(deliveries,1);
+ assert.equal(f.bot.movement.order?.owner,'logistics');
+ assert.deepEqual(f.calls,[]);
 });
 
 test('confirmed exchange affinity defers bank-gold and speculative market detours only with spare slots',async()=>{

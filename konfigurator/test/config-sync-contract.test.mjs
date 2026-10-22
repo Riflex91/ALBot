@@ -57,6 +57,10 @@ test('signed config contract verifies pinned ECDSA-P256, expiry, account and rol
  const signature=new Uint8Array(await subtle.sign({name:'ECDSA',hash:'SHA-256'},kp.privateKey,raw));
  assert.equal(signature.length,64);
  release.signature=Buffer.from(signature).toString('base64url');
+ // Flip a real signature byte rather than replacing a possibly identical
+ // Base64URL character: the old test failed randomly when first char was X.
+ const invalidSignature=Uint8Array.from(signature);
+ invalidSignature[0]^=0x01;
  const inputs={pinnedPublicJwk:key,target:'ALBot/MyAccount',minimumSequence:7,now,subtle};
  const verified=await verifySignedConfigRelease(release,inputs);
  assert.equal(verified.verified,true);
@@ -72,7 +76,7 @@ test('signed config contract verifies pinned ECDSA-P256, expiry, account and rol
   ['future issue',{...release,issuedAt:now+1},{}],
   ['oversized validity',{...release,expiresAt:now+8*86400000},{}],
   ['modified settings',{...release,profile:structuredClone(release.profile)},{}],
-  ['invalid signature',{...release,signature:'X'+release.signature.slice(1)},{}]
+  ['invalid signature',{...release,signature:Buffer.from(invalidSignature).toString('base64url')},{}]
  ]){
   if(description==='modified settings')bad.profile.config.farming.maxAggro=9;
   await assert.rejects(verifySignedConfigRelease(bad,{...inputs,...extra}),description);

@@ -257,6 +257,7 @@ export async function handleRequest(request,env,ctx={},deps={}){
   telemetryLimits:{minIntervalSeconds:TELEMETRY_MIN_INTERVAL_MS/1000,
    maxCharacters:MAX_STORED_CHARACTERS,maxBankPacks:MAX_STORED_BANK_PACKS},
   message:'GitHub-Speicherung ist unabhängig von einer Ingame-Übernahme.'});
+ if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});
  if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);
   return current instanceof Response?current:json({ok:true,...current,published:false,applied:false});

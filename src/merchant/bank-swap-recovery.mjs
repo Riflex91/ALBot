@@ -1,3 +1,4 @@
+import {observedBankPackPhysical} from './bank-recovery-quantities.mjs';
 import {fingerprint,identity,protectedItem} from '../core/policy.mjs';
 
 // Read-only addressed bank merge receipt; never assumes API success.
@@ -32,8 +33,12 @@ export function classifyBankSwapRecord(r,{owner,realm,now=Date.now(),bank,map,pa
  if(!v.valid)return {phase:'invalid',reason:v.reason};
  let actual;
  try{actual=packMap?.(r.pack);}catch{}
+ // Compact bank arrays omit trailing null slots. Physical row corruption,
+ // not a short array alone, invalidates a receipt.
  if(!map||actual!==map||!Array.isArray(bank?.[r.pack])||
     bank[r.pack].length>42)return {phase:'unobserved',reason:'pack-not-current'};
+ if(!observedBankPackPhysical(bank[r.pack]))
+  return {phase:'ambiguous',reason:'invalid-bank-pack-rows'};
  const a=bank[r.pack][r.a],b=bank[r.pack][r.b];
  if(fingerprint(a)===r.fa&&fingerprint(b)===r.fb)
   return {phase:r.dispatch?'dispatched-unchanged':'prepared-unchanged',

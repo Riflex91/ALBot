@@ -115,3 +115,24 @@ test('W03 off-map pack cannot confirm and double bank journal is conflict',()=>{
  assert.equal(b.bot.bank.recoveryStatus().conflict,'simultaneous-bank-value-journals');
  assert.equal(b.bot.bank.recoveryStatus().store.phase,'conflict');
 });
+
+test('W03 store recovery accepts compact and empty physical bank packs',()=>{
+ const r=record(),s=sent(r),inventory=blank();
+ for(const [journal,source,dest,expected] of [
+  [r,{...item},null,'prepared-unchanged'],
+  [s,{...item},null,'dispatched-unchanged'],
+  [s,null,{...item},'stored']
+ ]){
+  const pack=blank();pack[7]=dest;inventory[0]=source;
+  const check=rows=>classifyBankStoreRecord(journal,{owner,realm,
+   inventory,bank:{items0:rows},map:'bank',packMap:()=> 'bank'}).phase;
+  assert.equal(check(pack),expected);
+  assert.equal(check(dest?pack.slice(0,8):[]),expected);
+  const bad=pack.slice(0,9);bad[8]={name:'other',q:null};
+  assert.equal(check(bad),'ambiguous');
+  assert.equal(check(Array(43).fill(null)),'unobserved');
+ }
+ const f=fixture();f.pack.length=0;
+ assert.equal(f.bot.bank.store(0,f.rule),true);
+ assert.equal(f.events[0].params.guard(),true);
+});

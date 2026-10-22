@@ -132,3 +132,22 @@ test('W03 bank_swap guard rejects drift, limit changes and revoked consolidation
  f.bot.p.G.items.ore.s=15;assert.equal(guard(),false);
  assert.equal(f.calls.length,0);
 });
+
+test('W03 swap recovery supports compact rows but refuses malformed amounts',()=>{
+ const before=record(),sentRecord=sent(before);
+ for(const [journal,one,two,expected] of [
+  [before,{...first},{...second},'prepared-unchanged'],
+  [sentRecord,{...first},{...second},'dispatched-unchanged'],
+  [sentRecord,null,{name:'ore',q:16},'merged-b'],
+  [sentRecord,{name:'ore',q:16},null,'merged-a']
+ ]){
+  const pack=blank();pack[3]=one;pack[7]=two;
+  const check=rows=>classifyBankSwapRecord(journal,{owner,realm,
+   bank:{items0:rows},map:'bank',packMap:()=> 'bank'}).phase;
+  assert.equal(check(pack),expected);
+  assert.equal(check(pack.slice(0,8)),expected);
+  assert.equal(check(Array(43).fill(null)),'unobserved');
+  const bad=pack.slice(0,9);bad[8]={name:'other',q:1.5};
+  assert.equal(check(bad),'ambiguous');
+ }
+});

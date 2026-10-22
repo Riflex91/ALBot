@@ -12,12 +12,20 @@ export function observedBankPackPhysical(pack,G=null){
   const qty=row.q===undefined?1:row.q;
   if(!Number.isSafeInteger(qty)||qty<1)return false;
   if(G!==null){
-   const meta=G?.items;
-   if(!meta||!Object.hasOwn(meta,row.name)||!meta[row.name]||
-      typeof meta[row.name]!=='object')return false;
-   const s=meta[row.name].s;
-   const max=s===true?9999:Number.isSafeInteger(s)&&s>1?s:1;
-   if(qty>max)return false;
+   const definitions=G?.items;
+   if(!definitions||typeof definitions!=='object')return false;
+   // Unknown definitions cannot license a multi-unit stack. But a
+   // physical singleton remains valid evidence even when a reduced
+   // host/test catalogue omits unrelated equipment or protected items.
+   if(!Object.hasOwn(definitions,row.name)){
+    if(qty!==1)return false;
+   }else{
+    const meta=definitions[row.name];
+    if(!meta||typeof meta!=='object')return false;
+    const s=meta.s;
+    const max=s===true?9999:Number.isSafeInteger(s)&&s>1?s:1;
+    if(qty>max)return false;
+   }
   }
  }
  return true;

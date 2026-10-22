@@ -72,7 +72,7 @@ async function refreshSyncStatus(){
 async function preparePrivateProfile(){
  const latest=syncState.data;
  if(syncState.loading||syncState.preparing||!latest?.configured||
-  latest.signerReady!==true||latest.releaseMatchesCurrent===true||
+  latest.signerReady!==true||(latest.releaseMatchesCurrent===true&&!latest.releaseExpired)||
   profileState.dirty||state.dirty)return;
  if(!window.confirm('Diese exakt geprüfte GitHub-Revision privat signieren?\\n'+
   'SHA-256: '+latest.profile.sha256+'\\n'+
@@ -492,6 +492,7 @@ function settings(){
    ['Signierte Revision',entry.signed?'Aktuelle Revision signiert':
     entry.releasePrepared?'Andere Revision signiert':'Noch keine'],
    ['Signatursequenz',entry.release?.sequence??'—'],
+   ['Private Signatur abgelaufen',entry.releaseExpired?'Ja':'Nein'],
    ['Signatur gültig bis',entry.release?.expiresAt?
     new Date(entry.release.expiresAt).toLocaleString('de-DE'):'—'],
    ['Signaturschlüssel-Kennung',entry.keyFingerprint??'—'],
@@ -511,7 +512,7 @@ function settings(){
    'Aktuelle Profilrevision privat signieren','button');
   prepare.type='button';
   prepare.disabled=syncState.loading||syncState.preparing||
-   entry.signerReady!==true||entry.releaseMatchesCurrent===true||
+   entry.signerReady!==true||(entry.releaseMatchesCurrent===true&&!entry.releaseExpired)||
    profileState.dirty||state.dirty;
   prepare.onclick=()=>void preparePrivateProfile();
   sync.append(prepare);

@@ -422,3 +422,13 @@ test('W03/W04 offsite receipt refuses forged inventory stack after a legitimate 
  assert.equal(out.eligible,false);
  assert.equal(out.reason,'offsite-source-slot-or-variant-count-changed');
 });
+
+test('W04 truncated bank pack cannot prove an empty addressed source slot',()=>{
+ const r=record();
+ const inventory=empty(),pack=Array(27).fill(null);
+ inventory[0]={...item};
+ const result=classifyBankReclaimRecord(r,{owner,realm,now,inventory,
+  bank:{items0:pack},map:'bank',packMap:()=> 'bank'});
+ assert.equal(result.phase,'unobserved');
+ assert.equal(result.confirmed,false);
+});

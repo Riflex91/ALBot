@@ -1,0 +1,39 @@
+name: Temporary signed-candidate 0.38 preview runtime builder
+on:
+  push:
+    branches: [feat/config-sync-preview-runtime-038-20261023]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Verify popup + independent P256 preview
+        run: node --test konfigurator/test/config-sync-popup.test.mjs konfigurator/test/config-sync-delivery.test.mjs
+      - name: Rebuild candidate against current main
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:bootstrap:auto
+      - name: Full runtime and Konfigurator tests
+        run: npm test
+      - name: Commit only built artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json dist/albot.bootstrap.auto.js editor/Bot-Werkstatt.html editor/albot.settings.json editor/example-profile.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build: regenerate 0.38 config preview on latest signed base"
+            git push origin HEAD:refs/heads/feat/config-sync-preview-runtime-038-20261023
+          fi

@@ -16,7 +16,7 @@ export function createConfigSyncPreview({
   typeof gameWindow.removeEventListener!=='function'||
   typeof readTrust!=='function'||typeof readStorage!=='function'||
   typeof now!=='function')throw Error('Config preview requires an actual browser');
- let popup=null,nonce=null,asked=false,disposed=false,verified=null,error=null,inFlight=false;
+ let popup=null,nonce=null,asked=false,consumed=false,disposed=false,verified=null,error=null,inFlight=false;
  const prepared=()=>{
   const trust=readTrust();
   if(!trust||typeof trust!=='object'||!trust.publicJwk||typeof trust.target!=='string'||
@@ -46,7 +46,7 @@ export function createConfigSyncPreview({
   try{return popup.closed!==true;}catch{return false;}
  };
  const listener=async event=>{
-  if(disposed||!hasPopup()||event.source!==popup||event.origin!==CONFIG_POPUP_ORIGIN)return;
+  if(disposed||consumed||!hasPopup()||event.source!==popup||event.origin!==CONFIG_POPUP_ORIGIN)return;
   if(event.data?.type===CONFIG_READY&&!asked){
    asked=true;
    try{popup.postMessage({type:CONFIG_REQUEST,nonce},CONFIG_POPUP_ORIGIN);}
@@ -56,7 +56,7 @@ export function createConfigSyncPreview({
   if(inFlight||!asked)return;
   const response=popupResponse(event,popup,nonce);
   if(!response)return;
-  asked=false;
+  asked=false;consumed=true;
   if(response.error){error=response.error;return;}
   inFlight=true;
   try{
@@ -86,7 +86,7 @@ export function createConfigSyncPreview({
   catch(e){error=String(e?.message??e).slice(0,140);return false;}
   try{nonce=generateSyncNonce(cryptoObject);}
   catch(e){error=String(e?.message??e).slice(0,140);return false;}
-  asked=false;verified=null;error=null;
+  asked=false;consumed=false;verified=null;error=null;
   try{popup=gameWindow.open(CONFIG_POPUP_URL,'_blank','width=760,height=750');}
   catch{popup=null;}
   return hasPopup();
@@ -101,7 +101,7 @@ export function createConfigSyncPreview({
  };
  function dispose(){
   if(disposed)return;
-  disposed=true;popup=null;nonce=null;asked=false;verified=null;
+  disposed=true;popup=null;nonce=null;asked=false;consumed=true;verified=null;
   gameWindow.removeEventListener('message',listener);
  }
  return {open,status,dispose};

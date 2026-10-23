@@ -34,6 +34,7 @@ export function assessQuestDetachment(bot){
     distance(p.c,plan)>120)return null;
  for(const h of active){
   if(!h?.running||h.rip||h.realm!==p.realm()||
+     (Number.isFinite(h.threats)&&h.threats>0)||
      h.journal||h.inventoryBlocked||h.reserved||
      !samePlace(h,plan)||distance(h,plan)>120||
      !Number.isFinite(h.hp)||!Number.isFinite(h.max_hp)||h.max_hp<=0||

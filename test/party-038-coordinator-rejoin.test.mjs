@@ -160,3 +160,22 @@ test('W15 transport sends compact accountTeam independently of bulky status',asy
   elected.names);
  r.transport.close();merchant.transport.close();
 });
+
+test('W15 team recovery channel still sends when full status exceeds secure cap',async()=>{
+ const f=wireTransport(),r=f.bots.get('My_Ranger1').bot,
+  merchant=f.bots.get('My_Merchant').bot;
+ r.transport.heartbeat();await Promise.resolve();f.deliver();
+ merchant.recovery={heartbeat:()=>({owner:'My_Merchant',
+  realm:'EUII',purpose:'bank',opaque:'q'.repeat(5000)})};
+ merchant.transport.heartbeat();await Promise.resolve();
+ const frames=f.deliver();
+ assert.equal(frames.some(x=>x.m.type==='status'&&
+  x.from==='My_Merchant'&&x.to==='My_Ranger1'),false,
+  'a genuine oversized bank claim cannot be silently discarded');
+ assert.equal(frames.some(x=>x.m.type==='accountTeam'&&
+  x.from==='My_Merchant'&&x.to==='My_Ranger1'),true,
+  'compact trusted roster remains deliverable independently');
+ assert.deepEqual(f.bots.get('My_Ranger1').incoming.at(-1)?.m.data.team.names,
+  elected.names);
+ r.transport.close();merchant.transport.close();
+});

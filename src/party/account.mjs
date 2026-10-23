@@ -162,18 +162,22 @@ export function createAccount(bot){
  }
  function receiveMessage(from,m){
   if(m.type==='accountTeam'){
-   // Transport has already validated the CM envelope, sender, group and
-   // replay tuple. A fresh, session-matched coordinator status additionally
-   // proves that this compact election belongs to this live realm/session.
+   // The game/IPC transport already validates configured sender identity,
+   // group, envelope TTL, sequence and source. If a full status is oversized
+   // the coordinator may NEVER have a fresh status heartbeat; accept the
+   // compact election without it. But reject any *present* contradictory
+   // session, realm or stopped-status evidence.
    const h=bot.transport.fresh(from),d=m.data;
    if(cfg.party.selection==='adaptive'&&from===coordinator&&
-      from!==me.name&&h?.running&&!h.rip&&h.session===m.session&&
-      h.realm===p.realm()&&d?.realm===p.realm()&&
+      from!==me.name&&(!h||h.running&&!h.rip&&
+       h.session===m.session&&h.realm===p.realm())&&
+      d?.realm===p.realm()&&
       d.team&&Number.isSafeInteger(d.team.seq)&&
       d.team.seq>=sequence){
-      // receive() updates lastAcceptedTeam only after all schema,
-      // ordering and availability checks succeed.
+      const before=lastAcceptedTeam;
       receive(from,d.team);
+      if(lastAcceptedTeam!==before)lastAcceptedTeam={
+       ...lastAcceptedTeam,session:m.session,transport:'accountTeam'};
    }
    return;
   }

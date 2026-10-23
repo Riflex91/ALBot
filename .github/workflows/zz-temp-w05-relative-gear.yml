@@ -1,0 +1,28 @@
+name: TEMP W05 relative gear allocation build
+on:
+  push:
+    branches: [roadmap/w05-w08-relative-stock-gear-fairness-20261023]
+permissions: {contents: write}
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci --ignore-scripts
+      - run: node --test test/gear-delivery-035-regressions.test.mjs test/roadmap-w05-measured-slot-utility.test.mjs test/roadmap-w05-cross-role-fairness.test.mjs
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - name: Commit generated runtime and editor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u bot.js dist editor profiles
+          if ! git diff --cached --quiet; then
+            git commit -m "build: synchronize relative stock gear priority runtime"
+            git push origin "HEAD:roadmap/w05-w08-relative-stock-gear-fairness-20261023"
+          fi

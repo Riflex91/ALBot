@@ -1,5 +1,14 @@
 import {gearCatchUpPriority,crossRoleGearPriority,measuredSlotUtilityPriority,observedGearStatDelta} from './gear-fairness.mjs';
 import {identity} from '../core/policy.mjs';
+// Fraction of the candidate's own relevant score improvement, not raw
+// role-weighted points. Those units are incompatible between Priest,
+// Ranger, Tank and Merchant. Used only to rank already admitted physical
+// Merchant stock copies, never to relax minimum improvement or spending.
+export function relativeGearGain(before,after){
+ if(!Number.isFinite(before)||!Number.isFinite(after)||
+    before<0||after<=before||after<=0)return 0;
+ return Math.min(1,Math.max(0,(after-before)/Math.max(1,after,before)));
+}
 export function gearScore(stats,role,ctype=''){
  const weights=role==='tank'?{hp:.01,armor:1,resistance:1,vit:2,vitality:2}:role==='healer'?{attack:2,int:3,mp:.02,frequency:100,armor:.3,resistance:.3,hp:.004,speed:.2}:role==='economy'?{gold:10,luck:10,speed:2,mp:.01,armor:.1,resistance:.1,hp:.002}:{attack:2,apiercing:.3,rpiercing:.3,str:1,dex:1,int:1,frequency:100,crit:2,armor:.2,resistance:.2,hp:.002,mp:.001,speed:.2};
  if(role==='dps'&&ctype){delete weights.str;delete weights.dex;delete weights.int;weights[['ranger','rogue'].includes(ctype)?'dex':['mage','priest'].includes(ctype)?'int':'str']=2;}
@@ -198,34 +207,40 @@ export function createGear(bot,{now=()=>Date.now()}={}){
  function targets(){
   if(bot.diagnosticRead)return observedTargets;
   const optimized=bot.intelligence?.targets()??[];
+  // One consistent owner/peer observation, one receipt ledger and one
+  // evaluation clock per full ranking pass. Previously each candidate
+  // repeatedly read fresh() and snapshot(), letting a later goal compare
+  // a different live cohort to the first while competing for one item.
+  const evaluatedAt=now(),realm=p.realm();
+  const enabled=cfg.characters.filter(c=>c.enabled);
+  const observed=new Map(enabled.map(c=>[c.name,
+   c.name===me.name?snapshot():profiles[c.name]]));
+  const classify=(c,p)=>c.gearRole==='auto'?
+   (p?.class==='priest'?'healer':p?.class==='merchant'?'economy':'dps'):
+   (['healer','tank','economy','dps'].includes(c.gearRole)?c.gearRole:null);
+  const cohort=enabled.map(c=>({
+   name:c.name,profile:observed.get(c.name),
+   role:classify(c,observed.get(c.name))}));
+  const rawReceipts=bot.allocation?.status?.();
+  const receipts=Array.isArray(rawReceipts)?rawReceipts:[];
   const fairness=g=>{
-   const member=cfg.characters.find(c=>c.enabled&&c.name===g.character);
+   const member=enabled.find(c=>c.name===g.character);
    if(!member)return 0;
-   // Cache exactly one observed profile per account character during this
-   // ranking pass. The live snapshot must not acquire a new timestamp when
-   // it is re-read as its own comparison peer.
-   const current=name=>name===me.name?snapshot():profiles[name];
-   const enabled=cfg.characters.filter(c=>c.enabled);
-   const observed=new Map(enabled.map(c=>[c.name,current(c.name)]));
    const profile=observed.get(g.character);
    const sameRole=enabled.filter(c=>c.role===member.role)
     .map(c=>observed.get(c.name));
-   const classify=(c,p)=>c.gearRole==='auto'?
-    (p?.class==='priest'?'healer':p?.class==='merchant'?'economy':'dps'):
-    (['healer','tank','economy','dps'].includes(c.gearRole)?c.gearRole:null);
-   const cohort=enabled.map(c=>({
-    name:c.name,profile:observed.get(c.name),role:classify(c,observed.get(c.name))}));
-   // Only confirmed equip receipts can start the bounded waiting-age clock.
-   // A missing receipt never implies that another character has waited.
-   const receipts=bot.allocation?.status?.()??[];
-   const last=Math.max(0,...receipts.filter(r=>r.recipient===g.character&&
-    r.state==='equipped'&&Number.isSafeInteger(r.settled)&&
-    r.settled>0).map(r=>r.settled));
-   return Math.min(75,gearCatchUpPriority(profile,sameRole,{now:Date.now()})+
+   // A previous realm's or another login session's equip cannot reset
+   // this wearer's waiting clock; nor may a future clock reading do so.
+   const last=Math.max(0,...receipts.filter(r=>
+    r?.recipient===g.character&&r.state==='equipped'&&
+    r.realm===realm&&r.recipientSession===profile?.session&&
+    Number.isSafeInteger(r.settled)&&r.settled>0&&
+    r.settled<=evaluatedAt).map(r=>r.settled));
+   return Math.min(75,gearCatchUpPriority(profile,sameRole,{now:evaluatedAt})+
     crossRoleGearPriority(profile,cohort,{
      role:classify(member,profile),slot:g.slot,
-     character:g.character,lastImprovedAt:last||null})+
-    measuredSlotUtilityPriority(g,optimized,{profile,now:Date.now()}));
+     character:g.character,lastImprovedAt:last||null,now:evaluatedAt})+
+    measuredSlotUtilityPriority(g,optimized,{profile,now:evaluatedAt}));
   };
   const automatic=optimized.map(g=>({...g,priority:(g.priority??0)+fairness(g)}));
   const result=[...automatic,...(cfg.production.gearTargets??[])].filter(g=>g.enabled).map(g=>({...g}));
@@ -351,11 +366,16 @@ export function createGear(bot,{now=()=>Date.now()}={}){
         nextScore=gearScore(next,role,profile.class);}catch{continue;}
       if(!Number.isFinite(nextScore)||nextScore<=oldScore*(1+cfg.production.minImprovement))continue;
       const key=stockKey(i);if(!key)continue;
-      candidates.push({name,slot,item:i,key,gain:nextScore-oldScore});
+      candidates.push({name,slot,item:i,key,
+       gain:nextScore-oldScore,
+       relativeGain:relativeGearGain(oldScore,nextScore)});
      }
     }
    }
-   candidates.sort((a,b)=>b.gain-a.gain||a.name.localeCompare(b.name)||
+   // One physical copy must go to the greatest proportional slot benefit,
+   // not the greatest raw priest/tank/DPS score (different weight units).
+   candidates.sort((a,b)=>b.relativeGain-a.relativeGain||
+      a.name.localeCompare(b.name)||
       a.slot.localeCompare(b.slot)||(b.item.level??0)-(a.item.level??0));
    const chosenSlots=new Set();
    for(const row of candidates){

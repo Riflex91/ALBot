@@ -96,3 +96,34 @@ test('W05/W08 integration adds measured improvement only to optimizer goals',()=
  assert.equal(gloves.priority,64,'manually configured goal is unchanged');
  assert.deepEqual(optimized,before,'optimizer measurements are immutable inputs');
 });
+
+test('W05/W08 optimizer fairness reads one stable team profile and one receipt ledger per ranking pass',()=>{
+ let reads=0,receiptReads=0;
+ const bot={
+  me:{name:'M',role:'merchant'},session:'m-live',
+  teamNames:['M'],farmers:[],
+  cfg:{characters:[{name:'M',role:'merchant',enabled:true,
+   gearRole:'economy'}],
+   production:{gear:true,offlineProfiles:false,autoGear:false,
+    gearTargets:[],minImprovement:.05},party:{selection:'fixed'}},
+  p:{c:{ctype:'merchant',level:60,items:[],
+   get slots(){reads++;return {};}},
+   realm:()=> 'EUI',G:{items:{boots:{type:'shoes'},belt:{type:'belt'}}},
+   call:()=>({speed:12})},
+  economy:{safe:()=>true},transport:{fresh:()=>null},
+  allocation:{status:()=>{receiptReads++;return [];}},
+  intelligence:{targets:()=>[
+   {name:'shoes',enabled:true,character:'M',slot:'shoes',
+    item:'boots',level:0,priority:10,utility:100,chance:1,estimatedCost:50},
+   {name:'belt',enabled:true,character:'M',slot:'belt',
+    item:'belt',level:0,priority:10,utility:10,chance:1,estimatedCost:50}
+  ]}
+ };
+ const gear=createGear(bot,{now:()=>Date.now()});
+ const results=gear.targets();
+ assert.equal(results.length,2);
+ assert.equal(reads,1,'one self snapshot for both competing targets');
+ assert.equal(receiptReads,1,'one receipt ledger for both competing targets');
+ assert.equal(results.find(g=>g.slot==='shoes').priority,22);
+ assert.equal(results.find(g=>g.slot==='belt').priority,10);
+});

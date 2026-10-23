@@ -20,7 +20,13 @@ export function assessQuestDetachment(bot){
  const visitors=rows.filter(h=>h?.questVisit===true);
  if(visitors.length!==1||visitors[0].name===me.name)return null;
  const active=rows.filter(h=>h?.name!==visitors[0].name);
- const plan=bot.teamPlan?.heartbeat?.();
+ // A follower's local team-plan cache may be empty even while the
+ // leader advertises a verified ordinary farm anchor. Admit that leader
+ // snapshot only after the *same local* spawn/risk validity check.
+ const localPlan=bot.teamPlan?.heartbeat?.();
+ const leader=me.name===bot.leader?null:bot.transport?.fresh?.(bot.leader);
+ const plan=localPlan??(leader?.running&&!leader.rip&&
+  leader.realm===p.realm()?leader.farmPlan:null);
  if(!plan||plan.kind!=='farm'||plan.objective||
     !bot.teamPlan?.valid?.(plan)||plan.leader!==bot.leader||
     plan.realm!==p.realm()||!samePlace(p.c,plan)||

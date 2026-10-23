@@ -225,10 +225,11 @@ export function createTransport(bot){
         // 4.2 KB. While one selected farmer visits the hunt NPC, preserve
         // the leader's *locally validated* ordinary anchor in the compact
         // march proof so the remaining Priest/Ranger can validate a duo.
-        const detached=me.name===bot.leader&&(bot.farmers??[])
-         .some(n=>n!==me.name&&bot.transport?.fresh?.(n)?.questVisit===true);
-        if(detached&&march&&own?.kind==='farm'&&!own.objective&&
-           bot.teamPlan?.valid?.(own)){
+        // A compact verified plan is needed for *all* leader engagements,
+        // not only a quest-detached duo. The optional full farmPlan can
+        // disappear during normal 4.2 KB heartbeat shedding as well.
+        if(me.name===bot.leader&&march&&own?.kind==='farm'&&
+           !own.objective&&bot.teamPlan?.valid?.(own)){
           march.anchor=compactFarmPlan(own);
         }
         return march;

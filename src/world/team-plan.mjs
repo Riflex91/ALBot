@@ -423,7 +423,18 @@ export function createTeamPlan(bot){
     lastMaterialAck=materialAck.objective;
     bot.event('farmOrder.received',{...materialAck,merchant:cfg.party.merchant});
   }
-  observe();if(cfg.party.enabled&&me.name!==bot.leader){const h=bot.transport.fresh(bot.leader);const next=h?.running&&!h.rip? h?.farmPlan:null;if(valid(next)){
+  observe();if(cfg.party.enabled&&me.name!==bot.leader){
+  const h=bot.transport.fresh(bot.leader),now=Date.now();
+  // transport.fresh() enforces the configured heartbeat TTL and sender
+  // membership. The candidate plan itself independently proves realm,
+  // leader, expiry, game-definition fingerprint and permitted spawn.
+  const ownerReady=!!h?.running&&!h.rip;
+  // Prefer the full leader plan, but recover from a trimmed heartbeat with
+  // the leader's own independently validated compact march anchor.
+  // Both representations must pass the *same* local spawn/realm/risk gate.
+  const proposed=ownerReady?[h.farmPlan,h.march?.anchor]:[];
+  const next=proposed.find(candidate=>valid(candidate))??null;
+  if(valid(next)){
    const prior=current,changed=!prior||prior.id!==next.id;
    current={...next};roles=h.roles??{};
    if(changed){
@@ -435,10 +446,15 @@ export function createTeamPlan(bot){
     bot.event('plan.adopt',{id:current.id,target:current.target,
      leader:bot.leader,reason:current.reason});
    }
-  }else if(!(h?.running&&!h.rip&&h.realm===p.realm()&&
-    !h.farmPlan&&h.march?.plan===current?.id&&valid(current))){
-   // Keep a locally verified plan only while the leader's fresh compact
-   // march ID agrees; never extend its expiry or ignore a changed leader.
+  }else if(!(ownerReady&&h.march?.plan===current?.id&&valid(current))){
+   // Keep an existing verified plan only while the leader's fresh compact
+   // march identity agrees. Do not infer that a missing plan is approval.
+   if(current||h?.march?.plan)
+     bot.event?.('plan.followerRejected',{leader:bot.leader,
+       previous:current?.id??null,remote:h?.farmPlan?.id??null,
+       compact:h?.march?.anchor?.id??null,
+       reason:!ownerReady?'leader-heartbeat-not-fresh':
+        h?.march?.anchor?'no-locally-approved-leader-plan':'plan-missing'});
    current=null;
   }
   return;}

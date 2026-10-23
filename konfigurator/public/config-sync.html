@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>ALBot – Signierte Konfiguration prüfen</title>
+<link rel="stylesheet" href="./relay.css">
+<script type="module" src="./config-sync-popup.mjs"></script>
+</head>
+<body>
+<main>
+<header><span class="mark">A</span><div><h1>ALBot – Konfigurationsprüfung</h1>
+<p>Cloudflare Access · manuell gestarteter, einmaliger Abruf</p></div></header>
+<div class="notice">Nach der ausdrücklichen Freigabe wird eine bereits signierte private
+Konfigurationsrevision an das öffnende Adventure-Land-Fenster übergeben. Dort wird die
+Signatur nochmals mit dem <strong>unabhängig festgelegten</strong> Prüfschlüssel kontrolliert.
+<strong>Es werden keine Spieleinstellungen aktiviert.</strong></div>
+<section><h2>Einmalige Übergabe</h2>
+<p id="state" role="status" aria-live="polite">Noch nicht freigegeben.</p>
+<button id="activate" type="button">Signierte Revision zur Prüfung an mein Spielfenster senden</button>
+<p class="muted">Es wird kein Spiel-Token übertragen. Eine aktive Cloudflare-Access-Anmeldung
+und ein signierter, nicht abgelaufener privater Release sind erforderlich.</p>
+</section>
+<footer>Schließe dieses Fenster, um die Sitzung zu beenden.
+Dieses Verfahren ist eine Prüfstufe – keine automatische Konfigurationssynchronisierung.</footer>
+</main>
+</body></html>

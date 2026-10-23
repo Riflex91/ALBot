@@ -93,7 +93,7 @@ export function accountRiskSnapshot(balances,bankGold,lossBudget,previous='conse
 }
 export function createAccount(bot){
  const {p,cfg,me,exec}=bot;let coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
- const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative',rotationPrepare=null;const lastOnline=new Map();
+ const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative',rotationPrepare=null,lastAcceptedTeam=null;const lastOnline=new Map();
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
  const clockKey=storageKey+':training-clock',clockRoster=JSON.stringify([...validNames].sort());
  const clock=p.read(clockKey);let clockBlocked=false;
@@ -161,6 +161,26 @@ export function createAccount(bot){
   if(from===coordinator)bot.transport.send(from,'accountReject',{reason,out:me.name},m.id);
  }
  function receiveMessage(from,m){
+  if(m.type==='accountTeam'){
+   // The game/IPC transport already validates configured sender identity,
+   // group, envelope TTL, sequence and source. If a full status is oversized
+   // the coordinator may NEVER have a fresh status heartbeat; accept the
+   // compact election without it. But reject any *present* contradictory
+   // session, realm or stopped-status evidence.
+   const h=bot.transport.fresh(from),d=m.data;
+   if(cfg.party.selection==='adaptive'&&from===coordinator&&
+      from!==me.name&&(!h||h.running&&!h.rip&&
+       h.session===m.session&&h.realm===p.realm())&&
+      d?.realm===p.realm()&&
+      d.team&&Number.isSafeInteger(d.team.seq)&&
+      d.team.seq>=sequence){
+      const before=lastAcceptedTeam;
+      receive(from,d.team);
+      if(lastAcceptedTeam!==before)lastAcceptedTeam={
+       ...lastAcceptedTeam,session:m.session,transport:'accountTeam'};
+   }
+   return;
+  }
   if(m.type==='accountReject'){
    if(me.name===coordinator&&transition?.browser&&from===transition.out&&m.id===transition.id){
     bot.event('account.swap-rejected',{id:m.id,peer:from,reason:String(m.data?.reason??'receiver-rejected').slice(0,100)});
@@ -202,7 +222,7 @@ export function createAccount(bot){
    },{timeout:55000,delay:60000,onSettle(result){if(result!=='returned'){bot.lifecycleChanging=false;if(p.read('albot:account:'+d.in+':incoming')?.id===m.id)p.write('albot:account:'+d.in+':incoming',null);bot.report('Fensterwechsel fehlgeschlagen; ursprünglicher Farmer bleibt aktiv');}}});
   if(!accepted){bot.lifecycleChanging=false;p.write('albot:account:'+d.in+':incoming',null);}
  }
- function receive(from,data){if(Array.isArray(data?.names)&&data.names.some(n=>foreignRunningFarmer(bot.transport.fresh(n),p.realm())))return;if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;if(Number.isSafeInteger(data.rotationSince)&&data.rotationSince>changed&&data.rotationSince<=Date.now()){changed=data.rotationSince;persistClock();}if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
+ function receive(from,data){if(Array.isArray(data?.names)&&data.names.some(n=>foreignRunningFarmer(bot.transport.fresh(n),p.realm())))return;if(handover?.in===me.name&&Date.now()<handover.until&&JSON.stringify(data?.names)!==JSON.stringify(handover.names))return;if((cfg.party.selection!=='adaptive'&&cfg.party.leader)||cfg.party.selection!=='adaptive'&&JSON.stringify(data?.names)!==JSON.stringify(bot.farmers)||from!==coordinator||!Number.isSafeInteger(data?.seq)||data.seq<sequence)return;const changedTeam=JSON.stringify(data.names)!==JSON.stringify(bot.farmers)||data.leader!==bot.leader;if(apply(data.names,data.leader)){sequence=data.seq;lastAcceptedTeam={from,session:bot.transport.fresh(from)?.session??null,at:Date.now(),seq:sequence,leader:bot.leader,names:[...bot.farmers]};if(Number.isSafeInteger(data.rotationSince)&&data.rotationSince>changed&&data.rotationSince<=Date.now()){changed=data.rotationSince;persistClock();}if(handover?.in===me.name&&JSON.stringify(data.names)===JSON.stringify(handover.names)){p.write(handoverKey,null);handover={...handover,committed:true};}if(changedTeam){bot.movement.stop();bot.event('account.team',{names:data.names.join(','),leader:data.leader});}}}
  function tick(){
   if(clockBlocked)persistClock();
   if(cfg.general.autoRoster){
@@ -324,5 +344,5 @@ export function createAccount(bot){
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});
  }
- return {rotationPending:()=>{const request=me.name===coordinator?rotationPrepare:bot.transport.fresh(coordinator)?.team?.rotationPrepare;return !!(request&&request.until>Date.now()&&request.until<=Date.now()+30000&&bot.farmers.includes(request.out));},tick,heartbeat,risk,spendAllowed,receive,receiveMessage,incomingRotation:()=>handover?.in===me.name?{id:handover.id,out:handover.out}:null,active:()=>!(handover&&!handover.committed&&Date.now()<handover.until)&&!bot.lifecycleChanging&&(me.role==='merchant'||bot.farmers.includes(me.name)),status:()=>({coordinator,names:[...bot.farmers],choice:bot.accountChoice??null,progression:bot.progression?.status()??null,blocked,lastRotation,transition:transition?{out:transition.out,in:transition.in,mode:transition.browser?'same-browser-window':'host-runner',acked:!!transition.acked,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;bot.lifecycleChanging=false;}};
+ return {rotationPending:()=>{const request=me.name===coordinator?rotationPrepare:bot.transport.fresh(coordinator)?.team?.rotationPrepare;return !!(request&&request.until>Date.now()&&request.until<=Date.now()+30000&&bot.farmers.includes(request.out));},tick,heartbeat,risk,spendAllowed,receive,receiveMessage,incomingRotation:()=>handover?.in===me.name?{id:handover.id,out:handover.out}:null,active:()=>!(handover&&!handover.committed&&Date.now()<handover.until)&&!bot.lifecycleChanging&&(me.role==='merchant'||bot.farmers.includes(me.name)),status:()=>({coordinator,names:[...bot.farmers],lastAcceptedTeam,choice:bot.accountChoice??null,progression:bot.progression?.status()??null,blocked,lastRotation,transition:transition?{out:transition.out,in:transition.in,mode:transition.browser?'same-browser-window':'host-runner',acked:!!transition.acked,recovering:!!transition.recovering}:null}),close(){if(transition)transition.recovering=true;bot.lifecycleChanging=false;}};
 }

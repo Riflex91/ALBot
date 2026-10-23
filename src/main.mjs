@@ -132,7 +132,9 @@ export function coordinatedPartyFarmers(bot){
   !names.length||names.length>(bot.cfg.party?.maxFarmers??3)||
   names.some(n=>typeof n!=='string'||!known.has(n))||
   new Set(names).size!==names.length||!names.includes(selected.leader)||
-  selected.leader!==bot.leader)return fallback;
+  !known.has(selected.leader))return fallback;
+ // Local leader disagreement is exactly what election synchronization
+ // repairs. Never require the old local leader to equal the new one.
  return [...names];
 }
 export function selectedPartyMember(bot,name){
@@ -142,15 +144,33 @@ export function selectedPartyMember(bot,name){
 // Deterministic ownership requires a fresh authenticated owner heartbeat.
 export function canonicalPartyOwner(bot){
  if(!bot.running||!bot.cfg.party?.enabled)return null;
- const candidates=[bot.cfg.party.merchant,bot.leader].filter((n,i,a)=>
-  typeof n==='string'&&n&&a.indexOf(n)===i&&
-  (n===bot.me.name||selectedPartyMember(bot,n)));
- for(const name of candidates){
-  const h=name===bot.me.name?{
-   name,party:bot.p.c?.party,realm:bot.p.realm(),running:bot.running,rip:bot.p.c?.rip
-  }:bot.transport?.fresh?.(name);
-  if(h?.running&&!h.rip&&h.realm===bot.p.realm()&&h.party===name)return name;
+ const realm=bot.p.realm(),merchant=bot.cfg.party.merchant;
+ const selected=new Set((bot.cfg.characters??[]).filter(c=>
+  c.enabled&&c.group===bot.me.group&&c.role==='farmer')
+  .map(c=>c.name));
+ const live=name=>name===bot.me.name?{
+  name,party:bot.p.c?.party,realm,running:bot.running,rip:bot.p.c?.rip
+ }:bot.transport?.fresh?.(name);
+ const ownerVerified=name=>{
+  const h=live(name);
+  return !!(h?.running&&!h.rip&&h.realm===realm&&h.party===name);
+ };
+ const m=live(merchant);
+ // The real party owner is the server's native party ID, NOT the Merchant:
+ // e.g. Merchant.party='My_Ranger1' while three farmers are still unpartied.
+ // Require independent confirmation from that owner's fresh heartbeat.
+ if(m?.running&&!m.rip&&m.realm===realm){
+  if(m.party===merchant&&ownerVerified(merchant))return merchant;
+  if(typeof m.party==='string'&&selected.has(m.party)&&
+     ownerVerified(m.party))return m.party;
  }
+ // No merchant proof: prefer the centrally selected leader if its actual
+ // party is self-owned, then fall back to the observed local combat leader.
+ const central=coordinatedPartyFarmers(bot);
+ const voted=m?.team?.leader;
+ if(typeof voted==='string'&&central.includes(voted)&&
+    ownerVerified(voted))return voted;
+ if(selected.has(bot.leader)&&ownerVerified(bot.leader))return bot.leader;
  return null;
 }
 export function observedPartyMembers(bot){

@@ -425,8 +425,10 @@ export function createTeamPlan(bot){
   }
   observe();if(cfg.party.enabled&&me.name!==bot.leader){
   const h=bot.transport.fresh(bot.leader),now=Date.now();
-  const ownerReady=h?.running&&!h.rip&&h.realm===p.realm()&&
-    Number.isFinite(h.received)&&h.received<=now&&now-h.received<=4000;
+  // transport.fresh() enforces the configured heartbeat TTL and sender
+  // membership. The candidate plan itself independently proves realm,
+  // leader, expiry, game-definition fingerprint and permitted spawn.
+  const ownerReady=!!h?.running&&!h.rip;
   // Prefer the full leader plan, but recover from a trimmed heartbeat with
   // the leader's own independently validated compact march anchor.
   // Both representations must pass the *same* local spawn/realm/risk gate.

@@ -4,6 +4,7 @@ import {createMovement} from '../src/core/movement.mjs';
 import {assessQuestDetachment} from '../src/combat/quest-detachment.mjs';
 import {neutralPullReadiness} from '../src/combat/team-readiness.mjs';
 import {createMarket} from '../src/merchant/market.mjs';
+import {fitHeartbeat,compactFarmPlan} from '../src/party/transport.mjs';
 
 const dest={map:'main',in:'main',x:-35,y:-162,radius:60};
 test('Monsterhunt faster Town retries after interrupt before walking; max three attempts',()=>{
@@ -111,4 +112,26 @@ test('idle merchant must not visit Ponty when no currently authorized market acq
  marketBot.economy.npcTravel=()=>{travel.push('npcTravel');return false;};
  assert.equal(market.background(),true,'explicit desired market demand still permitted');
  assert.ok(travel.includes('npcTravel'));
+});
+
+test('compact leader march anchor survives ordinary farmPlan shedding and restores Priest duo proof',()=>{
+ const {bot,peers,plan}=duo();
+ peers.My_Ranger1.farmPlan=null;
+ peers.My_Ranger1.march={plan:plan.id,realm:'EUII',
+  anchor:compactFarmPlan(plan)};
+ assert.deepEqual(assessQuestDetachment(bot)?.active,
+  ['My_Ranger1','My_Priest']);
+ const status=fitHeartbeat({
+  name:'My_Ranger1',running:true,items:[],materials:[],
+  march:peers.My_Ranger1.march,farmPlan:compactFarmPlan(plan),
+  stock:'x'.repeat(2400),performance:'y'.repeat(1400),
+  gearOrders:'z'.repeat(900)
+ },4200);
+ assert.ok(status,'trimmed status must still be deliverable');
+ assert.equal(status.farmPlan,undefined,'bulky optional farmPlan may be shed');
+ assert.equal(status.march?.anchor?.id,plan.id,
+  'compact validated anchor is transport-critical during a quest');
+ peers.My_Ranger1.march.anchor.expires=Date.now()-1;
+ assert.equal(assessQuestDetachment(bot),null,
+  'expired compact anchor cannot authorize a pull');
 });

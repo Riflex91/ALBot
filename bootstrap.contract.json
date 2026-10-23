@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 39,
-      "version": "0.39.0-candidate",
+      "sequence": 40,
+      "version": "0.40.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 961434,
-      "sha256": "8cc6eb37dd15f87c62a04e56e415f8b5347daecba88f6aab93cc4af438ed4656"
+      "bytes": 962924,
+      "sha256": "2aa832b639503b068b604af6fb69e3e892a80d3d187afa5889deaa2df3d96f6b"
     },
     "observedLoadedUrl": null,
-    "note": "23.10.2026: Signierte ALBot 0.39.0-candidate / Sequenz 39 veröffentlicht. PR #435 korrigiert adaptive Team-Synchronisation, kanonische Party-Eigentümerwahl und Wiedervereinigung isolierter Farmer; PR #436 enthält exakt neu gebaute Browser-, Headless-, Editor- und Bootstrap-Vorlagen. Linux- und Windows-Verifikation grün auf PR #436. Release-Workflow 40006163104 erfolgreich: ECDSA-P-256-Signatur gegen gepinnten öffentlichen Schlüssel verifiziert; SHA-256 8cc6eb37dd15f87c62a04e56e415f8b5347daecba88f6aab93cc4af438ed4656; 961434 Bytes. Bootstrap-URL, öffentlicher Schlüssel und persönliche ALBotConfig unverändert. Vierer-Ingame-Abnahme steht noch aus."
+    "note": "23.10.2026: ALBot 0.40.0-candidate / Sequenz 40 ECDSA-P-256-signiert und veröffentlicht. PR #438 korrigiert verifizierte Monsterhunt-Town-Retry-Route, überflüssige idle-Ponty/Marktbeschaffungsplanung und den sicheren Zweierkampf der verbleibenden Farmer bei Questfahrten, einschließlich signierten kompakten Farmplan-Ankers. PR #439 erneuert Browser, Headless, Editor und personalisierte Auto-Bootstrap-Dateien. Linux/Windows CI grün; Releaseworkflow 40010930363 mit Signatur- und SHA-256-Byteprüfung erfolgreich. Runtime SHA-256 2aa832b639503b068b604af6fb69e3e892a80d3d187afa5889deaa2df3d96f6b, 962924 Bytes. Installierter Auto-Bootstrap, öffentlicher Schlüssel und persönliche ALBotConfig unverändert. Neuer Ingame-Leistungsnachweis steht aus."
   }
 }

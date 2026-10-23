@@ -33,7 +33,7 @@ export function townChannelTeamThreat(character,monsters=[],team=[]){
  });
 }
 export function createMovement(bot){
-  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,lastTownAttempt=0,townQueued=false,moveSeq=0;
+  const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,lastTownAttempt=0,townQueued=false,moveSeq=0,questTownRetry=null;
   // Only native smart-route failures quarantine a destination map, not normal
   // travel stops or a rejected non-movement action. Keep the cache bounded.
   const failedRoutes=new Map(),routeCooldownMs=300000;
@@ -110,10 +110,18 @@ export function createMovement(bot){
     const mayTown=townShortcutOwnerAllowed(bot.me?.role,owner,
      bot.cfg.merchant?.townTravel);
     const safeTown=()=>!townChannelTeamThreat(p.c,bot.monsters(),bot.teamNames??[]);
+    const nowTown=Date.now(),townKey=routeKey(dest);
+    // Retain measured fast-travel preference after a transient quest failure.
+    // A failed cast gets at most two additional safe attempts in 30 seconds.
+    const retryKnown=owner==='quest'&&questTownRetry?.key===townKey&&
+     nowTown-questTownRetry.at<=30000;
+    const questRetry=retryKnown&&questTownRetry.attempts<3;
+    const questRetryExhausted=retryKnown&&questTownRetry.attempts>=3;
     if(mayTown&&
        (samePlace(p.c,d)||merchantTown&&crossBank)&&Array.isArray(spawn)&&
        p.has('town')&&!p.c.c?.town&&
-       townShortcutRetryReady(Date.now(),lastTown,lastTownAttempt)&&
+       !questRetryExhausted&&
+       (townShortcutRetryReady(nowTown,lastTown,lastTownAttempt)||questRetry)&&
        safeTown()){
      const speed=Math.max(1,p.c.speed??40),toSpawn=Math.hypot(
        xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])/speed*1000;
@@ -129,6 +137,9 @@ export function createMovement(bot){
        reason:crossBank?'Town-Kanal vor Bankportal gegen Rückweg zu Fuß':
         'Town-Kanal plus Restweg gegen direkten Laufweg'});
      if(walk-town>(bot.cfg.merchant?.townMinSavingsMs??3000)){
+      if(questRetry&&nowTown<questTownRetry.nextAt){
+       bot.reason='Monsterhunt: schneller Town-Retry steht bevor';return false;
+      }
       let at=0;const origin=p.c.map;townQueued=true;
       const accepted=exec.run('travel.town',['movement'],
        ()=>bot.running&&!p.c.rip&&safeTown(),
@@ -138,15 +149,23 @@ export function createMovement(bot){
              'Town spart Reisezeit; laufenden Weg vor Kanal beenden'});
          return p.call('town');},
        {priority:['logistics','gold'].includes(owner)?850:400,timeout:15000,
-        delay:30000,waitForObservation:true,
+        delay:owner==='quest'?4000:30000,waitForObservation:true,
         observe:()=>p.c.map===origin&&!p.c.c?.town&&
           Math.hypot(xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])<60,
         onSettle(result){townQueued=false;
           if(result==='confirmed'){
-           lastTown=Date.now();
+           lastTown=Date.now();questTownRetry=null;
            townMs=(townMs+lastTown-at)/2;
-          }else bot.event?.('travel.townRetry',{
-           owner,result,reason:'No successful teleport; short safety backoff only'});
+          }else{
+           if(owner==='quest'){
+            const attempts=(questTownRetry?.key===townKey?questTownRetry.attempts:0)+1;
+            questTownRetry={key:townKey,attempts,at:Date.now(),
+             nextAt:Date.now()+4000};
+           }
+           bot.event?.('travel.townRetry',{owner,result,
+            attempt:questTownRetry?.attempts??null,
+            reason:'Begrenzter Quest-Teleport-Retry vor Smart-Move'});
+          }
          }});
       if(!accepted)townQueued=false;return false;
      }

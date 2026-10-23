@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 38,
-      "version": "0.38.0-candidate",
+      "sequence": 39,
+      "version": "0.39.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 960073,
-      "sha256": "2786690226a1b3f39c02915c42d0adb10ab534f2eb6317675792bfb71b2d4206"
+      "bytes": 961434,
+      "sha256": "8cc6eb37dd15f87c62a04e56e415f8b5347daecba88f6aab93cc4af438ed4656"
     },
     "observedLoadedUrl": null,
-    "note": "23.10.2026: Signierte ALBot 0.38.0-candidate / Sequenz 38 veröffentlicht. PR #429 mit Gruppen-Reunion, Monsterhunt-/Kampfsicherheitskorrekturen und Staff-Disposition nach vollständig grüner Linux-/Windows-CI 40001188980 gemergt. Releaseworkflow 40001378036 erfolgreich: ECDSA-P-256-Signatur geprüft; SHA-256 2786690226a1b3f39c02915c42d0adb10ab534f2eb6317675792bfb71b2d4206; 960073 Bytes. Bootstrap-URL, öffentlicher Schlüssel und persönliche ALBotConfig unverändert; Ingame-Abnahme steht noch aus."
+    "note": "23.10.2026: Signierte ALBot 0.39.0-candidate / Sequenz 39 veröffentlicht. PR #435 korrigiert adaptive Team-Synchronisation, kanonische Party-Eigentümerwahl und Wiedervereinigung isolierter Farmer; PR #436 enthält exakt neu gebaute Browser-, Headless-, Editor- und Bootstrap-Vorlagen. Linux- und Windows-Verifikation grün auf PR #436. Release-Workflow 40006163104 erfolgreich: ECDSA-P-256-Signatur gegen gepinnten öffentlichen Schlüssel verifiziert; SHA-256 8cc6eb37dd15f87c62a04e56e415f8b5347daecba88f6aab93cc4af438ed4656; 961434 Bytes. Bootstrap-URL, öffentlicher Schlüssel und persönliche ALBotConfig unverändert. Vierer-Ingame-Abnahme steht noch aus."
   }
 }

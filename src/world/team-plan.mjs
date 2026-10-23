@@ -624,8 +624,27 @@ export function createTeamPlan(bot){
       bot.transport?.fresh?.(n)?.questVisit===true)){
    if(bot.movement.order?.owner==='quest-escort')bot.movement.stop();
    if(!samePlace(p.c,current)||distance(p.c,current)>65){
+    // The quest visitor is not needed to *travel* to the previously
+    // approved ordinary farm anchor. Keep the two surviving farmers
+    // together and let the independent two-person combat gate decide
+    // whether any new neutral fight is admissible after arrival.
+    const active=(bot.farmers??[]).filter(n=>n===me.name||
+      bot.transport?.fresh?.(n)?.questVisit!==true);
+    const safeDuo=active.length===2&&active.every(n=>{
+      if(n===me.name)return !p.c.rip&&p.c.hp/Math.max(1,p.c.max_hp)>=.6;
+      const h=bot.transport?.fresh?.(n);
+      return h?.running&&!h.rip&&h.realm===p.realm()&&
+       samePlace(p.c,h)&&distance(p.c,h)<=140&&
+       h.hp/Math.max(1,h.max_hp)>=.6&&!(h.threats>0);
+    })&&!squadCombatEngaged(bot.monsters(),bot.teamNames,
+      active.filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)));
+    if(safeDuo){
+      bot.reason='Monsterhunt: Zweiergruppe reist zum bestätigten Farmanker';
+      if(!bot.movement.order)bot.movement.go({...current,radius:65},'farm');
+      return true;
+    }
     if(bot.movement.order?.owner==='farm')bot.movement.stop();
-    bot.reason='Monsterhunt-Besuch: Farmroute bis Rückkehr pausiert';
+    bot.reason='Monsterhunt-Besuch: Zweiergruppe nicht reisefähig';
     return true;
    }
    if(bot.movement.order?.owner==='farm')bot.movement.stop();

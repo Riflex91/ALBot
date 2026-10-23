@@ -357,7 +357,7 @@ export async function handleRequest(request,env,ctx={},deps={}){
    if(!releaseInfo(signed.document,digest.profile.sha256,signed.sha).signed)
     return failure('Signierte Revision abgelaufen oder Profil inzwischen geändert',409);
    return json({ok:true,format:'albot-config-delivery/v1',
-    release:signed.document},{'cache-control':'no-store'});
+    release:signed.document});
   }catch{return failure('Signierte private Revision nicht überprüfbar',503);}
  }
  if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});

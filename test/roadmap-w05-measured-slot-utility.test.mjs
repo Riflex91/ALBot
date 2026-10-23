@@ -126,7 +126,11 @@ test('W05/W08 optimizer fairness reads one stable team profile and one receipt l
     item:'belt',level:0,priority:10,utility:10,chance:1,estimatedCost:50}
   ]}
  };
- const gear=createGear(bot,{now:()=>Date.now()});
+ // Evaluate the entire ranking at one fixed clock tick. Two independently
+ // sampled times can make a freshly collected profile appear to be future
+ // evidence on slower Windows CI workers and incorrectly omit fairness.
+ const rankingAt=Date.now()+1000;
+ const gear=createGear(bot,{now:()=>rankingAt});
  const results=gear.goals();
  assert.equal(results.length,2);
  assert.equal(reads,3,'one ranking snapshot plus one equip suitability read per goal');

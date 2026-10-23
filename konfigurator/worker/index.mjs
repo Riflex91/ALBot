@@ -338,6 +338,28 @@ export async function handleRequest(request,env,ctx={},deps={}){
     ...releaseInfo(previous.document,preflight.profile.sha256,previous.sha)});
   }catch{return failure('Privater Konfigurationssignierer oder Release nicht überprüfbar',503);}
  }
+ // Cloudflare-Access protected only: no game-origin CORS and no Access bypass.
+ // This route is meant for the explicitly user-opened, same-origin popup.
+ if(path==='/api/profile-sync/delivery'){
+  if(request.method!=='GET')return failure('Methode nicht erlaubt',405);
+  if(!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
+   return failure('Privater Signierer nicht eingerichtet',503);
+  try{
+   const source=await github(env,'/api/profile','GET',null,fetcher);
+   if(source instanceof Response)return source;
+   if(source.missing||!source.sha)return failure('Privates Profil fehlt',404);
+   const digest=await syncPreflight({profile:source.document,githubSha:source.sha});
+   const identity=await signer(env);
+   await assertPrivateRepository(env,fetcher);
+   const signed=await githubReleaseFile(env,{fetcher});
+   if(!signed.document)return failure('Noch keine private signierte Revision',404);
+   await previousRelease(signed.document,identity);
+   if(!releaseInfo(signed.document,digest.profile.sha256,signed.sha).signed)
+    return failure('Signierte Revision abgelaufen oder Profil inzwischen geändert',409);
+   return json({ok:true,format:'albot-config-delivery/v1',
+    release:signed.document});
+  }catch{return failure('Signierte private Revision nicht überprüfbar',503);}
+ }
  if(path==='/api/profile-schema')return json({ok:true,descriptor:FULL_DESCRIPTOR});
  if(path==='/api/policy'||path==='/api/profile'){
   const current=await github(env,path,'GET',null,fetcher);

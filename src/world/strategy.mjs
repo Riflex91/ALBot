@@ -22,6 +22,15 @@ export function effectiveFarmAggro(maxAggro,aoeMaxTargets,engaged=0){
  return Math.max(Math.min(maxAggro,Math.max(3,aoe)),
   Math.min(100,engaged));
 }
+// The species gate evaluates a controlled basic single-target pull. Native
+// aimed-AoE/multi-pull admission checks the *actual* target set separately.
+// Reserve one additional unobserved attacker, but never assume all configured
+// AoE slots have already aggroed. Real engaged hostiles always count.
+export function boundedSinglePullAggro(maxAggro,engaged=0){
+ if(!Number.isSafeInteger(maxAggro)||maxAggro<1||
+    !Number.isSafeInteger(engaged)||engaged<0||engaged>100)return maxAggro;
+ return Math.max(Math.min(maxAggro,2),engaged,1);
+}
 export function rankFarmTargets(G,character,targets,mode='balanced',learned={},weight=0){
  return targets.filter(id=>G.monsters?.[id]).map((id,index)=>{
   const m=G.monsters[id],seconds=Math.max(1,(m.hp??100)/Math.max(1,(character.attack??1)*(character.frequency??1))),xp=(m.xp??1)/seconds;
@@ -100,8 +109,7 @@ export function createStrategy(bot){
  const hp=farmRiskHp(base,live);
  const liveEngaged=(bot.monsters?.()??[]).filter(m=>m.target&&
   (bot.teamNames??[]).includes(m.target)&&m.hp>0&&samePlace(p.c,m)).length;
- const aggro=effectiveFarmAggro(cfg.farming.maxAggro,
-  cfg.party?.aoeMaxTargets,liveEngaged);
+ const aggro=boundedSinglePullAggro(cfg.farming.maxAggro,liveEngaged);
  return assessCombat({...base,...live,hp},members(planned),w.risk,aggro,
   {...compositionOptions(bot,planned),maxCombatSeconds:cfg.farming.maxCombatSeconds});}
  function logSafetyGate(id,result,planned,quiet){

@@ -3,6 +3,7 @@ import {createTrackerAcquisition} from './tracker-acquisition.mjs';
 import {forecastExchange} from './storage-plan.mjs';
 import {distance,samePlace,identity} from '../core/policy.mjs';
 import {exchangeSource} from '../production/materials.mjs';
+import {idleStaffBankRule} from './idle-staff-stock.mjs';
 import {createServicePlan} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
 import {merchantItemTaskId} from './production-priority.mjs';
@@ -213,6 +214,15 @@ export function createMerchant(bot){
     !['keep','send','consume','equip','sell','list',
       'upgrade','compound','craft'].includes(action);
  }
+ function obsoleteStaffRule(item){
+  if(!e.safe(item)||me.role!=='merchant'||!cfg.merchant.bank)return null;
+  return idleStaffBankRule({item,equipped:p.c.slots?.mainhand,
+   gearUse:bot.intelligence?.gearUse?.(item),
+   inventoryRule:e.explicit?.(item,'inventory'),
+   productionRule:e.explicit?.(item,'production'),
+   reserved:bot.production?.reservedQuantity?.(item)??Infinity,
+   activeGoal:bot.production?.activeGoal});
+ }
  function workStage(action){
   const choices=[];
   for(let slot=0;slot<(p.c.items??[]).length;slot++){
@@ -224,6 +234,9 @@ export function createMerchant(bot){
     if(action==='sell'&&e.spare(slot,r)<1)continue;
     if((action==='upgrade'||action==='compound')&&
       (item.level??0)>=r.targetLevel)continue;
+    // A strictly inferior, unclaimed staff is finished equipment, not a
+    // reason to restart an autonomous speculative economic upgrade chain.
+    if(action==='upgrade'&&obsoleteStaffRule(item))continue;
     choices.push({slot,r,priority:(r._autoProduction?1000:0)+(r.priority??0)});
    }
   }
@@ -359,6 +372,12 @@ export function createMerchant(bot){
        meta.wtype||['weapon','ring','earring','amulet','belt','helmet',
          'chest','pants','shoes','gloves','shield','cape','orb'].includes(meta.type))||
        e.explicit(item)||bot.production?.reservedQuantity?.(item)>0)continue;
+     const obsolete=obsoleteStaffRule(item);
+     if(obsolete){
+      if(bot.bank?.store?.(slot,obsolete)||bot.movement.order?.owner==='economy'||
+         bot.journal||exec.busy('inventory'))return false;
+      continue;
+     }
      const gear=bot.intelligence?.gearUse?.(item);
      if(!gear||!['gear-useful','unknown'].includes(gear.state))continue;
      const rule={enabled:true,name:'Gearreserve '+item.name,
@@ -606,7 +625,8 @@ export function createMerchant(bot){
   if(depot.stage==='storage'){
    for(let slot=0;slot<p.c.items.length;slot++){
     const item=p.c.items[slot];if(!e.safe(item))continue;
-    const r=bankRule(item);if(r?.action!=='bank'||e.spare(slot,r)<1)continue;
+    const r=obsoleteStaffRule(item)??bankRule(item);
+    if(r?.action!=='bank'||e.spare(slot,r)<1)continue;
     if(bot.bank.store(slot,r)||bot.movement.order?.owner==='economy'||
        bot.journal||exec.busy('inventory'))return true;
    }

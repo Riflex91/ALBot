@@ -1,4 +1,19 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
+ 
+## Manuell bestätigte und im Spiel verifizierte Konfigurationsvorschau (23.10.2026)
+
+Die neue API `GET /api/profile-sync/delivery` steht **ausschließlich hinter Cloudflare Access** zur Verfügung. Sie gibt nur eine bereits kryptografisch überprüfte, gültige, noch nicht abgelaufene Full-v1-Revision aus dem bestätigten privaten GitHub-Repository zurück, wenn deren SHA-256 weiterhin der aktuell gespeicherten Profilrevision entspricht. **Keine neue Cloudflare-Access-Bypassregel**, kein Game-Origin-CORS für den privaten Profilinhalt und kein weiterer dauerhaft im Spiel gespeicherter Bearer-Token.
+
+Die Ingame-Runtime erhält den **ausschließlich manuell ausgelösten** Befehl `ALBot.openConfigSync()` und den Status `ALBot.configSyncStatus()`. Beim Öffnen zeigt `config-sync.html` die genauen Datenschutzgrenzen an. Erst nach ausdrücklicher Freigabe sendet die bereits bei Cloudflare Access angemeldete Popup-Seite die signierte Revision über `postMessage` zurück an das mit Origin, Fensterquelle und einmaligem Zufallswert geprüfte Game-Fenster.
+
+Die Ingame-Vorschau **verifiziert unabhängig vom Worker** erneut ECDSA-P-256-Signatur, Full-v1-Schema, SHA-256, Zielaccount, Ablaufzeit und steigende Sequenz. Dafür müssen vor dem Bootstrap im **persönlichen CODE** der Public Key und die feste Zielkennung *außerhalb des Cloudflare-Release-Payloads* vertrauenswürdig gesetzt werden, beispielsweise in `globalThis.ALBOT_CONFIG_SYNC_TRUST` mit den Feldern `target` und `publicJwk` (nur `kty:'EC',crv:'P-256',x,y`). Der Public Key wird **nicht** über die zu prüfende API nachgeladen; private Signierschlüssel und `INGEST_TOKEN` bleiben außerhalb dieser Konfiguration.
+
+Die Vorschau liest streng den optionalen lokalen Datensatz `albot:config:applied:v1:<target>` als unteren Sequenzgrenzwert. Eine kaputte oder nicht lesbare Persistenz blockiert die Vorschau. Ein fehlender Eintrag bedeutet nur, dass noch keine angewendete Sequenz vermerkt ist; der lokale Browser-Speicher **ist noch kein hinreichend gegen Zurücksetzen gesicherter Rollbackschutz**. Dieser Schritt schreibt keine neuen Einträge, keine Spiel-ACKs und keine Konfiguration in die Runtime: `applied:false`, `acknowledged:false` bleiben zwingend. `verified` weist ausschließlich nach, dass ein signiertes Profil geprüft wurde; es ist kein Übernahmebeleg.
+
+Der signierte 0.37-Release bleibt zunächst unverändert. Der Spiel-Vorschauempfänger liegt als unabhängig getestetes Quellmodul vor; die Einbindung in eine neue offiziell signierte Runtime ist eine **separate, noch nicht abgeschlossene Veröffentlichung**. Erst danach und nach Ingame-Liveprüfung kann er im Spiel genutzt werden. Ohne separate `CONFIG_SIGNING_JWK`/`CONFIG_SIGNING_TARGET`-Worker-Einrichtung oder unabhängig gepinnten Spielprüfschlüssel bleibt die Vorschau bewusst gesperrt.
+
+**Nachfolgend noch umzusetzen:** ein Account-/Charakter-gebundener manipulationssicherer angewendeter Sequenz-Cursor, eine atomare Übernahme am Safe-Point mit vollständiger Runtime-Validierung und ein authentifizierter ACK, der unabhängig nachweisbar zwischen `verified` und `applied` unterscheidet. Bis dahin findet keine automatische Änderung der laufenden ALBot-Entscheidungen statt.
+
 
 **Aktueller Betrieb, 22.10.2026:** Signierte ALBot-Runtime **0.34.0-candidate, Sequenz 34** (geschützter Signierworkflow #39808164061; Main-Runtime und Release-Runtime byteidentisch). Der Web-Konfigurator hat den privaten Full-v1-Signierablauf aus [PR #410](https://github.com/Riflex91/ALBot/pull/410), aber der gesonderte Konfigurationsschlüssel `CONFIG_SIGNING_JWK` und die stabile Zielkennung `CONFIG_SIGNING_TARGET` müssen vor einer tatsächlichen privaten Signierung ausdrücklich in Cloudflare eingerichtet sein. Ingame-Pull, atomare Übernahme und authentischer ACK sind weiterhin **nicht implementiert**. Der frühere 0.31-Banktelemetrie-Test bestätigt keine 0.34-Konfigurationssynchronisierung.
 

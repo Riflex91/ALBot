@@ -220,7 +220,18 @@ export function createTransport(bot){
           (lead.march?.plan?{...lead.march,id:lead.march.plan}:null)):null;
         const route=me.name===bot.leader?own:
           remote??(trusted&&lead.march?.plan===own?.id?own:null);
-        return sharedMarchStatus(route,bot.movement?.order,p.realm());
+        const march=sharedMarchStatus(route,bot.movement?.order,p.realm());
+        // Full farmPlan is optional heartbeat telemetry and may be shed at
+        // 4.2 KB. While one selected farmer visits the hunt NPC, preserve
+        // the leader's *locally validated* ordinary anchor in the compact
+        // march proof so the remaining Priest/Ranger can validate a duo.
+        const detached=me.name===bot.leader&&(bot.farmers??[])
+         .some(n=>n!==me.name&&bot.transport?.fresh?.(n)?.questVisit===true);
+        if(detached&&march&&own?.kind==='farm'&&!own.objective&&
+           bot.teamPlan?.valid?.(own)){
+          march.anchor=compactFarmPlan(own);
+        }
+        return march;
       })(),potionConsumption:bot.potionReceipts?.heartbeat(),lootReceipts:bot.lootReceipts?.heartbeat()??[],items,materials:bot.production?.materials()??[],gear:bot.gear?.snapshot(),gearOrders:bot.gear?.goals().filter(g=>g.sourceOwner&&g.sourceOwner!==me.name).slice(0,5).map(g=>({item:g.item,level:g.sourceLevel??g.level,targetLevel:g.level,variant:g.variant,gearSlot:g.gearSlot,recipient:g.recipient,character:g.character,sourceOwner:g.sourceOwner})),activity:bot.strategy?.heartbeat(),questVisit:!!bot.strategy?.busy,team:bot.account?.heartbeat(),performance:bot.observations?.heartbeat(),impactIntents:bot.impactIntents?.heartbeat()??[],adaptive:bot.adaptive?.snapshot(),advice:bot.cloud?.advice(),farmPlan:compactFarmPlan(bot.teamPlan?.heartbeat?.()),materialAck:bot.teamPlan?.materialAck?.(),roles:bot.teamPlan?.roles(),elixir:bot.elixirs?.request(),supplies:bot.supplies?.request(),materialProgress:bot.production?.progress?.(),bankOwner:bot.recovery?.heartbeat(),inventoryEvidence:packInventoryEvidence(inventoryStockEvidence(c.items??[],{owner:me.name,session:bot.session,realm:p.realm(),maxRows:32,allowOpaque:true,reserved:i=>bot.production?.reservedQuantity?.(i)??0})),// Minimal elixir stock evidence survives a trimmed status message; the
       // optional full gear-stock advertisement can still be discarded.
       elixirStock:me.role==='merchant'?[...new Set((c.items??[])

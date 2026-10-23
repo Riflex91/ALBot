@@ -121,13 +121,18 @@ test('compact leader march anchor survives ordinary farmPlan shedding and restor
   anchor:compactFarmPlan(plan)};
  assert.deepEqual(assessQuestDetachment(bot)?.active,
   ['My_Ranger1','My_Priest']);
- const status=fitHeartbeat({
-  name:'My_Ranger1',running:true,items:[],materials:[],
-  march:peers.My_Ranger1.march,farmPlan:compactFarmPlan(plan),
-  stock:'x'.repeat(2400),performance:'y'.repeat(1400),
-  gearOrders:'z'.repeat(900)
- },4200);
- assert.ok(status,'trimmed status must still be deliverable');
+ let status=null;
+ // Vary only a protected claim's length to force omission of the
+ // otherwise optional farmPlan without guessing the serialized byte size.
+ for(let n=3000;n<4200;n+=20){
+  const candidate=fitHeartbeat({
+   name:'My_Ranger1',running:true,items:[],materials:[],
+   bankOwner:{proof:'b'.repeat(n)},march:peers.My_Ranger1.march,
+   farmPlan:compactFarmPlan(plan)
+  },4200);
+  if(candidate&&!candidate.farmPlan){status=candidate;break;}
+ }
+ assert.ok(status,'bounded status must shed optional plan before critical anchor');
  assert.equal(status.farmPlan,undefined,'bulky optional farmPlan may be shed');
  assert.equal(status.march?.anchor?.id,plan.id,
   'compact validated anchor is transport-critical during a quest');

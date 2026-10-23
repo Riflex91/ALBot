@@ -107,7 +107,7 @@ test('invalid signature and expired release fail closed without changing an appl
  s.dispatch(CONFIG_RELEASE,{nonce,release:bad});
  await settle(s.receiver);
  assert.equal(s.receiver.status().verified,null);
- assert.match(s.receiver.status().lastError,/Profilinhalt/);
+ assert.match(s.receiver.status().lastError,/Signed profile digest mismatch/);
  assert.equal(s.receiver.status().applied,false);
  s.receiver.dispose();
 
@@ -131,7 +131,7 @@ test('local applied high-water mark blocks rollback and corrupt journals prevent
  s.dispatch(CONFIG_RELEASE,{nonce:s.ready(),release});
  await settle(s.receiver);
  assert.equal(s.receiver.status().verified,null);
- assert.match(s.receiver.status().lastError,/rückwärts/);
+ assert.match(s.receiver.status().lastError,/Config signature preconditions failed/);
  s.receiver.dispose();
 
  const damaged=setup(identity,{[key]:'{invalid json'});

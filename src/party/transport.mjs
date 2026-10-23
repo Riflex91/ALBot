@@ -97,7 +97,10 @@ export function fitHeartbeat(data,maxLength=4200){
  while(d.materials.length>1&&length()>maxLength)d.materials.pop();
  while(d.items.length>0&&length()>maxLength)d.items.pop();
  if(length()>maxLength)d.materials=[];
- if(length()>maxLength)delete d.team;
+ // Team election is core account state: dropping it lets restarted farmers
+ // elect themselves and create incompatible party owners. Keep it intact;
+ // a separate compact coordinator broadcast is the independent fallback.
+ // Do not treat absent team evidence as a one-member selection.
  // Absence of this read-only proof means UNKNOWN, never empty inventory.
  if(length()>maxLength)delete d.inventoryEvidence;
  // Delivery intent and compact physically carried elixir evidence are core
@@ -125,7 +128,7 @@ export function createTransport(bot){
   const counters={heartbeatAttempts:0,heartbeatSent:0,heartbeatReceived:0,sendFailed:0,rejected:0,duplicates:0};
   const unreachableProbed=new Map();
   const peerCounters=new Map(roster.filter(n=>n!==me.name).map(n=>[n,{sent:0,received:0,failed:0}]));
-  let lastFailure=null;
+  let lastFailure=null,lastTeamBroadcast=0;
   function failure(to,type,reason){
     counters.sendFailed++;const peer=peerCounters.get(to);if(peer)peer.failed++;
     lastFailure={to,type,reason,at:Date.now()};return false;
@@ -223,7 +226,11 @@ export function createTransport(bot){
       elixirStock:me.role==='merchant'?[...new Set((c.items??[])
        .filter(i=>i&&!i.l&&!i.b&&p.G.items?.[i.name]?.type==='elixir')
        .map(i=>i.name))].slice(0,8).map(name=>({name})):undefined,
-      stock:(c.items??[]).filter(i=>i&&!i.l&&!i.b&&bot.p.G.items[i.name]&&['weapon','helmet','chest','pants','shoes','ring','earring','amulet','belt','cape','gloves','shield','source','orb','elixir'].includes(bot.p.G.items[i.name].type)).sort((a,b)=>Number(bot.p.G.items[b.name].type==='elixir')-Number(bot.p.G.items[a.name].type==='elixir')).slice(0,16).map(i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''})),capabilities:bot.capabilities?.snapshot(),motion:{moving:!!c.moving,speed:c.speed??0,at:Date.now()},mluck:c.s?.mluck??null,skills:['heal','partyheal','revive','taunt','reflection','energize','rspeed','cleansing_light'].filter(id=>{const s=p.G.skills?.[id];return s&&(!s.class||s.class.includes?.(c.ctype))&&(s.level??0)<=c.level;})};const bounded=fitHeartbeat(d);if(!bounded){bot.report('Team-Heartbeat zu groß; keine unvollständige Statusmeldung gesendet');return;}refreshOwn();const now=Date.now();for(const n of roster){
+      stock:(c.items??[]).filter(i=>i&&!i.l&&!i.b&&bot.p.G.items[i.name]&&['weapon','helmet','chest','pants','shoes','ring','earring','amulet','belt','cape','gloves','shield','source','orb','elixir'].includes(bot.p.G.items[i.name].type)).sort((a,b)=>Number(bot.p.G.items[b.name].type==='elixir')-Number(bot.p.G.items[a.name].type==='elixir')).slice(0,16).map(i=>({name:i.name,level:i.level??0,stat_type:i.stat_type??'',p:i.p??'',title:i.title??''})),capabilities:bot.capabilities?.snapshot(),motion:{moving:!!c.moving,speed:c.speed??0,at:Date.now()},mluck:c.s?.mluck??null,skills:['heal','partyheal','revive','taunt','reflection','energize','rspeed','cleansing_light'].filter(id=>{const s=p.G.skills?.[id];return s&&(!s.class||s.class.includes?.(c.ctype))&&(s.level??0)<=c.level;})};const bounded=fitHeartbeat(d);
+      if(!bounded)bot.event?.('transport.heartbeatOversize',{
+        bytes:JSON.stringify(d).length,teamPreserved:!!d.team,
+        reason:'status-fail-closed-independent-team-channel'});
+      refreshOwn();const now=Date.now();if(bounded)for(const n of roster){
       const d=peers.get(n),online=d?.running===true&&now-d.received<cfg.general.messageTtlMs;
       const configuredPeer=configured.includes(n);
       if(!configuredPeer&&!(me.name===cfg.party.merchant&&online))continue;
@@ -233,7 +240,28 @@ export function createTransport(bot){
       if(bad&&now-(unreachableProbed.get(n)??0)<30000)continue;
       if(bad)unreachableProbed.set(n,now);
       send(n,'status',bounded);
-    }},
+    }
+    // Independent compact roster channel. It remains deliverable when
+    // inventory/gear/bank heartbeat fields force status to fail closed.
+    // Send only from the configured active coordinator to known live peers.
+    if(me.name===cfg.party.merchant&&bot.running&&
+       cfg.party.selection==='adaptive'&&now-lastTeamBroadcast>=6000){
+      const team=bot.account?.heartbeat?.();
+      if(Array.isArray(team?.names)&&team.names.length>0&&
+         team.names.length<=cfg.party.maxFarmers&&
+         typeof team.leader==='string'&&team.names.includes(team.leader)&&
+         Number.isSafeInteger(team.seq)&&team.seq>=0){
+        lastTeamBroadcast=now;
+        const names=[...new Set(team.names)].filter(n=>n!==me.name&&
+          configured.includes(n)&&bot.transport?.fresh?.(n)?.running&&
+          bot.transport.fresh(n).realm===p.realm());
+        for(const name of names)send(name,'accountTeam',{
+          realm:p.realm(),team:{names:[...team.names],leader:team.leader,
+           seq:team.seq,rotationSince:team.rotationSince}
+        });
+      }
+    }
+    },
     close(){offs.splice(0).forEach(f=>f());peers.clear();seen.clear();retired.clear();}
   };
 }

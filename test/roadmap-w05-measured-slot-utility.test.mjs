@@ -87,7 +87,14 @@ test('W05/W08 integration adds measured improvement only to optimizer goals',()=
   economy:{safe:()=>true}
  };
  const before=optimized.map(g=>({...g}));
- const goals=createGear(bot).goals();
+ // Sample evaluation time after simulated native profile observation.
+ // Otherwise Date.now() may advance between the plan clock and snapshot
+ // on slower CI hosts, incorrectly marking a fresh snapshot as "future".
+ // All observations and the evaluation deadline must share one fixed tick.
+ // Sampling Date.now() independently even with +1000ms can cross an OS clock
+ // boundary between evaluatedAt and snapshot(), invalidating fresh evidence.
+ const fixedNow=Date.now()+1000;
+ const goals=createGear(bot,{now:()=>fixedNow}).goals();
  const shoe=goals.find(g=>g.item==='boots'),
   belt=goals.find(g=>g.item==='belt'),
   gloves=goals.find(g=>g.item==='gloves');

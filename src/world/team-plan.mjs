@@ -355,7 +355,17 @@ export function createTeamPlan(bot){
   return huntObjective;
  }
  function candidates(){const explicit=me.farmTargets?.length?me.farmTargets:cfg.farming.targets;return cfg.farming.autoTargets===false||me.farmTargets?.length?explicit:Object.keys(p.G.monsters??{}).filter(id=>{const m=p.G.monsters[id];return !m.boss&&!(m.respawn<0)&&!m.cooperative&&!m.stationary;});}
- function allowed(id){return candidates().includes(id)&&materialEvent(p.G,id,p.root.S??p.parent.S).active&&bot.strategy.safeTarget(id,undefined,true,true);}
+ function verifiedHuntSpecies(id){
+  // Ordinary farming exclusions must not silently remove an active server
+  // monsterhunt. This is species eligibility only, NOT safety admission.
+  const h=me.name===bot.leader?huntObjective:
+   bot.transport?.fresh?.(bot.leader)?.huntObjective;
+  return h?.phase==='combat'&&h.monster===id&&
+   typeof id==='string'&&!!p.G.monsters?.[id];
+ }
+ function allowed(id){return (candidates().includes(id)||verifiedHuntSpecies(id))&&
+  materialEvent(p.G,id,p.root.S??p.parent.S).active&&
+  bot.strategy.safeTarget(id,undefined,true,true);}
  function materialRequests(){const h=bot.transport.fresh(cfg.party.merchant);return h?.running===true&&h.realm===p.realm()?h.materials??[]:[];}
  function valid(plan){if(!Number.isInteger(bot.decisionEpoch))return validRaw(plan);if(validEpoch!==bot.decisionEpoch){validEpoch=bot.decisionEpoch;validCache.clear();}if(!validCache.has(plan))validCache.set(plan,validRaw(plan));return validCache.get(plan);}
  function validRaw(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir','hunt'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
@@ -506,9 +516,11 @@ export function createTeamPlan(bot){
      bot.event?.('hunt.noApprovedSpawn',{owner:hunt.owner,monster:hunt.monster,
       remaining:hunt.remaining,nextOwner:bot.farmers[huntState.index],
       retryAfter:huntState.skipped[hunt.owner].until,
-      diagnostics:{candidateSpawns:spawnLocations(p.G,[hunt.monster],cfg.world.excludedMaps,cfg.farming.pvp).length,
+      // The event transport flattens nested objects to "[object Object]".
+      // Serialize this bounded diagnostic so live rejects remain explainable.
+      diagnostics:JSON.stringify({candidateSpawns:spawnLocations(p.G,[hunt.monster],cfg.world.excludedMaps,cfg.farming.pvp).length,
        allowedMonster:allowed(hunt.monster),approvedRanking:ranking.filter(r=>r.target===hunt.monster).length,
-       permittedMaps:cfg.world.excludedMaps,deadline:huntHorizon?.state??null},
+       permittedMaps:cfg.world.excludedMaps,deadline:huntHorizon?.state??null}),
       reason:infeasibleHunt?'Monsterhunt-Zeitfenster / Server nicht passend: '+huntHorizon.state:
         'Kein freigegebener sicherer Spawn; Auftrag bleibt bestehen',
        remainingMs:hunt.remainingMs??null,neededMs:huntHorizon?.neededMs??null});

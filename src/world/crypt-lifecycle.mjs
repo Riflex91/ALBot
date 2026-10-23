@@ -3,7 +3,9 @@ import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 
 // W12/N11 first bounded Crypt admission phase. The official CODE entrypoint
 // is enter('crypt') to open and enter('crypt', instanceName) to join.
-// There is deliberately NO automatic scheduler, replay, loot or exit path.
+// There is deliberately NO automatic scheduler, replay, loot or exit RPC.
+// A physically observed same-session exit may retire the completed admission
+// only after two separate local observations; it never proves a cleared Crypt.
 const cryptEntryText=s=>typeof s==='string'&&s.length>0&&s.length<=100;
 const cryptEntryInstance=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(s);
 const cryptEntryTime=n=>Number.isSafeInteger(n)&&n>0;
@@ -27,6 +29,9 @@ export function validCryptEntryRecord(r){
 export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
  const {p,me}=bot,key='albot:crypt-lifecycle:'+me.name;
  let record=null,readFailed=false,writeFailed=false,closed=false;
+ // Volatile only: a restart or realm/session drift may NEVER synthesize an
+ // exit from a historical 'inside-observed' durable checkpoint.
+ let outsideWitness=null;
  const read=()=>{
   if(typeof p.readCryptJournal!=='function')
    throw Error('strict-crypt-reader-unavailable');
@@ -164,8 +169,58 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
   // stale-memory overwrite if another live owner changed the checkpoint.
   return durable(null);
  }
+ function physicalOutside(){
+  const c=p.c;
+  // Conservatively accept only the normal public map where a Crypt
+  // survivor can be observed, not an unknown/private instance, death
+  // respawn or disconnected/stale character object.
+  return !!c&&c.name===me.name&&c.map==='main'&&c.in==='main'&&
+   Number.isFinite(c.x)&&Number.isFinite(c.y)&&
+   Number.isFinite(c.hp)&&c.hp>0&&c.rip!==true;
+ }
+ function reconcileObservedExit(){
+  if(!validCryptEntryRecord(record)||
+     record.phase!=='inside-observed'||!bot.running||
+     record.owner!==me.name||record.realm!==p.realm()||
+     record.session!==bot.session||!physicalOutside()||
+     bot.journal||bot.inventoryBlocked||bot.bank?.pending||
+     bot.logistics?.reserved||bot.lifecycleChanging||
+     bot.account?.rotationPending?.()||
+     bot.exec?.pending?.size>0||bot.movement?.order||
+     bot.caveLifecycle?.status?.()?.blocked===true||
+     bot.caveVoteJournal?.status?.()?.blocked===true){
+   outsideWitness=null;return false;
+  }
+  const at=now();
+  if(!cryptEntryTime(at)||at<record.inside.at){
+   outsideWitness=null;return false;
+  }
+  const witness={at,session:bot.session,realm:record.realm,
+   instance:record.inside.in,insideAt:record.inside.at};
+  // The first outside read is only a local observation, NOT a receipt.
+  // An in-flight action, a new process or a map transition back inside
+  // invalidates the volatile witness without erasing the durable intent.
+  if(!outsideWitness||outsideWitness.session!==witness.session||
+     outsideWitness.realm!==witness.realm||
+     outsideWitness.instance!==witness.instance||
+     outsideWitness.insideAt!==witness.insideAt||
+     at<outsideWitness.at||at-outsideWitness.at>30000){
+   outsideWitness=witness;return false;
+  }
+  if(at-outsideWitness.at<2000)return false;
+  // durable() checks the strict persisted read and write-back before
+  // clearing. No enter(), leave(), cave_exit() or other game RPC occurs.
+  const confirmed=durable(null);
+  if(confirmed)outsideWitness=null;
+  return confirmed;
+ }
  function sample(){
   if(closed||readFailed||writeFailed||!record)return false;
+  if(record.phase==='inside-observed'){
+   if(live()){outsideWitness=null;return false;}
+   return reconcileObservedExit();
+  }
+  outsideWitness=null;
   if(record.phase==='prepared')return reconcileStalePrepared();
   if(record.phase!=='dispatch-unknown'||
      record.owner!==me.name||record.realm!==p.realm()||
@@ -186,5 +241,5 @@ export function createCryptLifecycle(bot,{now=()=>Date.now()}={}){
    !bot.exec?.pending?.size&&durable(null);
  }
  return {preflight,prepare,requestEntry,sample,discardPrepared,status,
-  close(){closed=true;}};
+  close(){closed=true;outsideWitness=null;}};
 }

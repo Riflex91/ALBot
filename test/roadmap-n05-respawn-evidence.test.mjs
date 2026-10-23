@@ -314,3 +314,28 @@ test('N05 truncated snapshots may still affirm directly visible live monsters',(
  assert.equal(rows[0].state,'visible-last-sampled');
  assert.equal(f.calendar.status().executable,false);
 });
+
+test('N05 throwing and malformed complete frames cannot manufacture negative kill visibility',()=>{
+ const f=fixture(),c=f.calendar;c.sample();
+ c.hit({actor:'M',target:'e1',damage:10});
+ assert.equal(c.death({actor:'M',id:'e1'}),true);
+ const first=c.status().rows[0].killedAt;
+ const invalid=[
+  ()=>{throw Error('monster frame unavailable');},
+  ()=>[null],()=>[{id:'broken',type:'monster',mtype:'goo',hp:NaN}],
+  ()=>[{id:'twice',type:'monster',mtype:'goo',hp:30},
+    {id:'twice',type:'monster',mtype:'goo',hp:30}]
+ ];
+ for(const next of invalid){
+  f.bot.monsters=next;f.advance(2000);
+  assert.doesNotThrow(()=>c.sample());
+  const observed=c.status().rows[0];
+  assert.equal(observed.killedAt,first);
+  assert.equal(observed.scout.negativeObservations,0);
+  assert.equal(observed.lastMissingAt,null);
+ }
+ f.bot.monsters=()=>[];
+ f.advance(2000);c.sample();
+ assert.equal(c.status().rows[0].scout.negativeObservations,1,
+  'a later complete, unambiguous frame can still provide one passive sample');
+});

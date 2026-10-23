@@ -87,3 +87,62 @@ test('remote pack only at its own reserve is not treated as usable recovery capa
  assert.equal(f.bank.reclaim(),true);
  assert.deepEqual(f.calls.map(x=>x.kind),['bank.reclaim']);
 });
+
+test('W04 compact bank packs always represent 42 logical cells',()=>{
+ const full=pack('bank',0);
+ assert.equal(bankCapacityPressure([{map:'bank',items:[]}],2,'bank').pressed,false);
+ assert.equal(bankCapacityPressure([{map:'bank',items:[{name:'ordinary'}]}],2,'bank').pressed,false);
+ assert.equal(bankCapacityPressure([full,{map:'bank_b',items:[]}],2,'bank').pressed,false);
+});
+test('W04 missing remote location or invalid physical pack revokes pressure',()=>{
+ const local=pack('bank',2),G={items:{carrot:{s:9999}}};
+ const bad=[
+  {map:'bank_b',items:Array(43).fill(null)},{map:null,items:[]},
+  {map:'bank_b',items:null},
+  {map:'bank_b',items:[{name:'unknown',q:null}]},
+  {map:'bank_b',items:[{name:'unknown',q:0}]},
+  {map:'bank_b',items:[{name:'unknown',q:1.5}]},
+  {map:'bank_b',items:[{name:'unknown',q:2}]},
+  {map:'bank_b',items:[{name:'carrot',q:10000}]}
+ ];
+ for(const row of bad){
+  const state=bankCapacityPressure([local,row],2,'bank',G);
+  assert.equal(state.pressed,false,JSON.stringify(row));
+  assert.equal(state.locallyBlocked,false);
+ }
+ assert.equal(bankCapacityPressure([local,{map:'bank_b',
+  items:[{name:'unknown'}]}],2,'bank',G).pressed,false);
+});
+test('W04 queued emergency sale loses permission when bank workspace recovers',()=>{
+ for(const edit of [
+  f=>{f.c.bank.items1[39]=null;},
+  f=>{f.c.bank.items8=[];f.p.G.bank_packs.items8=['bank_b',1000];}
+ ]){
+  const f=merchantBank();
+  assert.equal(f.bank.reclaim(),false);
+  f.bot.decisionEpoch++;
+  assert.equal(f.bank.reclaim(),true);
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].job.guard(),true);
+  edit(f);
+  assert.equal(f.calls[0].job.guard(),false,
+   'fresh free bank workspace revokes queued sale');
+  assert.equal(f.calls.length,1);
+ }
+});
+test('W04 invalid newly observed remote packs or illegal stack revoke emergency dispatch',()=>{
+ for(const edit of [
+  f=>{f.c.bank.items8=Array(43).fill(null);f.p.G.bank_packs.items8=['bank_b',1000];},
+  f=>{f.c.bank.items8={damaged:true};f.p.G.bank_packs.items8=['bank_b',1000];},
+  f=>{f.c.bank.items8=[];},
+  f=>{f.c.bank.items1[5]={name:'carrot',q:10000};}
+ ]){
+  const f=merchantBank();
+  assert.equal(f.bank.reclaim(),false);
+  f.bot.decisionEpoch++;
+  assert.equal(f.bank.reclaim(),true);
+  assert.equal(f.calls[0].job.guard(),true);
+  edit(f);
+  assert.equal(f.calls[0].job.guard(),false);
+ }
+});

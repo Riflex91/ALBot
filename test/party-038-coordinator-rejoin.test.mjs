@@ -179,3 +179,16 @@ test('W15 team recovery channel still sends when full status exceeds secure cap'
   elected.names);
  r.transport.close();merchant.transport.close();
 });
+
+test('W15 authenticated compact election bootstraps without any merchant status frame',()=>{
+ const f=accountFixture('My_Priest');
+ f.peers.delete('My_Merchant');
+ f.account.receiveMessage('My_Merchant',{
+  type:'accountTeam',session:'My_Merchant-session',
+  data:{realm:'EUII',team:elected}
+ });
+ assert.deepEqual(f.bot.farmers,elected.names);
+ assert.equal(f.bot.leader,'My_Ranger1');
+ assert.equal(f.account.status().lastAcceptedTeam?.transport,'accountTeam');
+ assert.equal(f.account.status().lastAcceptedTeam?.session,'My_Merchant-session');
+});

@@ -120,9 +120,9 @@ test('W05/W08 optimizer fairness reads one stable team profile and one receipt l
   ]}
  };
  const gear=createGear(bot,{now:()=>Date.now()});
- const results=gear.targets();
+ const results=gear.goals();
  assert.equal(results.length,2);
- assert.equal(reads,1,'one self snapshot for both competing targets');
+ assert.equal(reads,3,'one ranking snapshot plus one equip suitability read per goal');
  assert.equal(receiptReads,1,'one receipt ledger for both competing targets');
  assert.equal(results.find(g=>g.slot==='shoes').priority,22);
  assert.equal(results.find(g=>g.slot==='belt').priority,10);

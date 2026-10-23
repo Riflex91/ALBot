@@ -120,27 +120,79 @@ export function liveMonsterEntries(entities){
   e&&typeof e==='object'&&e.type==='monster'&&!e.dead&&!e.rip&&
   Number.isFinite(e.hp)&&e.hp>0);
 }
-export function selectedPartyMember(bot,name){
-  return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
-    (bot.farmers.includes(name)||name===bot.cfg.party.merchant);
+export function coordinatedPartyFarmers(bot){
+ const fallback=[...(bot.farmers??[])],owner=bot.cfg.party?.merchant;
+ const h=owner===bot.me.name?{running:bot.running,realm:bot.p.realm(),
+  team:bot.account?.heartbeat?.()}:bot.transport?.fresh?.(owner);
+ const selected=h?.team,known=new Set((bot.cfg.characters??[])
+  .filter(c=>c.enabled&&c.group===bot.me.group&&c.role==='farmer')
+  .map(c=>c.name)),names=selected?.names;
+ if(!h?.running||h.realm!==bot.p.realm()||!Array.isArray(names)||
+  !names.length||names.length>(bot.cfg.party?.maxFarmers??3)||
+  names.some(n=>typeof n!=='string'||!known.has(n))||
+  new Set(names).size!==names.length||!names.includes(selected.leader)||
+  selected.leader!==bot.leader)return fallback;
+ return [...names];
 }
-// The combat leader need not own the current in-game party.
-// Only a live selected peer advertising itself as the actual party owner
-// may receive a recovery request from an unpartied teammate.
+export function selectedPartyMember(bot,name){
+ return typeof name==='string'&&name!==bot.me.name&&bot.teamNames.includes(name)&&
+  (coordinatedPartyFarmers(bot).includes(name)||name===bot.cfg.party.merchant);
+}
+// Deterministic ownership requires a fresh authenticated owner heartbeat.
+export function canonicalPartyOwner(bot){
+ if(!bot.running||!bot.cfg.party?.enabled)return null;
+ const candidates=[bot.cfg.party.merchant,bot.leader].filter((n,i,a)=>
+  typeof n==='string'&&n&&a.indexOf(n)===i&&
+  (n===bot.me.name||selectedPartyMember(bot,n)));
+ for(const name of candidates){
+  const h=name===bot.me.name?{
+   name,party:bot.p.c?.party,realm:bot.p.realm(),running:bot.running,rip:bot.p.c?.rip
+  }:bot.transport?.fresh?.(name);
+  if(h?.running&&!h.rip&&h.realm===bot.p.realm()&&h.party===name)return name;
+ }
+ return null;
+}
+export function observedPartyMembers(bot){
+ const members=bot.p.parent?.party;
+ return (Array.isArray(members)?members.map(v=>typeof v==='string'?v:v?.name):
+  members&&typeof members==='object'?Object.keys(members):[])
+  .filter(v=>typeof v==='string'&&v);
+}
+export function splitPartyRepairDecision(bot,owner,stableMs=0){
+ const self=bot.me.name,party=bot.p.c?.party,team=new Set([
+  ...coordinatedPartyFarmers(bot),bot.cfg.party.merchant]);
+ const members=observedPartyMembers(bot);
+ if(!owner||party===owner||!party||owner===self)return 'no-split';
+ if(!bot.p.has?.('leave_party')||stableMs<12000)return 'await-stable-owner';
+ if(!members.includes(self)||!members.length||
+  members.some(name=>!team.has(name)))return 'party-roster-unverified';
+ if(!bot.running||bot.p.c.rip||bot.p.c.hp/Math.max(1,bot.p.c.max_hp)<.65||
+  bot.recovering||bot.inventoryBlocked||bot.journal||
+  bot.logistics?.reserved||bot.gold?.reserved||bot.bank?.pending||
+  bot.lifecycleChanging||bot.account?.rotationPending?.()||
+  bot.teamTravel?.blocked||bot.movement?.order||
+  (bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&team.has(m.target))||
+  members.some(name=>name!==self&&(bot.transport?.fresh?.(name)?.threats??0)>0))
+  return 'party-repair-unsafe-now';
+ return 'leave-split-party';
+}
 export function currentPartyOwner(bot){
  if(bot.p.c.party)return null;
- const candidates=[bot.cfg.party.merchant,...bot.farmers].filter((n,i,a)=>n!==bot.me.name&&a.indexOf(n)===i&&selectedPartyMember(bot,n));
- return candidates.find(name=>{const h=bot.transport.fresh(name);return h?.running&&!h.rip&&h.realm===bot.p.realm()&&h.party===name;})??null;
+ const owner=canonicalPartyOwner(bot);
+ return owner!==bot.me.name?owner:null;
 }
 export function canAcceptPartyInvite(bot,name){
  const h=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
+ const owner=canonicalPartyOwner(bot);
  return !!(bot.running&&bot.cfg.party.enabled&&!bot.p.c.party&&h?.running&&h.realm===bot.p.realm()&&
-   (name===bot.leader||h.party===name));
+  (owner?name===owner:name===bot.leader||h.party===name));
 }
 export function canAcceptPartyRequest(bot,name){
-  const peer=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
-  return !!(bot.running&&bot.cfg.party.enabled&&peer?.running&&peer.realm===bot.p.realm()&&
-    (bot.me.name===bot.leader&&!bot.p.c?.party||bot.p.c?.party===bot.me.name));
+ const peer=selectedPartyMember(bot,name)?bot.transport.fresh(name):null;
+ const owner=canonicalPartyOwner(bot);
+ return !!(bot.running&&bot.cfg.party.enabled&&peer?.running&&peer.realm===bot.p.realm()&&
+  (!owner&&bot.me.name===bot.leader&&!bot.p.c?.party||
+  owner===bot.me.name&&bot.p.c?.party===bot.me.name));
 }
 // Complete only ABSENT schema fields before start validation. Explicit invalid
 // values remain invalid, and each runtime flavor keeps its own descriptor.
@@ -289,7 +341,25 @@ export function install(root){
   if(bot.teamTravel)cleanup.push(p.hook('on_magiport',name=>bot.teamTravel.accept(name)));
   // Follower-initiated requests supplement lost browser invitation callbacks.
   // Both directions only address live, selected members and are rate limited.
-  let lastPartyRequest=0;
+  let lastPartyRequest=0,splitOwner=null,splitSince=0,lastSplitRepair=0;
+  function repairSplitParty(){
+   const owner=canonicalPartyOwner(bot),current=p.c.party,at=now();
+   if(!owner||!current||current===owner){
+    splitOwner=null;splitSince=0;return false;
+   }
+   const signature=owner+'|'+current;
+   if(splitOwner!==signature){splitOwner=signature;splitSince=at;return false;}
+   if(at-lastSplitRepair<30000)return false;
+   if(splitPartyRepairDecision(bot,owner,at-splitSince)!=='leave-split-party')return false;
+   const guard=()=>bot.running&&p.c.party===current&&
+    canonicalPartyOwner(bot)===owner&&
+    splitPartyRepairDecision(bot,owner,now()-splitSince)==='leave-split-party';
+   const admitted=exec.run('party.repair.leave',['party'],guard,
+    ()=>p.call('leave_party'),{delay:30000,timeout:10000});
+   if(admitted){lastSplitRepair=at;bot.event?.('party.splitRepair',{
+    from:current,canonicalOwner:owner,reason:'verified-safe-split-party-leave'});}
+   return admitted;
+  }
   function requestSelectedLeader(){
     if(!bot.running||!cfg.party.enabled||bot.account?.active()===false||p.c.party||!p.has('send_party_request'))return;
     const owner=currentPartyOwner(bot),target=owner??(me.name===bot.leader?null:bot.leader);
@@ -355,8 +425,12 @@ export function install(root){
      bot.metrics.measure('planning.production',()=>bot.production?.planGoals());
      bot.metrics.measure('planning.account',()=>bot.account?.tick());
      if(!bot.recovering)bot.metrics.measure('planning.logistics',()=>bot.logistics.travel());
-     bot.metrics.measure('planning.party',()=>requestSelectedLeader());if(cfg.party.enabled&&(p.c.party===me.name||me.name===bot.leader&&!p.c.party&&!currentPartyOwner(bot))){
-      const memberNames=[...new Set([...bot.farmers,...(bot.teamNames.includes(cfg.party.merchant)?[cfg.party.merchant]:[])])];
+     bot.metrics.measure('planning.party',()=>{repairSplitParty();requestSelectedLeader();});
+    const canonical=canonicalPartyOwner(bot);
+    if(cfg.party.enabled&&(canonical===me.name||
+     !canonical&&me.name===bot.leader&&!p.c.party)){
+     const memberNames=[...new Set([...coordinatedPartyFarmers(bot),
+      ...(bot.teamNames.includes(cfg.party.merchant)?[cfg.party.merchant]:[])])];
       const roster=p.parent.party;const joined=name=>Array.isArray(roster)?roster.some(x=>(typeof x==='string'?x:x?.name)===name):!!(roster&&typeof roster==='object'&&Object.hasOwn(roster,name));
       for(const name of memberNames){if(name===me.name||joined(name))continue;
         const h=bot.transport.fresh(name),e=bot.entity(name);

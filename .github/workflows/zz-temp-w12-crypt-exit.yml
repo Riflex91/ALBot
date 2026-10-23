@@ -1,0 +1,28 @@
+name: TEMP W12 Crypt exit observation build
+on:
+  push:
+    branches: [roadmap/w12-crypt-verified-exit-observation-20261023]
+permissions: {contents: write}
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci --ignore-scripts
+      - run: node --test test/roadmap-w12-crypt-keyed-entry.test.mjs test/roadmap-n12-cave-exit-lifecycle.test.mjs
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:editor
+      - name: Commit verified runtime and editor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u bot.js dist editor profiles
+          if ! git diff --cached --quiet; then
+            git commit -m "build: synchronize Crypt exit observation runtime"
+            git push origin "HEAD:roadmap/w12-crypt-verified-exit-observation-20261023"
+          fi

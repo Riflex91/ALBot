@@ -1,0 +1,37 @@
+name: TEMP prepare ALBot 0.41 signed candidate
+on:
+  push:
+    branches: [codex/release-041-leader-focus-20261023]
+permissions:
+  contents: write
+concurrency:
+  group: albot-release-041-prep
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: "!contains(github.event.head_commit.message, 'prepare(runtime):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: true}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:bootstrap:auto
+      - run: npm run build:editor
+      - name: Full source/build/bootstrap verification and offline suite
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          npm test
+      - name: Commit reproducible 0.41 candidate artifacts
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u -- bot.js dist/ editor/Bot-Werkstatt.html editor/albot.settings.json profiles/
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "prepare(runtime): synchronize ALBot 0.41 leader-focus candidate"
+          git push origin HEAD:codex/release-041-leader-focus-20261023

@@ -20,13 +20,21 @@ export function assessQuestDetachment(bot){
  const visitors=rows.filter(h=>h?.questVisit===true);
  if(visitors.length!==1||visitors[0].name===me.name)return null;
  const active=rows.filter(h=>h?.name!==visitors[0].name);
- const plan=bot.teamPlan?.heartbeat?.();
+ // A follower's local team-plan cache may be empty even while the
+ // leader advertises a verified ordinary farm anchor. Admit that leader
+ // snapshot only after the *same local* spawn/risk validity check.
+ const localPlan=bot.teamPlan?.heartbeat?.();
+ const leader=me.name===bot.leader?null:bot.transport?.fresh?.(bot.leader);
+ const plan=localPlan??(leader?.running&&!leader.rip&&
+  leader.realm===p.realm()?(leader.farmPlan??leader.march?.anchor):null);
  if(!plan||plan.kind!=='farm'||plan.objective||
+    !Number.isFinite(plan.expires)||plan.expires<=Date.now()||
     !bot.teamPlan?.valid?.(plan)||plan.leader!==bot.leader||
     plan.realm!==p.realm()||!samePlace(p.c,plan)||
     distance(p.c,plan)>120)return null;
  for(const h of active){
   if(!h?.running||h.rip||h.realm!==p.realm()||
+     (Number.isFinite(h.threats)&&h.threats>0)||
      h.journal||h.inventoryBlocked||h.reserved||
      !samePlace(h,plan)||distance(h,plan)>120||
      !Number.isFinite(h.hp)||!Number.isFinite(h.max_hp)||h.max_hp<=0||

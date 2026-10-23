@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 37,
-      "version": "0.37.0-candidate",
+      "sequence": 38,
+      "version": "0.38.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 948766,
-      "sha256": "8c1f56ae2a3add62f17a54a8208cfa87f53e4dd88ab082236ea2d0df5f897f55"
+      "bytes": 960073,
+      "sha256": "2786690226a1b3f39c02915c42d0adb10ab534f2eb6317675792bfb71b2d4206"
     },
     "observedLoadedUrl": null,
-    "note": "22.10.2026: Signierte ALBot 0.37.0-candidate / Sequence 37 enthält den sicherheitsgeprüften Coat-NPC-Kauf-Stopp (PR #423). Linux/Windows CI 39823195943 erfolgreich; Signierworkflow 39823639584 erfolgreich, ECDSA-P-256, SHA-256 8c1f56ae2a3add62f17a54a8208cfa87f53e4dd88ab082236ea2d0df5f897f55, 948766 Bytes, Git-Blob byteidentisch mit main. Bootstrap-Adresse, Public Key und persönliche ALBotConfig unverändert; Ingame-Abnahme steht aus."
+    "note": "23.10.2026: Signierte ALBot 0.38.0-candidate / Sequenz 38 veröffentlicht. PR #429 mit Gruppen-Reunion, Monsterhunt-/Kampfsicherheitskorrekturen und Staff-Disposition nach vollständig grüner Linux-/Windows-CI 40001188980 gemergt. Releaseworkflow 40001378036 erfolgreich: ECDSA-P-256-Signatur geprüft; SHA-256 2786690226a1b3f39c02915c42d0adb10ab534f2eb6317675792bfb71b2d4206; 960073 Bytes. Bootstrap-URL, öffentlicher Schlüssel und persönliche ALBotConfig unverändert; Ingame-Abnahme steht noch aus."
   }
 }

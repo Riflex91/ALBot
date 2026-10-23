@@ -89,6 +89,7 @@ import {Executor} from './core/executor.mjs';
 import {createPorts} from './runtime/ports.mjs';
 import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/telemetry-snapshot.mjs';
 import {createGameRelaySender,GAME_RELAY_INTERVAL_MS} from './runtime/telemetry-relay-sender.mjs';
+import {createConfigSyncPreview} from './runtime/config-sync-preview.mjs';
 import {createAutomaticTelemetrySender,AUTO_TELEMETRY_INTERVAL_MS} from './runtime/telemetry-auto-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
@@ -459,6 +460,7 @@ export function install(root){
   // a secret in the signed public bundle or a Cloudflare deployment token.
   // The existing Access relay remains an optional manual fallback.
   let telemetryRelay=null,telemetryInterval=null,telemetryAuto=null,telemetryAutoInterval=null;
+  let configSyncPreview=null;
   if(!p.headless){
     try{
       const gameWindow=p.parent;
@@ -470,6 +472,14 @@ export function install(root){
           getCharacter:()=>p.c,getRealm:()=>p.realm(),
           getBankDefinitions:()=>p.G?.bank_packs??{},role:me.role,
           isRunning:()=>bot.running&&!disposed
+        });
+        // User-initiated verification only: this cannot change bot.cfg or
+        // publish an applied configuration acknowledgment.
+        configSyncPreview=createConfigSyncPreview({
+          gameWindow,
+          cryptoObject:root.crypto??gameWindow.crypto,
+          readTrust:()=>root.ALBOT_CONFIG_SYNC_TRUST,
+          readStorage:()=>root.localStorage??gameWindow.localStorage
         });
         telemetryRelay=createGameRelaySender({
           gameWindow,getCharacter:()=>p.c,getRealm:()=>p.realm(),
@@ -484,6 +494,7 @@ export function install(root){
     telemetryInterval=null;telemetryRelay?.disconnect();
     if(telemetryAutoInterval!==null)root.clearInterval?.(telemetryAutoInterval);
     telemetryAutoInterval=null;telemetryAuto?.dispose();
+    configSyncPreview?.dispose();
   });
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
@@ -551,6 +562,13 @@ export function install(root){
         },GAME_RELAY_INTERVAL_MS);
       }
       return true;
+    },
+    configSyncStatus:()=>configSyncPreview?.status()??{
+      mode:'unavailable',configured:false,applied:false,acknowledged:false
+    },
+    openConfigSync(){
+      if(disposed||!configSyncPreview)return false;
+      return configSyncPreview.open();
     },
     transportStatus:()=>bot.transport.status(),
     teamCheck:()=>createTeamCheck(bot,report.document()),

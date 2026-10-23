@@ -1062,7 +1062,15 @@ export function createMerchant(bot){
    add('inventory.consolidate',{priority:bot.free()<=cfg.merchant.minFreeSlots+2?100:-150},()=>bot.bank.consolidateInventory?.()??false);add('production.helpers',{priority:-125},()=>bot.production.helperSupply?.()??false);add('production',null,()=>bot.production.tick());add('production.stat-tailoring',{priority:-100},()=>bot.tailoring?.tick?.()??false);add('production.destat',{priority:-110},()=>bot.tailoring?.destatTick?.()??false);add('bank.gold',null,()=>bot.bank.gold());add('bank.consolidate',null,()=>bot.bank.consolidate());if(cfg.merchant.bankReclaim)add('bank.capacity',null,()=>bot.bank.reclaim());if(cfg.merchant.bankReclaim&&cfg.merchant.preventiveStorage)add('bank.preventive',{priority:-180},()=>bot.bank.preventiveDisposition());
    if(bot.strategy?.status().manual?.task==='bank')add('bank.request',{priority:-50},()=>bot.strategy.travel());
    if(bot.market?.fundingPending?.())add('market.funding',{priority:350},()=>bot.market.fundingTick());
-   add('market.background',{priority:-1000},()=>bot.market.background());add('services',{priority:-1000},()=>{buff();return bot.services.tick();});
+   // Do not schedule speculative market travel/scans when no selected,
+   // explicit acquisition rule authorizes any player-market purchase.
+   // Giveaways remain a separately enabled social policy.
+   const approvedMarketWork=(cfg.items??[]).some(r=>r?.enabled===true&&
+    r.action==='marketBuy'&&typeof r.item==='string'&&e.remaining(r));
+   if(approvedMarketWork||cfg.merchant.giveaways===true||
+      bot.market?.fundingPending?.())
+    add('market.background',{priority:-1000},()=>bot.market.background());
+   add('services',{priority:-1000},()=>{buff();return bot.services.tick();});
   }
   // Open the stand only AFTER the priority planner has had the chance to
   // schedule travel. The old pre-planner scheduling raced against smart_move.

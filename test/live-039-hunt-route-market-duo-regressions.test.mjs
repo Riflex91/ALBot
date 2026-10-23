@@ -16,7 +16,7 @@ test('Monsterhunt faster Town retries after interrupt before walking; max three 
    cfg:{world:{excludedMaps:[]},farming:{pvp:false},
     merchant:{townMinSavingsMs:3000}},
    p:{c,G:{maps:{main:{spawns:[[0,0]]}}},root:{},parent:{},
-    has:()=>true,call:()=>Promise.resolve()},
+    has:()=>true,call:name=>name==='can_move_to'?false:Promise.resolve()},
    teamNames:['My_Ranger1','My_Ranger2','My_Priest'],
    monsters:()=>[],lootDeparture:{beforeDeparture:()=>true},
    event:(type,data)=>events.push({type,data}),session:'r2',

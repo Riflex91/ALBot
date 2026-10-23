@@ -23,6 +23,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:bootstrap:auto
       - run: npm run build:editor
       - name: Source/runtime match and full regressions
         run: |

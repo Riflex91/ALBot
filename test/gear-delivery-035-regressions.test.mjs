@@ -162,7 +162,7 @@ test('W05/W08 shared Merchant gear copy goes to larger relative role benefit, no
  assert.ok(priestNew-priestOld>rangerNew-rangerOld);
  assert.ok(relativeGearGain(priestOld,priestNew)<
   relativeGearGain(rangerOld,rangerNew));
- const chosen=createGear(bot).targets().filter(g=>g.urgentStockUpgrade);
+ const chosen=createGear(bot).goals().filter(g=>g.urgentStockUpgrade);
  assert.equal(chosen.length,1,'one physical item can fund only one recipient');
  assert.equal(chosen[0].character,'Ranger');
  assert.equal(chosen[0].slot,'amulet');

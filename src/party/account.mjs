@@ -171,9 +171,9 @@ export function createAccount(bot){
       h.realm===p.realm()&&d?.realm===p.realm()&&
       d.team&&Number.isSafeInteger(d.team.seq)&&
       d.team.seq>=sequence){
+      // receive() updates lastAcceptedTeam only after all schema,
+      // ordering and availability checks succeed.
       receive(from,d.team);
-      lastAcceptedTeam={from,session:m.session,at:Date.now(),
-       seq:sequence,leader:bot.leader,names:[...bot.farmers]};
    }
    return;
   }

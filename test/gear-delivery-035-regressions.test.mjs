@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fitHeartbeat} from '../src/party/transport.mjs';
-import {createGear} from '../src/production/gear.mjs';
+import {createGear,gearScore,relativeGearGain} from '../src/production/gear.mjs';
 import {pendingDeliveryRuleNeeds,physicalGearAllowanceFromSelectedRule} from '../src/production/production.mjs';
 import {createGearAllocation} from '../src/production/allocation.mjs';
 
@@ -111,4 +111,71 @@ test('skullamulet +2 sender allocation can construct a session-bound offer after
  delete peer.gear;
  assert.equal(alloc.offer(item,'My_Ranger2'),false,
   'no full gear proof must remain a hard refusal');
+});
+
+test('W05/W08 shared Merchant gear copy goes to larger relative role benefit, not raw points',()=>{
+ const currentAt=Date.now();
+ const slotKeys=['mainhand','offhand','helmet','chest','pants','shoes',
+  'gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'];
+ const worn={name:'oldamulet',level:0},held={name:'skullamulet',level:2};
+ const makeProof=(cls,session)=>({class:cls,level:60,session,realm:'EUII',
+  complete:true,at:currentAt,
+  slots:Object.fromEntries(slotKeys.map(slot=>[slot,
+   slot==='mainhand'?{name:'oldstaff',level:0}:
+   slot==='amulet'?{...worn}:null]))});
+ const profiles={Priest:makeProof('priest','p-live'),
+  Ranger:makeProof('ranger','r-live')};
+ const cfg={production:{gear:true,offlineProfiles:true,gearTargets:[],
+  autoGear:false,minImprovement:.05},
+  characters:[{name:'Priest',role:'farmer',enabled:true,gearRole:'auto'},
+   {name:'Ranger',role:'farmer',enabled:true,gearRole:'auto'}],
+  party:{selection:'fixed'}};
+ const bot={
+  me:{name:'Merchant',role:'merchant'},session:'merchant-live',
+  teamNames:['Merchant','Priest','Ranger'],farmers:['Priest','Ranger'],
+  cfg,
+  p:{c:{name:'Merchant',ctype:'merchant',level:60,
+    slots:{},items:[held]},realm:()=> 'EUII',
+   G:{items:{skullamulet:{type:'amulet',level:1},
+    oldamulet:{type:'amulet'},oldstaff:{type:'weapon',wtype:'staff'}},
+    classes:{priest:{mainhand:{staff:true}},
+     ranger:{mainhand:{bow:true}}}},
+   read:()=>profiles,
+   call:(kind,item)=>{
+    assert.equal(kind,'item_properties');
+    return item.name==='skullamulet'?
+     {attack:90,int:150,frequency:4}:
+     item.name==='oldamulet'?
+      {attack:2,int:100,frequency:2}: {attack:5};
+   }},
+  economy:{safe:item=>!!item,explicit:()=>null},
+  transport:{fresh:name=>({name,running:true,rip:false,
+   realm:'EUII',session:name==='Priest'?'p-live':'r-live'})},
+  intelligence:{targets:()=>[]}
+ };
+ // The Priest's absolute heuristic gain is greater because Int and
+ // frequency carry different class weights; Ranger's proportion of its
+ // own previous amulet score improves substantially more.
+ const s=bot.p.call('item_properties',held),old=bot.p.call('item_properties',worn);
+ const priestOld=gearScore(old,'healer','priest'),priestNew=gearScore(s,'healer','priest');
+ const rangerOld=gearScore(old,'dps','ranger'),rangerNew=gearScore(s,'dps','ranger');
+ assert.ok(priestNew-priestOld>rangerNew-rangerOld);
+ assert.ok(relativeGearGain(priestOld,priestNew)<
+  relativeGearGain(rangerOld,rangerNew));
+ const chosen=createGear(bot).goals().filter(g=>g.urgentStockUpgrade);
+ assert.equal(chosen.length,1,'one physical item can fund only one recipient');
+ assert.equal(chosen[0].character,'Ranger');
+ assert.equal(chosen[0].slot,'amulet');
+ assert.equal(chosen[0].item,'skullamulet');
+ assert.equal(chosen[0].level,2);
+ assert.ok(chosen[0].priority>=900);
+});
+
+test('W05/W08 relative gear comparison is finite, bounded and does not grant eligibility',()=>{
+ for(const [old,next] of [[NaN,10],[10,Infinity],[-1,40],
+  [20,20],[40,30],[20,0],[Infinity,100]])
+  assert.equal(relativeGearGain(old,next),0);
+ assert.equal(relativeGearGain(20,40),.5);
+ assert.equal(relativeGearGain(0,30),1);
+ assert.ok(relativeGearGain(100,120)<relativeGearGain(3,100));
 });

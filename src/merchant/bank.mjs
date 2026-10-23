@@ -56,18 +56,45 @@ export function bankGoldTransferPlan({wallet,bankGold,slots={},goldTarget,
 // Every bank pack keeps its own workspace reserve. Summing free slots
 // across different packs can report usable capacity when NONE of the packs
 // can accept one more regular deposit.
-export function bankCapacityPressure(rows,workspace=2,localMap=null){
- if(!Array.isArray(rows)||!Number.isSafeInteger(workspace)||workspace<0)
-  return {pressed:false,locallyBlocked:false,usablePacks:0};
- const valid=rows.filter(row=>row&&typeof row.map==='string'&&
-  Array.isArray(row.items));
- const free=row=>row.items.filter(i=>!i).length;
- const usablePacks=valid.filter(row=>free(row)>workspace).length;
- const local=valid.filter(row=>row.map===localMap);
- // A remote viable pack prevents irreversible reclaim; bank.store can travel
- // there. A local pack above its reserve makes reclaim unnecessary as well.
+export function bankCapacityPressure(rows,workspace=2,localMap=null,G=null){
+ const denied=()=>({pressed:false,locallyBlocked:false,usablePacks:0});
+ if(!Array.isArray(rows)||rows.length>16||
+    !Number.isSafeInteger(workspace)||workspace<0||workspace>42||
+    typeof localMap!=='string'||!localMap||
+    G!==null&&(!G?.items||typeof G.items!=='object'))
+  return denied();
+ const observed=[];
+ for(const row of rows){
+  // Every opened local/remote pack needs physical evidence before any
+  // irreversible sale; unknown map/shape must never be silently ignored.
+  if(!row||typeof row.map!=='string'||!row.map||
+     !Array.isArray(row.items)||row.items.length>42)return denied();
+  let occupied=0;
+  for(const item of row.items){
+   if(item===null||item===undefined)continue;
+   if(typeof item!=='object'||Array.isArray(item)||
+      typeof item.name!=='string'||!item.name)return denied();
+   const q=item.q===undefined?1:item.q;
+   if(!Number.isSafeInteger(q)||q<1)return denied();
+   if(G!==null){
+    const meta=G.items[item.name];
+    if(!meta&&q!==1)return denied();
+    if(meta){
+     if(typeof meta!=='object')return denied();
+     const size=meta.s,limit=size===true?9999:
+      Number.isSafeInteger(size)&&size>1?size:1;
+     if(q>limit)return denied();
+    }
+   }
+   occupied++;
+  }
+  // Adventure Land compact arrays still describe all 42 normal bank slots.
+  observed.push({map:row.map,free:42-occupied});
+ }
+ const usablePacks=observed.filter(row=>row.free>workspace).length;
+ const local=observed.filter(row=>row.map===localMap);
  return {pressed:local.length>0&&usablePacks===0,
-  locallyBlocked:local.length>0&&local.every(row=>free(row)<=workspace),
+  locallyBlocked:local.length>0&&local.every(row=>row.free<=workspace),
   usablePacks};
 }
 // A revoked/not-reproducible emergency sale can be rolled back by storing
@@ -892,7 +919,18 @@ export function createBank(bot){
  // A single durable transaction path for BOTH pressure recovery and
  // preventive, explicitly authorized bank sales. No retained/offsite catalog
  // may be the source of a withdrawal or a subsequent sale.
- function stageBankSale(selected,reason,explicitOnly=false){
+ // A queued emergency sale must re-prove current physical bank pressure.
+ function liveBankPressure(workspace){
+  const bank=p.c.bank;
+  if(!bank||typeof bank!=='object'||Array.isArray(bank)||
+     Object.entries(bank).some(([name,items])=>
+      /^items\d+$/.test(name)&&(!Array.isArray(items)||items.length>42)))
+   return {pressed:false,locallyBlocked:false,usablePacks:0};
+  return bankCapacityPressure(packs().map(([pack,items])=>({
+   map:packMap(pack),items
+  })),workspace,p.c.map,p.G);
+ }
+ function stageBankSale(selected,reason,explicitOnly=false,pressureWorkspace=null){
   if(pending||reclaiming||single||storing||swapping||bot.journal||bot.inventoryBlocked||
      bot.logistics?.reserved||bot.exec?.busy?.('inventory')||bot.free()<1||
      !p.c.bank||me.name!==cfg.party.merchant)return false;
@@ -903,7 +941,10 @@ export function createBank(bot){
   const admitted=live=>{
    if(!live||packMap(pack)!==p.c.map||fingerprint(live)!==fp||
       !Number.isSafeInteger(q)||q<1||bot.free()<1||
-      !!p.c.items[dest]||!cfg.merchant.bankReclaim)return false;
+      !!p.c.items[dest]||!cfg.merchant.bankReclaim||
+      (pressureWorkspace!==null&&
+       (pressure.observations<2||
+        !liveBankPressure(pressureWorkspace).pressed)))return false;
    const safe=eligibleBankSale(live);
    return !!safe&&(!explicitOnly||
      cfg.merchant.preventiveStorage===true&&
@@ -1077,10 +1118,9 @@ export function createBank(bot){
  });
  function reclaim(preventiveWorkspace=null){
   if(!cfg.merchant.bankReclaim||!cfg.merchant.bank||bot.free()<1)return false;
-  const rows=packs(),workspace=Math.max(0,Number.isSafeInteger(preventiveWorkspace)?Math.min(40,preventiveWorkspace):cfg.merchant.bankWorkspace??2);
-  const bankPressure=bankCapacityPressure(rows.map(([pack,items])=>({
-   map:packMap(pack),items
-  })),workspace,p.c.map);
+  const workspace=Math.max(0,Number.isSafeInteger(preventiveWorkspace)?
+   Math.min(40,preventiveWorkspace):cfg.merchant.bankWorkspace??2);
+  const bankPressure=liveBankPressure(workspace);
   // This threshold must agree with ordinary bank.store: a slot reserved
   // for workspace cannot be used by ordinary inventory cleanup. Never
   // reclaim/sell if a remote opened bank pack could accept a safe deposit.
@@ -1108,7 +1148,8 @@ export function createBank(bot){
   }
   candidates.sort((a,b)=>a.lossScore-b.lossScore||a.price-b.price||a.item.name.localeCompare(b.item.name)||a.slot-b.slot);
   const selected=candidates[0];if(!selected){e.note('Bankdruck: kein ausdrücklich freigegebenes unreserviertes Item für sicheren Notverkauf');return false;}
-  return stageBankSale(selected,'Bankdruck: geringster risikobereinigter Verlust');
+  return stageBankSale(selected,'Bankdruck: geringster risikobereinigter Verlust',
+   false,workspace);
  }
  function dispatchRollback(record){
   const state=classifyBankReclaimRecord(record,{owner:me.name,realm:p.realm(),

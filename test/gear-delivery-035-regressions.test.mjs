@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fitHeartbeat} from '../src/party/transport.mjs';
-import {createGear} from '../src/production/gear.mjs';
+import {createGear,gearScore,relativeGearGain} from '../src/production/gear.mjs';
 import {pendingDeliveryRuleNeeds,physicalGearAllowanceFromSelectedRule} from '../src/production/production.mjs';
 import {createGearAllocation} from '../src/production/allocation.mjs';
 

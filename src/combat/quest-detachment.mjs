@@ -26,7 +26,7 @@ export function assessQuestDetachment(bot){
  const localPlan=bot.teamPlan?.heartbeat?.();
  const leader=me.name===bot.leader?null:bot.transport?.fresh?.(bot.leader);
  const plan=localPlan??(leader?.running&&!leader.rip&&
-  leader.realm===p.realm()?leader.farmPlan:null);
+  leader.realm===p.realm()?(leader.farmPlan??leader.march?.anchor):null);
  if(!plan||plan.kind!=='farm'||plan.objective||
     !bot.teamPlan?.valid?.(plan)||plan.leader!==bot.leader||
     plan.realm!==p.realm()||!samePlace(p.c,plan)||

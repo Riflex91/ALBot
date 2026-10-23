@@ -53,6 +53,35 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   for(const [id,hit] of hits)if(time-hit.at>MAX_HIT_MS||hit.at>time)
    hits.delete(id);
  }
+ // One bounded monster frame is necessary for both passive negative
+ // samples and native scout admission. An absent, throwing or malformed
+ // provider is NOT a fresh empty local field of view.
+ function observedMonsters(){
+  try{
+   const snapshot=bot.monsters?.();
+   return Array.isArray(snapshot)?snapshot:null;
+  }catch{return null;}
+ }
+ const physicalMonsterRow=m=>!!m&&typeof m==='object'&&
+  !Array.isArray(m)&&cleanName(m.id)&&cleanName(m.mtype)&&
+  m.type==='monster'&&Number.isFinite(m.hp)&&m.hp>=0&&
+  (m.target===undefined||m.target===null||
+   typeof m.target==='string')&&
+  (m.dead===undefined||typeof m.dead==='boolean');
+ // Never convert a missing view, a truncated 129+ row frame, or a
+ // malformed attacker's HP/target into proof that a short scout hop is
+ // safe. This helper performs no game call and grants no general travel.
+ function scoutThreatsClear(){
+  const monsters=observedMonsters();
+  if(!monsters||monsters.length>128)return false;
+  for(const m of monsters){
+   if(!physicalMonsterRow(m))return false;
+   if(m.dead===true||m.hp===0)continue;
+   if(m.target===me.name||Array.isArray(bot.teamNames)&&
+      bot.teamNames.includes(m.target))return false;
+  }
+  return true;
+ }
  const scoped=entity=>{
   const pos=location(realm,entity);
   return pos&&Number.isFinite(entity.x)&&Number.isFinite(entity.y)&&
@@ -71,9 +100,13 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
   // Bounded polling; local visible entities are sightings, not global spawns.
   // A missing/invalid or truncated array cannot prove any monster absent.
   if(time-lastSample<1500)return;
-  const snapshot=bot.monsters?.();
-  if(!Array.isArray(snapshot))return;
-  const completeSnapshot=snapshot.length<=128;
+  const snapshot=observedMonsters();
+  if(!snapshot)return;
+  // Observed positive sightings may be retained from the bounded prefix;
+  // an incomplete or malformed frame cannot provide negative visibility.
+  const completeSnapshot=snapshot.length<=128&&
+   snapshot.every(physicalMonsterRow)&&
+   new Set(snapshot.map(m=>m.id)).size===snapshot.length;
   lastSample=time;const visible=new Set();
   for(const entity of snapshot.slice(0,128)){
    const scope=scoped(entity);
@@ -187,8 +220,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    Number.isFinite(p.c.hp)&&Number.isFinite(p.c.max_hp)&&
    p.c.max_hp>0&&p.c.hp/p.c.max_hp>=.9&&
    bot.combatAssessment?.emergency?.()?.active!==true&&
-   !(bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
-    (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target))));
+   scoutThreatsClear());
  }
  // Native local reachability is time-dependent: a path that was clear at
  // planning or dispatch can become blocked while a scout is moving.
@@ -300,8 +332,7 @@ export function createRespawnCalendar(bot,{now=()=>Date.now()}={}){
    !Number.isFinite(p.c.hp)||!Number.isFinite(p.c.max_hp)||
    p.c.max_hp<=0||p.c.hp/p.c.max_hp<.9||
    bot.combatAssessment?.emergency?.()?.active===true||
-   (bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
-    (m.target===me.name||m.target&&bot.teamNames?.includes?.(m.target)))||
+   !scoutThreatsClear()||
    !r||r.killedAt!==a.killedAt||r.scoutState!=='observing'||
    now()>=r.scoutUntil||r.scoutNegatives>=SCOUT_MAX_NEGATIVES||
    !same(location(realm,p.c),r)||

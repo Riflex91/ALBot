@@ -1,0 +1,37 @@
+name: TEMP prepare ALBot 0.40 signed candidate
+on:
+  push:
+    branches: [codex/release-040-hunt-market-duo-20261023]
+permissions:
+  contents: write
+concurrency:
+  group: albot-040-prep
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: "!contains(github.event.head_commit.message, 'prepare(runtime):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: true}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:bootstrap:auto
+      - run: npm run build:editor
+      - name: Source/build/bootstrap match and full tests
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          npm test
+      - name: Commit 0.40 generated files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u -- bot.js dist/ editor/Bot-Werkstatt.html editor/albot.settings.json profiles/
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "prepare(runtime): synchronize ALBot 0.40 candidate files"
+          git push origin HEAD:codex/release-040-hunt-market-duo-20261023

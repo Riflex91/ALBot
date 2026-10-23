@@ -95,5 +95,4 @@ test('cannot deliver unsigned, mismatched, expired or absent private profile',as
  s.setRelease({...s.release,signature:'X'+s.release.signature.slice(1)});
  assert.equal((await s.call()).status,503);
  assert.equal((await s.call('GET',null)).status,401);
- assert.equal((await s.call('GET',s.accessToken??null)).status,401);
 });

@@ -356,6 +356,9 @@ export function createMarket(bot){
   const approvedDemand=(cfg.items??[]).some(r=>r?.enabled===true&&
     r.action==='marketBuy'&&typeof r.item==='string'&&
     (typeof e.remaining!=='function'||e.remaining(r)));
+  // Passive Ponty visits create marketplace work despite zero authorized
+  // purchases. No explicit outstanding market-buy task = no scan or trip.
+  if(!approvedDemand)return false;
   if(pontyScanDue({now:Date.now(),last:lastScan,approvedDemand})){
    if(!e.npcTravel(d,'Ponty'))return true;const token=++scanGeneration;
    const accepted=exec.run('ponty.scan',['economy'],()=>bot.running,()=>Promise.resolve(p.call('get_secondhands',10000)).then(x=>{if(bot.running&&token===scanGeneration)secondhand=Array.isArray(x?.items)?x.items.slice(0,100):[];}),{delay:60000});if(accepted)lastScan=Date.now();return accepted;}

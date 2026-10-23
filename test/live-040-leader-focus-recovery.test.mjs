@@ -88,6 +88,7 @@ test('real follower plan tick adopts verified leader march anchor and rejects st
    read:()=>null,write:()=>true},
   transport:{fresh:n=>n==='My_Ranger1'?leaderPeer:null},
   strategy:{permittedMap:()=>true,safeTarget:()=>true},
+  movement:{order:null,stop(){}},
   content:{approve:()=>true},event:(type,data)=>events.push({type,data}),
   monsters:()=>[],production:{materials:()=>[]},
   decisionEpoch:1};

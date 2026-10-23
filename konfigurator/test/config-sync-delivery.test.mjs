@@ -69,7 +69,7 @@ test('Access-only delivery returns exactly the private, already signed profile u
  const unauth=await s.call('GET',null);
  assert.equal(unauth.status,401);
  assert.equal(s.requests.length,0);
- assert.equal((await s.call('PUT')).status,405);
+ assert.equal((await s.call('PUT')).status,403);
  const res=await s.call();
  assert.equal(res.status,200);
  assert.equal(res.headers.get('cache-control'),'no-store');

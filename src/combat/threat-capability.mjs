@@ -73,7 +73,10 @@ export function estimateThreatCapability({
  // damage can be independently bounded. Unknown mobs still fail closed.
  const extra=Array.isArray(otherMonsters)?otherMonsters.filter(m=>
   m?.id!==monster.id&&members.some(x=>x.name===m?.target)):null;
- if(otherAggro>0&&(!extra||extra.length!==otherAggro||otherAggro>3))
+ // Live visible attackers are stronger evidence than lagging heartbeat
+ // threat counters. A reported *missing* attacker is unsafe; an additional
+ // fully observed attacker must be assessed, never silently discarded.
+ if(!extra||extra.length<otherAggro||otherAggro>3||extra.length>3)
   return refusal('other-team-aggro-unmodelled',{otherAggro,visible:extra?.length??0});
  const secondary=[];
  for(const m of extra??[]){
@@ -92,7 +95,7 @@ export function estimateThreatCapability({
  }
  if(secondary.length&&members.some(x=>{
    const owned=secondary.filter(m=>m.victim===x.name).length;
-   return owned!==Math.max(0,x.threats-(x.name===victim.name?1:0));
+   return owned<Math.max(0,x.threats-(x.name===victim.name?1:0));
   }))return refusal('other-team-aggro-count-mismatch',{otherAggro});
  const healerCandidate=allowHealing?members.find(m=>m.class==='priest'&&
   !m.s?.stunned&&!m.s?.silenced&&

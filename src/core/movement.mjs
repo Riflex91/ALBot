@@ -113,11 +113,14 @@ export function createMovement(bot){
     const nowTown=Date.now(),townKey=routeKey(dest);
     // Retain measured fast-travel preference after a transient quest failure.
     // A failed cast gets at most two additional safe attempts in 30 seconds.
-    const questRetry=owner==='quest'&&questTownRetry?.key===townKey&&
-     nowTown-questTownRetry.at<=30000&&questTownRetry.attempts<3;
+    const retryKnown=owner==='quest'&&questTownRetry?.key===townKey&&
+     nowTown-questTownRetry.at<=30000;
+    const questRetry=retryKnown&&questTownRetry.attempts<3;
+    const questRetryExhausted=retryKnown&&questTownRetry.attempts>=3;
     if(mayTown&&
        (samePlace(p.c,d)||merchantTown&&crossBank)&&Array.isArray(spawn)&&
        p.has('town')&&!p.c.c?.town&&
+       !questRetryExhausted&&
        (townShortcutRetryReady(nowTown,lastTown,lastTownAttempt)||questRetry)&&
        safeTown()){
      const speed=Math.max(1,p.c.speed??40),toSpawn=Math.hypot(

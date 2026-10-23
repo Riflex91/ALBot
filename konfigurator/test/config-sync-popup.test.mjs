@@ -45,7 +45,10 @@ function setup(identity,storageContents=null){
  };
  return {popup,receiver,dispatch,ready,sent,store,events};
 }
-async function settle(){for(let i=0;i<120;i++)await Promise.resolve();}
+async function settle(receiver){for(let i=0;i<60;i++){
+  const s=receiver.status();if(!s.inFlight&&(s.verified||s.lastError))return;
+  await new Promise(resolve=>setTimeout(resolve,10));
+ }}
 
 test('popup protocol enforces exact source, origin, opener ancestry and nonce',()=>{
  const opener={frames:[]};
@@ -80,7 +83,7 @@ test('game preview accepts valid pinned signature and records only metadata, nev
  s.dispatch(CONFIG_RELEASE,{nonce,release},CONFIG_POPUP_ORIGIN,{});
  assert.equal(s.receiver.status().verified,null);
  s.dispatch(CONFIG_RELEASE,{nonce,release});
- await settle();
+ await settle(s.receiver);
  const status=s.receiver.status();
  assert.equal(status.verified.sequence,1);
  assert.equal(status.verified.sha256,release.sha256);
@@ -89,7 +92,7 @@ test('game preview accepts valid pinned signature and records only metadata, nev
  assert.equal(status.lastError,null);
  assert.equal(JSON.stringify(status).includes('My_Ranger1'),false);
  s.dispatch(CONFIG_RELEASE,{nonce,release});
- await settle();
+ await settle(s.receiver);
  assert.equal(s.receiver.status().verified.sequence,1);
  s.receiver.dispose();
  assert.equal(s.events.size,0);
@@ -102,7 +105,7 @@ test('invalid signature and expired release fail closed without changing an appl
  assert.equal(s.receiver.open(),true);
  const nonce=s.ready();
  s.dispatch(CONFIG_RELEASE,{nonce,release:bad});
- await settle();
+ await settle(s.receiver);
  assert.equal(s.receiver.status().verified,null);
  assert.match(s.receiver.status().lastError,/Profilinhalt/);
  assert.equal(s.receiver.status().applied,false);
@@ -112,7 +115,7 @@ test('invalid signature and expired release fail closed without changing an appl
  assert.equal(expired.receiver.open(),true);
  const otherNonce=expired.ready();
  expired.dispatch(CONFIG_RELEASE,{nonce:otherNonce,release:{...release,expiresAt:now-1}});
- await settle();
+ await settle(expired.receiver);
  assert.equal(expired.receiver.status().verified,null);
  assert.equal(expired.receiver.status().applied,false);
  expired.receiver.dispose();
@@ -126,7 +129,7 @@ test('local applied high-water mark blocks rollback and corrupt journals prevent
  assert.equal(s.receiver.status().appliedHighwater,1);
  assert.equal(s.receiver.open(),true);
  s.dispatch(CONFIG_RELEASE,{nonce:s.ready(),release});
- await settle();
+ await settle(s.receiver);
  assert.equal(s.receiver.status().verified,null);
  assert.match(s.receiver.status().lastError,/rückwärts/);
  s.receiver.dispose();

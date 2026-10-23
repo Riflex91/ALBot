@@ -272,3 +272,110 @@ test('W12/N11 competing strict journal mutation prevents clearing prepared entry
  assert.equal(resumed.status().state,'storage-uncertain');
  assert.deepEqual(f.calls,[]);
 });
+
+test('W12/N11 two fresh public-map observations retire a physically exited Crypt entry',async()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ f.p.c.x=0;f.p.c.y=0;f.p.c.hp=100;
+ assert.equal(c.prepare(),true);
+ assert.equal(c.requestEntry(),true);
+ await f.intents[0].invoke();
+ f.p.c.map='crypt';f.p.c.in='party-crypt';f.items[0]=null;
+ assert.equal(c.sample(),true);
+ assert.equal(c.status().state,'inside-observed');
+ f.p.c.map='main';f.p.c.in='main';
+ assert.equal(c.sample(),false,'one outside render does not clear a run');
+ assert.equal(c.status().state,'instance-not-currently-observed');
+ f.advance(1999);
+ assert.equal(c.sample(),false,'two samples must be separated in real time');
+ f.advance(1);
+ assert.equal(c.sample(),true,'stable live outside evidence may retire old entry');
+ assert.equal(c.status().state,'empty');
+ assert.equal(f.memory.get(f.key),null);
+ assert.deepEqual(f.calls,[['enter','crypt']],
+  'no exit, replay or additional key mutation is invented');
+ assert.equal(c.prepare('join','friend-run'),true,
+  'a new explicit admission is possible only after verified local departure');
+});
+test('W12/N11 a snapshot from a different session never clears an inside Crypt journal',async()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ f.p.c.x=0;f.p.c.y=0;f.p.c.hp=100;
+ c.prepare();c.requestEntry();await f.intents[0].invoke();
+ f.p.c.map='crypt';f.p.c.in='party-crypt';f.items[0]=null;
+ assert.equal(c.sample(),true);
+ f.p.c.map='main';f.p.c.in='main';
+ assert.equal(c.sample(),false);
+ f.bot.session='new-session';f.advance(5000);
+ assert.equal(c.sample(),false);
+ assert.equal(c.status().blocked,true);
+ const reboot=f.lifecycle();
+ f.advance(5000);assert.equal(reboot.sample(),false);
+ assert.equal(reboot.status().blocked,true);
+ assert.equal(f.memory.get(f.key).phase,'inside-observed');
+ assert.deepEqual(f.calls,[['enter','crypt']]);
+});
+test('W12/N11 an interim return to Crypt resets the exit observation window',async()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ f.p.c.x=0;f.p.c.y=0;f.p.c.hp=100;
+ c.prepare();c.requestEntry();await f.intents[0].invoke();
+ f.p.c.map='crypt';f.p.c.in='party-crypt';f.items[0]=null;c.sample();
+ f.p.c.map='main';f.p.c.in='main';assert.equal(c.sample(),false);
+ f.advance(2100);f.p.c.map='crypt';f.p.c.in='party-crypt';
+ assert.equal(c.sample(),false);
+ f.p.c.map='main';f.p.c.in='main';
+ assert.equal(c.sample(),false,'old outside witness is discarded');
+ f.advance(2000);
+ assert.equal(c.sample(),true);
+});
+test('W12/N11 death, instance ambiguity, pending action and realm drift cannot discharge',async()=>{
+ const edits=[
+  f=>{f.p.c.rip=true;},
+  f=>{f.p.c.hp=0;},
+  f=>{f.p.c.map='bank';f.p.c.in='bank';},
+  f=>{f.p.c.in='untrusted-instance';},
+  f=>{f.p.c.x=NaN;},
+  f=>{f.bot.running=false;},
+  f=>{f.bot.bank.pending=true;},
+  f=>{f.bot.exec.pending.set('other',true);},
+  f=>{f.bot.movement.order={owner:'travel'};},
+  f=>{f.bot.inventoryBlocked=true;},
+  f=>{f.p.realm=()=> 'USI';}
+ ];
+ for(const mutate of edits){
+  const f=cryptFixture(),c=f.lifecycle();
+  f.p.c.x=0;f.p.c.y=0;f.p.c.hp=100;
+  c.prepare();c.requestEntry();await f.intents[0].invoke();
+  f.p.c.map='crypt';f.p.c.in='party-crypt';f.items[0]=null;c.sample();
+  f.p.c.map='main';f.p.c.in='main';f.advance(3000);
+  mutate(f);
+  assert.equal(c.sample(),false);
+  f.advance(3000);assert.equal(c.sample(),false);
+  assert.equal(f.memory.get(f.key).phase,'inside-observed');
+  assert.deepEqual(f.calls,[['enter','crypt']]);
+ }
+});
+test('W12/N11 another writer changing the stored Crypt journal denies exit retirement',async()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ f.p.c.x=0;f.p.c.y=0;f.p.c.hp=100;
+ c.prepare();c.requestEntry();await f.intents[0].invoke();
+ f.p.c.map='crypt';f.p.c.in='party-crypt';f.items[0]=null;c.sample();
+ f.p.c.map='main';f.p.c.in='main';
+ assert.equal(c.sample(),false);
+ f.memory.set(f.key,{...f.memory.get(f.key),session:'concurrent-writer'});
+ f.advance(2200);
+ assert.equal(c.sample(),false);
+ assert.equal(c.status().state,'storage-uncertain');
+ assert.equal(f.memory.get(f.key).phase,'inside-observed');
+ assert.deepEqual(f.calls,[['enter','crypt']]);
+});
+test('W12/N11 an unobserved Crypt dispatch cannot be mistaken for a completed exit',async()=>{
+ const f=cryptFixture(),c=f.lifecycle();
+ f.p.c.x=0;f.p.c.y=0;f.p.c.hp=100;
+ c.prepare();c.requestEntry();await f.intents[0].invoke();
+ f.advance(9000);
+ assert.equal(c.status().state,'dispatch-unknown');
+ for(let n=0;n<3;n++){
+  assert.equal(c.sample(),false);f.advance(3000);
+ }
+ assert.equal(c.status().state,'dispatch-unknown');
+ assert.deepEqual(f.calls,[['enter','crypt']]);
+});

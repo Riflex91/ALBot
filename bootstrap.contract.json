@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 40,
-      "version": "0.40.0-candidate",
+      "sequence": 41,
+      "version": "0.41.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 962924,
-      "sha256": "2aa832b639503b068b604af6fb69e3e892a80d3d187afa5889deaa2df3d96f6b"
+      "bytes": 965177,
+      "sha256": "892a2e703ffedcc490216f8ef7c8788b592cc16d0ec3cc72b9ed382b0420fc48"
     },
     "observedLoadedUrl": null,
-    "note": "23.10.2026: ALBot 0.40.0-candidate / Sequenz 40 ECDSA-P-256-signiert und veröffentlicht. PR #438 korrigiert verifizierte Monsterhunt-Town-Retry-Route, überflüssige idle-Ponty/Marktbeschaffungsplanung und den sicheren Zweierkampf der verbleibenden Farmer bei Questfahrten, einschließlich signierten kompakten Farmplan-Ankers. PR #439 erneuert Browser, Headless, Editor und personalisierte Auto-Bootstrap-Dateien. Linux/Windows CI grün; Releaseworkflow 40010930363 mit Signatur- und SHA-256-Byteprüfung erfolgreich. Runtime SHA-256 2aa832b639503b068b604af6fb69e3e892a80d3d187afa5889deaa2df3d96f6b, 962924 Bytes. Installierter Auto-Bootstrap, öffentlicher Schlüssel und persönliche ALBotConfig unverändert. Neuer Ingame-Leistungsnachweis steht aus."
+    "note": "23.10.2026: ECDSA-P-256 signierte ALBot 0.41.0-candidate / Sequenz 41 veröffentlicht. PR #441 korrigiert kontinuierliche Gruppenhilfe bei nicht übernommenem Leader-Farmplan, validierte kompakte Marschanker sowie verzögerte Angriffe bei blockierter Schusslinie. PR #442 baut Runtime, Editor und personalisierten Auto-Bootstrap versionsgleich. Linux/Windows CI grün, Release-Workflow 40015144472 erfolgreich und Signatur/Bytegleichheit verifiziert: SHA-256 892a2e703ffedcc490216f8ef7c8788b592cc16d0ec3cc72b9ed382b0420fc48, 965177 Bytes. Installierter Bootstrap, öffentlicher Schlüssel und persönliche ALBotConfig bleiben unverändert. Neue Ingame-Kampfabnahme ist noch ausstehend."
   }
 }

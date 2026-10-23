@@ -160,6 +160,37 @@ export function farmPlanOrTeamDefense(targets,monster,teamNames){
  return !!monster&&(targets??[]).includes(monster.mtype)||
   !!(monster?.target&&(teamNames??[]).includes(monster.target));
 }
+// A failed native can_attack despite nominal range usually means line-of-
+// sight or a moving enemy. Try a tiny sideways correction, never a new pull.
+// Pure, bounded and fail-closed: no stale geometry or unverified walk point.
+export function safeFocusCorrectionPoint(character,target,monsters=[],canMove=()=>false,{
+ step=34
+}={}){
+ if(!character||!target||!samePlace(character,target)||
+   ![character.x,character.y,target.x,target.y].every(Number.isFinite)||
+   !(character.hp>0)||!(character.max_hp>0)||
+   character.hp/character.max_hp<.65||
+   !Number.isFinite(step)||step<10||step>50)return null;
+ const dx=target.x-character.x,dy=target.y-character.y,len=Math.hypot(dx,dy);
+ if(len<10)return null;
+ const vx=-dy/len,vy=dx/len;
+ for(const sign of [1,-1]){
+  const x=character.x+sign*vx*step,y=character.y+sign*vy*step;
+  if(!canMove(x,y))continue;
+  // Do not approach other active attackers or cross their melee zone.
+  const exposed=(monsters??[]).some(m=>{
+   if(!m||m.id===target.id||m.dead||!(m.hp>0)||
+     !m.target||!samePlace(character,m)||
+     !Number.isFinite(m.x)||!Number.isFinite(m.y))return false;
+   const before=distance(character,m),after=Math.hypot(x-m.x,y-m.y);
+   const clearance=Math.max(85,(Number.isFinite(m.range)?m.range:30)+35);
+   return after<before-5||before>=clearance&&after<clearance;
+  });
+  if(!exposed)return {map:character.map,in:character.in??character.map,
+    x,y,radius:7};
+ }
+ return null;
+}
 export function combatApproach(character,target,range,canMove){const a=xy(character),lead=boundedInterceptPoint(character,target,{range}),b=lead&&canMove(lead.x,lead.y)?lead:xy(target),d=Math.hypot(a.x-b.x,a.y-b.y),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
@@ -176,7 +207,8 @@ export function potionResource(c,threshold=300){
 export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
-  let lastRoadAggroAt=0,lastDefensiveShot={id:null,at:0};
+  let lastRoadAggroAt=0,lastDefensiveShot={id:null,at:0},
+   lastAssistBlock={id:null,at:0},lastAssistCorrection=0;
   const observeTransitBlock=createTransitBlockObserver();
   let marchGraph=null,marchGraphG=null;
   const travelPlan=()=>bot.teamPlan?.heartbeat?.()??
@@ -383,8 +415,10 @@ export function createFarmer(bot){
     distance(leader,m)<=cfg.party.followDistance*2).sort((a,b)=>
     Number(b.id===leader.target)-Number(a.id===leader.target)||
     distance(p.c,a)-distance(p.c,b))[0];
+  const plan=bot.teamPlan?.heartbeat?.()??
+    (bot.teamPlan?.valid?.(leader.march?.anchor)?leader.march.anchor:null);
   const assigned=engaged?null:leaderAssignedFarmTarget(p.c,leader,visible,{
-    plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),teamNames:bot.teamNames,
+    plan,realm:p.realm(),teamNames:bot.teamNames,
     maxDistance:Math.max(range,cfg.party.followDistance*2)});
   const shared=assigned&&bot.allowed(assigned)&&
     bot.strategy?.safeTarget?.(assigned.mtype,assigned)!==false?assigned:null;
@@ -394,7 +428,9 @@ export function createFarmer(bot){
   const stillAssigned=()=>{
     if(!neutralShared)return true;
     const current=leaderAssignedFarmTarget(p.c,bot.transport?.fresh?.(bot.leader),
-      bot.monsters(),{plan:bot.teamPlan?.heartbeat?.(),realm:p.realm(),
+      bot.monsters(),{plan:bot.teamPlan?.heartbeat?.()??
+        (bot.teamPlan?.valid?.(leader.march?.anchor)?leader.march.anchor:null),
+        realm:p.realm(),
       teamNames:bot.teamNames,maxDistance:Math.max(range,cfg.party.followDistance*2)});
     return current!=null&&String(current.id)===String(enemy.id);
   };
@@ -410,18 +446,63 @@ export function createFarmer(bot){
    bot.skills.rotation(null);
    return true;
   }
+  const attackable=p.call('can_attack',enemy)===true;
+  const cooldown=p.call('is_on_cooldown','attack')===true;
+  const now=Date.now(),gap=distance(p.c,enemy);
+  const block=reason=>{
+    if(lastAssistBlock.id!==String(enemy.id)||
+       now-lastAssistBlock.at>=4000){
+      lastAssistBlock={id:String(enemy.id),at:now};
+      bot.event?.('combat.assistBlocked',{leader:bot.leader,
+       target:String(enemy.id),monster:enemy.mtype,plan:plan?.id??null,
+       leaderPlan:leader.farmPlan?.id??leader.march?.plan??null,
+       reason,gap:Math.round(gap),range:Math.round(range),
+       canAttack:attackable,cooldown,order:bot.movement.order?.owner??null,
+       focusType:neutralShared?'leader-assigned':'engaged-team'});
+    }
+  };
+  if(!attackable){
+    block('native-can-attack-false');
+    if(!bot.journal&&!bot.inventoryBlocked&&!bot.recovering&&
+       now-lastAssistCorrection>=3500&&
+       (!bot.movement.order||['follow','farm','combat'].includes(
+         bot.movement.order.owner))){
+      const point=safeFocusCorrectionPoint(p.c,enemy,visible,
+        (x,y)=>p.call('can_move_to',x,y)===true);
+      if(point){
+       if(['follow','farm'].includes(bot.movement.order?.owner))
+        bot.movement.stop();
+       if(bot.movement.local(point.x,point.y,'combat')){
+        lastAssistCorrection=now;
+        bot.event?.('combat.assistReposition',{target:String(enemy.id),
+         leader:bot.leader,fromGap:Math.round(gap),
+         x:point.x,y:point.y,reason:'native-can-attack-false'});
+        bot.reason='Gruppenkampf: sichere Schussposition korrigieren';
+       }
+      }
+    }
+    bot.skills.rotation(enemy);
+    return true;
+  }
   bot.navigation?.rangePosition?.(enemy);
   bot.skills.rotation(enemy);
   if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&stillAssigned()&&
     (!!bot.entity(enemy.id)?.target||neutralShared),()=>p.call('change_target',enemy),{delay:500});
+  if(cooldown){block('attack-cooldown');return true;}
   const attack=trackedAttack(enemy.id);
-  exec.run('attack',['attack','mana'],()=>{
+  const admitted=exec.run('attack',['attack','mana'],()=>{
     const live=bot.entity(enemy.id);
     return live&&(live.target&&bot.teamNames.includes(live.target)||neutralShared&&stillAssigned())&&
       bot.allowed(live)&&(bot.strategy?.safeTarget?.(live.mtype,live)!==false||bot.combatAssessment?.canDefend(live)===true)&&
-      distance(p.c,live)<=range&&p.call('can_attack',live)&&
+      distance(p.c,live)<=range&&p.call('can_attack',live)===true&&
       !p.call('is_on_cooldown','attack');
   },attack.invoke,{delay:100,onSettle:attack.settle});
+  if(!admitted)block('attack-admission-denied');
+  else if(lastAssistBlock.id!==String(enemy.id)||now-lastAssistBlock.at>5000){
+    lastAssistBlock={id:String(enemy.id),at:now};
+    bot.event?.('combat.assistAttackAdmitted',{target:String(enemy.id),
+      leader:bot.leader,monster:enemy.mtype,plan:plan?.id??null});
+  }
   return true;
 }
 // The leader owns the approved FARM PLAN, never a monopoly on attacks.

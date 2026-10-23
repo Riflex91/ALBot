@@ -382,3 +382,62 @@ test('N05 deferred scout admission fails closed on changing native route',()=>{
   assert.equal(admit(),false);
  }
 });
+
+test('N05 missing, throwing or truncated monster view cannot authorize new scout movement',()=>{
+ const cases=[
+  ()=>null,()=>undefined,()=>({}),()=>{throw Error('unavailable monsters');},
+  ()=>Array(129).fill({id:'unrelated',mtype:'goo',type:'monster',
+   map:'main',in:'main',hp:100,dead:false,target:null}),
+  ()=>[null],()=>[{id:'unlocated',hp:70,target:null}],
+  ()=>[{id:'unknown',mtype:'goo',type:'monster',hp:NaN,target:null}],
+  ()=>[{id:'bad',mtype:'goo',type:'monster',hp:90,target:{name:'M'}}]
+ ];
+ for(const snapshot of cases){
+  const f=fixture();f.killThenMiss();f.bot.monsters=snapshot;
+  assert.doesNotThrow(()=>f.calendar.scout(f.plan));
+  assert.equal(f.calendar.scout(f.plan),false);
+  assert.equal(f.bot.movement.order,null);
+  assert.deepEqual(f.bot.events,[]);
+ }
+});
+
+test('N05 deferred local hop rechecks the entire threat observation at dispatch',()=>{
+ for(const snapshot of [
+  ()=>null,()=>{throw Error('network-adapter-uncertain');},
+  ()=>[{id:'bad',mtype:'goo',type:'monster',hp:NaN,target:'M'}],
+  ()=>Array.from({length:129},(_,i)=>({id:'m'+i,mtype:'goo',
+   type:'monster',map:'main',in:'main',hp:100,target:null}))
+ ]){
+  const f=fixture();f.killThenMiss();
+  assert.equal(f.calendar.scout(f.plan),true);
+  const admission=f.bot.movement.dispatchAdmission;
+  assert.equal(admission(),true);
+  f.bot.monsters=snapshot;
+  assert.doesNotThrow(()=>admission());
+  assert.equal(admission(),false);
+ }
+});
+
+test('N05 active native scout is stopped when threat visibility becomes unreliable',()=>{
+ for(const snapshot of [
+  ()=>null,()=>{throw Error('temporary monsters failure');},
+  ()=>[null],()=>[{id:'untyped',hp:100}],
+  ()=>Array.from({length:129},(_,i)=>({id:'m'+i,mtype:'goo',
+   type:'monster',map:'main',in:'main',hp:90,target:null}))
+ ]){
+  const f=fixture();f.killThenMiss();
+  assert.equal(f.calendar.scout(f.plan),true);
+  f.bot.monsters=snapshot;f.advance(2000);
+  assert.doesNotThrow(()=>f.calendar.sample());
+  assert.equal(f.stops,1);
+  assert.equal(f.bot.movement.order,null);
+  assert.equal(f.calendar.status().localScoutHop.state,'safety-aborted');
+  assert.equal(f.calendar.scout(f.plan),false,'one-use kill is not replayed');
+ }
+});
+
+test('N05 ordinary confirmed empty monster view still permits the bounded solo hop',()=>{
+ const f=fixture();f.killThenMiss();
+ assert.equal(f.calendar.scout(f.plan),true);
+ assert.equal(f.bot.movement.dispatchAdmission(),true);
+});

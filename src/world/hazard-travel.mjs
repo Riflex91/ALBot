@@ -153,7 +153,7 @@ export function createHazardTravel(bot){
    ()=>step.type==='move'?p.call('move',step.x,step.y):
     p.call('transport',step.map,step.spawn),{
     priority:700,timeout:step.type==='move'?25000:22000,
-    delay:150,waitForObservation:true,
+    delay:step.type==='transport'?1200:150,waitForObservation:true,
     observe:()=>trip===s&&(
      step.type==='move'?p.c.map===step.map&&htDistance(p.c,step)<=12:
      p.c.map===step.map&&(p.c.in??p.c.map)===(step.toIn??step.map)&&

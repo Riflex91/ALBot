@@ -67,15 +67,28 @@ export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
   session,realm,now,ttlMs,expected});
  const bankCurrent=verifiedAccountBankView(bank,{
   owner,session,realm,map,now,ttlMs})?bank:null;
- const slots=Object.entries(equipment??{}).filter(([key])=>
-  !key.startsWith('trade')&&!key.startsWith('cosmetic')).slice(0,24)
-  .map(([slot,item])=>item?.name&&typeof item.name==='string'?
-   {slot,item:{name:item.name,level:item.level??0,
-    stat_type:item.stat_type??'',p:item.p??'',title:item.title??''},
-    quantity:1,transferable:false}:null).filter(Boolean);
+ // Equipped copies are physical account stock, but NEVER spendable.
+ // Do not strip unique item identity (acc/rid/data) or drop nonempty slots
+ // beyond a display cap: either the entire equipped view is represented,
+ // or the account ledger explicitly reports incomplete physical evidence.
+ const equipmentValid=!!equipment&&typeof equipment==='object'&&
+  !Array.isArray(equipment);
+ const equippedEntries=equipmentValid?Object.entries(equipment)
+  .filter(([key,item])=>!key.startsWith('trade')&&
+    !key.startsWith('cosmetic')&&item!=null):[];
+ const invalidEquipment=!equipmentValid||equippedEntries.length>24||
+  equippedEntries.some(([slot,item])=>typeof slot!=='string'||
+   !slot||slot.length>100||!item||typeof item!=='object'||
+   Array.isArray(item)||!physicalStockKey(item));
+ const slots=invalidEquipment?[]:equippedEntries.map(([slot,item])=>{
+  const signature={name:item.name,level:item.level??0};
+  for(const field of variantFields)
+   if(item[field]!==undefined)signature[field]=item[field];
+  return {slot,item:signature,quantity:1,transferable:false};
+ });
  const unresolved=!!journal||peers.some(h=>h?.journal||h?.reserved||
    h?.inventoryBlocked||h?.lifecycleChanging);
- const rows=new Map();let invalidAggregate=false;
+ const rows=new Map();let invalidAggregate=invalidEquipment;
  const add=(item,count,source,protectedUnits=0,reservedUnits=0)=>{
   const key=physicalStockKey(item);
   if(!key||!validCount(count)||!validCount(protectedUnits)||
@@ -115,6 +128,7 @@ export function accountPhysicalLedger({local,peers=[],bank=null,equipment={},
  if(!localExpanded.complete)reasons.push('local-inventory-variant-unverified');
  if(!bankCurrent)reasons.push('bank-current-map-not-verified');
  if(unresolved)reasons.push('unresolved-transfer-or-value-journal');
+ if(invalidEquipment)reasons.push('equipped-variant-evidence-incomplete');
  if(invalidAggregate)reasons.push('account-variant-aggregation-unverified');
  if(rows.size>120)reasons.push('account-variant-output-truncated');
  const quantities=invalidAggregate?[]:[...rows.values()].slice(0,120)

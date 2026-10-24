@@ -8,6 +8,7 @@ import {signer,preparePrivateRelease} from '../worker/private-config-release.mjs
 import {createConfigSyncPreview} from '../../src/runtime/config-sync-preview.mjs';
 import {createVerifiedConfigStaging} from '../../src/runtime/config-sync-stage.mjs';
 import {captureLocalConfigSafePoint,assessConfigActivationPreflight} from '../../src/runtime/config-sync-safe-point.mjs';
+import {createConfigActivationReviewJournal} from '../../src/runtime/config-sync-review-journal.mjs';
 import {CONFIG_POPUP_ORIGIN,CONFIG_READY,CONFIG_RELEASE,CONFIG_REQUEST}
  from '../public/config-sync-protocol.mjs';
 
@@ -183,4 +184,53 @@ test('fresh real P-256 popup stage can be locally quiescent but cannot authorize
  assert.equal(blocked.readyForActivation,false);
  assert.equal(x.storage['albot:config:applied:v1:'+identity.target],undefined);
  x.receiver.dispose();
+});
+
+test('actual signed popup to staged character can prepare only a metadata review, never an applied commit',async()=>{
+ const {identity,release}=await signed(),x=setup(identity);
+ x.dispatch(CONFIG_RELEASE,{nonce:x.request(),release});
+ assert.equal((await settle(x.receiver)).staged.memoryVerified,true);
+ const me={name:CHARACTER,rip:false,hp:999,moving:false,target:null};
+ const bot={
+  p:{headless:false,c:me,entities:{},
+   parent:{location:{origin:'https://adventure.land'},smart:{moving:false}}},
+  me:{name:CHARACTER,role:'farmer'},teamNames:[CHARACTER],
+  running:false,target:null,movement:{order:null},
+  exec:{pending:new Map(),frame:null,waiting:new Map()},
+  checkpoint:{durable:true},journal:null,inventoryBlocked:false,
+  bank:{pending:false},logistics:{reserved:false},gold:{reserved:false},
+  lifecycleChanging:false,teamTravel:{blocked:false},
+  account:{rotationPending:()=>false}
+ };
+ const store={
+  getItem:key=>Object.hasOwn(x.storage,key)?x.storage[key]:null,
+  setItem:(key,value)=>{x.storage[key]=value;},
+  removeItem:key=>{delete x.storage[key];}
+ };
+ const preflight=()=>assessConfigActivationPreflight(
+  captureLocalConfigSafePoint(bot),x.receiver.status(),{now:CLOCK});
+ const review=createConfigActivationReviewJournal({
+  readStorage:()=>store,
+  readTrust:()=>({target:identity.target,publicJwk:identity.publicJwk}),
+  readCharacter:()=>CHARACTER,
+  readStage:()=>x.receiver.status(),readPreflight:preflight,now:()=>CLOCK
+ });
+ assert.equal(review.prepare(),true);
+ const status=review.status();
+ assert.equal(status.review.currentEvidenceValid,true);
+ assert.equal(status.review.sequence,release.sequence);
+ assert.equal(status.readyForActivation,false);
+ assert.equal(status.applied,false);
+ assert.equal(status.acknowledged,false);
+ assert.equal(x.storage['albot:config:applied:v1:'+identity.target],undefined);
+ assert.equal(JSON.stringify(x.storage).includes(release.signature),false);
+ bot.journal={kind:'bank.store',item:'ring'};
+ assert.equal(review.status().review.currentEvidenceValid,false);
+ assert.equal(review.status().readyForActivation,false);
+ assert.equal(review.prepare(),false);
+ bot.journal=null;
+ assert.equal(review.prepare(),true); // revalidation after local pause restored
+ assert.equal(review.discard(),true);
+ assert.equal(x.storage['albot:config:review:v1:'+encodeURIComponent(identity.target)+':'+encodeURIComponent(CHARACTER)],undefined);
+ review.dispose();x.receiver.dispose();
 });

@@ -3,6 +3,7 @@ import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
 import {validReserveChain,reserveChainObservation} from './bank-reserve-chain.mjs';
+import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 
 import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
 import {validateBankPartialRecord,classifyBankPartialRecord,partialDispatchDecision} from './bank-partial-recovery.mjs';
@@ -146,23 +147,28 @@ export function createBank(bot){
   if(!r.reserveStage)return true;
   const variant=identity(r.item),floor=r.reserveStage.floor,
    take=r.take??r.quantity,quantity=r.item.q??1,
-   slot=r.bankSlot??r.slot,now=Date.now(),old=reserveChain;
+   slot=r.bankSlot??r.slot,now=Date.now(),old=reserveChain,
+   // Bank single/partial journals continue to record GROSS before-images.
+   // The cross-session operating reserve cursor records FREE units only.
+   // This distinction matters when same-variant local stacks are locked.
+   freeHeld=verifiedAvailableOperatingStockQuantity(p.G,p.c.items,r.item);
+  if(!Number.isSafeInteger(freeHeld))return false;
   if(old?.phase==='prepared'){
    const a=old.source;
    return validReserveChain(old,{owner:me.name,realm:p.realm(),now})&&
-    old.variant===variant&&old.floor===floor&&old.carried===r.before&&
+    old.variant===variant&&old.floor===floor&&old.carried===freeHeld&&
     a.pack===r.pack&&a.slot===slot&&a.before===r.sourcePrint&&
-    a.held===r.before&&a.take===take;
+    a.held===freeHeld&&a.take===take;
   }
   if(old&&(!validReserveChain(old,{owner:me.name,realm:p.realm(),now})||
      old.phase!=='ready'||old.floor!==floor||old.variant!==variant||
-     old.carried!==r.before||old.steps>=16))return false;
+     old.carried!==freeHeld||old.steps>=16))return false;
   const candidate={version:1,owner:me.name,realm:p.realm(),
-   variant,item:{...r.item},floor,carried:r.before,
+   variant,item:{...r.item},floor,carried:freeHeld,
    steps:old?.steps??0,started:old?.started??now,updated:now,
    phase:'prepared',source:{pack:r.pack,slot,before:r.sourcePrint,
     after:take===quantity?null:fingerprint({...r.item,q:quantity-take}),
-    held:r.before,take,quantity}};
+    held:freeHeld,take,quantity}};
   return validReserveChain(candidate,{owner:me.name,realm:p.realm(),now})&&
    saveReserveChain(candidate);
  }
@@ -1218,7 +1224,12 @@ export function createBank(bot){
       reserveChain.steps>=16))return false;
    const stagePlan=reserveStagingTake(item,need);
    if(!stagePlan)return false;
-   const take=stagePlan.take;
+   const take=stagePlan.take,
+    gross=verifiedProductionStockQuantity(p.G,p.c.items,item);
+   // retrieve() enforces its existing maxCount against the GROSS
+   // inventory quantity, not the freely allocatable working reserve.
+   if(!Number.isSafeInteger(gross)||gross!==e.count(item)||
+      !Number.isSafeInteger(gross+take))return false;
    const localBank=observedLocalReserveStock(item);
    if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
       need.held+localBank<=need.floor)return false;
@@ -1228,8 +1239,10 @@ export function createBank(bot){
     const live=p.c.bank?.[selected.pack]?.[selected.slot],
      current=bankOperatingReserveNeed(bot,live);
     const remaining=live?observedLocalReserveStock(live):null;
-    const updated=reserveStagingTake(live,current);
-    return !!current&&current.floor===need.floor&&
+    const updated=reserveStagingTake(live,current),
+     latestGross=live?verifiedProductionStockQuantity(p.G,p.c.items,live):null;
+    return !!current&&latestGross===gross&&
+     e.count(live)===gross&&current.floor===need.floor&&
      current.held===need.held&&current.missing===need.missing&&
      identity(live)===identity(item)&&fingerprint(live)===selected.sourcePrint&&
      updated?.take===take&&
@@ -1239,7 +1252,7 @@ export function createBank(bot){
    }};
    return retrieve(item,{enabled:true,name:'Bank-Reservestaging',
     item:item.name,action:'retrieve',pack:selected.pack,
-    batch:take,maxCount:need.held+take,keep:0,teamReserve:0},
+    batch:take,maxCount:gross+take,keep:0,teamReserve:0},
     take,null,selected.slot,stage);
   }
   const safe=eligibleBankSale(item),source=e.explicit(item),operating=!!safe?.r._bankOperatingStock;

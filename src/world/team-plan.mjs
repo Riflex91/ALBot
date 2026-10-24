@@ -4,7 +4,7 @@ import {materialEvent} from '../production/probability.mjs';
 import {materialQuotaCap,materialRequestHasWork} from '../production/material-quotas.mjs';
 import {materialDrops,expectedMonsterGold} from '../production/materials.mjs';
 import {distance,samePlace,xy} from '../core/policy.mjs';
-import {spawnLocations,knowledgeFingerprint,semanticGear,mapGraph,mapHops} from './knowledge.mjs';
+import {spawnLocations,knowledgeFingerprint,semanticGear,mapGraph,mapHops,farmTransitAdmission} from './knowledge.mjs';
 // Persisted spawn measurements are observations, never authority. Reject
 // malformed or future-dated samples before they affect farm target ranking.
 export function verifiedAreaHistory(row,now=Date.now()){
@@ -376,7 +376,9 @@ export function createTeamPlan(bot){
  function materialRequests(){const h=bot.transport.fresh(cfg.party.merchant);return h?.running===true&&h.realm===p.realm()?h.materials??[]:[];}
  function valid(plan){if(!Number.isInteger(bot.decisionEpoch))return validRaw(plan);if(validEpoch!==bot.decisionEpoch){validEpoch=bot.decisionEpoch;validCache.clear();}if(!validCache.has(plan))validCache.set(plan,validRaw(plan));return validCache.get(plan);}
  function validRaw(plan){if(!plan||plan.realm!==p.realm()||plan.expires<=Date.now()||plan.leader!==bot.leader||!['farm','material','elixir','hunt'].includes(plan.kind)||!Number.isFinite(plan.x)||!Number.isFinite(plan.y)||!bot.strategy.permittedMap(plan.map)||!allowed(plan.target))return false;
-  const source=spawnLocations(p.G,[plan.target],cfg.world.excludedMaps,cfg.farming.pvp).find(s=>s.key===plan.key);if(!source||areaQuarantined(plan.key)||plan.definition!==source.definition||bot.content?.approve('farm:'+plan.map+':'+plan.target,[p.G.monsters[plan.target],p.G.maps[plan.map]?.monsters?.filter(s=>s.type===plan.target)])===false)return false;
+  const source=spawnLocations(p.G,[plan.target],cfg.world.excludedMaps,cfg.farming.pvp).find(s=>s.key===plan.key);if(!source||areaQuarantined(plan.key)||plan.definition!==source.definition||
+     !farmTransitAdmission(p.G,graph.edges.length?graph:mapGraph(p.G),p.c.map,
+      plan.map,cfg.world.excludedMaps).allowed||bot.content?.approve('farm:'+plan.map+':'+plan.target,[p.G.monsters[plan.target],p.G.maps[plan.map]?.monsters?.filter(s=>s.type===plan.target)])===false)return false;
   if(!plan.objective)return true;if(plan.kind==='elixir')return bot.elixirs?.objective()?.objective===plan.objective||bot.transport.fresh(plan.leader)?.elixir?.item===plan.item;
   return materialRequests().some(r=>r.objective===plan.objective&&
     (!r.expires||r.expires>Date.now())&&r.monster===plan.target&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]]))&&
@@ -511,7 +513,20 @@ export function createTeamPlan(bot){
   });
   let hunt=orderedHunt();
   const types=[...new Set([...candidates(),...(hunt?.phase==='combat'&&p.G.monsters?.[hunt.monster]?[hunt.monster]:[])])].filter(allowed),locations=spawnLocations(p.G,types,cfg.world.excludedMaps,cfg.farming.pvp),teamDps=Math.max(1,combat.reduce((n,c)=>n+(c.attack??0)*(c.frequency??1),0));
-  ranking=locations.filter(s=>!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);const live=liveSpawnCompetition(s,p.entities,bot.monsters(),bot.teamNames,p.c);
+  const transitCache=new Map();
+   const transitSafe=map=>{
+    if(!transitCache.has(map))transitCache.set(map,
+     farmTransitAdmission(p.G,graph,p.c.map,map,cfg.world.excludedMaps));
+    return transitCache.get(map);
+   };
+   const transitDenied=locations.filter(s=>!transitSafe(s.map).allowed);
+   if(transitDenied.length)bot.event?.('farm.transitRejected',{
+    count:transitDenied.length,
+    sampleMap:transitDenied[0].map,
+    reason:transitSafe(transitDenied[0].map).reason,
+    hazard:transitSafe(transitDenied[0].map).hazard??null
+   });
+   ranking=locations.filter(s=>transitSafe(s.map).allowed&&!areaQuarantined(s.key)&&bot.content?.approve('farm:'+s.map+':'+s.target,[p.G.monsters[s.target],p.G.maps[s.map]?.monsters?.filter(x=>x.type===s.target)])!==false).map(s=>{const m=p.G.monsters[s.target],density=Math.max(1,Math.min(s.count,(cfg.party.aoe||aoeAvailable)?cfg.party.aoeMaxTargets??1:1,cfg.farming.maxAggro??1)),fit=farmThroughput(m,combat,density,composition),seconds=Math.max(1,m.hp/Math.max(1,fit.effectiveDps)),learned=verifiedAreaHistory(history[areaKey(s.key)]),hops=mapHops(graph,p.c.map,s.map),trip=s.map===p.c.map?distance(p.c,s)/Math.max(1,p.c.speed??40):Number.isFinite(hops)?hops*60:120;const {empty,foreign}=areaPressure(learned,Date.now(),(cfg.farming.knowledgeFreshMs??21600000)*12);const live=liveSpawnCompetition(s,p.entities,bot.monsters(),bot.teamNames,p.c);
    const killsPerHour=Math.min(3600/seconds,s.count*3600/(seconds*density+Math.max(0,m.respawn??0))),theoretical=(m.xp??0)*killsPerHour,empirical=learned?.seconds>=60&&Date.now()-learned.at<(cfg.farming.knowledgeFreshMs??21600000)*12?learned.xp*3600/learned.seconds:theoretical,freshness=learned?Math.max(0,1-(Date.now()-learned.at)/(cfg.farming.knowledgeFreshMs??21600000)/12):0,xp=theoretical*(1-.3*freshness)+empirical*.3*freshness,gold=expectedMonsterGold(p.G,s.target)*killsPerHour*(1-.3*freshness)+(learned?.seconds>=60?(learned.gold??0)*3600/learned.seconds:expectedMonsterGold(p.G,s.target)*killsPerHour)*.3*freshness;const utility=request&&s.target===request.monster?((request.utilityPerHour??0)>0?request.utilityPerHour*(cfg.farming.mode==='xp'?(cfg.production.materialXpPerGold??10):1):Math.max(1,...types.map(id=>(p.G.monsters[id].xp??0)*3600/Math.max(1,p.G.monsters[id].hp/teamDps)))*(cfg.production.materialPreference??1.25)):cfg.farming.mode==='xp'?xp:cfg.farming.mode==='gold'?gold:balancedFarmUtility(xp,gold);return {...s,score:utility*(bot.adaptive?.factor(s.target)??1)/(1+trip/300+empty*2+foreign*.2+live.players*.8+live.fighters*3+(learned?.deaths??0)+(learned?.lostKills??0)*.05)*(request?1:1+(bot.progression?.bonus(s.target,s.map)??0)),xpPerHour:xp,goldPerHour:gold,composition:fit,travelSeconds:trip,evidenceSeconds:learned?.seconds??0,observedAt:learned?.at??null,
    pressureRatio:Math.max(empty,foreign>=2?.75:0),livePlayers:live.players,liveFighters:live.fighters,
    occupancyObserved:live.observed,
@@ -710,6 +725,26 @@ export function createTeamPlan(bot){
     return true;
    }
    if(!march.ready){
+    // A live road attack cannot immobilize a verified native farm route
+    // merely because the next heartbeat is stale or a follower is behind.
+    // Continue movement without new attacks. An actually blocked or wounded
+    // teammate still invokes the dedicated emergency admission.
+    const active=bot.movement.order;
+    const roadThreat=squadCombatEngaged(bot.monsters(),bot.teamNames,peers);
+    if(roadThreat&&active?.owner==='farm'&&
+       activeFarmRouteMatches(active,current)&&
+       ['teammate-behind','teammate-not-on-shared-route',
+        'teammate-unverified','teammate-portal-checkpoint'].includes(march.reason)){
+     bot.reason='Weg-Aggro: laufenden Farmweg trotz Gruppenlücke halten';
+     if(marchState.reason!=='threatened-route-preserved'||
+        Date.now()-marchState.at>12000){
+      marchState={reason:'threatened-route-preserved',peer:march.peer,at:Date.now()};
+      bot.event?.('party.marchHazardRoutePreserved',{
+       plan:current.id,peer:march.peer??null,reason:march.reason
+      });
+     }
+     return true;
+    }
     // When a FOLLOWER is the active hunter, escort that member to Daisy
     // instead of abandoning them for the old farming destination. The
     // other followers receive squadQuestVisit and stay with the Leader.

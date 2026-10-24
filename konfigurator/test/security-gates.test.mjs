@@ -27,12 +27,14 @@ async function token(overrides={}){
   keypair.privateKey,new TextEncoder().encode(data))).toString('base64url');
  return data+'.'+sig;
 }
-function context(){
+function context({githubFailure=false}={}){
  const fetched=[],assetCalls=[];
  const fetcher=async url=>{
   fetched.push(String(url));
   if(String(url)==='https://'+env.CF_ACCESS_TEAM_DOMAIN+'/cdn-cgi/access/certs')
    return new Response(JSON.stringify(certs));
+  if(githubFailure&&String(url).startsWith('https://api.github.com/'))
+   return new Response('unavailable',{status:503});
   throw Error('Unapproved private network read '+url);
  };
  const assets={fetch:async req=>{
@@ -133,7 +135,7 @@ test('only exact ingest path has origin-scoped preflight, without relaxing profi
  assert.deepEqual(c.fetched,[]);
 });
 test('private response status never becomes a game-application acknowledgment',async()=>{
- const c=context(),jwt=await token();
+ const c=context({githubFailure:true}),jwt=await token();
  const result=await c.call('/api/profile-sync/status',{headers:authHeader(jwt)});
  // Unknown/missing private profile is only a read failure, never an ACK.
  assert.notEqual(result.status,200);

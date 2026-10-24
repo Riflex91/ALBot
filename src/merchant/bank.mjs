@@ -1,9 +1,9 @@
-import {bankOperatingStockRule,bankOperatingReserveNeed} from '../items/operating-stock.mjs';
+import {bankOperatingStockRule,bankOperatingReserveNeed,verifiedAvailableOperatingStockQuantity} from '../items/operating-stock.mjs';
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
 import {validReserveChain,reserveChainObservation} from './bank-reserve-chain.mjs';
-import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
+
 import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
 import {validateBankPartialRecord,classifyBankPartialRecord,partialDispatchDecision} from './bank-partial-recovery.mjs';
 import {validateBankSingleRecord,classifyBankSingleRecord} from './bank-single-recovery.mjs';
@@ -1104,7 +1104,7 @@ export function createBank(bot){
   }
   if(single||pending||reclaiming||storing||swapping)return false;
   const r=reserveChain,
-   held=verifiedProductionStockQuantity(p.G,p.c.items,r.item);
+   held=verifiedAvailableOperatingStockQuantity(p.G,p.c.items,r.item);
   if(!Number.isSafeInteger(held))return false;
   if(r.phase!=='ready'){
    if(packMap(r.source.pack)!==p.c.map||

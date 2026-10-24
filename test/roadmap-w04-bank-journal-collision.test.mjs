@@ -136,7 +136,7 @@ test('W03/W04 absence of both journals is an inert read-only status',()=>{
  const f=fixture();
  assert.deepEqual(f.bot.bank.recoveryStatus(),{
   mode:'read-only-no-authorization',executable:false,blocked:false,
-  conflict:null,requiresManualReview:false,swap:null,store:null,single:null,partial:null,reclaim:null
+  conflict:null,requiresManualReview:false,reserveChain:null,swap:null,store:null,single:null,partial:null,reclaim:null
  });
  assert.equal(f.writes.length,0);
 });

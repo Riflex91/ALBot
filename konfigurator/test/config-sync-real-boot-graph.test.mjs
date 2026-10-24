@@ -35,8 +35,11 @@ test('deleting a real bot factory causes audit failure; spoofing with comments c
  assert.notEqual(modified,source);
  assert.throws(()=>auditRealRuntimeBootGraph(modified),
   /required-live-factory-missing/);
- const many=source.replace(/bot\.([A-Za-z]\w*)\s*=\s*create[A-Za-z]\w*\(bot[,)]/g,
-  '/* not a factory registration */');
+ // Removing a single actual factory using syntactically valid code must
+ // break the boot-count invariant, not merely the JavaScript parser.
+ const many=source.replace('bot.merchant=createMerchant(bot)',
+  'bot.merchant=null');
+ assert.notEqual(many,source);
  assert.throws(()=>auditRealRuntimeBootGraph(many),/factory-count-dropped/);
 });
 

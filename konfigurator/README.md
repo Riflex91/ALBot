@@ -1,5 +1,13 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Charaktergebundener, überprüfter Staging-Vertrag (24.10.2026)
+
+Das neue isolierte Quellmodul `src/runtime/config-sync-stage.mjs` implementiert einen **Staging-only-Vertrag** für den späteren Ingame-Empfänger. Ein Staging-Versuch muss die vollständige signierte `albot.full/v1`-Revision erneut gegen einen unabhängig festgelegten P-256-Public-Key prüfen, einschließlich Zielaccount, kanonischem SHA-256, Schema, gültiger Sequenz und Ablaufzeit. Der aktuell ausgewählte Charakter muss als aktiver Charakter im signierten Profil vorhanden sein.
+
+Erst danach schreibt das Modul ein begrenztes, charaktergebundenes **Metadaten-Receipt** in `localStorage`. Es speichert **keine privaten Profil- oder Signaturbytes** im dauerhaften Browser-Speicher. Der validierte Payload verbleibt ausschließlich im Arbeitsspeicher, kann über die Status-API nicht ausgelesen werden und wird beim Dispose verworfen. Der bestehende angewendete Sequenz-Cursor `albot:config:applied:v1:<target>` wird ausschließlich gelesen, niemals durch Staging erhöht. Ablaufzeit, Trust-Wechsel, veränderte Persistenz, konkurrierende Cursorbewegungen und korrupte Journale verhindern die Fortsetzung. Ein Neustart liefert deshalb nur `resumeRequiresReverification:true`, **niemals** eine vermeintlich bereits aktivierungsbereite Konfiguration.
+
+**Noch nicht in den signierten Runtime-Bootstrap eingebunden:** Das Modul ist bewusst zunächst eine vollständig testbare Quellkomponente. Es verändert kein Live-`ALBotConfig`, kein `bot.cfg`, keinen Laufzeitzustand und erzeugt kein Ingame-ACK. Das persistierte Receipt ist aufgrund des manipulierbaren Browser-Speichers **kein kryptografisch verlässlicher Anti-Rollback-Anker und kein Charakter-Authentifizierungsbeweis**. Für echte Aktivierung fehlen ein unabhängig gesicherter Sequenzstand, ein atomarer Safe-Point und authentifizierte ACK-Evidenz. Es erfolgt keine stillschweigende Runtime-Neusignierung oder Livefreigabe.
+
 ## Zusätzliche Cloudflare-Sicherheitsgates (24.10.2026)
 
 Die PR-Verifikation und der produktive Worker-Deploymentworkflow führen `konfigurator/scripts/verify-public-assets.mjs` aus. Vor dem Upload wird das tatsächlich paketierte `konfigurator/public/`-Verzeichnis geprüft: gesperrt werden symbolische Links, unerwartete Dateitypen, private Profil-/Release-Dateien, Schlüsseldateien, Sourcemaps und typische private Schlüssel- und Token-Muster. Der Guard wird nach dem Asset-Build vor der Produktivveröffentlichung **erneut** ausgeführt. Die Linux- und Windows-CI führt zusätzlich Regressionsprüfungen aus.

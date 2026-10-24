@@ -41,7 +41,7 @@ function covered(map,zone){
    zone.position[0]+zone.radius,zone.position[1]+zone.radius]];
  return null;
 }
-export function threatRegions(G,map,liveMonsters=[],{margin=90}={}){
+export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
  const data=G?.maps?.[map];
  if(!data||!Array.isArray(data.monsters)||!G?.monsters)
   return {ok:false,reason:'missing-authoritative-monster-map'};
@@ -58,7 +58,7 @@ export function threatRegions(G,map,liveMonsters=[],{margin=90}={}){
   const speed=G.monsters[zone.type].speed??0;
   const range=G.monsters[zone.type].range??0;
   const pad=margin+Math.min(170,Math.max(0,range)+Math.max(0,speed)*1.2)+
-   (attack>=250?35:0);
+   (attack>=250?20:0);
   for(const r of ranges)rectangles.push({...box(...r),pad,type:zone.type});
  }
  for(const monster of liveMonsters??[]){

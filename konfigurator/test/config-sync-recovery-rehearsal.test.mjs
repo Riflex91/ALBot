@@ -150,7 +150,7 @@ test('public ALBot entry point requires manual restart review, local paused pref
  const ui=await readFile(new URL('../../src/main.mjs',import.meta.url),'utf8');
  const a=ui.indexOf('rehearseConfigRestartRecovery:async()=>');
  assert.ok(a>0);
- const s=ui.slice(a,ui.indexOf('discardConfigRestartIntent:',a));
+ const s=ui.slice(a,ui.indexOf('openConfigSync(){',a));
  assert.match(s,/configRestartIntent\.status\(\)/);
  assert.match(s,/configActivationPreflight\(\)/);
  assert.match(s,/configActivationReview\?\.status\(\)/);

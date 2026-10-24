@@ -59,7 +59,7 @@ test('one throwing cleanup cannot prevent cleanup of later resources',()=>{
  assert.deepEqual(done,{closed:false,reason:'cleanup-failed',pending:0,failures:1});
  assert.equal(owner.status().active,0);
  assert.equal(owner.status().cleanupFailures,1);
- assert.deepEqual(owner.close(),{closed:true,reason:null,pending:0,failures:1});
+ assert.deepEqual(owner.close(),{closed:false,reason:'cleanup-failed',pending:0,failures:1});
  assert.equal(owner.status().transactionCommitted,false);
  assert.equal(owner.status().actualRollbackCertified,false);
 });

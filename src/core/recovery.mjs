@@ -1,5 +1,5 @@
 import {identity,fingerprint} from './policy.mjs';
-import {inspectItemTransferEvidence,inspectPairedItemTransfer,inspectReceiveSenderSession} from '../items/transfer-reconciliation.mjs';
+import {inspectItemTransferEvidence,inspectPairedItemTransfer,inspectReceiveSenderSession,inspectSendReceiverSession} from '../items/transfer-reconciliation.mjs';
 import {exchangeDrops} from '../production/materials.mjs';
 import {bankOwnershipConflict} from './bank-ownership.mjs';
 // A legacy purchase can lack variant/RID metadata. Never guess its success.
@@ -210,12 +210,20 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
    journal:j,peer,ownerSession:bot.session,realm:p.realm(),now:at,
    ttlMs:cfg.general?.messageTtlMs??10000
   }):null;
+  const receiverSession=j.kind==='send'?inspectSendReceiverSession({
+   journal:j,peer,ownerSession:bot.session,realm:p.realm(),now:at,
+   ttlMs:cfg.general?.messageTtlMs??10000
+  }):null;
   return {localVerified:!!local?.verified,localReason:local?.reason??null,
    peer:recipient,peerSession:peer?.session??null,
    originalSenderSession:j.kind==='receive'?j.session:null,
    senderSessionChanged:senderSession?.changed??false,
    senderSessionReason:senderSession?.reason??null,
    senderSessionRestartObserved:senderSession?.changed??false,
+   originalReceiverSession:j.kind==='send'?j.session:null,
+   receiverSessionChanged:receiverSession?.changed??false,
+   receiverSessionReason:receiverSession?.reason??null,
+   receiverSessionRestartObserved:receiverSession?.changed??false,
    paired:result.eligible,pairedReason:result.reason,
    requiresManualReview:true,unlocksValueActions:false,executable:false};
  }

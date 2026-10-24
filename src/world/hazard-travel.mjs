@@ -100,7 +100,7 @@ export function createHazardTravel(bot){
    p.c.map===step.map&&dist(p.c,step)<=Math.max(5,Math.min(15,(s.destination.radius??15)/2)):
    p.c.map===step.map&&
    (p.c.in??p.c.map)===(step.toIn??step.map)&&dist(p.c,step)<=90;
-  if(observed){
+  if(observed&&!exec.pending?.has('travel.hazard')){
    s.index++;s.lastProgress=Date.now();s.last=point(p.c.map,p.c);
    bot.event?.('travel.hazardStepConfirmed',{id:s.id,index:s.index,
     type:step.type,map:p.c.map});

@@ -20,6 +20,8 @@ test('production Cloudflare deploy is gated by both credentials and Linux/Window
  assert.match(workflow,/command: deploy/);
  assert.match(workflow,/npm run build:konfigurator/);
  assert.match(workflow,/scripts\/VERIFY-U01-U07\.ps1/);
+ // Audited in Linux, Windows and again after rebuilding the deploy bytes.
+ assert.equal(workflow.split('node konfigurator/scripts/verify-public-assets.mjs').length-1,3);
  assert.doesNotMatch(workflow,/wrangler d1 execute|wrangler secret (put|delete)|wrangler delete|--force|npm audit fix/);
 });
 
@@ -32,4 +34,12 @@ test('existing Access settings, D1 binding and restricted Free worker are preser
  assert.match(config,/run_worker_first = true/);
  assert.match(workflow,/cancel-in-progress: false/);
  assert.match(workflow,/existing Worker and D1 binding only/);
+});
+
+test('both PR verification and guarded production publish invoke static asset audit',async()=>{
+ const pr=await read('../../.github/workflows/verify-albot.yml');
+ const deploy=await read('../../.github/workflows/deploy-konfigurator.yml');
+ assert.match(pr,/npm run build:konfigurator[\\s\\S]*node konfigurator\\/scripts\\/verify-public-assets\\.mjs/);
+ assert.match(deploy,/name: Publish existing Worker and D1 binding only/);
+ assert.match(deploy,/name: Fail closed on private credentials or profiles in static assets/);
 });

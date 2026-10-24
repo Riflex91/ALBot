@@ -66,6 +66,8 @@ jobs:
           node --check konfigurator/worker/index.mjs
           node --check konfigurator/public/app.mjs
           node --check konfigurator/public/relay.mjs
+      - name: Fail closed on private credentials or profiles in static assets
+        run: node konfigurator/scripts/verify-public-assets.mjs
       - name: Preserve only existing Free-tier Cloudflare services
         run: |
           test -f konfigurator/wrangler.toml
@@ -90,6 +92,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./scripts/VERIFY-U01-U07.ps1
+      - name: Verify static asset privacy on Windows
+        run: node konfigurator/scripts/verify-public-assets.mjs
 
   deploy:
     needs:
@@ -114,6 +118,7 @@ jobs:
         run: |
           npm run build:editor
           npm run build:konfigurator
+          node konfigurator/scripts/verify-public-assets.mjs
       - name: Publish existing Worker and D1 binding only
         uses: cloudflare/wrangler-action@v4
         with:

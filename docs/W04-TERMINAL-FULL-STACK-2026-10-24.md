@@ -6,4 +6,4 @@ Die Stapelauswahl bevorzugt möglichst passgenaue Mengen. Bestehende explizite `
 
 Regression: drei aufeinander folgende physische Entnahmen in einer Sitzung ohne Teilentnahme, kein Verkauf während der Reserveherstellung, ursprünglicher Nutzer-Cap, lokale Bestandsdrift und Bank-Quelländerung. Die **accountweite** koordinierte Reservestaging-Transaktion einschließlich Wiedereintritt nach Browser-/Sessionwechsel und W14-Dauerlauf ist mit diesem Paket nicht vollständig abgenommen.
 
-Der geschützte Release-Kanal steht inzwischen bestätigt auf `0.42.0-candidate` / Sequenz 42. Die hier gebaute `0.43.0-candidate`-Runtime ist bis zu einer gesondert erfolgreich bestätigten Signierung **nicht** der Ingame-Release. Offline-CI ist keine Ingame-Liveabnahme.
+Die `0.43.0-candidate`-Runtime wurde über den geschützten GitHub-Workflow `40091743604` ECDSA-P-256-signiert (Sequenz 43, SHA-256 `847a53b86d8bd072f586dbddf6b9f00ab695128d38295b9f9267ac9c7a2520c6`). Runtime-Git-Blob in main und signiertem Releasebranch stimmt überein. Dies ist **Offline-Zertifizierung**, keine W14-Ingame-Liveabnahme.

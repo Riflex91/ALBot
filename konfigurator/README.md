@@ -1,5 +1,13 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Zusätzliche Cloudflare-Sicherheitsgates (24.10.2026)
+
+Die PR-Verifikation und der produktive Worker-Deploymentworkflow führen `konfigurator/scripts/verify-public-assets.mjs` aus. Vor dem Upload wird das tatsächlich paketierte `konfigurator/public/`-Verzeichnis geprüft: gesperrt werden symbolische Links, unerwartete Dateitypen, private Profil-/Release-Dateien, Schlüsseldateien, Sourcemaps und typische private Schlüssel- und Token-Muster. Der Guard wird nach dem Asset-Build vor der Produktivveröffentlichung **erneut** ausgeführt. Die Linux- und Windows-CI führt zusätzlich Regressionsprüfungen aus.
+
+`konfigurator/test/security-gates.test.mjs` testet ohne Zugriff auf echte Secrets die Grenzen des Worker-Routings: Cloudflare-Access-JWT-Pflicht für geschützte API- und Websitepfade, Ungültigkeit gefälschter/abgelaufener JWTs, keine Gleichsetzung des Telemetrie-Bearers mit einer Profilfreigabe, exakte CORS-Ausnahme nur für `/api/ingest` und keine CORS- oder Schreibfreigabe für den privaten Konfigurationsabruf. Die Tests verwenden kurzlebige lokale Testschlüssel und ausschließlich synthetische Tokens.
+
+**Geltungsgrenze:** Diese statischen und offline ausgeführten Prüfungen können weder den tatsächlichen Inhalt der Cloudflare-Access-Policies und Worker-Secrets auslesen noch eine erfolgreiche Browser- oder Ingame-Liveprüfung ersetzen. Auch eine grüne CI ist kein per-Charakter-ACK. Automatischer Ingame-Abruf und atomare Profilübernahme sind weiterhin nicht freigeschaltet.
+
 ## Nachweisbare Abrufbereitschaft und sieben Sync-Stufen (24.10.2026)
 
 Die Systemansicht trennt nun **privat gespeichert**, **privat signiert**, **geschützt abrufbar**, **in der Runtime empfangen**, **in der Runtime geprüft**, **übernommen** und **charakterbezogen bestätigt**. Der Status `deliveryReady` wird nur bei gültiger, nicht abgelaufener, SHA-256-passender Signatur **und** erneuter Prüfung der privaten Repositorysichtbarkeit ausgegeben. Er beschreibt ausschließlich die Bereitschaft des bestehenden `/api/profile-sync/delivery`-Endpunkts hinter Cloudflare Access für das manuell geöffnete Popup. Er ist **weder ein Push ins Spiel noch ein Nachweis eines HTTP-Abrufs durch die Runtime**.

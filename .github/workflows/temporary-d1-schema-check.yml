@@ -1,0 +1,24 @@
+name: Temporary isolated D1 migration guard verification
+on:
+  push:
+    branches:
+      - ops/konfigurator-d1-safe-migration-20261024
+permissions:
+  contents: read
+jobs:
+  guards:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate exact schema, locked DB target and adversarial mutations
+        run: node --test konfigurator/test/manual-d1-migration.test.mjs
+      - name: Verify the migration script runs against actual checked-out files
+        run: node konfigurator/scripts/verify-d1-migration.mjs

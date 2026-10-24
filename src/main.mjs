@@ -717,7 +717,16 @@ export function install(root){
      bot.event('inventory.manualReconcile',{kind,changedItems:audit.changes.length,changes:audit.changes.map(c=>({item:c.item,delta:c.delta})),manualPotionLoss:audit.manualPotionLoss??0,source:'ingame-mining-audit',miningSuccess:'unknown'});
      publish();return true;
     },
-    dispose(){if(disposed)return;halt('Entladen');disposed=true;bot.transport.close();const released=cleanup.close();if(!released.closed)report.event('runtime.warning',{where:'boot-resource-cleanup',failures:released.failures});panel?.remove();}
+    dispose(){if(disposed)return;disposed=true;
+     try{halt('Entladen');}
+     finally{
+      try{bot.transport.close();}catch{}
+      const released=cleanup.close();
+      if(!released.closed)try{report.event('runtime.warning',{
+       where:'boot-resource-cleanup',failures:released.failures});}catch{}
+      try{panel?.remove();}catch{}
+     }
+    }
   };
   root.ALBot=api;panel=createPanel(bot,api);cleanup.add('on-destroy-hook',p.hook('on_destroy',()=>api.dispose()));
   // Read-only heartbeats also while paused allow a complete account balance

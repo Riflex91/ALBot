@@ -1,0 +1,45 @@
+name: Physical farmer transit candidate (unsigned)
+on:
+  push:
+    branches: [fix/20261024-fail-closed-farmer-physical-transit]
+permissions:
+  contents: write
+concurrency:
+  group: physical-transit-candidate
+  cancel-in-progress: true
+jobs:
+  verify-and-sync:
+    if: "!contains(github.event.head_commit.message, '[skip physical-sync]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/20261024-fail-closed-farmer-physical-transit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build candidate
+        run: npm run build
+      - name: Synchronize personal CODE (configuration unchanged)
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Build editor
+        run: npm run build:editor
+      - name: Test complete offline suite before publishing generated output
+        run: npm test
+      - name: Check CODE and release contract
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+      - name: Push only generated artifacts after successful verification
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u -- bot.js dist editor profiles
+          if ! git diff --cached --quiet; then
+            git commit -m "build(candidate): sync guarded farmer runtime [skip physical-sync]"
+            git push origin HEAD:fix/20261024-fail-closed-farmer-physical-transit
+          fi

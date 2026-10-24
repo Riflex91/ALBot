@@ -900,7 +900,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       const plan=travelPlan();
       if(me.role==='farmer'&&plan&&
          (!samePlace(c,plan)||distance(c,plan)>85)&&
-         (blocker||['farm','follow'].includes(bot.movement.order?.owner))){
+         !inCaveInstance(c)){
        bot.target=null;
        bot.reason='Gefährliche Weg-Aggro: sichere Flucht statt Kampf';
        if(blocker){
@@ -909,9 +909,11 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
         else emergencyConvergence(blocker);
        }
        bot.skills?.rotation?.(null);
-       bot.event?.('combat.transitOffenseSuppressed',{
-        monster:danger.mtype,monsterId:danger.id,
-        blocked:!!blocker,owner:bot.movement.order?.owner??null});
+       if(now-lastRoadAggroAt>=10000){lastRoadAggroAt=now;
+        bot.event?.('combat.transitOffenseSuppressed',{
+         monster:danger.mtype,monsterId:danger.id,
+         blocked:!!blocker,owner:bot.movement.order?.owner??null});
+       }
        return;
       }
       const assessment=bot.combatAssessment?.assess(danger);

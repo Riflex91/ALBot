@@ -34,7 +34,7 @@ function fixture({route=true,shop=true,session='session-r',cap=1000}={}){
   bank:{packs:()=>[]},economy:{safe:i=>!!i,explicit:()=>null,
    npcFor:name=>shop&&name==='dexearring'?{map:'main',x:0,y:0}:null},
   production:{estimateAcquisition:name=>route&&name==='silvercape'?
-   {kind:'farm',gold:100,hours:0.1,speculative:false}:null}};
+   {kind:'farm',gold:100,hours:0.001,speculative:false}:null}};
  return {bot,G,cfg,profile,peer};
 }
 test('native catalog expands both missing earring slots and cape, but only compatible class',()=>{

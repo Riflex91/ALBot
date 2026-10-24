@@ -20,6 +20,20 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build shared browser/headless runtime
         run: npm run build
+      - name: Stage source-built artifacts for candidate synchronization
+        uses: actions/upload-artifact@v4
+        with:
+          name: albot-candidate-sync-${{ github.sha }}
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            dist/albot.js
+            dist/albot.runtime.js
+            dist/albot.package.json
+            dist/albot.settings.json
+            dist/manifest.json
+            profiles/full-solo.json
+            profiles/full-team.json
       - name: Verify published bot.js matches source build and personal configuration
         run: node scripts/sync-personal-code.mjs --check
       - name: Verify documented bootstrap target and version contract

@@ -1,5 +1,6 @@
 import {travelBlinkEligible,blinkLandingPoint} from '../combat/travel-blink.mjs';
 import {arrived,samePlace,distance,xy} from './policy.mjs';
+import {createHazardTravel} from '../world/hazard-travel.mjs';
 export function transientMovementInterruption(error){
  const code=String(error?.reason??error?.message??error??'').toLowerCase();
  return code==='interrupted'||code==='cancelled'||code==='canceled'||code==='superseded';
@@ -34,6 +35,13 @@ export function townChannelTeamThreat(character,monsters=[],team=[]){
 }
 export function createMovement(bot){
   const {p,exec}=bot;let order=null,blockedUntil=0,townMs=5000,lastTown=0,lastTownAttempt=0,townQueued=false,moveSeq=0,questTownRetry=null;
+   const hazardTravel=createHazardTravel(bot);
+   const hazardOwner=owner=>['farm','follow','regroup','quest','quest-escort','cohesion'].includes(owner);
+   const hazardWorld=()=>p.G?.monsters?.prat?.aggro>0&&
+     p.G?.maps?.level1?.monsters?.some(pack=>pack?.type==='prat');
+   const hazardRequired=(d,owner)=>bot.me?.role==='farmer'&&
+     hazardWorld()&&hazardOwner(owner)&&
+     (d.map!==p.c.map||p.c.map==='level1');
   // Only native smart-route failures quarantine a destination map, not normal
   // travel stops or a rejected non-movement action. Keep the cache bounded.
   const failedRoutes=new Map(),routeCooldownMs=300000;
@@ -59,12 +67,42 @@ export function createMovement(bot){
   const smartActive=()=>[p.root?.smart,p.parent?.smart].some(s=>s?.moving||s?.searching);
   // Native movement can be active even without a local ALBot order.
   const nativeBusy=()=>!!p.c?.moving||smartActive();
-  const stop=()=>{if(order)bot.event?.('movement.terminal',{
+  const stop=()=>{if(hazardTravel.active)hazardTravel.abort('owner-stop');
+    if(order)bot.event?.('movement.terminal',{
     id:order.id,owner:order.owner,mode:order.mode??null,map:order.dest.map,
     outcome:order.terminal??'cancelled'});
    if(townQueued||p.c?.c?.town){try{Promise.resolve(p.call('stop','town')).catch(()=>{});}catch{}}townQueued=false;if(order||smartActive()||p.c?.moving){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}order=null;exec.cancelResource('movement');};
   function go(d,owner,scoutAdmission=null){
     if(!bot.running||Date.now()<blockedUntil||!d||!Number.isFinite(d.x)||!Number.isFinite(d.y))return false;
+    // Preserve a multi-map itinerary rather than silently handing its
+    // native movement resource to competing farm/follow/regroup owners.
+    if(hazardTravel.active){
+      if(hazardTravel.matches(d,owner))return true;
+      // An actually attacked farmer can preempt to protect its life.
+      const attacked=(bot.monsters?.()??[]).some(m=>m?.hp>0&&!m.dead&&
+        m.target===p.c.name&&m.map===p.c.map);
+      if(['kite','combat'].includes(owner)&&attacked)
+        hazardTravel.abort('emergency-combat-preemption');
+      else return false;
+    }
+    if(hazardRequired(d,owner)){
+      if(order||townQueued||exec.pending.has('travel.town'))return false;
+      // An orphan native smart path may continue executing after this
+      // request. Stop it BEFORE planning a new certified itinerary.
+      if(nativeBusy()){
+        try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}
+        bot.event?.('travel.hazardLegacyRouteStopped',{
+          reason:'unverified-native-route-before-plan'});
+        return false;
+      }
+      if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
+      // No unreviewed native smart_move fallback when the physical
+      // geometry or risk proof is absent.
+      if(hazardTravel.start(d,owner)){
+        hazardTravel.poll();return true;
+      }
+      return false;
+    }
     // An active Monsterhunt visit has exclusive ordinary travel ownership.
     // Only its own route or urgent combat/kiting may preempt it; in particular
     // a follower tick cannot replace Daisy's route after a Town teleport.
@@ -223,7 +261,8 @@ export function createMovement(bot){
     if(accepted)bot.event?.('movement.request',{id:token.id,owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }
-  function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.observations?.travel(order.origin,p.c.map,now-order.started);bot.event?.('movement.arrived',{id:order.id,owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});order.terminal='arrived';stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
+  function poll(){if(hazardTravel.active){hazardTravel.poll();return;}
+    if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.observations?.travel(order.origin,p.c.map,now-order.started);bot.event?.('movement.arrived',{id:order.id,owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});order.terminal='arrived';stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
     // Native smart_move may spend >12 s on path search before coordinates
     // change; retain its ownership until the bounded 120 s deadline.
     const timedOut=now-order.started>120000;
@@ -233,7 +272,13 @@ export function createMovement(bot){
       bot.event?.('movement.failed',{owner:failed.owner,mode:failed.mode,map:failed.dest.map,x:failed.dest.x,y:failed.dest.y,reason:timedOut?'timeout':'no_progress'});
     }
   }
-  return {go,poll,stop,failedRecently,nativeBusy,get townActive(){return townQueued||!!p.c.c?.town||exec.pending.has('travel.town');},get order(){return order;},status:()=>order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
+  return {go,poll,stop,failedRecently,nativeBusy,
+    get townActive(){return townQueued||!!p.c.c?.town||exec.pending.has('travel.town');},
+    get order(){return hazardTravel.order??order;},
+    status:()=>hazardTravel.order?
+      {owner:hazardTravel.order.owner,mode:'hazard-itinerary',
+       destination:{...hazardTravel.order.dest},started:hazardTravel.session()?.created}:
+      order?{owner:order.owner,mode:order.mode,destination:{...order.dest},started:order.started}:null,
     local(x,y,owner,scoutAdmission=null){
       if(order&&order.owner!==owner)return false;
       if(!p.call('can_move_to',x,y))return false;

@@ -1,0 +1,45 @@
+name: Threat-aware portal itinerary candidate (unsigned)
+on:
+  push:
+    branches: [feat/20261024-threat-aware-portal-itinerary]
+permissions:
+  contents: write
+concurrency:
+  group: hazard-itinerary-candidate
+  cancel-in-progress: true
+jobs:
+  candidate:
+    if: "!contains(github.event.head_commit.message, '[skip hazard-sync]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Run physical navigation regressions
+        run: node --test test/20261024-hazard-portal-itinerary.test.mjs
+      - name: Generate candidate runtime
+        run: npm run build
+      - name: Synchronize personal CODE (unsigned)
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Generate editor
+        run: npm run build:editor
+      - name: Full offline regression suite
+        run: npm test
+      - name: Verify CODE parity and bootstrap
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+      - name: Publish unsigned candidate only after success
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u -- bot.js dist editor profiles
+          if ! git diff --cached --quiet; then
+            git commit -m "build(candidate): sync threat-aware portal runtime [skip hazard-sync]"
+            git push origin HEAD:feat/20261024-threat-aware-portal-itinerary
+          fi

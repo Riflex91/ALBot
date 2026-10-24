@@ -109,7 +109,17 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
     accessoryRoutes.set(name,route);
     return route;
    }
-  for(const member of cfg.characters.filter(c=>c.enabled)){const profile=member.name===me.name?bot.gear.snapshot():bot.gear.profile(member.name);if(!profile)continue;const role=member.gearRole==='auto'?profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps':member.gearRole;
+  for(const member of cfg.characters.filter(c=>c.enabled&&(
+     me.role!=='merchant'||c.name===me.name||
+     (c.role==='farmer'&&(!Array.isArray(bot.farmers)||
+       bot.farmers.includes(c.name))&&
+      bot.transport?.fresh?.(c.name)?.running!==false)))){
+    // Old offline/rotated characters are not current production consumers.
+    // Their inventory remains protected by the separate stock/gear guards.
+    if(me.role==='merchant'&&member.name!==me.name&&
+       Array.isArray(bot.farmers)&&
+       bot.transport?.fresh?.(member.name)?.running!==true)continue;
+    const profile=member.name===me.name?bot.gear.snapshot():bot.gear.profile(member.name);if(!profile)continue;const role=member.gearRole==='auto'?profile.class==='priest'?'healer':profile.class==='merchant'?'economy':'dps':member.gearRole;
    for(const [slot,old] of Object.entries(Object.fromEntries([...new Set([...Object.keys(profile.slots),'mainhand','offhand','helmet','chest','pants','shoes','gloves','amulet','belt','cape','ring1','ring2','earring1','earring2','orb'])].map(slot=>[slot,profile.slots[slot]??null])))){if(old?.l||old?.b||cfg.production.gearTargets.some(g=>g.enabled&&g.character===member.name&&g.slot===slot))continue;let previous=0;try{previous=old?gearScore(properties(old),role,profile.class):0;}catch{continue;}
      // Only fresh, confirmed online farmer gear profiles admit catalog
      // discovery. Existing stock and explicit configured targets are unchanged.
@@ -128,7 +138,8 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
     let best=null;for(const name of candidates){if(!gearCompatible(p.G,profile,{name,level:0},slot))continue;
       const meta=p.G.items[name],discovered=!knownNames.has(name);
       if(discovered&&bot.economy.explicit({name,level:0},'production')?.action==='keep')continue;
-      for(let level=0;level<=(meta.upgrade||meta.compound?autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot):0);level++){yield;if(old?.name===name&&old.level>=level)continue;const explicit=bot.economy.explicit({name,level:Math.max(0,level-1)},'production');if(level>0&&explicit&&(explicit.action==='keep'||explicit.targetLevel<level))continue;
+      for(let level=0;level<=(discovered&&old===null?0:
+         (meta.upgrade||meta.compound?autoGearTargetLevel(cfg.production.autoGearMaxLevel,profile.level,slot):0));level++){yield;if(old?.name===name&&old.level>=level)continue;const explicit=bot.economy.explicit({name,level:Math.max(0,level-1)},'production');if(level>0&&explicit&&(explicit.action==='keep'||explicit.targetLevel<level))continue;
      const owned=ownedStock.filter(r=>r.item.name===name&&(r.item.level??0)<=level).sort((a,b)=>(b.item.level??0)-(a.item.level??0))[0];let chance=1,cost=owned?0:meta.g??Infinity;
        if(discovered&&!owned&&!craftSet.has(name)){
         const route=accessoryRoute(name);
@@ -146,7 +157,7 @@ export function createEconomicIntelligence(bot){const {p,cfg,me}=bot;let evaluat
        cost=route.gold+route.hours*Math.max(1,cfg.production.goldPerHour??100000);
       }for(let l=owned?.item.level??0;l<level;l++){const c=mutationChance(name,l,meta.compound?'compound':'upgrade');if(c===null){chance=0;break;}const grade=p.call('item_grade',{name,level:l}),scroll=(meta.compound?'cscroll':'scroll')+grade;cost=(cost*(meta.compound?3:1)+(p.G.items[scroll]?.g??Infinity))/c;chance*=c;}
      if(chance<cfg.production.minChance||cfg.merchant.budgetMode!=='account-loss'&&cost>cfg.production.autoGearBudget||!Number.isFinite(cost))continue;let score;try{const nextStats=properties({name,level}),oldStats=old?properties(old):null;if(!gearSuitability(oldStats,nextStats,role,profile.class,member.merchantMobility).ok)continue;score=gearScore(nextStats,role,profile.class);}catch{continue;}const improvement=score-previous,utility=improvement*chance/(1+cost/Math.max(1,cfg.production.autoGearBudget));if(improvement<Math.abs(previous)*cfg.production.minImprovement||utility<=0)continue;if(!best||utility>best.utility)best={name:'Optimiertes Gear '+member.name+' '+slot,item:name,level,quantity:1,character:member.name,slot,enabled:true,budget:cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.autoGearBudget,priority:(member.catchUp?35:15)+gearSlotPriority(slot,profile.class)+
-       (discovered&&old===null?35:0),utility,chance,estimatedCost:cost,sourceOwner:owned?.owner??null,sourceLevel:owned?.item.level??0,variant:owned?{stat_type:owned.item.stat_type??'',p:owned.item.p??'',title:owned.item.title??''}:undefined};
+       (old===null&&['cape','earring1','earring2'].includes(slot)?90:0),utility,chance,estimatedCost:cost,sourceOwner:owned?.owner??null,sourceLevel:owned?.item.level??0,variant:owned?{stat_type:owned.item.stat_type??'',p:owned.item.p??'',title:owned.item.title??''}:undefined};
     }}if(best){nextTargets.push(best);nextAllocation.push({character:member.name,slot,item:best.item,level:best.level,utility:best.utility,state:'reserved',recipientSession:bot.transport.fresh(member.name)?.session??null});}
       if(newlyDiscovered.length)nextVacancies.push({character:member.name,slot,
        catalogued:newlyDiscovered.length,unprovenRoutes:deniedRoutes,

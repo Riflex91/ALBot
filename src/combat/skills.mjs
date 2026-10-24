@@ -108,6 +108,28 @@ export function createSkills(bot){
     if(target){if(!samePlace(c,target)||(!target.rip&&target.hp<=0))return false;const range=s.range??((c.range??0)*(s.range_multiplier??1)+(s.range_bonus??0));if(distance(c,target)>range)return false;if(s.no_self&&target.name===c.name)return false;}
     return true;
   }
+  // A current, already engaged monster may be taunted defensively even
+  // when the conservative TTK gate forbids voluntary boss combat.
+  // Rechecked at actual skill dispatch; never authorizes a neutral pull.
+  function emergencyTauntWitness(target){
+    if(p.c.ctype!=='warrior'||bot.me?.role!=='farmer'||!cfg.party.enabled||
+      !target?.id||target.type!=='monster'||target.hp<=0||target.dead||
+      target.invincible||!(bot.farmers??[]).includes(target.target)||
+      target.target===p.c.name||!samePlace(p.c,target)||
+      !Number.isFinite(p.c.hp)||!Number.isFinite(p.c.max_hp)||
+      p.c.max_hp<=0||p.c.hp/p.c.max_hp<.7||
+      (p.parent?.is_pvp||p.G.maps?.[p.c.map]?.pvp)&&!cfg.farming.pvp||
+      bot.monsters().some(m=>m.id!==target.id&&m.target===p.c.name&&m.hp>0&&!m.dead))
+     return false;
+    const victim=bot.transport?.fresh?.(target.target),clock=Date.now();
+    if(!victim?.running||victim.rip||victim.realm!==p.realm()||
+      !samePlace(victim,target)||!Number.isFinite(victim.hp)||victim.hp<=0||
+      !Number.isFinite(victim.received)||victim.received>clock||
+      clock-victim.received>4000)return false;
+    const skill=p.G.skills?.taunt,range=skill?.range??p.c.range;
+    return !!skill&&Number.isFinite(range)&&range>0&&
+      distance(p.c,target)<=range;
+  }
   function use(id,target,reserve=.2,every=800,maxTargets=cfg.party.aoeMaxTargets,explicit=false,independentTargets=null){
     const roles=bot.teamPlan?.roles(),role={heal:'heal',partyheal:'heal',revive:'heal',energize:'energize',rspeed:'speed',reflection:'protect',taunt:'aggro',agitate:'aggro',huntersmark:'mark'}[id];if(!explicit&&role){let owner=roles?.[role];if(bot.capabilities){if(!owner||!bot.capabilities.available(owner,id,target))owner=(bot.farmers??[]).filter(n=>bot.capabilities.available(n,id,target)).sort()[0];}if(owner&&owner!==p.c.name)return false;}
     if(['heal','partyheal'].includes(id)&&!cfg.party.healing)return false;
@@ -151,7 +173,8 @@ export function createSkills(bot){
       independentTargets.length>0&&bot.me?.role==='farmer'&&
       p.c.ctype==='ranger';
     const allowedTarget=e=>bot.allowed(e,independentAimed?
-      {independentAimedSpawnSkill:id}:null);
+      {independentAimedSpawnSkill:id}:null)||
+      id==='taunt'&&emergencyTauntWitness(e);
     const visible=multi?bot.monsters().filter(e=>distance(p.c,e)<(s.range??p.c.range)-5):[];
     // Targeted skills can initiate a controlled encounter: a neutral mob is
     // allowed only if the team plan, danger checks and planner all approve it.
@@ -566,5 +589,7 @@ export function createSkills(bot){
     };
     for(const [ok,id,target,delay] of choices[c.ctype]??[])if(ok&&use(id,target,.3,delay))return;
   }
-  return {ready,use,rescue,rotation,independentOneShotAoE,diagnostics};
+  return {ready,use,rescue,rotation,independentOneShotAoE,diagnostics,
+   emergencyTaunt:target=>emergencyTauntWitness(target)&&
+    use('taunt',target,.1,650,cfg.party.aoeMaxTargets,false)};
 }

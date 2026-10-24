@@ -29,7 +29,8 @@ export const createBootResourceScope=(()=>{
   function close(){
    if(closing)return {closed:false,reason:'release-reentrancy',
     pending:owned.length,failures};
-   if(closed)return {closed:true,reason:null,pending:0,failures};
+   if(closed)return {closed:failures===0,
+    reason:failures?'cleanup-failed':null,pending:0,failures};
    closing=true;closed=true;
    while(owned.length){
     const {name,release}=owned.pop();

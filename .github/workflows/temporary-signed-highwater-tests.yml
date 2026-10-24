@@ -1,0 +1,26 @@
+name: Temporary Access-only signed high-water test matrix
+on:
+  push:
+    branches:
+      - feat/config-sync-signed-release-highwater-20261024
+permissions:
+  contents: read
+jobs:
+  highwater:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Exact signed high-water and security regressions
+        run: node --test konfigurator/test/signed-release-highwater*.test.mjs konfigurator/test/security-gates.test.mjs
+      - name: Full offline tests independent of parallel signed-runtime pin
+        run: npm test

@@ -26,7 +26,7 @@ test('lethal roadside aggro preserves a verified native farm route, not a defens
 });
 test('leader does not repeatedly halt for a healthy follower visibly progressing on the same route',()=>{
  const local={...plan,map:'main',in:'main',x:1000,y:0};
- const teammate={name:'Priest',map:'main',in:'main',x:190,y:0,
+ const teammate={name:'Priest',map:'main',in:'main',x:-190,y:0,
   received:9950,realm,running:true,rip:false,hp:900,max_hp:1000,
   march:{plan:local.id,realm,moving:true,map:'main',in:'main'}};
  const check=x=>assessLiveSquadMarch({...ranger,realm},[x],{
@@ -34,7 +34,7 @@ test('leader does not repeatedly halt for a healthy follower visibly progressing
  assert.equal(check(teammate).ready,true);
  assert.equal(check({...teammate,march:{...teammate.march,moving:false}}).reason,
   'teammate-behind');
- assert.equal(check({...teammate,x:290}).reason,'teammate-behind');
+ assert.equal(check({...teammate,x:-290}).reason,'teammate-behind');
  assert.equal(check({...teammate,hp:500}).reason,'teammate-needs-heal');
  assert.equal(check({...teammate,received:5000}).reason,'teammate-unverified');
 });

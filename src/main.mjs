@@ -483,7 +483,7 @@ export function install(root){
   // a secret in the signed public bundle or a Cloudflare deployment token.
   // The existing Access relay remains an optional manual fallback.
   let telemetryRelay=null,telemetryInterval=null,telemetryAuto=null,telemetryAutoInterval=null;
-  let configSyncPreview=null,configActivationReview=null;
+  let configSyncPreview=null,configActivationReview=null,configStaging=null;
   if(!p.headless){
     try{
       const gameWindow=p.parent;
@@ -501,14 +501,14 @@ export function install(root){
         const configCrypto=root.crypto??gameWindow.crypto;
         const readConfigTrust=()=>root.ALBOT_CONFIG_SYNC_TRUST;
         const readConfigStorage=()=>root.localStorage??gameWindow.localStorage;
-        const stagedConfig=createVerifiedConfigStaging({
+        configStaging=createVerifiedConfigStaging({
           cryptoObject:configCrypto,
           readTrust:readConfigTrust,readStorage:readConfigStorage,
           // Only the actual in-game character may own a staging receipt.
           readCharacter:()=>p.c?.name
         });
         configSyncPreview=createConfigSyncPreview({
-          gameWindow,cryptoObject:configCrypto,staging:stagedConfig,
+          gameWindow,cryptoObject:configCrypto,staging:configStaging,
           readTrust:readConfigTrust,readStorage:readConfigStorage
         });
         // Explicit review of a locally paused staged revision only.
@@ -617,6 +617,12 @@ export function install(root){
       safePoint:configActivationPreflight()
     }),
     configActivationPreflight:()=>configActivationPreflight(),
+    // Manual detached Full-v1 validation only. Never changes live bot.cfg.
+    previewConfigActivationCandidate:async()=>!disposed&&configStaging?
+      configStaging.dryRun(bot.cfg):{
+       ok:false,reason:'Staging unavailable',readyForActivation:false,
+       applied:false,acknowledged:false
+      },
     configActivationReviewStatus:()=>configActivationReview?.status()??{
       mode:'unavailable',configured:false,readyForActivation:false,
       applied:false,acknowledged:false

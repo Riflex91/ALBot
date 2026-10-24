@@ -131,7 +131,7 @@ export function createStrategy(bot){
    if(sharedFarmRejection(id,(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)),
       p.realm(),knowledgeFingerprint(p.G.monsters?.[id])))return false;
   if(activity?.observationUnknown&&id===activity.target&&!live?.target)return false;
-  if(!full)return true;
+  // Safety checks are mandatory; testLogging only controls diagnostics.
   // A death quarantine is different from a combat-readiness rejection.
   // Log both, including planned/spawn checks that used to be completely silent.
   if(failed[id]>Date.now()){

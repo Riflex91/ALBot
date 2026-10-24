@@ -44,7 +44,7 @@ function readRecord(storage,t){
 function matches(stage,preflight,review,dryRun,t,at){
  const staged=stage?.staged,verified=stage?.verified,entry=review?.review;
  return stage?.mode==='verified-stage-only'&&stage?.configured===true&&
-  stage.inFlight===false&&stage.stageInFlight===false&&stage.planning===false&&
+  stage.inFlight===false&&stage.stageInFlight===false&&stage.planning!==true&&
   staged?.memoryVerified===true&&staged.resumeRequiresReverification===false&&
   staged.target===t.target&&staged.character===t.character&&
   HEX.test(staged.sha256??'')&&Number.isSafeInteger(staged.sequence)&&

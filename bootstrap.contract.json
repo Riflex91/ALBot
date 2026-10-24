@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 43,
-      "version": "0.43.0-candidate",
+      "sequence": 44,
+      "version": "0.44.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 967916,
-      "sha256": "847a53b86d8bd072f586dbddf6b9f00ab695128d38295b9f9267ac9c7a2520c6"
+      "bytes": 969707,
+      "sha256": "5c98132949ca5b788817ec6e9000ae6a57b98e771ee97322b6bcf87ac793a2ca"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Geschützter Signierworkflow #40091743604 veröffentlichte ALBot 0.43.0-candidate / Sequenz 43 (967916 Runtime-Bytes; SHA-256 847a53b86d8bd072f586dbddf6b9f00ab695128d38295b9f9267ac9c7a2520c6). W04-PR #448 wurde nach exaktem Linux-/Windows-PR-Head #40091552424 clean in main gemergt. Git-Blob des signierten Release-Runtime-Codes ist identisch zu main. ECDSA-P-256-Signatur und Inhalt sind im geschützten Workflow geprüft; persönliche ALBotConfig, V2-Bootstrap, öffentlicher Schlüssel und URLs bleiben unverändert. Kein W14-Liveabnahmenachweis."
+    "note": "24.10.2026: Version 0.44.0-candidate, Sequence 44, protected GitHub Actions signer #40093066674 success. Gear accessory vacancy correction PR #451 integrated with release candidate PR #452. Linux/Windows CI green; pinned P-256 runtime signature and exact 969707 bytes, SHA-256 5c98132949ca5b788817ec6e9000ae6a57b98e771ee97322b6bcf87ac793a2ca. Ingame four-character acceptance still outstanding; personal config and public trust key unchanged."
   }
 }

@@ -171,7 +171,7 @@ function hiDepartures(G,map){
 // MUST be confirmed by the engine before following the next leg.
 export function planHazardItinerary(G,start,goal,canTraverse,{
  liveMonsters=[],excludedMaps=[],maxStates=38,maxHops=5,maxNodes=1100,
- step=90
+ step=90,maxCollisionChecks=3500
 }={}){
  const fail=(reason,extra={})=>({ok:false,reason,...extra});
  if(!hiPoint(start)||!hiPoint(goal)||!G?.maps?.[start.map]||
@@ -181,13 +181,18 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
  const blocks=map=>denied.has(map)||!G.maps[map]||
    G.maps[map].ignore||G.maps[map].pvp||G.maps[map].instance;
  if(blocks(start.map)||blocks(goal.map))return fail('excluded-or-special-map');
+ let checkedSegments=0;
+ const checked=(...args)=>{
+  if(++checkedSegments>maxCollisionChecks)return false;
+  return canTraverse(...args);
+ };
  const regions=new Map(),lookup=map=>{
   if(!regions.has(map))regions.set(map,threatRegions(G,map,
    liveMonsters.filter(m=>m?.map===map)));
   return regions.get(map);
  };
  const walker=(map,from,to)=>findLocalSafePath(map,from,to,lookup(map),
-  canTraverse,{step,maxNodes});
+  checked,{step,maxNodes});
  const queue=[{position:start,steps:[],cost:0,hops:0,maps:[start.map]}];
  const seen=new Map();
  let states=0,bestResult=null;
@@ -228,6 +233,8 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
       map:portal.to.map,spawn:portal.spawn,x:portal.to.x,y:portal.to.y}]});
   }
  }
- return bestResult??fail(states>=maxStates?'world-search-budget':'no-certified-world-route',
-  {visited:states});
+ return bestResult??fail(checkedSegments>=maxCollisionChecks?
+   'collision-proof-work-budget':states>=maxStates?'world-search-budget':
+   'no-certified-world-route',
+  {visited:states,collisionChecks:checkedSegments});
 }

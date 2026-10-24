@@ -10,6 +10,19 @@ import {MUTATION_RISK_WINDOW_MS,mutationRiskLimit,mutationRiskAllowed} from './m
 export const NPC_INTERACTION_LIMIT=400;
 export const NPC_INTERACTION_BUFFER=25;
 export const NPC_WORK_RADIUS=NPC_INTERACTION_LIMIT-NPC_INTERACTION_BUFFER;
+export function catalogNpcDestination(G,id){
+ if(typeof id!=='string'||!id)return null;
+ for(const [map,definition] of Object.entries(G?.maps??{})){
+  if(definition?.ignore||definition?.instance||definition?.pvp)continue;
+  for(const npc of definition?.npcs??[]){
+   if(npc?.id!==id||!Array.isArray(npc.position)||
+      !Number.isFinite(npc.position[0])||
+      !Number.isFinite(npc.position[1]))continue;
+   return {map,in:map,x:npc.position[0],y:npc.position[1]};
+  }
+ }
+ return null;
+}
 // A bank-expansion budget caps cumulative purchases across reloads and
 // hourly accounting periods, not merely the price of one new pack. Legacy
 // budgets without a bankSpent field start at zero; malformed persisted values
@@ -201,16 +214,7 @@ export function createEconomy(bot){
    if(live&&typeof live.map==='string'&&
       Number.isFinite(live.x)&&Number.isFinite(live.y))return live;
   }catch{}
-  for(const [map,definition] of Object.entries(p.G.maps??{})){
-   if(definition?.ignore||definition?.instance||definition?.pvp)continue;
-   for(const npc of definition?.npcs??[]){
-    if(npc?.id!==id||!Array.isArray(npc.position)||
-       !Number.isFinite(npc.position[0])||
-       !Number.isFinite(npc.position[1]))continue;
-    return {map,in:map,x:npc.position[0],y:npc.position[1]};
-   }
-  }
-  return null;
+  return catalogNpcDestination(p.G,id);
  }
  function at(d,radius=110){return !!d&&samePlace(p.c,d)&&distance(p.c,d)<=radius&&!p.c.moving;}
  function travel(d,label,radius=90){if(!d){note('Kein Arbeitsplatz: '+label);return false;}if(at(d,radius))return true;if(!bot.logistics.reserved){bot.reason='Unterwegs: '+label;bot.movement.go({...d,radius},'economy');}return false;}

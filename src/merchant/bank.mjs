@@ -1094,6 +1094,44 @@ export function createBank(bot){
   }
   return accepted;
  }
+ // Across reloads, the chain is reconciled ONLY against fresh physical
+ // bank slots and verified local inventory, never an old planning catalogue.
+ function reconcileReserveChain(){
+  if(!reserveChain)return true;
+  if(!validReserveChain(reserveChain,{
+   owner:me.name,realm:p.realm(),now:Date.now()})){
+   bot.inventoryBlocked=true;return false;
+  }
+  if(single||pending||reclaiming||storing||swapping)return false;
+  const r=reserveChain,
+   held=verifiedProductionStockQuantity(p.G,p.c.items,r.item);
+  if(!Number.isSafeInteger(held))return false;
+  if(r.phase!=='ready'){
+   if(packMap(r.source.pack)!==p.c.map||
+      !Array.isArray(p.c.bank?.[r.source.pack])||
+      p.c.bank[r.source.pack].length>42)return false;
+   const live=p.c.bank[r.source.pack][r.source.slot]??null;
+   const outcome=reserveChainObservation(r,{held,
+    source:live?fingerprint(live):null});
+   if(!['prepared-unchanged','confirmed-physical-step'].includes(outcome)){
+    bot.inventoryBlocked=true;
+    e.note('Bankreserve: Quell- oder Bestandsdrift ('+outcome+')');
+    return false;
+   }
+   const proven=outcome==='confirmed-physical-step';
+   if(!saveReserveChain({...r,phase:'ready',source:null,carried:held,
+     steps:r.steps+(proven?1:0),updated:Date.now()}))return false;
+  }else if(held!==r.carried){
+   bot.inventoryBlocked=true;
+   e.note('Bankreserve: unbekannte Bestandsänderung im Folgestaging');
+   return false;
+  }
+  // No sale from a durable cursor. Clearing it is a separate persisted
+  // transition after the floor is ACTUALLY held in the local inventory.
+  if(reserveChain.carried>=reserveChain.floor)
+   return saveReserveChain(null);
+  return true;
+ }
  let preventiveScan={revision:null,map:null,defs:null,cursor:0,
   checked:0,total:0,best:null,completedAt:0,reason:'not-observed'};
  function resetPreventive(reason='snapshot-changed'){
@@ -1107,12 +1145,14 @@ export function createBank(bot){
   // are not reinterpreted as preventive bank liquidation permission.
   if(cfg.merchant.preventiveStorage!==true||!cfg.merchant.bankReclaim||
      !cfg.merchant.bank||!bot.running||me.name!==cfg.party.merchant||
-     pending||reclaiming||bot.journal||bot.inventoryBlocked||
+     pending||reclaiming||single||storing||swapping||
+     bot.journal||bot.inventoryBlocked||
      bot.logistics?.reserved||bot.exec.busy('inventory'))return false;
   const rows=packs();
   if(!lastAtBank||!observed||!p.c.bank||!catalog.observedAt||
      catalog.realm!==(p.realm?.()??'')||
      Date.now()-catalog.observedAt>120000)return false;
+  if(!reconcileReserveChain())return false;
   if(preventiveScan.revision!==catalog.revision||
      preventiveScan.map!==p.c.map||
      preventiveScan.defs!==p.G.items)resetPreventive();
@@ -1122,8 +1162,9 @@ export function createBank(bot){
   }
   const batch=scanBankDispositionWindow(rows,{map:p.c.map,packMap,
    cursor:preventiveScan.cursor,limit:24,admit:(item,pack,slot)=>{
+    if(reserveChain&&identity(item)!==reserveChain.variant)return null;
     const explicit=e.explicit(item);
-    const safe=eligibleBankSale(item);
+    const safe=reserveChain?null:eligibleBankSale(item);
     if(safe&&(safe.r._bankOperatingStock||
        explicit?.enabled&&explicit.action==='sell'&&safe.r===explicit))
      return {price:safe.price,lossScore:safe.lossScore};
@@ -1170,6 +1211,11 @@ export function createBank(bot){
      identity(item)!==selected.variant)return false;
   if(selected.reserveStage){
    const need=bankOperatingReserveNeed(bot,item),q=item.q??1;
+   if(reserveChain&&(reserveChain.phase!=='ready'||
+      reserveChain.variant!==identity(item)||
+      reserveChain.floor!==need?.floor||
+      reserveChain.carried!==need?.held||
+      reserveChain.steps>=16))return false;
    const stagePlan=reserveStagingTake(item,need);
    if(!stagePlan)return false;
    const take=stagePlan.take;
@@ -1433,7 +1479,14 @@ export function createBank(bot){
    mode:'read-only-no-authorization',executable:false,
    blocked:collision||!!bot.inventoryBlocked||!!bot.journal,
    conflict:collision?'simultaneous-bank-value-journals':null,
-   requiresManualReview:!!needsReview,
+   requiresManualReview:!!needsReview||
+    !!reserveChain&&!validReserveChain(reserveChain,{
+     owner:me.name,realm:p.realm(),now:Date.now()}),
+   reserveChain:reserveChain?{phase:reserveChain.phase,
+    variant:reserveChain.variant,floor:reserveChain.floor,
+    carried:reserveChain.carried,steps:reserveChain.steps,
+    source:reserveChain.source?{pack:reserveChain.source.pack,
+     slot:reserveChain.source.slot,take:reserveChain.source.take}:null}:null,
    swap:swapping?{
      phase:collision?'conflict':swapResult.phase,reason:swapResult.reason,
      pack:swapping.pack,firstSlot:swapping.a,secondSlot:swapping.b,

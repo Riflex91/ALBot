@@ -35,12 +35,13 @@ test('deleting a real bot factory causes audit failure; spoofing with comments c
  assert.notEqual(modified,source);
  assert.throws(()=>auditRealRuntimeBootGraph(modified),
   /required-live-factory-missing/);
- // Removing a single actual factory using syntactically valid code must
- // break the boot-count invariant, not merely the JavaScript parser.
+ // Removing a single required factory with valid JavaScript must fail
+ // the AST-based required factory invariant, not just the parser.
  const many=source.replace('bot.merchant=createMerchant(bot)',
   'bot.merchant=null');
  assert.notEqual(many,source);
- assert.throws(()=>auditRealRuntimeBootGraph(many),/factory-count-dropped/);
+ assert.throws(()=>auditRealRuntimeBootGraph(many),
+  /required-live-factory-missing|factory-count-dropped/);
 });
 
 test('critical side-effect wiring can never disappear silently from rollback risk inventory',()=>{

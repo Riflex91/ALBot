@@ -1,5 +1,13 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Boot-Graph-Audit für echte Runtime-Controller (24.10.2026)
+
+Das neue lokale Node-Prüfwerkzeug `scripts/audit-config-restart-boot-graph.mjs` untersucht **den echten JavaScript-AST** von `src/main.mjs`, nicht den bisher nur synthetischen Full-v1-Recovery-Probelauf. Es erkennt die tatsächlichen `bot.<slot> = create<Controller>(...)`-Registrierungen und erfasst alle mindestens 75 direkt angeschlossenen Controller-Factories sowie die Existenz wichtiger Zustands- und Nebenwirkungsgrenzen: `Executor`, Game-Port-Wrapper `p.call`, Party-Hooks, Game-Event-Listener, globale Window-Listener, Item-Watcher, explizite `cleanup`-Registrierungen, `halt()` und im Startup erfasste `cfg`-Bereiche.
+
+Die automatisch gestartete Regression `konfigurator/test/config-sync-real-boot-graph.test.mjs` führt den Audit auf dem tatsächlichen Quelltext aus und manipuliert exemplarisch Controller-Factories sowie alle kritischen Hooks. Fehlende oder umbenannte Startpfade, unvollständige Syntax und die Reduktion erwarteter Controller-Abdeckung sind **Build-Blocker**. Der Audit liefert keinen privaten Full-v1-Profilinhalt. Sein Bericht kann lokal mit `node scripts/audit-config-restart-boot-graph.mjs` erzeugt werden.
+
+**Wichtig:** Aus dem bloßen Erkennen eines realen Startpfads folgt nicht, dass die Controller gefahrlos rekonstruiert oder rückabgewickelt werden können. Dazu fehlen für jede Factory ein nebenwirkungsfreier Shadow-Aufbau, explizite Besitzer-/Timer-/Event-Hook-Freigaben und echte Ausfalltests. Deshalb berichtet der Audit jederzeit `liveControllerRebuildCovered:false`, `actualRollbackCertified:false`, `restartAuthorized:false`, `transactionCommitted:false`, `readyForActivation:false`, `applied:false` und `acknowledged:false`. Ein grüner Audit beweist nur die Vollständigkeit der **erkannten Start-Risikoklassen**, nicht die Sicherheit der Live-Aktivierung. Die gesperrten Farmer-Anreise-PRs werden durch ihn nicht automatisch freigegeben.
+
 ## Full-v1-Recovery-Sandbox mit Fehler-Injektion (24.10.2026)
 
 Die neue Ingame-API `ALBot.rehearseConfigRestartRecovery()` dient **ausschließlich einem manuellen, isolierten Transaktions-Probelauf**. Sie wird nur akzeptiert, wenn der Charakter pausiert ist, der zuvor ausdrücklich vorbereitete Restart-Intent samt Review aktuell ist und ein vollständiger lokaler Safe-Point ohne Blocker vorliegt. Der eigentliche private Full-v1-Release bleibt im Speicher des signierten Staging-Moduls. Vor dem Probelauf wird die unabhängig gepinnte P-256-Signatur samt Account, Charakter, Hash, Sequenz, Ablaufzeit und lokalem angewendeten Cursor nochmals kryptografisch geprüft; nach dem Probelauf werden alle lokalen Voraussetzungen erneut kontrolliert.

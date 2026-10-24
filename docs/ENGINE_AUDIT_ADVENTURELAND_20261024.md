@@ -144,3 +144,44 @@ Use **actual official fixtures and generated version hashes** in addition to moc
 - The investigation has identified a **real alternative map topology** via Desertland and **specific reasons native `smart_move` is unsafe** for automatic cross-map farming.
 - A complete dynamic cross-map path executor is **not yet implemented in the shipped main or certified** by this document.
 - To satisfy the actual request, implement a bounded geometry + threat-aware portal itinerary executor and integrate it with ONE movement authority; retain #487 as temporary containment only; verify using real `G.geometry`/enemy data before independent signing.
+
+## 11. Released October 2026 semantics are NOT the old Wiki contract
+
+Official current release notes: https://adventure.land/allnotes — latest release **21/10/26**, and official per-version metadata: https://github.com/kaansoral/adventureland_mongodb/blob/main/UPDATE_NOTES.md. Never assume older `smart_move`, CODE return values or combat range formulas still hold.
+
+| Release | Confirmed material change | ALBot design consequence |
+|---|---|---|
+| 21/10/26 | `town()` and `smart_move` now wait for Town teleport completion; `smart_move` continues waiting during new path search | Await server observation and avoid repeated replacement attempts; distinguish search stalls from failure |
+| 21/10/26 | Monster targets persist when splash kills a *different* player | Retaliation and party death model cannot assume target dropped on teammate death |
+| 21/10/26 | Attack speed now includes status-condition effects; item skill cooldown persists across reconnect / server changes | Recompute DPS / TTK from *effective* live stats, and never reset cooldown state when swapping realms |
+| 21/10/26 | Reconnecting no longer jumps character to incomplete movement endpoint; full entity-delta / MAINFRAME update fixes | Do not infer position from last requested destination; use fresh authoritative location and entity update revision |
+| 21/10/26 | Headless Horseman / Graveyard Rising / Halloween map and monster changes, Witch's Cipher | Dynamic boss/event and map mutation cannot be represented by a single permanent static spawn blacklist |
+| 06/10/26 | Official documentation clarified both spawn-boundary formats | Support `boundary:[x1,y1,x2,y2]` and `boundaries:[[map,x1,y1,x2,y2],...]` and polygon/position/random; never omit an active monster on parse failure |
+| 04/10/26 | Monster attack ranges seen in CODE now match server, Cave targets exposed | Use accurate combat-bound geometry, explicit target freshness, and separate Cave-only controllers |
+| 27/09/26 | Many Eye, Mimic and Pale Dino rare monsters / underground Kobolds, map changes | Route risk needs rare/event/special living enemies and should not assume only routine `count>0` spawns |
+| 24/08/26 | Async public CODE functions now settle on actual server response; `server.status` available | Promise resolution and authoritative results replace timing assumptions; maintain failure/cancel token semantics |
+| 01/03/26 | Engine migrated to `adventureland_mongodb` | Read current maintained repository, not the old archived/inactive server as runtime authority |
+
+**Physical data availability limit:** actual `G.geometry` for the deployed map is computed from game geometry assets / served game data; it is not established by reading `design/maps.js` alone. The server's collision test `node/test/map_collision.test.js` exercises `x_lines`, `y_lines`, collision bases and entry braziers. The official geometry module `common/js/common_functions.js` referenced by that test is not available as a regular committed file at the path examined in this public checkout. The in-game `can_move_to` API can certify *one local line only*. Consequently neither the map-boundary rectangles nor the examined public repository alone can prove a particular alternative desertland walking corridor passable.
+
+## 12. Prioritized implementation/test defects in ALBot (engineering backlog)
+
+1. **P0 route authority gap:** `src/core/movement.mjs` calls `smart_move` for any non-direct destination, yet other owners can issue `movement.stop()` / different destinations during travel. No shared itinerary epoch binding follower, Priest and Leader. Implement route-owner lease and emergency preemption with measured hysteresis, never suppress a real life-threatening self-defense.
+2. **P0 no complete physical corridor:** `src/world/knowledge.mjs` `mapGraph/mapHops` understand map topology but not path geometry or threat. `src/world/team-plan.mjs` ranks cross-map objectives using hops; `src/combat/farmer.mjs` follows a final endpoint through native `smart_move`. All three need *one* certified route object rather than competing graph-hop heuristics.
+3. **P0 live threat before initial attack:** Current navigation code can treat non-targeted monsters as dangerous using `isNaturallyAggressive`, but native cross-map movement bypasses this during path search. Validate every **segment and portal landing** against both live moving threats and conservative spawn/boss zones.
+4. **P0 one death / shared safety:** Death stop cannot hinge on `travelPlan()` still existing. Per-character and group-wide state/receipt must halt optional new routes and pulls after one unreconciled fatality and require explicit safe rescue or coordinated restart.
+5. **P1 spawn parser coverage:** `spawnLocations` handles `boundary/boundaries`, but a route's risk model must additionally cover `polygon`, `position/radius`, `random`, roaming, special/event and locally summoned enemies. Unknown monster definition is not a free pass.
+6. **P1 combat rectangle/range:** `distance()` in policy and custom Euclidean geometry are only approximations of the server combat distance. Use server-compatible width/height, live monster speed/attack/projectiles, armor/resistance and health horizon in exposure calculation. Resist a fake 100% safe claim based on a fixed 70-unit buffer.
+7. **P1 healing priority:** Priest heal within line/range must be prioritized over follow ownership, with mana/cooldown/cast confirmation and squad checkpoint cohesion, not optimism about a healer on a different map.
+8. **P1 merchant and quest contracts:** Portal itineraries cannot preempt bank/item value journal or personal Monsterhunt without a deliberate safe-point transfer. No unsafe Town cast in hostile aggro, and no bypass of protected Cave instance rules.
+9. **P1 telemetry:** Record per-segment `routeId,routeEpoch,owner,sourceMap,targetMap,portal/spawn,geometryVersion,threatVersion,HP/MP,visibleHostiles,actionResult`, with monotonic timestamps and stale-proof checks. Ring-buffer logs alone cannot justify “tested all cases.”
+10. **P2 build/runtime:** Size budget, game CODE bootstrap, manifests and config-sync trust must remain aligned. Detect `G`/server evolution and block an unreviewed stale path cache. No production signing until exact build SHA + Linux/Windows + controlled live pass.
+
+### Counterexamples a safe pathfinder MUST pass
+
+- A `level1` portal entry at `[0,9]` begins just outside the first prat spawn rectangle (which starts at y=17); the mere fact that the spawn coordinate isn't *inside* the rectangle says nothing about aggro reach or safe entry.
+- `cgoo` at `level2s` is itself mildly aggressive. A direct route to the spawn center without distinguishing *combat admission at destination* from *transit safety* is unsound.
+- Desertland `main`-transporter alternative is genuinely topologically possible, but the direct southeast walking line passes known monster regions: a graph-only “take desertland, not level1” recommendation is still not a proof.
+- A monster that wanders outside its spawn boundary or changes target after a teammate's death invalidates a static route even if the original spawn rectangles were correctly avoided.
+- A `town()` channel might fail or be interrupted without changing map. The executor must consume the **actual** observed result and not start an overlapping move, quest or regroup.
+- A late game data update, unseen special mob, altered door restriction or missing `G.geometry` requires conservative diagnosis/alternative/replan, not falling back to unverified native `smart_move`.

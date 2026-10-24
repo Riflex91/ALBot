@@ -38,6 +38,7 @@ jobs:
           node --check konfigurator/worker/index.mjs
           node --check konfigurator/public/app.mjs
           node --check konfigurator/public/policy.mjs
+          node konfigurator/scripts/verify-public-assets.mjs
       - name: Syntax, size, and manifest integrity
         shell: bash
         run: |

@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 42,
-      "version": "0.42.0-candidate",
+      "sequence": 43,
+      "version": "0.43.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 967534,
-      "sha256": "2d84e6c49d7f233249565453e229fd2b93a34b07d117dcb7729b4e8a5eeb3b51"
+      "bytes": 967916,
+      "sha256": "847a53b86d8bd072f586dbddf6b9f00ab695128d38295b9f9267ac9c7a2520c6"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: ALBot 0.42.0-candidate, Sequenz 42, durch geschützten Workflow #40090760956 P-256-signiert und offline überprüft. PR #445: Tracker-Recovery, Mluck-Zustandsprüfung, Zweier-Monsterhunt-Farmanker und kartenübergreifender Town-Wegvergleich; Linux/Windows-CI grün. SHA-256 2d84e6c49d7f233249565453e229fd2b93a34b07d117dcb7729b4e8a5eeb3b51, 967534 Bytes. Die installierte Bootstrap-Vertrauenswurzel sowie die persönliche ALBotConfig bleiben unverändert. Neue Ingame-Vierer-Team-Abnahme noch ausstehend."
+    "note": "24.10.2026: Geschützter Signierworkflow #40091743604 veröffentlichte ALBot 0.43.0-candidate / Sequenz 43 (967916 Runtime-Bytes; SHA-256 847a53b86d8bd072f586dbddf6b9f00ab695128d38295b9f9267ac9c7a2520c6). W04-PR #448 wurde nach exaktem Linux-/Windows-PR-Head #40091552424 clean in main gemergt. Git-Blob des signierten Release-Runtime-Codes ist identisch zu main. ECDSA-P-256-Signatur und Inhalt sind im geschützten Workflow geprüft; persönliche ALBotConfig, V2-Bootstrap, öffentlicher Schlüssel und URLs bleiben unverändert. Kein W14-Liveabnahmenachweis."
   }
 }

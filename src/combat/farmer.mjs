@@ -844,7 +844,20 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
      bot.target=null;bot.movement.go(marchDestination,'follow');
      bot.skills?.rotation?.(null);return;
     }
-    if(road?.continueRoute&&!endangeredPeer&&!urgentRareAggro){
+    // An active, physically progressing farm route owns movement even when
+    // an endangered peer triggers the emergency assessor. Previously this
+    // condition dropped out on endangeredPeer and the assessed lethal bigbird
+    // was attacked in place instead of maintaining the native escape route.
+    if(road?.continueRoute&&!actualBlock&&!urgentRareAggro){
+      if(c.ctype==='priest'&&cfg.party.healing){
+       const peers=(bot.farmers??[]).filter(n=>n!==c.name)
+        .map(n=>bot.transport?.fresh?.(n));
+       const patient=selectMarchHealingPatient(c,peers,{realm:p.realm(),now});
+       const visible=patient&&bot.entity?.(patient.name);
+       const range=p.G.skills?.heal?.range??c.range;
+       if(visible&&samePlace(c,visible)&&distance(c,visible)<=range-10)
+        bot.skills?.rescue?.(visible);
+      }
       bot.target=null;
       bot.reason='Gruppenreise trotz Weg-Aggro: Route halten, Tränke und Heiler';
       if(now-lastRoadAggroAt>=10000){lastRoadAggroAt=now;
@@ -881,6 +894,26 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       }
     }
     if(danger){
+      // A verified transit obstruction is a navigation/survival problem,
+      // never permission for stationary defensive fire or combat pursuit.
+      // Preserve healing and potions, and only evade verified self-aggro.
+      const plan=travelPlan();
+      if(me.role==='farmer'&&plan&&
+         (!samePlace(c,plan)||distance(c,plan)>85)&&
+         (blocker||['farm','follow'].includes(bot.movement.order?.owner))){
+       bot.target=null;
+       bot.reason='Gefährliche Weg-Aggro: sichere Flucht statt Kampf';
+       if(blocker){
+        bot.recovering=true;
+        if(blocker.target===c.name)retreat(blocker);
+        else emergencyConvergence(blocker);
+       }
+       bot.skills?.rotation?.(null);
+       bot.event?.('combat.transitOffenseSuppressed',{
+        monster:danger.mtype,monsterId:danger.id,
+        blocked:!!blocker,owner:bot.movement.order?.owner??null});
+       return;
+      }
       const assessment=bot.combatAssessment?.assess(danger);
       // A verified rare attacker can threaten a farmer even when its TTK
       // forecast forbids a normal fight. Redirect that ALREADY engaged mob

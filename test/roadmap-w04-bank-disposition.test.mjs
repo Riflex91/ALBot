@@ -683,7 +683,7 @@ test('W03/W04 a new reserve step cannot skip a failed chain write',async()=>{
  const write=bot.p.write;
  bot.p.write=(key,value)=>key==='albot:bank-reserve-chain:M'?
   false:write(key,value);
- await assert.rejects(()=>calls[0].params.call(),/Bankreserve/);
+ assert.throws(()=>calls[0].params.call(),/Bankreserve/);
  assert.equal(bot.inventoryBlocked,true);
  assert.equal(records.get('albot:bank-reserve-chain:M'),undefined);
  assert.equal(inv[0],null);

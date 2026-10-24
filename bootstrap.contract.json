@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 47,
-      "version": "0.47.0-candidate",
+      "sequence": 48,
+      "version": "0.48.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 984395,
-      "sha256": "003ee8e03b429e4405fa3de497084cec19cff534eeab23117d43ecd04daae3bb"
+      "bytes": 993122,
+      "sha256": "51edba9193287f60458a8fd37233c0cf2ff099919c28c09b22aeee72732069c5"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: W02/W04-PR #459, clean exact-head Linux/Windows-CI #40096988180, merge bfbceb6aca0806880f54e8ec174846b8699341c4. Geschützter Signierworkflow #40097339649 erfolgreich: 0.47.0-candidate / Sequence 47, 984395 Bytes, SHA-256 003ee8e03b429e4405fa3de497084cec19cff534eeab23117d43ecd04daae3bb. Sequenz 46 zuvor geschützt nach erfolgter Linux/Windows-CI #40094664083 signiert (#40097235491); keine Sequenz übersprungen. Release- und Main-Runtime Git-Blob identisch, ECDSA-P-256 geprüft; V2-Loader, Public Key, URLs und persönliche ALBotConfig unverändert. Keine W14-Ingame-Abnahme."
+    "note": "24.10.2026: ALBot 0.48.0-candidate, Sequenz 48; protected signer #40098813343 succeeded. Greenjr confirmed-engaged warrior taunt/intercept, verified accessory goals and bounded merchant route/planning improvements from PR #462; Linux and Windows CI green. Signed P-256 manifest, SHA256 51edba9193287f60458a8fd37233c0cf2ff099919c28c09b22aeee72732069c5, 993122 bytes. Personal ALBotConfig, loader URL and pinned trust root unchanged. Ingame four-character acceptance remains outstanding."
   }
 }

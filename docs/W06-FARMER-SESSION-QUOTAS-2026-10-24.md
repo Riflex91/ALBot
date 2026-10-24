@@ -12,4 +12,4 @@ Für bereits empfangene ältere `quotas` ohne explizite Sessionbindung gilt weit
 
 `test/w06-material-session-quotas.test.mjs`: korrekte endliche Arbeitsteilung, Restart/Sessionrotation, ungültige/future/stale Heartbeats, blockierte Farmer, Duplikate, ungültige Markierung, Legacy-Kompatibilität und No-work-Fallback.
 
-Keine neue Adventure-Land-API. Kein Versand, Handel, Bankzugriff oder irreversible Mutation ohne bestehende Beweis-/Journalgrenzen. Die vorliegende Offline-CI ist weder echte Zwei-Parteien-Serverquittung noch W14-Ingame-Abnahme. Release 0.50 wird nur durch den geschützten Signierworkflow öffentlich authentisiert.
+Keine neue Adventure-Land-API. Kein Versand, Handel, Bankzugriff oder irreversible Mutation ohne bestehende Beweis-/Journalgrenzen. Die vorliegende Offline-CI ist weder echte Zwei-Parteien-Serverquittung noch W14-Ingame-Abnahme. Release 0.50.0-candidate / Sequence 50 wurde durch den geschützten Workflow #40100996547 P-256-signiert (995231 Bytes, SHA-256 09d84d9c1d8f7f3a580869593b9e3574e3dac473129aa5abd22d401dabbe8872). Das ist Offline-Zertifizierung, keine W14-Ingame-Abnahme.

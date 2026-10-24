@@ -59,7 +59,8 @@ export function auditRealRuntimeBootGraph(source){
    if(member(node.callee,'p','watchChestOpened')||
     member(node.callee,'p','watchOwnTradeSwaps'))
     sideEffects.add('persistent-item-watchers');
-   if(member(node.callee,'cleanup','push'))cleanupPresent=true;
+   if(member(node.callee,'cleanup','push')||
+    member(node.callee,'cleanup','add'))cleanupPresent=true;
   }
   if(node.type==='AssignmentExpression'&&member(node.left,'p','call'))
    sideEffects.add('wrapped-game-port-call');

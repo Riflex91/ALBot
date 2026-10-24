@@ -90,6 +90,7 @@ import {createPorts} from './runtime/ports.mjs';
 import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/telemetry-snapshot.mjs';
 import {createGameRelaySender,GAME_RELAY_INTERVAL_MS} from './runtime/telemetry-relay-sender.mjs';
 import {createConfigSyncPreview} from './runtime/config-sync-preview.mjs';
+import {createVerifiedConfigStaging} from './runtime/config-sync-stage.mjs';
 import {createAutomaticTelemetrySender,AUTO_TELEMETRY_INTERVAL_MS} from './runtime/telemetry-auto-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
@@ -495,11 +496,18 @@ export function install(root){
         });
         // User-initiated verification only: this cannot change bot.cfg or
         // publish an applied configuration acknowledgment.
+        const configCrypto=root.crypto??gameWindow.crypto;
+        const readConfigTrust=()=>root.ALBOT_CONFIG_SYNC_TRUST;
+        const readConfigStorage=()=>root.localStorage??gameWindow.localStorage;
+        const stagedConfig=createVerifiedConfigStaging({
+          cryptoObject:configCrypto,
+          readTrust:readConfigTrust,readStorage:readConfigStorage,
+          // Only the actual in-game character may own a staging receipt.
+          readCharacter:()=>p.c?.name
+        });
         configSyncPreview=createConfigSyncPreview({
-          gameWindow,
-          cryptoObject:root.crypto??gameWindow.crypto,
-          readTrust:()=>root.ALBOT_CONFIG_SYNC_TRUST,
-          readStorage:()=>root.localStorage??gameWindow.localStorage
+          gameWindow,cryptoObject:configCrypto,staging:stagedConfig,
+          readTrust:readConfigTrust,readStorage:readConfigStorage
         });
         telemetryRelay=createGameRelaySender({
           gameWindow,getCharacter:()=>p.c,getRealm:()=>p.realm(),

@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 41,
-      "version": "0.41.0-candidate",
+      "sequence": 42,
+      "version": "0.42.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 965177,
-      "sha256": "892a2e703ffedcc490216f8ef7c8788b592cc16d0ec3cc72b9ed382b0420fc48"
+      "bytes": 967534,
+      "sha256": "2d84e6c49d7f233249565453e229fd2b93a34b07d117dcb7729b4e8a5eeb3b51"
     },
     "observedLoadedUrl": null,
-    "note": "23.10.2026: ECDSA-P-256 signierte ALBot 0.41.0-candidate / Sequenz 41 veröffentlicht. PR #441 korrigiert kontinuierliche Gruppenhilfe bei nicht übernommenem Leader-Farmplan, validierte kompakte Marschanker sowie verzögerte Angriffe bei blockierter Schusslinie. PR #442 baut Runtime, Editor und personalisierten Auto-Bootstrap versionsgleich. Linux/Windows CI grün, Release-Workflow 40015144472 erfolgreich und Signatur/Bytegleichheit verifiziert: SHA-256 892a2e703ffedcc490216f8ef7c8788b592cc16d0ec3cc72b9ed382b0420fc48, 965177 Bytes. Installierter Bootstrap, öffentlicher Schlüssel und persönliche ALBotConfig bleiben unverändert. Neue Ingame-Kampfabnahme ist noch ausstehend."
+    "note": "24.10.2026: ALBot 0.42.0-candidate, Sequenz 42, durch geschützten Workflow #40090760956 P-256-signiert und offline überprüft. PR #445: Tracker-Recovery, Mluck-Zustandsprüfung, Zweier-Monsterhunt-Farmanker und kartenübergreifender Town-Wegvergleich; Linux/Windows-CI grün. SHA-256 2d84e6c49d7f233249565453e229fd2b93a34b07d117dcb7729b4e8a5eeb3b51, 967534 Bytes. Die installierte Bootstrap-Vertrauenswurzel sowie die persönliche ALBotConfig bleiben unverändert. Neue Ingame-Vierer-Team-Abnahme noch ausstehend."
   }
 }

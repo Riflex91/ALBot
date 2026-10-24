@@ -1,0 +1,39 @@
+name: Candidate farm transit safety build
+on:
+  push:
+    branches: [fix/20261024-lethal-farm-transit-guard]
+permissions:
+  contents: write
+jobs:
+  build-test-sync:
+    if: "!contains(github.event.head_commit.message, '[skip candidate-sync]')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/20261024-lethal-farm-transit-guard
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Build candidate runtime
+        run: npm run build
+      - name: Synchronize personal runtime without changing personal config
+        run: node scripts/sync-personal-code.mjs --write
+      - name: Build editor
+        run: npm run build:editor
+      - name: Run full offline regression suite
+        run: npm test
+      - name: Commit exact verified build artifacts
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u -- bot.js dist editor profiles
+          if ! git diff --cached --quiet; then
+            git commit -m "build(candidate): sync tested farm-transit runtime [skip candidate-sync]"
+            git push origin HEAD:fix/20261024-lethal-farm-transit-guard
+          fi

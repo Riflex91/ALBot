@@ -10,6 +10,8 @@ import {signer,preparePrivateRelease,previousRelease,releaseInfo}
  from './private-config-release.mjs';
 import {githubReleaseFile,assertPrivateRepository,ReleaseStorageError}
  from './private-release-store.mjs';
+import {readSignedReleaseHighwater,recordSignedReleaseHighwater}
+ from './signed-release-highwater.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
 const json=(x,status=200,extra={})=>new Response(JSON.stringify(x),{
@@ -221,6 +223,63 @@ export async function handleRequest(request,env,ctx={},deps={}){
    return failure('JSON erforderlich',415);
   try{return await ingest(request,env,false);}
   catch{return failure('Telemetrie-Datenbankfehler',503);}
+ }
+ // Private D1 anchor for SIGNED/ISSUED revisions only. It is NOT game
+ // application evidence and cannot be written by telemetry or game CORS.
+ // Additive D1 schema installation is required before the first request.
+ if(path==='/api/profile-sync/signed-highwater'){
+  if(!['GET','PUT'].includes(request.method))
+   return failure('Methode nicht erlaubt',405);
+  if(request.method==='PUT'){
+   if(request.headers.get('origin')!==url.origin)
+    return failure('Ungültige Request-Herkunft',403);
+   if((request.headers.get('content-type')??'').split(';')[0].trim().toLowerCase()!=='application/json')
+    return failure('JSON erforderlich',415);
+   if(Number(request.headers.get('content-length')??0)>256)
+    return failure('Anfrage zu groß',413);
+  }
+  // Origin and method gate must not depend on the deployment's D1/secrets:
+  // even an unconfigured Worker must reject game-origin mutation attempts.
+  if(!env.DB||!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
+   return failure('Privater D1-Signaturanker nicht eingerichtet',503);
+  try{
+   const identity=await signer(env);
+   if(request.method==='GET'){
+    const anchor=await readSignedReleaseHighwater(env.DB,{
+     target:identity.target,keyId:identity.keyId});
+    return json({ok:true,...anchor});
+   }
+   const raw=await request.text();
+   if(raw.length>256)return failure('Anfrage zu groß',413);
+   let input;try{input=JSON.parse(raw);}catch{return failure('Ungültiger High-Water-Abgleich',422);}
+   if(!input||typeof input!=='object'||Array.isArray(input)||
+    Object.keys(input).sort().join(',')!=='confirm,releaseSha,sequence,sha256'||
+    input.confirm!==true||!/^[a-f0-9]{40}$/.test(input.releaseSha??'')||
+    !Number.isSafeInteger(input.sequence)||input.sequence<1||
+    !/^[a-f0-9]{64}$/.test(input.sha256??''))
+    return failure('Explizite signierte Revisionsbestätigung erforderlich',422);
+   // Neither the client nor browser-storage is trusted to supply a sequence.
+   // Read an already signed release from a confirmed PRIVATE repository.
+   await assertPrivateRepository(env,fetcher);
+   const published=await githubReleaseFile(env,{fetcher});
+   if(!published.document||published.sha!==input.releaseSha)
+    return failure('Private signierte Release-Revision stimmt nicht überein',409);
+   const verifiedSequence=await previousRelease(published.document,identity);
+   if(verifiedSequence!==input.sequence||
+    published.document.sha256!==input.sha256)
+    return failure('Signierte Sequenz oder Profil-Digest geändert',409);
+   const anchor=await recordSignedReleaseHighwater(env.DB,{
+    target:identity.target,keyId:identity.keyId,
+    sequence:verifiedSequence,sha256:published.document.sha256,
+    releaseSha:published.sha,now:Date.now()});
+   return json({ok:true,...anchor});
+  }catch(error){
+   if(error instanceof ReleaseStorageError)
+    return failure(error.message,error.status);
+   if(/downgrade|equivocation|pin mismatch|conflicted/i.test(String(error?.message??'')))
+    return failure('Signierter D1-Höchststand blockiert Rücksprung oder Konflikt',409);
+   return failure('Verifizierter D1-Signaturanker nicht verfügbar',503);
+  }
  }
  // Publication requires an explicit same-origin, authenticated action. No
  // profile bytes or signing key may originate in a browser request.

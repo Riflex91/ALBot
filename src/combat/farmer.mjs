@@ -8,6 +8,7 @@ import {farmingStoragePressure,defensiveFarmTarget} from './storage-backpressure
 import {preferUnreservedEngagedTarget,provisionalImpactDamage} from './impact-coordination.mjs';
 import {roadAggroTravelDecision,committedFarmTransit,createTransitBlockObserver,verifiedTransitBlock} from './transit-defense.mjs';
 import {mapGraph,mapHops} from '../world/knowledge.mjs';
+import {mapHasNaturalAggro} from '../world/farmer-transit-admission.mjs';
 import {inCaveInstance} from '../world/cave-team-coordination.mjs';
 // A validated, already engaged team threat remains eligible for defensive
 // focus fire after a safe farm-plan change. Unengaged off-plan spawns may
@@ -288,7 +289,17 @@ export function createFarmer(bot){
   function recover(){
     const c=p.c,now=Date.now();
     if(c.rip){
-      const fallenTarget=bot.target?.mtype;bot.target=null;bot.movement.stop();if(!deadSince){deadSince=now;bot.strategy?.failActivity?.('Tod während des Kampf-/Reiseziels',fallenTarget);deaths=deaths.filter(t=>now-t<cfg.farming.deathWindowMs);deaths.push(now);}
+      const fallenTarget=bot.target?.mtype,travelOwner=bot.movement?.order?.owner??null;bot.target=null;bot.movement.stop();if(!deadSince){deadSince=now;bot.strategy?.failActivity?.('Tod während des Kampf-/Reiseziels',fallenTarget);deaths=deaths.filter(t=>now-t<cfg.farming.deathWindowMs);deaths.push(now);}
+       // A lethal map is independently verifiable even after the farm plan
+       // or previous move order has been invalidated. Never respawn into an
+       // unattended repetition of the same prat transit disaster.
+       if(me.role==='farmer'&&mapHasNaturalAggro(p.G,c.map)){
+        if(deaths.length===1&&deadSince===now)bot.event?.('combat.fatalTransitStop',{
+         map:c.map,owner:travelOwner,monster:fallenTarget??null,
+         reason:'fatality-in-hostile-or-uncertified-map'});
+        bot.pause?.('Todesfall in gefährlichem Transitgebiet: manuelle Freigabe erforderlich');
+        return true;
+       }
       bot.reason='Tot';if(deaths.length>=cfg.farming.maxDeaths){bot.pause('Todesgrenze erreicht');return true;}
       if(cfg.farming.respawn&&now-deadSince>=cfg.farming.respawnDelayMs)exec.run('respawn',['lifecycle'],()=>p.c.rip,()=>p.call('respawn'),{delay:15000});return true;
     }

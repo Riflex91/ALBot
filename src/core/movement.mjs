@@ -1,5 +1,6 @@
 import {travelBlinkEligible,blinkLandingPoint} from '../combat/travel-blink.mjs';
 import {arrived,samePlace,distance,xy} from './policy.mjs';
+import {farmerTransitAdmission,pratCorridorGuardRequired} from '../world/farmer-transit-admission.mjs';
 export function transientMovementInterruption(error){
  const code=String(error?.reason??error?.message??error??'').toLowerCase();
  return code==='interrupted'||code==='cancelled'||code==='canceled'||code==='superseded';
@@ -37,6 +38,31 @@ export function createMovement(bot){
   // Only native smart-route failures quarantine a destination map, not normal
   // travel stops or a rejected non-movement action. Keep the cache bounded.
   const failedRoutes=new Map(),routeCooldownMs=300000;
+   let lastTransitDeny='',lastTransitDenyAt=0;
+   const independentCaveOwner=owner=>['scout','cave','cave-evade','cave-priest'].includes(owner);
+   function farmerRouteSafety(destination,owner){
+     if(bot.me?.role!=='farmer'||independentCaveOwner(owner)||
+        !pratCorridorGuardRequired(p.G))
+      return {allowed:true,reason:'other-movement-controller'};
+     return farmerTransitAdmission(p.c,destination,p.G,{
+       canMove:(x,y)=>p.has?.('can_move_to')===true&&
+         p.call('can_move_to',x,y)===true,
+       liveMonsters:bot.monsters?.()??[],
+       excludedMaps:bot.cfg?.world?.excludedMaps??[]
+     });
+   }
+   function reportTransitDeny(owner,dest,admission,stopped=false){
+     const key=owner+':'+dest?.map+':'+admission.reason+':'+admission.hazard;
+     if(key!==lastTransitDeny||Date.now()-lastTransitDenyAt>10000){
+       lastTransitDeny=key;lastTransitDenyAt=Date.now();
+       bot.event?.(stopped?'movement.farmerTransitStopped':'movement.farmerTransitRejected',{
+         owner,map:dest?.map??null,reason:admission.reason,
+         hazard:admission.hazard??null,
+         mode:'fail-closed-physical-segment'
+       });
+     }
+     bot.reason='Unsicherer Reiseweg gesperrt: '+admission.reason;
+   }
   const routeKey=dest=>dest.map+':'+Math.round(dest.x)+':'+Math.round(dest.y);
   function recordRouteFailure(owner,mode,dest,reason){
     if(!['economy','farm'].includes(owner)||mode!=='smart_move'||typeof dest?.map!=='string'||!Number.isFinite(dest.x)||!Number.isFinite(dest.y))return;
@@ -75,6 +101,10 @@ export function createMovement(bot){
     if(['scout','cave','cave-evade','cave-priest'].includes(owner)&&
        (typeof scoutAdmission!=='function'||nativeBusy()))return false;
     if(bot.cfg?.world?.excludedMaps.includes(d.map)||p.G.maps[d.map]?.pvp&&!bot.cfg?.farming?.pvp)return false;
+     // Gate farm/follow/quest/regroup/combat: no native BFS through
+     // a corridor for which physical monster safety was not proven.
+     const travelProof=farmerRouteSafety(d,owner);
+     if(!travelProof.allowed){reportTransitDeny(owner,d,travelProof);return false;}
     // A local N05 scout is a direct step, never general smart navigation.
     // Even an unexpected direct call cannot widen its map or travel budget.
     if(['scout','cave','cave-evade','cave-priest'].includes(owner)&&(!samePlace(p.c,d)||
@@ -188,6 +218,12 @@ export function createMovement(bot){
     }
     const started=Date.now();order={id:bot.session+':move:'+(++moveSeq),dest,owner,started,progress:started,last:xy(p.c),map:p.c.map,origin:p.c.map};const token=order;
     const local=samePlace(p.c,d)&&p.has('can_move_to')&&p.call('can_move_to',d.x,d.y);
+     if(bot.me?.role==='farmer'&&pratCorridorGuardRequired(p.G)&&
+        !independentCaveOwner(owner)&&!local){
+       order=null;
+       reportTransitDeny(owner,dest,{reason:'direct-native-move-no-longer-verified'});
+       return false;
+     }
     // Geometry can change between scout admission and actual movement.
     // A failed last local check must NEVER turn a scout hop into smart_move.
     if(['scout','cave','cave-evade','cave-priest'].includes(owner)&&!local){order=null;return false;}
@@ -205,6 +241,7 @@ export function createMovement(bot){
     };
     const accepted=exec.run('move',['movement',...(blink?['mana']:[])],
      ()=>bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&
+      farmerRouteSafety(d,owner).allowed&&
       (!blink||travelBlinkEligible(bot,d,owner))&&
       (!['scout','cave','cave-evade','cave-priest'].includes(owner)||boundedDirectDispatchSafe()),()=>blink?p.call('use_skill','blink',[landing.x,landing.y]):p.call(token.mode,...(local?[d.x,d.y]:[{map:d.map,x:d.x,y:d.y}])),{priority:owner==='kite'?1100:owner==='cave-evade'?1000:owner==='cave-priest'?900:['logistics','gold'].includes(owner)?850:400,timeout:120000,delay:500,onSettle(state,error){if(order!==token)return;
     if(error?.transient==='interrupted'){
@@ -223,7 +260,37 @@ export function createMovement(bot){
     if(accepted)bot.event?.('movement.request',{id:token.id,owner,mode:token.mode,map:dest.map,x:dest.x,y:dest.y,radius:dest.radius});
     if(!accepted)order=null;return false;
   }
-  function poll(){if(!order)return;const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.observations?.travel(order.origin,p.c.map,now-order.started);bot.event?.('movement.arrived',{id:order.id,owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});order.terminal='arrived';stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
+  function poll(){
+     if(!order){
+       // A native route without an ALBot owner can persist across reloads.
+       // The actual physical path cannot be audited: halt it.
+       if(bot.me?.role==='farmer'&&pratCorridorGuardRequired(p.G)&&
+          nativeBusy()&&!townQueued&&!p.c?.c?.town){
+         bot.event?.('movement.farmerOrphanRouteStopped',{
+           reason:'native-movement-without-owned-route'});
+         stop();
+       }
+       return;
+     }
+     const proof=farmerRouteSafety(order.dest,order.owner);
+     if(bot.me?.role==='farmer'&&pratCorridorGuardRequired(p.G)&&
+        !independentCaveOwner(order.owner)&&
+        order.mode==='smart_move'){
+       const previous=order;
+       previous.terminal='unsafe-native-smart-route';
+       stop();
+       reportTransitDeny(previous.owner,previous.dest,{
+         reason:'native-smart-route-not-certifiable'},true);
+       return;
+     }
+     if(!proof.allowed){
+       const previous=order;
+       previous.terminal='unsafe-transit';
+       stop();
+       reportTransitDeny(previous.owner,previous.dest,proof,true);
+       return;
+     }
+     const now=Date.now();if(samePlace(p.c,order.dest)&&distance(p.c,order.dest)<=order.dest.radius){bot.observations?.travel(order.origin,p.c.map,now-order.started);bot.event?.('movement.arrived',{id:order.id,owner:order.owner,map:p.c.map,x:xy(p.c).x,y:xy(p.c).y});order.terminal='arrived';stop();return;}if(p.c.map!==order.map||distance(p.c,order.last)>3){order.progress=now;order.last=xy(p.c);order.map=p.c.map;}
     // Native smart_move may spend >12 s on path search before coordinates
     // change; retain its ownership until the bounded 120 s deadline.
     const timedOut=now-order.started>120000;

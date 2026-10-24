@@ -2,6 +2,8 @@ import {bankOperatingStockRule,bankOperatingReserveNeed} from '../items/operatin
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
+import {validReserveChain,reserveChainObservation} from './bank-reserve-chain.mjs';
+import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
 import {validateBankPartialRecord,classifyBankPartialRecord,partialDispatchDecision} from './bank-partial-recovery.mjs';
 import {validateBankSingleRecord,classifyBankSingleRecord} from './bank-single-recovery.mjs';
@@ -124,6 +126,53 @@ export function createBank(bot){
  const singleKey='albot:bank-single:'+me.name;let single=p.read(singleKey)??null;
  const storeKey='albot:bank-store:'+me.name;let storing=p.read(storeKey)??null;
  const swapKey='albot:bank-swap:'+me.name;let swapping=p.read(swapKey)??null;
+ const chainKey='albot:bank-reserve-chain:'+me.name;
+ let reserveChain=p.read(chainKey)??null;
+ if(reserveChain&&!validReserveChain(reserveChain,{
+  owner:me.name,realm:p.realm(),now:Date.now()})){
+  bot.inventoryBlocked=true;
+  e.note('Bankreserve: ungültige persistente Folge; manuell prüfen');
+ }
+ function saveReserveChain(value){
+  if(p.write(chainKey,value)!==true){
+   bot.inventoryBlocked=true;e.note('Bankreserve: Folgejournal nicht gespeichert');
+   return false;
+  }
+  reserveChain=value;return true;
+ }
+ // A reserve-chain write is a cursor, not game-action authorization.
+ // The existing exact bank value journal is additionally mandatory.
+ function prepareReserveChainDispatch(r){
+  if(!r.reserveStage)return true;
+  const variant=identity(r.item),floor=r.reserveStage.floor,
+   take=r.take??r.quantity,quantity=r.item.q??1,
+   slot=r.bankSlot??r.slot,now=Date.now(),old=reserveChain;
+  if(old?.phase==='prepared'){
+   const a=old.source;
+   return validReserveChain(old,{owner:me.name,realm:p.realm(),now})&&
+    old.variant===variant&&old.floor===floor&&old.carried===r.before&&
+    a.pack===r.pack&&a.slot===slot&&a.before===r.sourcePrint&&
+    a.held===r.before&&a.take===take;
+  }
+  if(old&&(!validReserveChain(old,{owner:me.name,realm:p.realm(),now})||
+     old.phase!=='ready'||old.floor!==floor||old.variant!==variant||
+     old.carried!==r.before||old.steps>=16))return false;
+  const candidate={version:1,owner:me.name,realm:p.realm(),
+   variant,item:{...r.item},floor,carried:r.before,
+   steps:old?.steps??0,started:old?.started??now,updated:now,
+   phase:'prepared',source:{pack:r.pack,slot,before:r.sourcePrint,
+    after:take===quantity?null:fingerprint({...r.item,q:quantity-take}),
+    held:r.before,take,quantity}};
+  return validReserveChain(candidate,{owner:me.name,realm:p.realm(),now})&&
+   saveReserveChain(candidate);
+ }
+ function markReserveChainDispatch(r){
+  if(!r.reserveStage)return true;
+  if(!reserveChain||reserveChain.phase!=='prepared'||
+     reserveChain.source.before!==r.sourcePrint)return false;
+  return saveReserveChain({...reserveChain,phase:'dispatched',
+   updated:Date.now()});
+ }
  const crossToken=Symbol();
  const pressureKey='albot:bank-pressure:'+me.name;
  let pressure=p.read(pressureKey)??{observations:0,epoch:null,at:0};
@@ -313,6 +362,10 @@ export function createBank(bot){
    bot.inventoryBlocked=true;
    throw Error('Bank-Teilentnahme: Ausgangszustand vor API-Aufruf unklar');
   }
+  if(phase==='original'&&r.reserveStage&&!prepareReserveChainDispatch(r)){
+   bot.inventoryBlocked=true;
+   throw Error('Bankreserve: Teilentnahme-Folge nicht belegbar');
+  }
   const next={...r,dispatches:[...r.dispatches,{
    phase,session:bot.session,at:Date.now(),realm:r.realm,pack:r.pack,
    bankSlot:r.bankSlot,dest:r.dest,splitSlot:r.splitSlot,
@@ -320,6 +373,10 @@ export function createBank(bot){
   if(!validPending(next)||!savePending(next)){
    bot.inventoryBlocked=true;
    throw Error('Bank-Teilentnahme: Dispatch-Beleg konnte nicht dauerhaft gespeichert werden');
+  }
+  if(phase==='original'&&r.reserveStage&&!markReserveChainDispatch(r)){
+   bot.inventoryBlocked=true;
+   throw Error('Bankreserve: Teilentnahme-Dispatchfolge unklar');
   }
   return invoke();
  }
@@ -710,6 +767,10 @@ export function createBank(bot){
       bot.inventoryBlocked=true;
       throw Error('Bankentnahme: Quellzustand vor Server-Dispatch unklar');
      }
+     if(reserveStage&&!prepareReserveChainDispatch(record)){
+      bot.inventoryBlocked=true;
+      throw Error('Bankreserve: Einzelentnahme-Folge nicht belegbar');
+     }
      const next={...record,dispatch:{
       kind:'bank.retrieve',session:bot.session,at:Date.now(),
       realm:record.realm,pack,slot,dest,sourcePrint}};
@@ -719,6 +780,10 @@ export function createBank(bot){
       throw Error('Bankentnahme: Dispatch-Journal nicht gespeichert');
      }
      single=next;
+     if(reserveStage&&!markReserveChainDispatch(record)){
+      bot.inventoryBlocked=true;
+      throw Error('Bankreserve: Einzelentnahme-Dispatchfolge unklar');
+     }
      return p.call('bank_retrieve',pack,slot,dest);
     },
     observe:()=>!!single&&singleEvidence(single).phase==='withdrawn',

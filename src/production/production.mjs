@@ -351,6 +351,19 @@ export function inspectRecipientDeliveryLedger(value){
  return {valid:true,reason:'durable-ledger-verified'};
 }
 
+// Read-only route selection: speculative market prices and unbounded
+// estimates must not authorize a merchant gear/acquisition goal.
+export function bestVerifiedAcquisitionRoute(rows,maxFarmHours=Infinity){
+ const horizon=Number.isFinite(maxFarmHours)&&maxFarmHours>=0?
+  maxFarmHours:Infinity;
+ return (Array.isArray(rows)?rows:[]).filter(r=>
+  r&&!r.speculative&&
+  ['buy','farm','craft','exchange','retrieve','marketBuy','upgrade','compound'].includes(r.kind)&&
+  Number.isFinite(r.gold)&&r.gold>=0&&
+  Number.isFinite(r.hours)&&r.hours>=0&&r.hours<=horizon&&
+  Number.isFinite(r.score)&&r.score>=0)
+  .sort((a,b)=>a.score-b.score||a.hours-b.hours)[0]??null;
+}
 export function createProduction(bot){
  let helperSearch=null,demandBusy=false,admittedGoalKey=null,admittedAt=0;
  const {p,cfg,exec,me}=bot,e=bot.economy;let preview=null,plan=[],goal=null,materials=[],planningReason=null,heldGoal=null,heldAt=0,planAt=0,goalsEpoch=-1,goalsCache=null,rulesEpoch=-1,rulesCache=null;
@@ -1182,7 +1195,15 @@ export function createProduction(bot){
   e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');
   return false;
  }
- return {gearDeliveryAllowance,protectGearChainInput,observedReservation,estimateAcquisition(item,level=0,quantity=1){routeScore({kind:'farm',item,level,quantity});return routeCache.get(JSON.stringify([item,level,quantity,undefined]))?.[0]??null;},invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(bot.running===false||intentBlocked){lastPublishedMaterials=[];publicationState=bot.running===false?'merchant-paused':'contract-storage-unavailable';return [];}if(cfg.general.testLogging===undefined)return materials;
+ return {gearDeliveryAllowance,protectGearChainInput,observedReservation,estimateAcquisition(item,level=0,quantity=1){
+    if(!Number.isSafeInteger(level)||level<0||!Number.isSafeInteger(quantity)||
+       quantity<1||!p.G.items?.[item])return null;
+    routeScore({kind:'farm',item,level,quantity});
+    // A cached route is only an estimate, never an action permit. Do not
+    // blindly return a speculative or unbounded first entry.
+    const rows=routeCache.get(JSON.stringify([item,level,quantity,undefined]))??[];
+    return bestVerifiedAcquisitionRoute(rows,cfg.production.maxFarmHours);
+   },invalidate(){planAt=0;goalsCache=null;rulesCache=null;},mutate,craft,exchange,captureExchangeRoute,resumeExchangeRoute,planGoals,progress(){const h=bot.transport.fresh(cfg.party.merchant);return (h?.materials??[]).filter(r=>r.objective&&typeof r.item==='string').map(r=>({objective:r.objective,item:r.item,quantity:qtyRaw({name:r.item,level:0})})).slice(0,5);},tick,recordDelivery,canRecordDelivery,derivedRule,effectiveRules,matchesOutput,reservedQuantity,requestHelper,helperSupply,outputCount,owns:item=>!!goal&&(item===goal.item||plan.some(s=>s.item===item)||(plan.reservations??[]).some(s=>s.item===item)),get activeGoal(){return goal;},materials:()=>{if(bot.running===false||intentBlocked){lastPublishedMaterials=[];publicationState=bot.running===false?'merchant-paused':'contract-storage-unavailable';return [];}if(cfg.general.testLogging===undefined)return materials;
  const first=bot.seashells?.request?.()??materials[0];
   const state=materialContract?(first?.objective===materialContract.objective?'active':first?'higher-priority-material-work':'waiting-for-approved-source'):'';
   if(state!==publicationState){publicationState=state;if(materialContract)bot.event(state==='active'?'farmOrder.resumed':'farmOrder.suspended',{objective:materialContract.objective,reason:state});}if(!first){lastPublishedMaterials=[];return [];}

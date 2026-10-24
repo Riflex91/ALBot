@@ -39,7 +39,7 @@ test('existing Access settings, D1 binding and restricted Free worker are preser
 test('both PR verification and guarded production publish invoke static asset audit',async()=>{
  const pr=await read('../../.github/workflows/verify-albot.yml');
  const deploy=await read('../../.github/workflows/deploy-konfigurator.yml');
- assert.match(pr,/npm run build:konfigurator[\\s\\S]*node konfigurator\\/scripts\\/verify-public-assets\\.mjs/);
+ assert.match(pr,/npm run build:konfigurator[\s\S]*node konfigurator\/scripts\/verify-public-assets\.mjs/);
  assert.match(deploy,/name: Publish existing Worker and D1 binding only/);
  assert.match(deploy,/name: Fail closed on private credentials or profiles in static assets/);
 });

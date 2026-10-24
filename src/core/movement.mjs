@@ -99,7 +99,18 @@ export function createMovement(bot){
     }
     // Smart movement can enter public maps; never attempt somebody else's instance.
     if(!samePlace(p.c,d)&&p.G.maps[d.map]?.instance){bot.reason='Zielinstanz nicht erreichbar';return false;}
-    const spawn=p.G.maps[p.c.map]?.spawns?.[0];
+    const crossQuest=owner==='quest'&&bot.me?.role==='farmer'&&
+      p.c.map!=='main'&&d.map==='main'&&!p.G.maps?.[p.c.map]?.instance;
+    const mainSpawn=p.G.maps?.main?.spawns?.[0];
+    // Only public native doors into main provide a measured walk alternative.
+    // Cross-map destinations without a verified direct portal stay on smart_move.
+    const portalOptions=crossQuest?(p.G.maps[p.c.map]?.doors??[])
+      .filter(door=>Array.isArray(door)&&door[4]==='main'&&
+       Number.isFinite(door[0])&&Number.isFinite(door[1])&&
+       Number.isSafeInteger(door[5])&&
+       Array.isArray(p.G.maps.main?.spawns?.[door[5]]))
+      .map(door=>({exit:door,entrance:p.G.maps.main.spawns[door[5]]})):[];
+    const spawn=crossQuest?mainSpawn:p.G.maps[p.c.map]?.spawns?.[0];
     // A bank trip starts on main but ends on the bank map. Previously the
     // samePlace restriction suppressed the town shortcut precisely for
     // these journeys, making a merchant walk back from remote farms.
@@ -118,7 +129,8 @@ export function createMovement(bot){
     const questRetry=retryKnown&&questTownRetry.attempts<3;
     const questRetryExhausted=retryKnown&&questTownRetry.attempts>=3;
     if(mayTown&&
-       (samePlace(p.c,d)||merchantTown&&crossBank)&&Array.isArray(spawn)&&
+       (samePlace(p.c,d)||merchantTown&&crossBank||
+         crossQuest&&portalOptions.length>0)&&Array.isArray(spawn)&&
        p.has('town')&&!p.c.c?.town&&
        !questRetryExhausted&&
        (townShortcutRetryReady(nowTown,lastTown,lastTownAttempt)||questRetry)&&
@@ -129,13 +141,17 @@ export function createMovement(bot){
      // it cancels from the savings comparison instead of pretending bank
      // has coordinates directly comparable to main-map coordinates.
      const tail=crossBank?6000:Math.hypot(spawn[0]-d.x,spawn[1]-d.y)/speed*1000;
-     const walk=crossBank?toSpawn+tail:distance(p.c,d)/speed*1000;
+     const walk=crossQuest?Math.min(...portalOptions.map(({exit,entrance})=>
+      (Math.hypot(xy(p.c).x-exit[0],xy(p.c).y-exit[1])+
+       Math.hypot(entrance[0]-d.x,entrance[1]-d.y))/speed*1000)):
+      crossBank?toSpawn+tail:distance(p.c,d)/speed*1000;
      const town=townMs+tail;
      bot.event?.('travel.compare',{owner,walkMs:Math.round(walk),
        townMs:Math.round(town),savedMs:Math.round(walk-town),
        threshold:bot.cfg.merchant?.townMinSavingsMs??3000,
        reason:crossBank?'Town-Kanal vor Bankportal gegen Rückweg zu Fuß':
-        'Town-Kanal plus Restweg gegen direkten Laufweg'});
+        crossQuest?'Verifizierter Portalweg gegen Town und Restweg':
+         'Town-Kanal plus Restweg gegen direkten Laufweg'});
      if(walk-town>(bot.cfg.merchant?.townMinSavingsMs??3000)){
       if(questRetry&&nowTown<questTownRetry.nextAt){
        bot.reason='Monsterhunt: schneller Town-Retry steht bevor';return false;
@@ -150,7 +166,7 @@ export function createMovement(bot){
          return p.call('town');},
        {priority:['logistics','gold'].includes(owner)?850:400,timeout:15000,
         delay:owner==='quest'?4000:30000,waitForObservation:true,
-        observe:()=>p.c.map===origin&&!p.c.c?.town&&
+        observe:()=>p.c.map===(crossQuest?'main':origin)&&!p.c.c?.town&&
           Math.hypot(xy(p.c).x-spawn[0],xy(p.c).y-spawn[1])<60,
         onSettle(result){townQueued=false;
           if(result==='confirmed'){

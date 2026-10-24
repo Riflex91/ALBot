@@ -4,7 +4,7 @@ import {forecastExchange} from './storage-plan.mjs';
 import {distance,samePlace,identity} from '../core/policy.mjs';
 import {exchangeSource} from '../production/materials.mjs';
 import {idleStaffBankRule} from './idle-staff-stock.mjs';
-import {createServicePlan} from './service-plan.mjs';
+import {createServicePlan,confirmedMluckNeed} from './service-plan.mjs';
 import {createFairTasks} from '../core/fair-tasks.mjs';
 import {merchantItemTaskId} from './production-priority.mjs';
 import {planPickupCapacity,pickupCleanupCandidates,pickupOperatingTarget} from './pickup-capacity.mjs';
@@ -1045,11 +1045,7 @@ export function createMerchant(bot){
    if(cfg.merchant.mluck&&cfg.merchant.mluckTravel!==false&&
      bot.free()>=Math.max(1,(cfg.merchant.minFreeSlots??4)+3))add('mluck.service',{priority:-200},()=>{
       const candidate=(bot.farmers??[]).map(n=>bot.transport.fresh(n))
-       .filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&
-         // An absent heartbeat field is UNKNOWN, not an absent Mluck.
-         h.mluck!==undefined&&
-         !(h.mluck?.strong&&h.mluck.f!==me.name)&&
-         (h.mluck===null||Number.isFinite(h.mluck?.ms)&&h.mluck.ms<60000))
+       .filter(h=>confirmedMluckNeed({...h,merchantName:me.name},p.realm()))
        .sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||
          (a.mluck?.ms??0)-(b.mluck?.ms??0))
        .find(h=>bot.strategy?.canVisit?.(h)??true);

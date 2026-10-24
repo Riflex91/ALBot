@@ -1,0 +1,53 @@
+name: Sync ALBot 0.51 candidate (temporary)
+on:
+  push:
+    branches: [fix/follower-focus-fire-20261024]
+permissions:
+  contents: write
+concurrency:
+  group: albot-051-candidate-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Rebuild browser runtime and all mirrored browser artifacts
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:editor
+          npm run build:konfigurator
+      - name: Ensure personal ALBotConfig was preserved
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const old=execFileSync('git',['show','HEAD:bot.js'],{encoding:'utf8'});
+          const updated=fs.readFileSync('bot.js','utf8');
+          const cfg=s=>{
+            const i=s.indexOf('globalThis.ALBotConfig='),j=s.indexOf('/* ALBot ',i);
+            if(i<0||j<i)throw Error('personal config boundary missing');
+            return s.slice(i,j);
+          };
+          if(cfg(old)!==cfg(updated))throw Error('ALBotConfig changed');
+          EOF
+      - name: Stage deterministic candidate (never sign in this workflow)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- bot.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json editor/Bot-Werkstatt.html profiles/full-solo.json profiles/full-team.json
+          if git diff --cached --quiet; then
+            echo "Generated artifacts already match; no commit required."
+            exit 0
+          fi
+          git commit -m "build: sync deterministic 0.51 candidate artifacts [skip release]"
+          git push origin HEAD:fix/follower-focus-fire-20261024

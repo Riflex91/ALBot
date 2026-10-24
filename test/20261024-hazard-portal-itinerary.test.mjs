@@ -155,3 +155,66 @@ test('a new follower destination cannot overwrite an active committed farm trip'
  assert.equal(bot.movement.order?.dest.map,'level2s');
  assert.equal(commands.filter(c=>c[0]==='smart_move').length,0);
 });
+
+test('real official desertland fireroamer range 280 makes transporter arrival unverified',()=>{
+ const g=world();
+ // These are the official 2026-10-24 server-data values and rectangles,
+ // not the simplified clear-corridor fixture used above.
+ g.monsters.fireroamer={aggro:.2,attack:320,speed:24,
+   range:280,frequency:1.2};
+ g.monsters.plantoid={aggro:.2,attack:640,speed:20,range:80};
+ g.monsters.porcupine={aggro:1,attack:16,speed:10,range:20};
+ g.monsters.ent={aggro:.2,attack:3600,speed:12,range:64};
+ g.monsters.gscorpion={aggro:.3,attack:120,speed:24,range:32};
+ g.monsters.bscorpion={aggro:.8,attack:3200,speed:24,range:32};
+ g.maps.desertland={
+  monsters:[
+   pack('plantoid',[-1013,-472,-575,-130]),
+   pack('plantoid',[-1013,-624,-762,-137]),
+   pack('porcupine',[-992,-58,-666,328]),
+   pack('ent',[-757,-2034,-70,-1888]),
+   pack('fireroamer',[91,-952,353,-702]),
+   pack('fireroamer',[161,-868,453,-697]),
+   pack('gscorpion',[220.31,-1569.2,561.04,-1275.72]),
+   pack('bscorpion',[-522.44,-1340.19,-295.2,-1183.31])
+  ],
+  spawns:[[0,0],[10,-386],[601,-2365]],npcs:[
+   {id:'transporter',position:[-14,-477]}],
+  doors:[[600,-2383,40,40,'level2s',1,2]]
+ };
+ const arrival=here('desertland',10,-386);
+ const r=threatRegions(g,'desertland');
+ assert.equal(segmentThreatFree(r,arrival,arrival),false,
+  'real fireroamer may hit close enough to the official transport spawn');
+ assert.equal(segmentThreatFree(threatRegions(g,'level1'),
+  here('level1',0,9),here('level1',0,9)),false,
+  'official underground arrival likewise is near prat');
+ const plan=planHazardItinerary(g,here('main',0,0),
+  here('level2s',-240,681),clear);
+ assert.equal(plan.ok,false,
+  'neither unsafe portal landing may be silently treated as safe');
+});
+test('revoking transporter permissions before departure aborts the itinerary',()=>{
+ const {bot,c,p,commands,events}=runtimeHarness();
+ // Force delayed acknowledgement for transport without a fake new_map.
+ const oldCall=p.call;p.call=(name,...args)=>{
+  if(name==='transport'){commands.push([name,...args]);
+   return Promise.resolve({success:false,in_progress:true});}
+  return oldCall(name,...args);
+ };
+ const originalRun=bot.exec.run;
+ let queued=null;
+ bot.exec.run=(name,resources,guard,invoke,options)=>{
+  if(!guard())return false;
+  queued={name,resources,guard,invoke,options};
+  return true;
+ };
+ const goal={map:'level2s',x:-240,y:681,radius:18};
+ assert.equal(bot.movement.go(goal,'farm'),true);
+ assert.equal(queued?.name,'travel.hazard');
+ // The portal decision was made at plan time, but the official world
+ // changes before the queued executor dispatch.
+ delete p.G.npcs.transporter.places.desertland;
+ assert.equal(queued.guard(),false);
+ assert.equal(commands.some(q=>q[0]==='transport'),false);
+});

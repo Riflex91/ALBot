@@ -136,7 +136,11 @@ test('no trust in client data, forged private signature or signer rotation',asyn
  const old=x.getRelease();
  x.setRelease({...old,sha256:'b'.repeat(64)});
  assert.equal((await x.call('PUT',x.payload())).status,503);
- x.setRelease({...old,signature:'x'+old.signature.slice(1)});
+ // Never accidentally reuse a valid signature that already starts with x.
+ // Test that a genuinely modified signature is rejected, independently
+ // of the random ECDSA signature prefix from this fixture.
+ x.setRelease({...old,signature:(old.signature[0]==='x'?'y':'x')+
+  old.signature.slice(1)});
  assert.equal((await x.call('PUT',x.payload())).status,503);
  assert.equal(x.env.DB.writes,0);
  x.setRelease(old);

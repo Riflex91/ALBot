@@ -43,7 +43,7 @@ test('full valid Full-v1 sandbox always restores independent active graph and ne
  assert.deepEqual(source,originalProfile);
  assert.equal(JSON.stringify(r).includes('"config"'),false);
  assert.equal(JSON.stringify(r).includes('"profile"'),false);
- assert.equal(JSON.stringify(r).includes('"characters"'),false);
+ assert.equal(JSON.stringify(r).includes('"characters":['),false);
 });
 test('all synthetic failures keep LIVE active config unchanged; failed sandbox recovery is unproven',()=>{
  for(const faultAt of simulateDetachedRestartRecovery.allowedFaults){

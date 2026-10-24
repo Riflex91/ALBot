@@ -191,6 +191,26 @@ export function safeFocusCorrectionPoint(character,target,monsters=[],canMove=()
  }
  return null;
 }
+// Bounded Warrior movement toward a CURRENT team aggressor; not a pull.
+export function warriorEmergencyInterceptPoint(character,monster,victim,
+ range,canMove){
+ if(character?.ctype!=='warrior'||!monster?.target||
+    monster.target!==victim?.name||character.name===victim.name||
+    !samePlace(character,monster)||!samePlace(victim,monster)||
+    !(character.hp>0)||!(character.max_hp>0)||
+    character.hp/character.max_hp<.7||
+    !Number.isFinite(range)||range<=0||
+    ![character.x,character.y,monster.x,monster.y,victim.x,victim.y]
+     .every(Number.isFinite)||distance(character,monster)>400||
+    distance(character,monster)<=range||typeof canMove!=='function')
+   return null;
+ const candidate=combatApproach(character,monster,Math.max(5,range-6),canMove);
+ if(!candidate||!samePlace(candidate,character)||
+    distance(character,candidate)>65||
+    distance(candidate,monster)>=distance(character,monster)-4||
+    canMove(candidate.x,candidate.y)!==true)return null;
+ return candidate;
+}
 export function combatApproach(character,target,range,canMove){const a=xy(character),lead=boundedInterceptPoint(character,target,{range}),b=lead&&canMove(lead.x,lead.y)?lead:xy(target),d=Math.hypot(a.x-b.x,a.y-b.y),step=Math.min(60,Math.max(0,d-range+3)),x=a.x+(b.x-a.x)*step/(d||1),y=a.y+(b.y-a.y)*step/(d||1);
  return canMove(x,y)?{map:character.map,in:character.in??character.map,x,y,radius:6}:{map:target.map??character.map,in:target.in??character.in??character.map,...b,radius:range};
 }
@@ -830,6 +850,43 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     }
     if(danger){
       const assessment=bot.combatAssessment?.assess(danger);
+      // A verified rare attacker can threaten a farmer even when its TTK
+      // forecast forbids a normal fight. Redirect that ALREADY engaged mob
+      // with native taunt or take a short local intercept step.
+      if(assessment?.reason==='insufficient-time-to-kill'&&
+         c.ctype==='warrior'&&isNaturallyAggressive(p.G,danger)&&
+         danger.target!==c.name&&(bot.farmers??[]).includes(danger.target)&&
+         !bot.monsters().some(m=>m.id!==danger.id&&m.target===c.name&&m.hp>0&&!m.dead)){
+       if(bot.skills?.emergencyTaunt?.(danger)){
+        bot.reason='Notfall-Taunt: '+danger.mtype;
+        bot.event?.('combat.emergencyTaunt',{monster:danger.mtype,
+         monsterId:danger.id,victim:danger.target});
+        return;
+       }
+       const patient=bot.transport?.fresh?.(danger.target),clock=Date.now();
+       if(patient?.running&&!patient.rip&&patient.realm===p.realm()&&
+          Number.isFinite(patient.received)&&patient.received<=clock&&
+          clock-patient.received<=4000&&
+          !bot.inventoryBlocked&&!bot.journal&&
+          ['farm','follow','combat',undefined].includes(bot.movement.order?.owner)){
+        const skillRange=p.G.skills?.taunt?.range??c.range;
+        const point=warriorEmergencyInterceptPoint(c,danger,patient,
+         skillRange,(x,y)=>p.call('can_move_to',x,y)===true);
+        if(point){
+         if(['farm','follow'].includes(bot.movement.order?.owner))
+          bot.movement.stop();
+         if(!bot.movement.order)bot.movement.go(point,'combat');
+         if(bot.movement.order?.owner==='combat'){
+          bot.reason='Notfall-Abfangen: '+danger.mtype;
+          bot.target=danger;
+          bot.event?.('combat.emergencyIntercept',{monster:danger.mtype,
+           monsterId:danger.id,victim:danger.target,
+           x:point.x,y:point.y});
+          return;
+         }
+        }
+       }
+      }
       if(assessment?.viable&&bot.allowed(danger)){
         bot.target=danger;bot.reason='Teamverteidigung: '+danger.mtype;
         bot.skills.rotation(danger);

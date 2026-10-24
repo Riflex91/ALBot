@@ -84,6 +84,17 @@ export function inspectPairedItemTransfer(local,peer,{
  if(!local)return deny('no-local-item-transfer');
  if(!local.verified||local.authority!=='none'||local.executable!==false)
   return deny('local-transfer-unverified');
+ // A peer can advertise a freshly sent old snapshot while our own
+ // observation is stale. Both sides must be inside one bounded window.
+ // Even then this is *only* diagnostic, never a transfer receipt.
+ if(!Number.isSafeInteger(now)||!Number.isSafeInteger(ttlMs)||
+    ttlMs<1000||ttlMs>120000||
+    !Number.isSafeInteger(local.observedAt)||local.observedAt>now||
+    now-local.observedAt>ttlMs||
+    !Number.isSafeInteger(local.journalAt)||
+    local.journalAt>local.observedAt||
+    local.observedAt-local.journalAt>120000)
+  return deny('local-transfer-observation-stale');
  if(!peer||peer.running!==true||peer.rip||peer.realm!==realm||
    !transferEvidenceName(peer.name)||!transferEvidenceName(peer.session)||
    !Number.isFinite(peer.received)||peer.received>now||
@@ -92,7 +103,11 @@ export function inspectPairedItemTransfer(local,peer,{
  const other=peer.itemTransferEvidence;
  if(!other?.verified||other.authority!=='none'||other.executable!==false||
    local.realm!==realm||other.realm!==realm||
-   !Number.isFinite(other.observedAt)||other.observedAt>peer.received||
+   !Number.isSafeInteger(other.observedAt)||
+   !Number.isSafeInteger(other.journalAt)||
+   other.journalAt>other.observedAt||
+   other.observedAt-other.journalAt>120000||
+   other.observedAt>peer.received||
    peer.received-other.observedAt>ttlMs||
    other.owner!==peer.name||other.session!==peer.session||
    local.id!==other.id||local.itemKey!==other.itemKey||
@@ -152,4 +167,40 @@ export function inspectReceiveSenderSession({
  if(peer.session===journal.session)
   return result('original-sender-session-still-live',false,peer.session);
  return result('sender-session-changed-during-receive',true,peer.session);
+}
+
+// W06/G09: the symmetrical sender-side counterpart restart is observable
+// while a SEND journal is still unresolved. A replacement Receiver session
+// cannot settle the old transfer or justify a re-send: the outgoing item may
+// have reached the former process immediately before its restart.
+export function inspectSendReceiverSession({
+ journal,peer,ownerSession,realm,now=Date.now(),ttlMs=10000
+}={}){
+ const result=(reason,changed=false,newSession=null)=>({
+  reason,changed,newSession,mode:'shadow-only',authority:'none',
+  executable:false,unlock:false,retry:false,requiresManualReview:true
+ });
+ if(!journal||journal.kind!=='send')
+  return result('no-open-send-journal');
+ const sep=typeof journal.id==='string'?journal.id.lastIndexOf(':'):-1,
+  senderSession=sep>0?journal.id.slice(0,sep):null;
+ if(!transferEvidenceName(journal.to)||
+    !transferEvidenceName(journal.session)||
+    !transferEvidenceName(senderSession)||
+    !transferEvidenceName(ownerSession)||
+    ownerSession!==senderSession)
+  return result('sender-session-unpinned-or-restarted');
+ if(!transferEvidenceName(realm)||!Number.isSafeInteger(now)||
+    !Number.isSafeInteger(ttlMs)||ttlMs<1000||ttlMs>120000)
+  return result('invalid-observation-context');
+ if(!peer)return result('receiver-status-unavailable');
+ if(peer.name!==journal.to||
+    !transferEvidenceName(peer.session)||
+    peer.realm!==realm||peer.running!==true||peer.rip===true||
+    !Number.isSafeInteger(peer.received)||peer.received>now||
+    now-peer.received>ttlMs)
+  return result('fresh-same-realm-receiver-not-verified');
+ if(peer.session===journal.session)
+  return result('original-receiver-session-still-live',false,peer.session);
+ return result('receiver-session-changed-during-send',true,peer.session);
 }

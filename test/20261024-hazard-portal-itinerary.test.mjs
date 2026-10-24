@@ -4,6 +4,7 @@ import {findLocalSafePath,planHazardItinerary,segmentThreatFree,
  threatRegions} from '../src/world/hazard-itinerary.mjs';
 import {createMovement} from '../src/core/movement.mjs';
 import {createHazardTravel} from '../src/world/hazard-travel.mjs';
+import {createFarmer} from '../src/combat/farmer.mjs';
 const here=(map,x,y)=>({map,x,y});
 const pack=(type,boundary)=>({type,boundary,count:5,grow:true});
 function world(){
@@ -256,4 +257,27 @@ test('new roaming aggressive monster interrupts an already dispatched native mov
  assert.equal(exec.pending.size,0);
  assert.ok(commands.some(x=>x[0]==='stop'&&x[1]==='move'));
  assert.ok(events.some(x=>x[0]==='travel.hazardAborted'));
+});
+
+test('prat death halts automatic respawn even after movement and farm plan disappear',()=>{
+ const g=world(),c={name:'My_Priest',ctype:'priest',rip:true,hp:0,
+  map:'level1',in:'level1',x:-129,y:761,items:[],mp:0,max_mp:2000};
+ const actions=[],events=[];
+ const bot={
+  p:{c,G:g,realm:()=> 'EUII'},
+  cfg:{farming:{respawn:true,respawnDelayMs:0,deathWindowMs:600000,
+   maxDeaths:5},party:{enabled:true}},
+  me:{role:'farmer',name:c.name},
+  movement:{order:null,stop:()=>actions.push('stop')},
+  teamPlan:{heartbeat:()=>null},
+  strategy:{failActivity:()=>actions.push('failed')},
+  logistics:{handoffActive:false},gold:{reserved:false},
+  journal:null,monsters:()=>[],exec:{run:()=>actions.push('respawn')},
+  event:(...e)=>events.push(e),
+  pause:reason=>actions.push(['pause',reason])
+ };
+ createFarmer(bot).tick();
+ assert.equal(actions.includes('respawn'),false);
+ assert.ok(actions.some(a=>Array.isArray(a)&&a[0]==='pause'));
+ assert.ok(events.some(e=>e[0]==='combat.fatalTransitHalt'));
 });

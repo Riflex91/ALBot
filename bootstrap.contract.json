@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 44,
-      "version": "0.44.0-candidate",
+      "sequence": 45,
+      "version": "0.45.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 969707,
-      "sha256": "5c98132949ca5b788817ec6e9000ae6a57b98e771ee97322b6bcf87ac793a2ca"
+      "bytes": 974040,
+      "sha256": "2f3771c5c4770abbdbd1363580219c68ac7d038beede6e93d0f19ba1509bd4d2"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Version 0.44.0-candidate, Sequence 44, protected GitHub Actions signer #40093066674 success. Gear accessory vacancy correction PR #451 integrated with release candidate PR #452. Linux/Windows CI green; pinned P-256 runtime signature and exact 969707 bytes, SHA-256 5c98132949ca5b788817ec6e9000ae6a57b98e771ee97322b6bcf87ac793a2ca. Ingame four-character acceptance still outstanding; personal config and public trust key unchanged."
+    "note": "24.10.2026: W03/W04-PR #455 (main e2ba873f109362d846f369df561ced77714196a1), exakte Linux-/Windows-CI #40093465914 grün. Geschützter ECDSA-P-256-Signierworkflow #40093598213 erfolgreich: ALBot 0.45.0-candidate, Sequence 45, 974040 Runtime-Bytes, SHA-256 2f3771c5c4770abbdbd1363580219c68ac7d038beede6e93d0f19ba1509bd4d2. Release-/Main-Runtime identischer Git-Blob; V2-Loader, öffentlicher Schlüssel, Manifest-URLs und persönliche ALBotConfig unverändert. Keine W14-Ingame-Liveabnahme."
   }
 }

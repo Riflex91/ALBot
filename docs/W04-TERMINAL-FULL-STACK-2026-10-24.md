@@ -6,4 +6,4 @@ Die Stapelauswahl bevorzugt möglichst passgenaue Mengen. Bestehende explizite `
 
 Regression: drei aufeinander folgende physische Entnahmen in einer Sitzung ohne Teilentnahme, kein Verkauf während der Reserveherstellung, ursprünglicher Nutzer-Cap, lokale Bestandsdrift und Bank-Quelländerung. Die **accountweite** koordinierte Reservestaging-Transaktion einschließlich Wiedereintritt nach Browser-/Sessionwechsel und W14-Dauerlauf ist mit diesem Paket nicht vollständig abgenommen.
 
-Signierter Ingame-Release bleibt bis zur gesonderten Signierung bei Sequenz 41. Offline-CI ist keine Ingame-Liveabnahme.
+Der geschützte Release-Kanal steht inzwischen bestätigt auf `0.42.0-candidate` / Sequenz 42. Die hier gebaute `0.43.0-candidate`-Runtime ist bis zu einer gesondert erfolgreich bestätigten Signierung **nicht** der Ingame-Release. Offline-CI ist keine Ingame-Liveabnahme.

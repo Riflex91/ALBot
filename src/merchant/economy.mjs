@@ -191,7 +191,27 @@ export function createEconomy(bot){
    bot.endValue(state);
   }});
  }
- function destination(id){try{return p.call('find_npc',id);}catch{return null;}}
+ // Static NPC placements in the live game catalog are a valid destination
+ // when find_npc() does not resolve an NPC on a remote map. This is ONLY
+ // navigation evidence; npcBuy still checks proximity, inventory and budget
+ // against the live character immediately before purchase.
+ function destination(id){
+  try{
+   const live=p.call('find_npc',id);
+   if(live&&typeof live.map==='string'&&
+      Number.isFinite(live.x)&&Number.isFinite(live.y))return live;
+  }catch{}
+  for(const [map,definition] of Object.entries(p.G.maps??{})){
+   if(definition?.ignore||definition?.instance||definition?.pvp)continue;
+   for(const npc of definition?.npcs??[]){
+    if(npc?.id!==id||!Array.isArray(npc.position)||
+       !Number.isFinite(npc.position[0])||
+       !Number.isFinite(npc.position[1]))continue;
+    return {map,in:map,x:npc.position[0],y:npc.position[1]};
+   }
+  }
+  return null;
+ }
  function at(d,radius=110){return !!d&&samePlace(p.c,d)&&distance(p.c,d)<=radius&&!p.c.moving;}
  function travel(d,label,radius=90){if(!d){note('Kein Arbeitsplatz: '+label);return false;}if(at(d,radius))return true;if(!bot.logistics.reserved){bot.reason='Unterwegs: '+label;bot.movement.go({...d,radius},'economy');}return false;}
  const npcAt=d=>at(d,NPC_WORK_RADIUS);

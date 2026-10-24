@@ -2,6 +2,8 @@ name: Sync ALBot 0.51 candidate (temporary)
 on:
   push:
     branches: [fix/follower-focus-fire-20261024]
+  pull_request:
+    branches: [main]
 permissions:
   contents: write
 concurrency:

@@ -145,14 +145,7 @@ export function assessLiveSquadMarch(character,peers,{realm,plan,
    peer.march?.plan===plan.id&&peer.march?.realm===realm;
   if(samePlace(character,peer)){
    crossMapSince.delete(peer.name);
-   // A verified, healthy follower actively moving toward the same final
-   // destination may be moderately behind without stopping the leader on
-   // every map tick. Still fail closed for stationary/stale routes and
-   // extreme separation that could strand the healer.
-   const gap=distance(character,peer);
-   const progressingLag=progress&&gap<=maxGap*1.5;
-   if(!close&&!aheadOnMap&&!progressingLag)
-    return {ready:false,reason:'teammate-behind',peer:peer.name,gap};
+   if(!close&&!aheadOnMap)return {ready:false,reason:'teammate-behind',peer:peer.name,gap:distance(character,peer)};
   }else{
    const key=plan.id+':'+character.map+':'+(character.in??character.map)+':'+peer.map+':'+(peer.in??peer.map);
    let checkpoint=crossMapSince.get(peer.name);

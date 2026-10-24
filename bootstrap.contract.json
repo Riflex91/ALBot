@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 53,
-      "version": "0.53.0-candidate",
+      "sequence": 52,
+      "version": "0.52.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 1000476,
-      "sha256": "74cb919cf6b8b5ddf49240d27889c61df470c4d823acdf1c67dda49c8c58186f"
+      "bytes": 997417,
+      "sha256": "8ac4297e7c39da65beccb31b1fb978be0a8dbc2e6418e87a8ac03696230e6fc1"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Combat effect-horizon and assertive 45-second PR #476 merged main (93f7bafaad30c6f9e85ee74d8d1327ffed06cc28) after Linux/Windows CI #40114166805. Protected P-256 signer #40114473479 published 0.53.0-candidate / sequence 53, 1000476 bytes, SHA-256 74cb919cf6b8b5ddf49240d27889c61df470c4d823acdf1c67dda49c8c58186f; exact byte reproduction #40114669367 passed 2622/2622 tests and verification. Loader URLs and P-256 trust key unchanged; world.risk=assertive, maxCombatSeconds=45. Ingame authentication, runtime combat acceptance and long-run tests not demonstrated."
+    "note": "24.10.2026: W06/G09 paired-transfer recovery PR #472, clean exact-head Linux/Windows CI #40104297827, main merge cdb8829014c9c99dc5a72a9a72fc41ffa8f83a91. Protected P-256 signer workflow #40104446046 success: ALBot 0.52.0-candidate / sequence 52, 997417 bytes, SHA-256 8ac4297e7c39da65beccb31b1fb978be0a8dbc2e6418e87a8ac03696230e6fc1. Published and main runtime Git blob d0911b276e048255495e2576c4c1c8d6ccbb812f identical. Personal ALBotConfig and V2 loader/trust/URLs unchanged. W14 live acceptance and server transfer ACK not proven."
   }
 }

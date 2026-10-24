@@ -1,0 +1,9 @@
+# W02/W04 – Ungebundene physische Betriebsreserve, 24.10.2026
+
+Die bisherige Betriebsbestandsprüfung benutzte für Reserve- und Verkaufsentscheidungen eine reine Varianten-Mengensumme. Flags wie locked, reserved, equipped und giveaway können im Inventar denselben Item-Identitätsschlüssel wie ein frei verfügbares Exemplar behalten. Solche Stapel konnten eine tatsächlich freie Reserve vortäuschen und eine nötige Bankentnahme verhindern oder automatisch erlaubte Verkaufsmengen zu hoch bewerten.
+
+Der gemeinsame Prüfer verifiedAvailableOperatingStockQuantity validiert erst alle passenden Stapel gegen die realen G.items-Stackgrenzen und zieht anschließend durch den bestehenden protectedItem-Vertrag gebundene Stückzahlen ab. Fehlerhafte gebundene Stapel werden niemals stillschweigend ignoriert. Die freie Menge wird einheitlich für automatische Inventarverkäufe, physisch gedeckte Bankverkäufe, Reservestaging-Bedarf und die W03/W04-Bankfolge-Wiederaufnahme nach CODE-Neustart verwendet. Nachträgliche Änderungen von Locks oder Reservierungen werden bei verzögerten Ausführungen erneut geprüft.
+
+Tests: test/operating-stock.test.mjs deckt gemischte freie und gebundene Mengen, vier Sperrarten, Mengenlimits, Bank-/Inventarverkaufsgrenzen und fehlerhafte Mengen ab. test/roadmap-w04-bank-disposition.test.mjs prüft eine tatsächlich journalisierte Reservestaging-Entnahme, Widerruf durch späte Entsperrung und physische Neustart-Reconciliation.
+
+Bestehende Item-Locks, Nutzerkostenbudgets, Journal-Recovery, signierte Release-URLs, P-256-Schlüssel und persönlicher ALBotConfig-Bereich bleiben unberührt. Der Kandidatenstand 0.46 erhält nur über den geschützten Releaseworkflow eine neue Signatur. Accountweite Peer-Reservierungsquittungen und echter W14-Ingame-Dauertest bleiben offen; Offline-CI genügt nicht als Live-Nachweis.

@@ -37,6 +37,15 @@ function botFixture(){
  return {bot,c,cfg,calls,messages,data,peers};
 }
 
+test('world risk evaluation still rejects strong encounters without testLogging',()=>{
+ const {bot,cfg}=botFixture();
+ assert.equal(Object.hasOwn(cfg.general,'testLogging'),false,'legacy configuration has no logging switch');
+ const strategy=createStrategy(bot);
+ assert.equal(strategy.safeTarget('goo'),true);
+ bot.p.G.monsters.boss.attack=500;
+ assert.equal(strategy.safeTarget('boss'),false);
+});
+
 test('world planner rejects unlisted, excluded and over-risk encounters, returns to configured farm',()=>{
  const {bot,cfg}=botFixture();cfg.world.bosses=true;cfg.world.allowedBosses=['boss'];bot.p.root.S.boss={live:true,map:'danger',x:10,y:20};cfg.world.excludedMaps=['danger'];const strategy=createStrategy(bot);strategy.plan();assert.equal(strategy.status().activity,null);assert.equal(strategy.requestTask('farm:unknown'),false);assert.equal(strategy.requestTask('boss:unlisted'),false);cfg.world.excludedMaps=[];strategy.close();strategy.plan();assert.equal(strategy.status().activity.id,'boss');bot.p.G.monsters.boss.attack=500;strategy.close();strategy.plan();assert.equal(strategy.status().activity,null);assert.deepEqual(strategy.targets(),['goo']);
 });

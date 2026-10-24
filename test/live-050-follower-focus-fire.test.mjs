@@ -55,8 +55,8 @@ test('overworld farmer prioritizes focus assistance before voluntary spawn pulls
  const newPull=tick.indexOf('independentSpawnEngagement())return;');
  assert.ok(assist>=0&&oneShot>assist&&newPull>assist,
   'assist must be evaluated before either fresh neutral pull');
- assert.match(src,/combat\\.assistUnavailable/);
+ assert.match(src,/combat\.assistUnavailable/);
  assert.match(src,/leader-target-not-visible/);
  assert.match(src,/native-can-attack-false/);
- assert.match(src,/stillAssigned\\(\\)/);
+ assert.match(src,/stillAssigned\(\)/);
 });

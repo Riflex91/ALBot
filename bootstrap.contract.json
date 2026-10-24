@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 49,
-      "version": "0.49.0-candidate",
+      "sequence": 50,
+      "version": "0.50.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 994168,
-      "sha256": "991266fab388bbc64dd5422f48b8c593763134b5e3d7c71975fb72b7b0bada62"
+      "bytes": 995231,
+      "sha256": "09d84d9c1d8f7f3a580869593b9e3574e3dac473129aa5abd22d401dabbe8872"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: W06/G09 physical material progress cross-check PR #463, exact Linux/Windows CI #40099377751, main merge 5032696d7180d0e381c6212a72bfbda417778198. Protected signer workflow #40099680310 success: ALBot 0.49.0-candidate / sequence 49, 994168 bytes, SHA-256 991266fab388bbc64dd5422f48b8c593763134b5e3d7c71975fb72b7b0bada62. Published runtime and main share Git blob 9c55893a8a042dcddff6e0a0ad0a4e96159de006. ECDSA-P-256 verified, personal ALBotConfig and installed V2 trust/URLs unchanged. W14 Ingame continuous acceptance pending."
+    "note": "24.10.2026: W06/G09 Farmer-session-bound material quota PR #468, clean full Linux/Windows CI #40100822956 on exact final head, main merge 287bf80e6206fd9e96122e49b73fccb96128fb71. Protected ECDSA-P-256 signer #40100996547 succeeded for ALBot 0.50.0-candidate / Sequence 50, 995231 bytes, SHA-256 09d84d9c1d8f7f3a580869593b9e3574e3dac473129aa5abd22d401dabbe8872. Source and published runtime share Git blob 591816b900cef6720563ba63b6f117423458db3e. Personal ALBotConfig, installed V2 loader, URLs, public trust key unchanged; W14 Ingame acceptance not verified."
   }
 }

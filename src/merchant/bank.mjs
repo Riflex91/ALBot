@@ -2,6 +2,8 @@ import {bankOperatingStockRule,bankOperatingReserveNeed} from '../items/operatin
 import {identity,fingerprint,variantCount} from '../core/policy.mjs';
 import {inspectBankEvidence} from '../items/bank-evidence.mjs';
 import {scanBankDispositionWindow} from './bank-disposition.mjs';
+import {validReserveChain,reserveChainObservation} from './bank-reserve-chain.mjs';
+import {verifiedProductionStockQuantity} from '../items/stock-policy.mjs';
 import {validateBankReclaimRecord,classifyBankReclaimRecord,inspectOffsiteBankReclaim} from './bank-reclaim-recovery.mjs';
 import {validateBankPartialRecord,classifyBankPartialRecord,partialDispatchDecision} from './bank-partial-recovery.mjs';
 import {validateBankSingleRecord,classifyBankSingleRecord} from './bank-single-recovery.mjs';
@@ -124,6 +126,53 @@ export function createBank(bot){
  const singleKey='albot:bank-single:'+me.name;let single=p.read(singleKey)??null;
  const storeKey='albot:bank-store:'+me.name;let storing=p.read(storeKey)??null;
  const swapKey='albot:bank-swap:'+me.name;let swapping=p.read(swapKey)??null;
+ const chainKey='albot:bank-reserve-chain:'+me.name;
+ let reserveChain=p.read(chainKey)??null;
+ if(reserveChain&&!validReserveChain(reserveChain,{
+  owner:me.name,realm:p.realm(),now:Date.now()})){
+  bot.inventoryBlocked=true;
+  e.note('Bankreserve: ungültige persistente Folge; manuell prüfen');
+ }
+ function saveReserveChain(value){
+  if(p.write(chainKey,value)!==true){
+   bot.inventoryBlocked=true;e.note('Bankreserve: Folgejournal nicht gespeichert');
+   return false;
+  }
+  reserveChain=value;return true;
+ }
+ // A reserve-chain write is a cursor, not game-action authorization.
+ // The existing exact bank value journal is additionally mandatory.
+ function prepareReserveChainDispatch(r){
+  if(!r.reserveStage)return true;
+  const variant=identity(r.item),floor=r.reserveStage.floor,
+   take=r.take??r.quantity,quantity=r.item.q??1,
+   slot=r.bankSlot??r.slot,now=Date.now(),old=reserveChain;
+  if(old?.phase==='prepared'){
+   const a=old.source;
+   return validReserveChain(old,{owner:me.name,realm:p.realm(),now})&&
+    old.variant===variant&&old.floor===floor&&old.carried===r.before&&
+    a.pack===r.pack&&a.slot===slot&&a.before===r.sourcePrint&&
+    a.held===r.before&&a.take===take;
+  }
+  if(old&&(!validReserveChain(old,{owner:me.name,realm:p.realm(),now})||
+     old.phase!=='ready'||old.floor!==floor||old.variant!==variant||
+     old.carried!==r.before||old.steps>=16))return false;
+  const candidate={version:1,owner:me.name,realm:p.realm(),
+   variant,item:{...r.item},floor,carried:r.before,
+   steps:old?.steps??0,started:old?.started??now,updated:now,
+   phase:'prepared',source:{pack:r.pack,slot,before:r.sourcePrint,
+    after:take===quantity?null:fingerprint({...r.item,q:quantity-take}),
+    held:r.before,take,quantity}};
+  return validReserveChain(candidate,{owner:me.name,realm:p.realm(),now})&&
+   saveReserveChain(candidate);
+ }
+ function markReserveChainDispatch(r){
+  if(!r.reserveStage)return true;
+  if(!reserveChain||reserveChain.phase!=='prepared'||
+     reserveChain.source.before!==r.sourcePrint)return false;
+  return saveReserveChain({...reserveChain,phase:'dispatched',
+   updated:Date.now()});
+ }
  const crossToken=Symbol();
  const pressureKey='albot:bank-pressure:'+me.name;
  let pressure=p.read(pressureKey)??{observations:0,epoch:null,at:0};
@@ -313,6 +362,10 @@ export function createBank(bot){
    bot.inventoryBlocked=true;
    throw Error('Bank-Teilentnahme: Ausgangszustand vor API-Aufruf unklar');
   }
+  if(phase==='original'&&r.reserveStage&&!prepareReserveChainDispatch(r)){
+   bot.inventoryBlocked=true;
+   throw Error('Bankreserve: Teilentnahme-Folge nicht belegbar');
+  }
   const next={...r,dispatches:[...r.dispatches,{
    phase,session:bot.session,at:Date.now(),realm:r.realm,pack:r.pack,
    bankSlot:r.bankSlot,dest:r.dest,splitSlot:r.splitSlot,
@@ -320,6 +373,10 @@ export function createBank(bot){
   if(!validPending(next)||!savePending(next)){
    bot.inventoryBlocked=true;
    throw Error('Bank-Teilentnahme: Dispatch-Beleg konnte nicht dauerhaft gespeichert werden');
+  }
+  if(phase==='original'&&r.reserveStage&&!markReserveChainDispatch(r)){
+   bot.inventoryBlocked=true;
+   throw Error('Bankreserve: Teilentnahme-Dispatchfolge unklar');
   }
   return invoke();
  }
@@ -710,6 +767,10 @@ export function createBank(bot){
       bot.inventoryBlocked=true;
       throw Error('Bankentnahme: Quellzustand vor Server-Dispatch unklar');
      }
+     if(reserveStage&&!prepareReserveChainDispatch(record)){
+      bot.inventoryBlocked=true;
+      throw Error('Bankreserve: Einzelentnahme-Folge nicht belegbar');
+     }
      const next={...record,dispatch:{
       kind:'bank.retrieve',session:bot.session,at:Date.now(),
       realm:record.realm,pack,slot,dest,sourcePrint}};
@@ -719,6 +780,10 @@ export function createBank(bot){
       throw Error('Bankentnahme: Dispatch-Journal nicht gespeichert');
      }
      single=next;
+     if(reserveStage&&!markReserveChainDispatch(record)){
+      bot.inventoryBlocked=true;
+      throw Error('Bankreserve: Einzelentnahme-Dispatchfolge unklar');
+     }
      return p.call('bank_retrieve',pack,slot,dest);
     },
     observe:()=>!!single&&singleEvidence(single).phase==='withdrawn',
@@ -1029,6 +1094,44 @@ export function createBank(bot){
   }
   return accepted;
  }
+ // Across reloads, the chain is reconciled ONLY against fresh physical
+ // bank slots and verified local inventory, never an old planning catalogue.
+ function reconcileReserveChain(){
+  if(!reserveChain)return true;
+  if(!validReserveChain(reserveChain,{
+   owner:me.name,realm:p.realm(),now:Date.now()})){
+   bot.inventoryBlocked=true;return false;
+  }
+  if(single||pending||reclaiming||storing||swapping)return false;
+  const r=reserveChain,
+   held=verifiedProductionStockQuantity(p.G,p.c.items,r.item);
+  if(!Number.isSafeInteger(held))return false;
+  if(r.phase!=='ready'){
+   if(packMap(r.source.pack)!==p.c.map||
+      !Array.isArray(p.c.bank?.[r.source.pack])||
+      p.c.bank[r.source.pack].length>42)return false;
+   const live=p.c.bank[r.source.pack][r.source.slot]??null;
+   const outcome=reserveChainObservation(r,{held,
+    source:live?fingerprint(live):null});
+   if(!['prepared-unchanged','confirmed-physical-step'].includes(outcome)){
+    bot.inventoryBlocked=true;
+    e.note('Bankreserve: Quell- oder Bestandsdrift ('+outcome+')');
+    return false;
+   }
+   const proven=outcome==='confirmed-physical-step';
+   if(!saveReserveChain({...r,phase:'ready',source:null,carried:held,
+     steps:r.steps+(proven?1:0),updated:Date.now()}))return false;
+  }else if(held!==r.carried){
+   bot.inventoryBlocked=true;
+   e.note('Bankreserve: unbekannte Bestandsänderung im Folgestaging');
+   return false;
+  }
+  // No sale from a durable cursor. Clearing it is a separate persisted
+  // transition after the floor is ACTUALLY held in the local inventory.
+  if(reserveChain.carried>=reserveChain.floor)
+   return saveReserveChain(null);
+  return true;
+ }
  let preventiveScan={revision:null,map:null,defs:null,cursor:0,
   checked:0,total:0,best:null,completedAt:0,reason:'not-observed'};
  function resetPreventive(reason='snapshot-changed'){
@@ -1042,12 +1145,14 @@ export function createBank(bot){
   // are not reinterpreted as preventive bank liquidation permission.
   if(cfg.merchant.preventiveStorage!==true||!cfg.merchant.bankReclaim||
      !cfg.merchant.bank||!bot.running||me.name!==cfg.party.merchant||
-     pending||reclaiming||bot.journal||bot.inventoryBlocked||
+     pending||reclaiming||single||storing||swapping||
+     bot.journal||bot.inventoryBlocked||
      bot.logistics?.reserved||bot.exec.busy('inventory'))return false;
   const rows=packs();
   if(!lastAtBank||!observed||!p.c.bank||!catalog.observedAt||
      catalog.realm!==(p.realm?.()??'')||
      Date.now()-catalog.observedAt>120000)return false;
+  if(!reconcileReserveChain())return false;
   if(preventiveScan.revision!==catalog.revision||
      preventiveScan.map!==p.c.map||
      preventiveScan.defs!==p.G.items)resetPreventive();
@@ -1057,8 +1162,9 @@ export function createBank(bot){
   }
   const batch=scanBankDispositionWindow(rows,{map:p.c.map,packMap,
    cursor:preventiveScan.cursor,limit:24,admit:(item,pack,slot)=>{
+    if(reserveChain&&identity(item)!==reserveChain.variant)return null;
     const explicit=e.explicit(item);
-    const safe=eligibleBankSale(item);
+    const safe=reserveChain?null:eligibleBankSale(item);
     if(safe&&(safe.r._bankOperatingStock||
        explicit?.enabled&&explicit.action==='sell'&&safe.r===explicit))
      return {price:safe.price,lossScore:safe.lossScore};
@@ -1105,6 +1211,11 @@ export function createBank(bot){
      identity(item)!==selected.variant)return false;
   if(selected.reserveStage){
    const need=bankOperatingReserveNeed(bot,item),q=item.q??1;
+   if(reserveChain&&(reserveChain.phase!=='ready'||
+      reserveChain.variant!==identity(item)||
+      reserveChain.floor!==need?.floor||
+      reserveChain.carried!==need?.held||
+      reserveChain.steps>=16))return false;
    const stagePlan=reserveStagingTake(item,need);
    if(!stagePlan)return false;
    const take=stagePlan.take;
@@ -1368,7 +1479,14 @@ export function createBank(bot){
    mode:'read-only-no-authorization',executable:false,
    blocked:collision||!!bot.inventoryBlocked||!!bot.journal,
    conflict:collision?'simultaneous-bank-value-journals':null,
-   requiresManualReview:!!needsReview,
+   requiresManualReview:!!needsReview||
+    !!reserveChain&&!validReserveChain(reserveChain,{
+     owner:me.name,realm:p.realm(),now:Date.now()}),
+   reserveChain:reserveChain?{phase:reserveChain.phase,
+    variant:reserveChain.variant,floor:reserveChain.floor,
+    carried:reserveChain.carried,steps:reserveChain.steps,
+    source:reserveChain.source?{pack:reserveChain.source.pack,
+     slot:reserveChain.source.slot,take:reserveChain.source.take}:null}:null,
    swap:swapping?{
      phase:collision?'conflict':swapResult.phase,reason:swapResult.reason,
      pack:swapping.pack,firstSlot:swapping.a,secondSlot:swapping.b,

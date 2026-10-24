@@ -1,4 +1,5 @@
 name: One-shot ALBot transit/accessory candidate rebuild
+# Re-run after verified regression fixture correction.
 on:
   push:
     branches:

@@ -247,6 +247,7 @@ function createVerifiedConfigStaging({
     sequence:dry.sequence,sha256:dry.sha256,
     faultCases:faults,
     faultContainmentObserved:isolated,
+    sandboxFaultsAllRestored:faults.every(x=>x.sandboxRollbackVerified===true),
     actualRollbackCertified:false,
     controllerReconstructionTested:false,remoteAccountRollbackVerified:false,
     restartAuthorized:false,transactionCommitted:false,

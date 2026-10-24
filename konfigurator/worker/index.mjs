@@ -230,8 +230,6 @@ export async function handleRequest(request,env,ctx={},deps={}){
  if(path==='/api/profile-sync/signed-highwater'){
   if(!['GET','PUT'].includes(request.method))
    return failure('Methode nicht erlaubt',405);
-  if(!env.DB||!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
-   return failure('Privater D1-Signaturanker nicht eingerichtet',503);
   if(request.method==='PUT'){
    if(request.headers.get('origin')!==url.origin)
     return failure('Ungültige Request-Herkunft',403);
@@ -240,6 +238,10 @@ export async function handleRequest(request,env,ctx={},deps={}){
    if(Number(request.headers.get('content-length')??0)>256)
     return failure('Anfrage zu groß',413);
   }
+  // Origin and method gate must not depend on the deployment's D1/secrets:
+  // even an unconfigured Worker must reject game-origin mutation attempts.
+  if(!env.DB||!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
+   return failure('Privater D1-Signaturanker nicht eingerichtet',503);
   try{
    const identity=await signer(env);
    if(request.method==='GET'){

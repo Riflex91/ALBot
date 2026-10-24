@@ -1187,7 +1187,8 @@ export function createProduction(bot){
   const state=materialContract?(first?.objective===materialContract.objective?'active':first?'higher-priority-material-work':'waiting-for-approved-source'):'';
   if(state!==publicationState){publicationState=state;if(materialContract)bot.event(state==='active'?'farmOrder.resumed':'farmOrder.suspended',{objective:materialContract.objective,reason:state});}if(!first){lastPublishedMaterials=[];return [];}
  const plan=planMaterialQuotas(first,bot.farmers,
-  name=>bot.transport.fresh(name),p.realm(),{freeReserve:cfg.farming.freeSlots});
+  name=>bot.transport.fresh(name),p.realm(),{freeReserve:cfg.farming.freeSlots,
+   ttlMs:cfg.general?.messageTtlMs??10000});
  lastPublishedMaterials=[{...first,...plan}];
   for(const name of bot.farmers){const h=bot.transport.fresh(name),ack=h?.materialAck;
    if(!h?.running||h.rip||h.realm!==p.realm()||ack?.objective!==first.objective||ack.item!==first.item||ack.monster!==first.monster)continue;

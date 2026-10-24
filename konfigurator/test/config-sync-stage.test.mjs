@@ -69,8 +69,11 @@ test('after reload the only durable evidence is untrusted metadata, not resumabl
  assert.equal(status.staged.memoryVerified,false);
  assert.equal(status.staged.resumeRequiresReverification,true);
  assert.equal(status.readyForActivation,false);
- assert.equal(await restarted.stage(release),false); // replay cannot overwrite journal
- assert.match(restarted.status().lastError,/replay|rollback/);
+ // A reload can recover the same signed sequence only by verifying
+ // the full private release again; the existing applied cursor is untouched.
+ assert.equal(await restarted.stage(release),true);
+ assert.equal(restarted.status().staged.memoryVerified,true);
+ assert.equal(box.records[box.applied],undefined);
 });
 test('wrong account, tampered digest, forged signature and disabled character never stage',async()=>{
  const {identity,release}=await signed(),box=sandbox(identity);

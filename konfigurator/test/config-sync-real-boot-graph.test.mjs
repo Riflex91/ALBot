@@ -46,7 +46,7 @@ test('deleting a real bot factory causes audit failure; spoofing with comments c
 
 test('critical side-effect wiring can never disappear silently from rollback risk inventory',()=>{
  for(const [needle,replacement] of [
-  ["p.call=(name,...args)=>","p.callWrapper=(name,...args)=>"],
+  ["p.call=recordingPortCall;","p.callWrapper=recordingPortCall;"],
   ["p.hook('on_party_invite'","p.hookDisabled('on_party_invite'"],
   ["game.on(event,handler)","game.onDisabled(event,handler)"],
   ["root.addEventListener(type,handler)","root.addEventListenerDisabled(type,handler)"],

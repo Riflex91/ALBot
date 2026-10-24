@@ -4,7 +4,7 @@ const htSame=(a,b)=>a?.map===b?.map&&(a?.in??a?.map)===(b?.in??b?.map);
 const htPoint=(map,p)=>({map,x:p.x,y:p.y});
 export function createHazardTravel(bot){
  const {p,exec}=bot;
- let trip=null,lastReject='',lastRejectAt=0;
+ let trip=null,lastReject='',lastRejectAt=0,lastPlanFailure=null;
  const diagnostic=(event,details)=>{
   const message=event+JSON.stringify(details);
   if(message!==lastReject||Date.now()-lastRejectAt>10000){
@@ -38,10 +38,27 @@ export function createHazardTravel(bot){
    const reg=threatRegions(p.G,current.map,bot.monsters?.()??[]);
    if(!segmentThreatFree(reg,current,htPoint(next.map,next)))return {
     ok:false,reason:'hostile-route-segment-changed'};
-  }else if(next.type==='transport'){
+   }else if(next.type==='transport'){
    if(p.c.map!==next.from.map||htDistance(p.c,next.from)>36||
       !p.G.maps?.[next.map]?.spawns?.[next.spawn])
     return {ok:false,reason:'portal-origin-unverified'};
+   const src=p.G.maps[p.c.map];
+   const source=next.from;
+   const legalDoor=next.via==='door'&&src?.doors?.some(door=>
+     door?.[4]===next.map&&(door[5]??0)===next.spawn&&
+     !door[7]&&!door[8]&&Number.isSafeInteger(door[6])&&
+     src.spawns?.[door[6]]&&
+     htDistance({x:src.spawns[door[6]][0],y:src.spawns[door[6]][1]},
+       source)<3);
+   const legalTransport=next.via==='transporter'&&
+     p.G.npcs?.transporter?.places?.[next.map]===next.spawn&&
+     src?.npcs?.some(n=>n?.id==='transporter'&&
+       Array.isArray(n.position)&&
+       htDistance({x:n.position[0],y:n.position[1]},source)<3);
+   if(!legalDoor&&!legalTransport)return {
+     ok:false,reason:'portal-edge-revoked'};
+   if(p.c.targets>5||p.c.c?.town||p.c.s?.dampened)
+    return {ok:false,reason:'portal-server-conditions-blocked'};
    const reg=threatRegions(p.G,next.map,bot.monsters?.()??[]);
    if(!segmentThreatFree(reg,htPoint(next.map,next),htPoint(next.map,next)))
     return {ok:false,reason:'portal-arrival-hostile'};
@@ -52,6 +69,8 @@ export function createHazardTravel(bot){
  function abort(reason,halt=true){
   const old=trip;trip=null;
   if(!old)return false;
+  lastPlanFailure={key:old.destination.map+':'+Math.round(old.destination.x)+':'+
+    Math.round(old.destination.y),until:Date.now()+6000,reason};
   exec.cancelResource('movement');
   if(halt){try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}}
   diagnostic('travel.hazardAborted',{id:old.id,owner:old.owner,reason,
@@ -60,6 +79,12 @@ export function createHazardTravel(bot){
  }
  function start(destination,owner){
   if(trip||!bot.running||!destination||!p.c||p.c.rip)return false;
+  const retryKey=destination.map+':'+Math.round(destination.x)+':'+
+   Math.round(destination.y);
+  if(lastPlanFailure?.key===retryKey&&Date.now()<lastPlanFailure.until){
+   bot.reason='Navigation: sicherer Routenversuch wartet auf neue Prüfung';
+   return false;
+  }
   const c=p.c,source={map:c.map,x:c.x,y:c.y};
   const goal={map:destination.map,x:destination.x,y:destination.y};
   const plans=planHazardItinerary(p.G,source,goal,traversable,{
@@ -71,6 +96,8 @@ export function createHazardTravel(bot){
    diagnostic('travel.hazardPlanRejected',{owner,from:c.map,to:goal.map,
     reason:plans.reason,visited:plans.visited??null});
    bot.reason='Gefahrensichere Route nicht belegbar: '+plans.reason;
+   lastPlanFailure={key:retryKey,until:Date.now()+10000,
+    reason:plans.reason};
    return false;
   }
   trip={id:bot.session+':safe-trip:'+Date.now(),owner,
@@ -106,6 +133,12 @@ export function createHazardTravel(bot){
     type:step.type,map:p.c.map});
    return true;
   }
+  // Monster motion can invalidate a step AFTER native move was dispatched:
+  // interrupt immediately rather than waiting for the next waypoint.
+  if(exec.pending?.has('travel.hazard')&&step.type==='move'){
+   const proof=tripProof(s);
+   if(!proof.ok){abort('inflight-'+proof.reason);return true;}
+  }
   if(exec.busy('movement')||exec.pending?.has('travel.hazard'))return true;
   if(!tripProof(s).ok){
    const result=tripProof(s);
@@ -114,7 +147,7 @@ export function createHazardTravel(bot){
   const admitted=()=>trip===s&&s.index<s.steps.length&&
    bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&
    tripProof(s).ok===true;
-  // Movement and portals share the htSame resource. Executor rechecks the
+  // Movement and portals share the same movement resource. Executor rechecks the
   // native collision and live threat proof immediately before dispatch.
   const accepted=exec.run('travel.hazard',['movement'],admitted,
    ()=>step.type==='move'?p.call('move',step.x,step.y):

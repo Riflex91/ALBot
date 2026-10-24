@@ -13,6 +13,28 @@ export function createTrackerAcquisition(bot){
    saved&&typeof saved.recipient==='string'&&
    Number.isFinite(saved.at)?saved:{recipient:'',at:0,invalid:true};
  let reason=pending?'await-recipient':'no-need',nextBankProbe=0;
+ const legacyRecoveryKey=key+':legacy-recovered';
+ const tokenCount=()=>Array.isArray(p.c.items)?p.c.items.reduce((n,i)=>
+  n+(i?.name==='monstertoken'?(i.q??1):0),0):0;
+ const trackerCount=()=>Array.isArray(p.c.items)?
+  p.c.items.filter(i=>i?.name==='tracker').length:0;
+ // Recover a pre-dispatch intent only after the LIVE inventory proves that
+ // no tokens and no Tracker changed. A snapshot-free legacy intent may be
+ // retried once, after a long hold, only with fresh recipient/stock evidence.
+ function recoveryDue(){
+  if(!pending||pending.invalid||!Number.isFinite(pending.at)||
+     pending.at<=0||Date.now()-pending.at<60000||
+     bot.checkpoint?.durable!==true||!bot.running||bot.journal||
+     bot.inventoryBlocked||bot.bank?.pending||bot.logistics?.reserved||
+     recipient()!==pending.recipient||!Array.isArray(p.c.items))return false;
+  if(Number.isSafeInteger(pending.tokensBefore)&&
+     Number.isSafeInteger(pending.trackersBefore))
+   return tokenCount()===pending.tokensBefore&&
+     trackerCount()===pending.trackersBefore;
+  return Date.now()-pending.at>=300000&&
+     p.read?.(legacyRecoveryKey)!==true&&tokenCount()>=4&&
+     !p.c.items.some(i=>i?.name==='tracker'&&!protectedItem(i));
+ }
 
  function recipient(){
   if(!Array.isArray(bot.farmers))return null;
@@ -101,7 +123,7 @@ export function createTrackerAcquisition(bot){
    bot.bank?.catalogStock?.()?.some(r=>r.item?.name==='tracker'&&
     !protectedItem(r.item))===true;
  }
- function eligible(){return !!bankCandidate()||!!candidate()||
+ function eligible(){return recoveryDue()||!!bankCandidate()||!!candidate()||
    catalogCandidate()||bankProbeDue();}
  function tick(){
   if(pending){
@@ -110,6 +132,14 @@ export function createTrackerAcquisition(bot){
       ['tracker','supercomputer'].includes(h.achievementCarrier)){
     if(p.write?.(key,null)!==true)return false;
     pending=null;reason='recipient-confirmed';
+   }else if(recoveryDue()){
+    const legacy=!Number.isSafeInteger(pending.tokensBefore);
+    if(legacy&&p.write?.(legacyRecoveryKey,true)!==true)return false;
+    if(p.write?.(key,null)!==true)return false;
+    bot.event?.('tracker.reconciled',{recipient:pending.recipient,
+      reason:legacy?'bounded-legacy-recovery':'unchanged-pre-dispatch-inventory',
+      tokens:tokenCount(),trackers:trackerCount()});
+    pending=null;reason='unspent-order-recovered';
    }else{reason=pending.invalid?'invalid-durable-state':'await-recipient';return false;}
   }
   // A fresh catalog may justify travel, never withdrawal without live slots.
@@ -157,7 +187,9 @@ export function createTrackerAcquisition(bot){
    call:()=>{
     // Durable intent is written before ANY token is spent. An unknown
     // exchange stays locked until a verified recipient carries Tracktrix.
-    const next={recipient:plan.recipient,at:Date.now()};
+    const next={recipient:plan.recipient,at:Date.now(),
+      tokensBefore:plan.tokensBefore,trackersBefore:plan.trackersBefore,
+      sourceFingerprint:plan.sourceFingerprint,slot:plan.slot};
     if(p.write?.(key,next)!==true)throw Error('Tracktrix-Auftrag nicht dauerhaft gespeichert');
     pending=next;reason='await-recipient';
     return p.call('exchange_buy','monstertoken','tracker');

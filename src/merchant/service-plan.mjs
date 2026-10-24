@@ -1,3 +1,9 @@
+// Missing peer Mluck telemetry is unknown, NOT confirmed absence.
+export function confirmedMluckNeed(h,realm){
+ return !!h&&h.running===true&&!h.rip&&h.realm===realm&&
+  h.mluck!==undefined&&!(h.mluck?.strong&&h.mluck.f!==h.merchantName)&&
+  (h.mluck===null||Number.isFinite(h.mluck?.ms)&&h.mluck.ms<60000);
+}
 // One bounded service lease, shared by item, gold and buff journeys.
 // Completing an on-site visit temporarily bars reselecting the SAME farmer;
 // simply clearing the preferred target would otherwise restart A -> town -> A.

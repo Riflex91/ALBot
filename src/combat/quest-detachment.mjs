@@ -25,13 +25,16 @@ export function assessQuestDetachment(bot){
  // snapshot only after the *same local* spawn/risk validity check.
  const localPlan=bot.teamPlan?.heartbeat?.();
  const leader=me.name===bot.leader?null:bot.transport?.fresh?.(bot.leader);
- const plan=localPlan??(leader?.running&&!leader.rip&&
-  leader.realm===p.realm()?(leader.farmPlan??leader.march?.anchor):null);
- if(!plan||plan.kind!=='farm'||plan.objective||
-    !Number.isFinite(plan.expires)||plan.expires<=Date.now()||
-    !bot.teamPlan?.valid?.(plan)||plan.leader!==bot.leader||
-    plan.realm!==p.realm()||!samePlace(p.c,plan)||
-    distance(p.c,plan)>120)return null;
+ // The current local cache may be stale after leader quest departure.
+ // Try the leader's independently verified compact farm anchor as well.
+ const trusted=leader?.running&&!leader.rip&&leader.realm===p.realm();
+ const plans=[localPlan,...(trusted?[leader.farmPlan,leader.march?.anchor]:[])]
+  .filter(Boolean);
+ const plan=plans.find(row=>row.kind==='farm'&&!row.objective&&
+  Number.isFinite(row.expires)&&row.expires>Date.now()&&
+  bot.teamPlan?.valid?.(row)===true&&row.leader===bot.leader&&
+  row.realm===p.realm()&&samePlace(p.c,row)&&distance(p.c,row)<=120);
+ if(!plan)return null;
  for(const h of active){
   if(!h?.running||h.rip||h.realm!==p.realm()||
      (Number.isFinite(h.threats)&&h.threats>0)||

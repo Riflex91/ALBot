@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 51,
-      "version": "0.51.0-candidate",
+      "sequence": 52,
+      "version": "0.52.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 995835,
-      "sha256": "ba93cd9f5f0c4197c4ca7f9a53ac9380312938ec965f2240fcf2deb0d6a0491c"
+      "bytes": 997417,
+      "sha256": "8ac4297e7c39da65beccb31b1fb978be0a8dbc2e6418e87a8ac03696230e6fc1"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Fix für verifizierte Teamziel-Unterstützung von My_Ranger2 und My_Priest durch PR #470 in main d4689616791f53e2258451fc13747b278418e333. Grüne vollständige Linux/Windows CI 40102128676. Geschützter ECDSA-P-256-Signierworkflow 40102314268 verifizierte 0.51.0-candidate Sequence 51, 995835 Runtime-Bytes, SHA-256 ba93cd9f5f0c4197c4ca7f9a53ac9380312938ec965f2240fcf2deb0d6a0491c. Runtime Git-Blob 17838bc9246fbd5b87e86a11aa0215e7f4628b96 identisch in main und Release. Persönliche ALBotConfig, V2 Loader, URLs und Public Key unverändert; Live-Ingame-Abnahme und W14 offen."
+    "note": "24.10.2026: W06/G09 paired-transfer recovery PR #472, clean exact-head Linux/Windows CI #40104297827, main merge cdb8829014c9c99dc5a72a9a72fc41ffa8f83a91. Protected P-256 signer workflow #40104446046 success: ALBot 0.52.0-candidate / sequence 52, 997417 bytes, SHA-256 8ac4297e7c39da65beccb31b1fb978be0a8dbc2e6418e87a8ac03696230e6fc1. Published and main runtime Git blob d0911b276e048255495e2576c4c1c8d6ccbb812f identical. Personal ALBotConfig and V2 loader/trust/URLs unchanged. W14 live acceptance and server transfer ACK not proven."
   }
 }

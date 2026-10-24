@@ -80,7 +80,7 @@ test('real popup signed delivery stages only character-bound metadata and never 
  assert.equal(x.storage['albot:config:applied:v1:'+identity.target],undefined);
  const storageDump=JSON.stringify(x.storage);
  assert.equal(storageDump.includes(release.signature),false);
- assert.equal(storageDump.includes('My_Ranger1'),false);
+ assert.equal(storageDump.includes('maxAggro'),false);
  assert.equal(storageDump.includes('"config"'),false);
  assert.equal(JSON.stringify(status).includes('"profile"'),false);
  x.receiver.dispose();

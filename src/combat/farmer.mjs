@@ -288,7 +288,24 @@ export function createFarmer(bot){
   function recover(){
     const c=p.c,now=Date.now();
     if(c.rip){
-      const fallenTarget=bot.target?.mtype;bot.target=null;bot.movement.stop();if(!deadSince){deadSince=now;bot.strategy?.failActivity?.('Tod während des Kampf-/Reiseziels',fallenTarget);deaths=deaths.filter(t=>now-t<cfg.farming.deathWindowMs);deaths.push(now);}
+      const fallenTarget=bot.target?.mtype;
+      const fatalTravelOwner=bot.movement?.order?.owner??null;
+      const fatalDuringItinerary=bot.movement?.order?.mode==='hazard-itinerary';
+      const dangerousPratMap=c.map==='level1'&&
+        p.G?.monsters?.prat?.aggro>0&&
+        p.G?.maps?.level1?.monsters?.some(m=>m.type==='prat');
+      bot.target=null;bot.movement.stop();
+      if(!deadSince){deadSince=now;bot.strategy?.failActivity?.('Tod während des Kampf-/Reiseziels',fallenTarget);deaths=deaths.filter(t=>now-t<cfg.farming.deathWindowMs);deaths.push(now);}
+      // A fatal itinerary remains fatal even if an old farm plan has already
+      // been discarded. Do not respawn straight into the same route loop.
+      if(me.role==='farmer'&&(fatalDuringItinerary||dangerousPratMap)){
+        if(deadSince===now)bot.event?.('combat.fatalTransitHalt',{
+          map:c.map,owner:fatalTravelOwner,
+          reason:fatalDuringItinerary?'death-during-verified-itinerary':
+            'prat-map-fatality'});
+        bot.pause?.('Tödlicher Transit: Farmer bis zur Routenprüfung angehalten');
+        return true;
+      }
       bot.reason='Tot';if(deaths.length>=cfg.farming.maxDeaths){bot.pause('Todesgrenze erreicht');return true;}
       if(cfg.farming.respawn&&now-deadSince>=cfg.farming.respawnDelayMs)exec.run('respawn',['lifecycle'],()=>p.c.rip,()=>p.call('respawn'),{delay:15000});return true;
     }

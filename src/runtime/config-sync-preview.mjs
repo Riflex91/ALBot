@@ -141,7 +141,8 @@ export function createConfigSyncPreview({
    const checked=await configPreviewVerify(d.release,trust.publicJwk,
     trust.target,applied,now(),cryptoObject.subtle);
    verified={...checked,target:trust.target,verifiedAt:now(),
-    expiresAt:d.release.expiresAt,applied:false};
+    expiresAt:d.release.expiresAt,
+    pinnedX:trust.publicJwk.x,pinnedY:trust.publicJwk.y,applied:false};
    error=null;
   }catch(e){
    verified=null;error=String(e?.message??e).slice(0,140);
@@ -163,13 +164,16 @@ export function createConfigSyncPreview({
   return hasPopup();
  }
  const status=()=>{
-  let ready=false,reason=null,appliedHighwater=null;
-  try{const t=prepared();appliedHighwater=appliedCursor(t.target);ready=true;}
+  let ready=false,reason=null,appliedHighwater=null,currentTrust=null;
+  try{const t=prepared();currentTrust=t;
+   appliedHighwater=appliedCursor(t.target);ready=true;}
   catch(e){reason=String(e?.message??e).slice(0,140);}
   // A preview is not a standing authorization. Expiration, a changed trust
   // pin, a newer applied cursor, or an unreadable journal invalidates it.
   if(verified&&(now()>=verified.expiresAt||!ready||
-    verified.target!==readTrust()?.target||
+    verified.target!==currentTrust?.target||
+    verified.pinnedX!==currentTrust?.publicJwk.x||
+    verified.pinnedY!==currentTrust?.publicJwk.y||
     appliedHighwater===null||appliedHighwater>=verified.sequence)){
    verified=null;
    error='Verified preview expired or invalidated; reopen the signed preview';

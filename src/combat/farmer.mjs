@@ -288,8 +288,22 @@ export function createFarmer(bot){
   function recover(){
     const c=p.c,now=Date.now();
     if(c.rip){
+      const destination=travelPlan();
+      // Never turn a fatal road encounter into an automatic respawn loop
+      // through the same unsafe map. Death invalidates autonomous travel.
+      const fatalTransit=me.role==='farmer'&&destination&&
+       (!samePlace(c,destination)||distance(c,destination)>85);
       const fallenTarget=bot.target?.mtype;bot.target=null;bot.movement.stop();if(!deadSince){deadSince=now;bot.strategy?.failActivity?.('Tod während des Kampf-/Reiseziels',fallenTarget);deaths=deaths.filter(t=>now-t<cfg.farming.deathWindowMs);deaths.push(now);}
-      bot.reason='Tot';if(deaths.length>=cfg.farming.maxDeaths){bot.pause('Todesgrenze erreicht');return true;}
+      bot.reason='Tot';
+      if(fatalTransit){
+       bot.event?.('combat.fatalFarmTransitStop',{
+        plan:destination.id??null,destination:destination.key??null,
+        currentMap:p.c.map,reason:'death-before-farm-arrival'
+       });
+       bot.pause('Sicherheitsstopp: Tod auf dem Farmweg; manuelle Freigabe erforderlich');
+       return true;
+      }
+      if(deaths.length>=cfg.farming.maxDeaths){bot.pause('Todesgrenze erreicht');return true;}
       if(cfg.farming.respawn&&now-deadSince>=cfg.farming.respawnDelayMs)exec.run('respawn',['lifecycle'],()=>p.c.rip,()=>p.call('respawn'),{delay:15000});return true;
     }
     deadSince=0;

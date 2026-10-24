@@ -156,3 +156,26 @@ test('Priest Monsterhunt quest travel cannot be hijacked by ordinary follower mo
   foot.movement.stop();
  }finally{Date.now=previous;}
 });
+
+
+test('cross-map quest uses only verified direct portal-to-main geometry for Town saving',async()=>{
+ const previous=Date.now;Date.now=()=>50000;
+ try{
+  const f=fixture({x:1100,speed:40});
+  f.c.map='mansion';f.c.in='mansion';
+  f.bot.p.G.maps.mansion={spawns:[[0,0]],doors:[[30,0,30,30,'main',0]]};
+  assert.equal(f.movement.go(npc,'quest'),false);
+  assert.equal(f.calls.filter(x=>x.name==='town').length,1);
+  assert.ok(f.events.some(x=>x.type==='travel.compare'&&x.owner==='quest'));
+  await Promise.resolve();f.bot.exec.poll();
+  f.c.map='main';f.c.in='main';f.c.x=0;f.c.y=0;f.bot.exec.poll();
+  assert.equal(f.bot.exec.pending.has('travel.town'),false);
+  f.movement.stop();
+  const noPortal=fixture({x:1100,speed:40});
+  noPortal.c.map='mansion';noPortal.c.in='mansion';
+  noPortal.bot.p.G.maps.mansion={spawns:[[0,0]],doors:[]};
+  noPortal.movement.go(npc,'quest');
+  assert.equal(noPortal.calls.some(x=>x.name==='town'),false);
+  noPortal.movement.stop();
+ }finally{Date.now=previous;}
+});

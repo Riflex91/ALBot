@@ -287,3 +287,32 @@ test('stale catalog stock cannot send Merchant to bank repeatedly after a failed
   assert.equal(f.calls.length,0,'no unverified bank withdrawal or token spend');
  }finally{Date.now=oldNow;}
 });
+
+
+test('stale legacy tracker lock can be recovered once with observed live tokens and missing carrier',()=>{
+ const old=Date.now();
+ const f=fixture({tokens:5,own:null,existingState:{recipient:'Ranger',at:old-600000}});
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(f.calls.length,1,'one recovery must authorize only one new exchange');
+ assert.equal(f.records.get('albot:tracker-exchange:Merchant:legacy-recovered'),true);
+ const restored=createTrackerAcquisition(f.bot);
+ assert.equal(restored.eligible(),false,'unconfirmed purchase remains durable');
+ assert.equal(restored.tick(),false);
+ assert.equal(f.calls.length,1);
+ f.records.set('albot:tracker-exchange:Merchant',{recipient:'Ranger',at:old-600000});
+ const second=createTrackerAcquisition(f.bot);
+ assert.equal(second.eligible(),false,'legacy retry is permanently bounded');
+});
+test('snapshot-proven unspent tracker order can retry; spent or ambiguous order remains locked',()=>{
+ const at=Date.now()-100000;
+ const f=fixture({tokens:8,own:null,existingState:{recipient:'Ranger',at,
+    tokensBefore:8,trackersBefore:0}});
+ assert.equal(f.acquisition.eligible(),true);
+ assert.equal(f.acquisition.tick(),true);
+ assert.equal(f.calls.length,1);
+ const g=fixture({tokens:4,own:null,existingState:{recipient:'Ranger',at,
+    tokensBefore:8,trackersBefore:0}});
+ assert.equal(g.acquisition.eligible(),false,'token debit cannot be mistaken for non-dispatch');
+ assert.equal(g.calls.length,0);
+});

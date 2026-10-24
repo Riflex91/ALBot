@@ -110,3 +110,17 @@ test('quest owner returning revokes temporary single-puller authority',()=>{
  assert.equal(assessQuestDetachment(bot),null);
  assert.equal(encounter.permit({type:'monster',mtype:'bee'}),false);
 });
+
+
+test('duo can use verified compact leader anchor if first local plan is expired',()=>{
+ const {bot,people,plan}=team('Ranger2','Ranger1');
+ const stale={...plan,id:'stale',expires:Date.now()-1};
+ const fresh={...plan,id:'fresh',expires:Date.now()+60000};
+ bot.teamPlan.heartbeat=()=>stale;
+ bot.teamPlan.valid=p=>p.id==='fresh';
+ people.Ranger1.march={anchor:fresh};
+ const result=assessQuestDetachment(bot);
+ assert.equal(result?.planId,'fresh');
+ assert.equal(result?.puller,'Ranger2');
+ assert.equal(neutralPullReadiness(bot).ready,true);
+});

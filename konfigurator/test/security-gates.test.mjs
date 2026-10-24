@@ -49,7 +49,7 @@ const authHeader=jwt=>({'CF-Access-Jwt-Assertion':jwt});
 test('every private API and static asset requires Access before any upstream request',async()=>{
  const c=context();
  for(const path of ['/api/profile','/api/policy','/api/bank','/api/characters',
-  '/api/profile-sync/delivery','/api/profile-sync/status',
+  '/api/profile-sync/delivery','/api/profile-sync/signed-highwater','/api/profile-sync/status',
   '/api/profile-sync/prepare','/config-sync.html','/api/relay-ingest']){
   const response=await c.call(path);
   assert.equal(response.status,401,path);
@@ -61,7 +61,7 @@ test('every private API and static asset requires Access before any upstream req
 });
 test('telemetry bearer never authorizes any private profile endpoint',async()=>{
  const c=context();
- for(const path of ['/api/profile-sync/delivery','/api/profile','/config-sync.html']){
+ for(const path of ['/api/profile-sync/delivery','/api/profile-sync/signed-highwater','/api/profile','/config-sync.html']){
   const response=await c.call(path,{headers:{
    authorization:'Bearer '+env.INGEST_TOKEN,
    origin:'https://adventure.land'}});
@@ -142,4 +142,25 @@ test('private response status never becomes a game-application acknowledgment',a
  const body=await result.text();
  assert.doesNotMatch(body,/albot-profile|My_Ranger1|GITHUB_TOKEN|CONFIG_SIGNING_JWK/);
  assert.equal(result.headers.get('access-control-allow-origin'),null);
+});
+
+test('signed publication high-water cannot be advanced via Access-less game CORS or telemetry token',async()=>{
+ const c=context(),jwt=await token();
+ const path='/api/profile-sync/signed-highwater';
+ for(const origin of ['https://adventure.land','https://www.adventure.land','https://evil.test']){
+  const req=await c.call(path,{method:'PUT',headers:{
+   ...authHeader(jwt),origin,'content-type':'application/json'},
+   body:JSON.stringify({confirm:true,releaseSha:'a'.repeat(40),
+    sequence:7,sha256:'b'.repeat(64)})});
+  assert.equal(req.status,403);
+  assert.equal(req.headers.get('access-control-allow-origin'),null);
+ }
+ for(const method of ['OPTIONS','POST','DELETE']){
+  const req=await c.call(path,{method,headers:authHeader(jwt)});
+  assert.equal(req.status,405);
+ }
+ const noDb=await c.call(path,{headers:authHeader(jwt)});
+ assert.equal(noDb.status,503);
+ assert.deepEqual(c.fetched.filter(u=>u.includes('api.github.com')),[]);
+ assert.equal(c.assetCalls.length,0);
 });

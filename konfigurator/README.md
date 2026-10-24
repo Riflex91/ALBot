@@ -8,7 +8,7 @@ Die neue Ingame-API `ALBot.rehearseConfigRestartRecovery()` dient **ausschließl
 
 Die Ausgabe enthält nur Metaangaben wie P-256-Sequenz, SHA-256, betroffene **Abschnittsnamen**, Prüfschritte und Fehler-Rücknahmestatus. Das eigentliche Full-v1-Profil oder geheime Credentials werden nicht zurückgegeben. **Eine erfolgreiche Sandbox ist kein Beweis, dass echte Laufzeitcontroller transaktional rekonstruierbar sind.** Deshalb bleiben `controllerReconstructionTested:false`, `actualRollbackCertified:false`, `remoteAccountRollbackVerified:false`, `restartAuthorized:false`, `transactionCommitted:false`, `readyForActivation:false`, `applied:false` und `acknowledged:false` stets verbindlich.
 
-Der zunächst unsigned `0.56.0-candidate` muss gesondert über den geschützten Ingame-Signierprozess freigegeben werden. Die offizielle signierte 0.55-Runtime, Live-Charaktere und der D1-Applied-/Publikationsstatus werden durch diese Änderung nicht automatisch aktualisiert. Eine echte sichere Full-v1-Aktivierung erfordert weiterhin einen verifizierten Restart-/Controller-Wiederaufbau mit authentifizierten accountweiten Sequenzbelegen und Charakter-ACKs.
+Der zunächst unsigned `0.56.0-candidate` muss gesondert über den geschützten Ingame-Signierprozess freigegeben werden. Die offizielle signierte 0.54-Runtime, Live-Charaktere und der D1-Applied-/Publikationsstatus werden durch diese Änderung nicht automatisch aktualisiert. Eine echte sichere Full-v1-Aktivierung erfordert weiterhin einen verifizierten Restart-/Controller-Wiederaufbau mit authentifizierten accountweiten Sequenzbelegen und Charakter-ACKs.
 
 ## Charaktergebundenes Neustart-Intent – ausschließlich Wiederanlauf-Vormerkung (24.10.2026)
 

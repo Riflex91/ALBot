@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 53,
-      "version": "0.53.0-candidate",
+      "sequence": 54,
+      "version": "0.54.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 1000476,
-      "sha256": "74cb919cf6b8b5ddf49240d27889c61df470c4d823acdf1c67dda49c8c58186f"
+      "bytes": 1005098,
+      "sha256": "69977528620eeb209edbbb0e25fee1bcaa5167e060469ee4352faed942a2a747"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Combat effect-horizon and assertive 45-second PR #476 merged main (93f7bafaad30c6f9e85ee74d8d1327ffed06cc28) after Linux/Windows CI #40114166805. Protected P-256 signer #40114473479 published 0.53.0-candidate / sequence 53, 1000476 bytes, SHA-256 74cb919cf6b8b5ddf49240d27889c61df470c4d823acdf1c67dda49c8c58186f; exact byte reproduction #40114669367 passed 2622/2622 tests and verification. Loader URLs and P-256 trust key unchanged; world.risk=assertive, maxCombatSeconds=45. Ingame authentication, runtime combat acceptance and long-run tests not demonstrated."
+    "note": "24.10.2026: W02/W10 exact equipped stock PR #482, clean exact-head Linux/Windows CI #40116875248, main merge dbaf8fcebc58a5b9a83deb6ab67cc23bd939b703. Concurrent PR #481 hardened signed signature tamper tests; protected signer #40117020642 successful: ALBot 0.54.0-candidate / sequence 54, 1005098 bytes, SHA-256 69977528620eeb209edbbb0e25fee1bcaa5167e060469ee4352faed942a2a747. Published and main runtime Git blob b651f52a5c52683d450922c63bde40d5b050bef6 identical. Personal ALBotConfig, installed V2 loader, URLs and trust key unchanged. No W14 live acceptance."
   }
 }

@@ -92,7 +92,10 @@ test('cannot deliver unsigned, mismatched, expired or absent private profile',as
  s.setProfile(s.profile);
  s.setRelease({...s.release,expiresAt:Date.now()-1});
  assert.notEqual((await s.call()).status,200);
- s.setRelease({...s.release,signature:'X'+s.release.signature.slice(1)});
+ // ECDSA signatures are randomized: an unconditional 'X' replacement
+ // leaves the original signature unchanged whenever it already starts X.
+ const invalidFirst=s.release.signature.startsWith('A')?'B':'A';
+ s.setRelease({...s.release,signature:invalidFirst+s.release.signature.slice(1)});
  assert.equal((await s.call()).status,503);
  assert.equal((await s.call('GET',null)).status,401);
 });

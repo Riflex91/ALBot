@@ -1,0 +1,42 @@
+name: Temporary config staging candidate artifact synchronization
+on:
+  push:
+    branches:
+      - feat/config-sync-popup-staging-link-20261024
+permissions:
+  contents: write
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]' && github.repository == 'Riflex91/ALBot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build canonical runtime and static assets
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run build:editor
+      - name: Verify original personal profile boundary and complete tests
+        run: |
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          npm test
+      - name: Commit only generated candidate artifacts after verification
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- bot.js dist/albot.bootstrap.auto.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json editor/Bot-Werkstatt.html editor/albot.settings.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(candidate): sync 0.45 staged-popup source runtime artifacts'
+            git push origin HEAD:feat/config-sync-popup-staging-link-20261024
+          fi

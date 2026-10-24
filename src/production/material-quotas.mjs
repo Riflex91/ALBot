@@ -43,18 +43,18 @@ export function materialProgressMatchesInventory(h,request,realm,{
 // Do not reserve new farming work for offline, dead, wrong-realm or
 // inventory-blocked farmers. Still count stock held by online, in-realm
 // farmers even when they cannot accept more loot.
-export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=Date.now(),ttlMs=10000}={}){
+export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=Date.now(),ttlMs=10000,bindSessions=false}={}){
  const quantity=request?.quantity;
  if(!Number.isSafeInteger(quantity)||quantity<1||
    !Array.isArray(names)||typeof fresh!=='function')
   return {remaining:0,quotas:[]};
- const frozen=()=>({remaining:quantity,quotas:[]});
+ const frozen=()=>({remaining:quantity,quotas:[],...(bindSessions?{quotaSessions:true}:{})});
  // An invalid capacity threshold must not turn negative/unknown free-space
  // into permission to harvest. Bound the selected roster before touching
  // any peer or building account-wide material assignments.
  if(!Number.isSafeInteger(freeReserve)||freeReserve<0||
     !Number.isSafeInteger(now)||!Number.isSafeInteger(ttlMs)||
-    ttlMs<1||ttlMs>600000||names.length>128)return frozen();
+    ttlMs<1||ttlMs>600000||typeof bindSessions!=='boolean'||names.length>128)return frozen();
  const selected=new Set(),holders=[];
  for(const name of names){
   if(typeof name!=='string'||!name||selected.has(name))continue;
@@ -62,6 +62,13 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=
   let h;
   try{h=fresh(name);}catch{return frozen();}
   if(!h?.running||h.rip||h.realm!==realm)continue;
+  // An account name is NOT a durable farming assignment. A resumed Farmer
+  // must receive a new quota for its current authenticated heartbeat session.
+  // Unknown or stale session evidence pauses *all* new work, not just this
+  // Farmer's portion (which could otherwise be duplicated).
+  if(bindSessions&&(typeof h.session!=='string'||!h.session||
+     h.session.length>120||!Number.isSafeInteger(h.received)||
+     h.received>now||now-h.received>ttlMs))return frozen();
   if(h.name!==name||!materialProgressMatchesInventory(h,request,realm,{now,ttlMs}))
    return frozen();
   // fitHeartbeat may drop this OPTIONAL evidence if the team heartbeat
@@ -80,7 +87,7 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=
   // observed stock still contributes to the global material balance.
   const free=h.free,eligible=h.inventoryBlocked===false&&
     Number.isSafeInteger(free)&&free>freeReserve;
-  holders.push({name,held:raw,eligible});
+  holders.push({name,held:raw,eligible,session:bindSessions?h.session:null});
  }
  // Every authenticated per-Farmer number is a safe integer, but THEIR
  // SUM need not be. Never round an unsafe account aggregate into a false
@@ -92,7 +99,7 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=
  }
  const remaining=Math.max(0,quantity-total);
  const eligible=holders.filter(h=>h.eligible);
- if(!eligible.length)return {remaining,quotas:[]};
+ if(!eligible.length)return {remaining,quotas:[],...(bindSessions?{quotaSessions:true}:{})};
  // Distribute the *exact* remaining count, not ceil(remaining / all
  // configured farmers), which overproduces and strands work on offline
  // characters. Stable roster order avoids unnecessary retargeting.
@@ -101,36 +108,56 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=
  for(const [index,h] of eligible.entries()){
   const count=h.held+portion+(index<extra?1:0);
   if(!Number.isSafeInteger(count)||count<0)return frozen();
-  quotas.push({name:h.name,quantity:count});
+  quotas.push({name:h.name,quantity:count,...(bindSessions?{session:h.session}:{})});
  }
- return {remaining,quotas};
+ return {remaining,quotas,...(bindSessions?{quotaSessions:true}:{})};
 }
 
 // The original heartbeat format lacked quotas. Preserve that legacy limit,
 // but once explicit quotas are supplied a missing/malformed assignment is
 // a zero-permission state, not unlimited permission to farm.
-export function materialQuotaCap(request,name){
+// Session-bound quota rows are not durable entitlements: each new Farmer
+// process must be allocated a fresh assignment from its live heartbeat.
+export function materialQuotaCap(request,name,session=null){
  if(!Number.isSafeInteger(request?.quantity)||request.quantity<1)return 0;
  if(request.remaining!==undefined&&
    (!Number.isSafeInteger(request.remaining)||request.remaining<=0))return 0;
- if(request.quotas===undefined)return request.quantity;
- if(!Array.isArray(request.quotas))return 0;
- const row=request.quotas.find(r=>r?.name===name);
- return Number.isSafeInteger(row?.quantity)&&row.quantity>0?
-   Math.min(row.quantity,request.quantity):0;
+ if(request.quotas===undefined)return request.quotaSessions===true?0:request.quantity;
+ if(!Array.isArray(request.quotas)||request.quotas.length>128||
+    request.quotaSessions!==undefined&&typeof request.quotaSessions!=='boolean')return 0;
+ const seen=new Set();
+ for(const row of request.quotas){
+  if(!row||typeof row.name!=='string'||!row.name||row.name.length>100||
+     seen.has(row.name)||!Number.isSafeInteger(row.quantity)||row.quantity<0)
+   return 0;
+  seen.add(row.name);
+  if(request.quotaSessions===true&&
+     (typeof row.session!=='string'||!row.session||row.session.length>120))
+   return 0;
+  if(row.session!==undefined&&
+     (typeof row.session!=='string'||!row.session||row.session.length>120))
+   return 0;
+ }
+ const row=request.quotas.find(r=>r.name===name);
+ if(!row||row.quantity===0)return 0;
+ if(request.quotaSessions===true||row.session!==undefined){
+  if(typeof session!=='string'||!session||row.session!==session)return 0;
+ }
+ return Math.min(row.quantity,request.quantity);
 }
 
 // A material objective with no physical farming allocations must not hijack
-// the team's ordinary XP/gold farm plan. Legacy requests without quotas remain
-// actionable, while explicit zero/empty/malformed quotas are a deliberate
-// pause until the Merchant can verify and assign more material work.
-export function materialRequestHasWork(request,selectedFarmers=null){
+// the team's ordinary XP/gold farm plan. When quotas are session-bound,
+// roster-wide work only exists if an assignment still names a live session.
+// The real combat and farm-target gates independently check the same session.
+export function materialRequestHasWork(request,selectedFarmers=null,sessionForName=null){
  if(!Number.isSafeInteger(request?.quantity)||request.quantity<=0)return false;
  if(request.remaining!==undefined&&
    (!Number.isSafeInteger(request.remaining)||request.remaining<=0))return false;
- if(request.quotas===undefined)return true;
+ if(request.quotas===undefined)return request.quotaSessions!==true;
  if(!Array.isArray(request.quotas))return false;
  return request.quotas.some(row=>typeof row?.name==='string'&&row.name&&
    (!Array.isArray(selectedFarmers)||selectedFarmers.includes(row.name))&&
-   materialQuotaCap(request,row.name)>0);
+   materialQuotaCap(request,row.name,
+    typeof sessionForName==='function'?sessionForName(row.name):null)>0);
 }

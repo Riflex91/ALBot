@@ -324,18 +324,24 @@ export async function handleRequest(request,env,ctx={},deps={}){
   if(source.missing||source.sha===null)
    return json({ok:true,format:SYNC_PREFLIGHT_FORMAT,configured:false,
     signerReady:false,releasePrepared:false,releaseSha:null,
+    deliveryReady:false,deliveryMode:'access-popup-only',
     signed:false,published:false,applied:false,acknowledged:false});
   try{
    const preflight=await syncPreflight({profile:source.document,githubSha:source.sha});
    if(!env.CONFIG_SIGNING_JWK||!env.CONFIG_SIGNING_TARGET)
     return json({ok:true,configured:true,signerReady:false,
-     releasePrepared:false,releaseSha:null,...preflight});
+     releasePrepared:false,releaseSha:null,deliveryReady:false,
+     deliveryMode:'access-popup-only',...preflight});
    const identity=await signer(env);
    const previous=await githubReleaseFile(env,{fetcher});
    if(previous.document)await previousRelease(previous.document,identity);
+   const release=releaseInfo(previous.document,preflight.profile.sha256,previous.sha);
+   // A signed blob alone is not a deliverable private release: confirm
+   // repository privacy before claiming Access-popup retrieval readiness.
+   if(release.signed)await assertPrivateRepository(env,fetcher);
    return json({ok:true,configured:true,...preflight,
-    signerReady:true,keyFingerprint:identity.keyId,
-    ...releaseInfo(previous.document,preflight.profile.sha256,previous.sha)});
+    signerReady:true,keyFingerprint:identity.keyId,...release,
+    deliveryReady:release.signed,deliveryMode:'access-popup-only'});
   }catch{return failure('Privater Konfigurationssignierer oder Release nicht überprüfbar',503);}
  }
  // Cloudflare-Access protected only: no game-origin CORS and no Access bypass.

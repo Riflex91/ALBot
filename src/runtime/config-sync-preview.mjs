@@ -140,7 +140,8 @@ export function createConfigSyncPreview({
    const trust=prepared(),applied=appliedCursor(trust.target);
    const checked=await configPreviewVerify(d.release,trust.publicJwk,
     trust.target,applied,now(),cryptoObject.subtle);
-   verified={...checked,target:trust.target,verifiedAt:now(),applied:false};
+   verified={...checked,target:trust.target,verifiedAt:now(),
+    expiresAt:d.release.expiresAt,applied:false};
    error=null;
   }catch(e){
    verified=null;error=String(e?.message??e).slice(0,140);
@@ -165,6 +166,14 @@ export function createConfigSyncPreview({
   let ready=false,reason=null,appliedHighwater=null;
   try{const t=prepared();appliedHighwater=appliedCursor(t.target);ready=true;}
   catch(e){reason=String(e?.message??e).slice(0,140);}
+  // A preview is not a standing authorization. Expiration, a changed trust
+  // pin, a newer applied cursor, or an unreadable journal invalidates it.
+  if(verified&&(now()>=verified.expiresAt||!ready||
+    verified.target!==readTrust()?.target||
+    appliedHighwater===null||appliedHighwater>=verified.sequence)){
+   verified=null;
+   error='Verified preview expired or invalidated; reopen the signed preview';
+  }
   return {mode:'preview-only',configured:ready,reason,opened:hasPopup(),
    inFlight,verified:verified?{...verified}:null,appliedHighwater,
    lastError:error,applied:false,acknowledged:false,disposed};

@@ -1,0 +1,104 @@
+name: Manual ALBot Konfigurator D1 signed high-water maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'inspect (read-only) or migrate (additive CREATE TABLE only)'
+        required: true
+        type: choice
+        options:
+          - inspect
+          - migrate
+        default: inspect
+      expected_main_sha:
+        description: 'Full 40-character main commit SHA shown on GitHub'
+        required: true
+        type: string
+      confirm_database:
+        description: 'Enter albot-konfigurator (exactly) to confirm the target'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# No D1 operation may race a Worker deployment or another migration.
+concurrency:
+  group: albot-konfigurator-cloudflare-production
+  cancel-in-progress: false
+
+jobs:
+  d1-signed-highwater:
+    if: github.repository == 'Riflex91/ALBot' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Refuse stale main, wrong database and malformed migration
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.expected_main_sha }}
+          REQUESTED_DB: ${{ inputs.confirm_database }}
+          REQUESTED_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_DB" = 'albot-konfigurator'
+          test "$REQUESTED_SHA" = "$GITHUB_SHA"
+          [[ "$REQUESTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$REQUESTED_OPERATION" == 'inspect' || "$REQUESTED_OPERATION" == 'migrate' ]]
+          node konfigurator/scripts/verify-d1-migration.mjs
+      - name: Verify the already configured Cloudflare deployment secrets are present
+        shell: bash
+        env:
+          CF_DEPLOY_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_DEPLOY_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CF_DEPLOY_TOKEN"
+          test -n "$CF_DEPLOY_ACCOUNT"
+          echo 'Using existing configured Cloudflare credentials without printing them'
+      - name: Inspect signed high-water D1 schema (no data or profile contents)
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: konfigurator
+          command: d1 execute albot-konfigurator --remote --command "SELECT name,sql FROM sqlite_master WHERE type='table' AND name='signed_config_highwater'"
+      - name: Apply exactly one idempotent CREATE TABLE to existing D1 (explicit migrate only)
+        if: inputs.operation == 'migrate'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: konfigurator
+          command: d1 execute albot-konfigurator --remote --file=./migrations/001_signed_config_highwater.sql
+      - name: Require all six table columns to exist after explicit migration
+        if: inputs.operation == 'migrate'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: konfigurator
+          command: d1 execute albot-konfigurator --remote --command "SELECT target,key_id,sequence,sha256,release_sha,updated_at FROM signed_config_highwater LIMIT 0"
+      - name: Summarize the operation without claiming a character ACK
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          {
+            echo '### Cloudflare D1 signed-publication high-water'
+            echo "- Operation: \`$OPERATION\`"
+            echo "- Repository main SHA: \`$GITHUB_SHA\`"
+            echo '- Existing D1 database: albot-konfigurator'
+            echo '- Allowed change: signed_config_highwater CREATE TABLE IF NOT EXISTS only'
+            echo '- No telemetry table or row mutation; no profile/signature/secret access'
+            echo '- Publication anchor row must separately be created by explicit Access-authenticated signed release reconciliation'
+            echo '- Applied=false; acknowledged=false; no Live game verification'
+          } >> "$GITHUB_STEP_SUMMARY"

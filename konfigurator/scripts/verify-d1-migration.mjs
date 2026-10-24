@@ -21,13 +21,21 @@ export function verifySignedHighwaterMigration({migration,schema,wrangler}){
   throw Error('D1 migration contains unexpected or destructive SQL');
  if(!schema.includes(CANONICAL_SIGNED_HIGHWATER_DDL))
   throw Error('D1 migration differs from committed canonical schema');
- const exactName=wrangler.match(/^database_name\s*=\s*"([^"]+)"\s*$/gm);
- const exactId=wrangler.match(/^database_id\s*=\s*"([^"]+)"\s*$/gm);
- const binding=wrangler.match(/^binding\s*=\s*"([^"]+)"\s*$/gm);
- if(exactName?.length!==1||exactId?.length!==1||binding?.length!==1||
-  exactName[0]!=='database_name = "albot-konfigurator"'||
-  exactId[0]!=='database_id = "880c96b9-f6c5-4167-bfe2-6d6d0c55edf2"'||
-  binding[0]!=='binding = "DB"')
+ // Only the existing named D1 binding matters. The separate Static
+ // Assets binding also uses "binding", so never scan the whole TOML file.
+ const sections=wrangler.split('[[d1_databases]]');
+ if(sections.length!==2)
+  throw Error('Cloudflare D1 target or DB binding drifted');
+ const d1=sections[1].split(/\n(?=\[)/)[0];
+ const fields=d1.split('\n').map(x=>x.trim())
+  .filter(x=>x.length>0&&!x.startsWith('#')).sort();
+ const expected=[
+  'binding = "DB"',
+  'database_name = "albot-konfigurator"',
+  'database_id = "880c96b9-f6c5-4167-bfe2-6d6d0c55edf2"'
+ ].sort();
+ if(fields.length!==expected.length||
+  fields.some((x,index)=>x!==expected[index]))
   throw Error('Cloudflare D1 target or DB binding drifted');
  return {checked:true,database:'albot-konfigurator',
   table:'signed_config_highwater',scope:'additive-only',applied:false};

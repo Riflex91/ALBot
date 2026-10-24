@@ -57,7 +57,7 @@ export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
   const attack=G.monsters[zone.type].attack??0;
   const speed=G.monsters[zone.type].speed??0;
   const range=G.monsters[zone.type].range??0;
-  const pad=margin+Math.min(170,Math.max(0,range)+Math.max(0,speed)*1.2)+
+  const pad=margin+Math.max(0,range)+Math.min(120,Math.max(0,speed)*1.2)+
    (attack>=250?20:0);
   for(const r of ranges)rectangles.push({...hiBox(...r),pad,type:zone.type});
  }

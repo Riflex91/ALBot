@@ -22,6 +22,7 @@ async function signed(){
 }
 function setup(identity,storageContents=null){
  const events=new Map(),sent=[];
+ let clock=now;
  const popup={closed:false,postMessage:(value,origin)=>sent.push({value,origin})};
  const gameWindow={
   open:(url,name,features)=>{assert.equal(new URL(url).pathname,'/config-sync.html');return popup;},
@@ -32,7 +33,7 @@ function setup(identity,storageContents=null){
  const receiver=createConfigSyncPreview({
   gameWindow,cryptoObject:webcrypto,
   readTrust:()=>({publicJwk:identity.publicJwk,target:identity.target}),
-  readStorage:()=>store,now:()=>now
+  readStorage:()=>store,now:()=>clock
  });
  const dispatch=(type,extra={},origin=CONFIG_POPUP_ORIGIN,source=popup)=>
   events.get('message')?.({origin,source,data:{type,...extra}});
@@ -43,7 +44,8 @@ function setup(identity,storageContents=null){
   assert.equal(sent[0].origin,CONFIG_POPUP_ORIGIN);
   return sent[0].value.nonce;
  };
- return {popup,receiver,dispatch,ready,sent,store,events};
+ return {popup,receiver,dispatch,ready,sent,store,events,
+  setTime:time=>{clock=time;}};
 }
 async function settle(receiver){for(let i=0;i<60;i++){
   const s=receiver.status();if(!s.inFlight&&(s.verified||s.lastError))return;
@@ -156,4 +158,45 @@ test('no trust pin or durable journal prevents popup opening',()=>{
  assert.equal(noStorage.open(),false);
  assert.equal(opened,0);
  noStorage.dispose();
+});
+
+test('verified preview is revoked when TTL ends or the applied cursor advances',async()=>{
+ const {identity,release}=await signed();
+ const key='albot:config:applied:v1:'+identity.target;
+ const s=setup(identity,{});
+ assert.equal(s.receiver.open(),true);
+ s.dispatch(CONFIG_RELEASE,{nonce:s.ready(),release});
+ await settle(s.receiver);
+ assert.equal(s.receiver.status().verified?.sequence,1);
+ s.setTime(release.expiresAt);
+ assert.equal(s.receiver.status().verified,null);
+ assert.match(s.receiver.status().lastError,/invalidated/);
+ s.receiver.dispose();
+
+ const stored={};
+ const p=setup(identity,stored);
+ assert.equal(p.receiver.open(),true);
+ p.dispatch(CONFIG_RELEASE,{nonce:p.ready(),release});
+ await settle(p.receiver);
+ assert.equal(p.receiver.status().verified?.sequence,1);
+ stored[key]=JSON.stringify({target:identity.target,sequence:1,sha256:release.sha256});
+ assert.equal(p.receiver.status().verified,null);
+ assert.equal(p.receiver.status().applied,false);
+ p.receiver.dispose();
+});
+
+test('damaged rollback journal revokes an already verified preview',async()=>{
+ const {identity,release}=await signed();
+ const stored={},key='albot:config:applied:v1:'+identity.target;
+ const p=setup(identity,stored);
+ assert.equal(p.receiver.open(),true);
+ p.dispatch(CONFIG_RELEASE,{nonce:p.ready(),release});
+ await settle(p.receiver);
+ assert.ok(p.receiver.status().verified);
+ stored[key]='broken-journal';
+ const status=p.receiver.status();
+ assert.equal(status.configured,false);
+ assert.equal(status.verified,null);
+ assert.match(status.reason,/corrupted/);
+ p.receiver.dispose();
 });

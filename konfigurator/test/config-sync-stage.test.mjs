@@ -80,7 +80,10 @@ test('wrong account, tampered digest, forged signature and disabled character ne
  const altered=structuredClone(release);
  altered.profile.config.farming.maxAggro=13;
  const changed={...release,target:'ALBot/Other'};
- const forged={...release,signature:'A'+release.signature.slice(1)};
+ // Generated P-256 signatures may already begin with 'A'. Mutate to a
+ // DIFFERENT valid base64url character on every platform/run.
+ const forgedFirst=release.signature.startsWith('A')?'B':'A';
+ const forged={...release,signature:forgedFirst+release.signature.slice(1)};
  for(const item of [altered,changed,forged]){
   const receiver=box.create();
   assert.equal(await receiver.stage(item),false);

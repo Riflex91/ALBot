@@ -1,8 +1,49 @@
+import {reconcileStockEvidence} from '../items/stock-evidence.mjs';
+
+// Optional W06 physical evidence is a SECOND independent count. The
+// heartbeat remains peer-attested (never a server transfer receipt), but
+// contradictory same-session physical stock must not fund a new farm quota.
+// An omitted inventory proof does not turn an observed progress into zero.
+export function materialProgressMatchesInventory(h,request,realm,{
+ now=Date.now(),ttlMs=10000
+}={}){
+ const proof=h?.inventoryEvidence;
+ if(proof===undefined||proof===null)return true;
+ if(proof?.complete!==true||!Number.isSafeInteger(now)||
+    !Number.isSafeInteger(ttlMs)||ttlMs<1||
+    !Number.isSafeInteger(h?.received)||h.received>now||
+    now-h.received>ttlMs||typeof h?.session!=='string'||!h.session||
+    h.realm!==realm)return false;
+ const validated=reconcileStockEvidence({
+  local:proof,peers:[],owner:h.name,session:h.session,
+  realm,now,ttlMs,expected:[]
+ });
+ if(validated.complete!==true||validated.sources?.[0]?.status!=='fresh')
+  return false;
+ let total=0,protectedUnits=0;
+ for(const row of proof.rows){
+  if(row.item.name!==request.item||(row.item.level??0)!==0)continue;
+  if(!Number.isSafeInteger(total+row.quantity)||
+     !Number.isSafeInteger(protectedUnits+row.protectedUnits))
+   return false;
+  total+=row.quantity;
+  protectedUnits+=row.protectedUnits;
+ }
+ const records=h.materialProgress?.filter(x=>x?.objective===request.objective);
+ if(!Array.isArray(records)||records.length>1)return false;
+ const held=records.length?records[0].quantity:0;
+ // Existing Farmer progress excludes lock/bound ("l", "b") stocks, but
+ // can include additional protected flags. The inclusive interval avoids
+ // conflating a gross physical copy with an eligible farming input.
+ return Number.isSafeInteger(held)&&held>=0&&
+  held>=total-protectedUnits&&held<=total;
+}
+
 // Material quota accounting is for one verified Merchant request only.
 // Do not reserve new farming work for offline, dead, wrong-realm or
 // inventory-blocked farmers. Still count stock held by online, in-realm
 // farmers even when they cannot accept more loot.
-export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={}){
+export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0,now=Date.now(),ttlMs=10000}={}){
  const quantity=request?.quantity;
  if(!Number.isSafeInteger(quantity)||quantity<1||
    !Array.isArray(names)||typeof fresh!=='function')
@@ -12,7 +53,8 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={})
  // into permission to harvest. Bound the selected roster before touching
  // any peer or building account-wide material assignments.
  if(!Number.isSafeInteger(freeReserve)||freeReserve<0||
-    names.length>128)return frozen();
+    !Number.isSafeInteger(now)||!Number.isSafeInteger(ttlMs)||
+    ttlMs<1||ttlMs>600000||names.length>128)return frozen();
  const selected=new Set(),holders=[];
  for(const name of names){
   if(typeof name!=='string'||!name||selected.has(name))continue;
@@ -20,6 +62,8 @@ export function planMaterialQuotas(request,names,fresh,realm,{freeReserve=0}={})
   let h;
   try{h=fresh(name);}catch{return frozen();}
   if(!h?.running||h.rip||h.realm!==realm)continue;
+  if(h.name!==name||!materialProgressMatchesInventory(h,request,realm,{now,ttlMs}))
+   return frozen();
   // fitHeartbeat may drop this OPTIONAL evidence if the team heartbeat
   // exceeds its wire budget. Missing evidence is NOT proof of zero stock.
   // Freeze fresh quotas across the whole active group until all currently

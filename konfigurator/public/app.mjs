@@ -2,6 +2,8 @@ import {defaultPolicy,validatePolicyDocument,previewGlobalItem} from './policy.m
 import {DASHBOARD_REFRESH_MS,SNAPSHOT_FRESH_MS} from './free-tier.mjs';
 import {telemetrySummary} from './telemetry-summary.mjs';
 import {profileSyncStages} from './sync-stage-model.mjs';
+import {parseSignedPublicationAnchor,signedAnchorProposal,sameSignedPublication}
+ from './signed-anchor-model.mjs';
 import {profileView,checkedProfileDocument,setProfileScalar,
  addProfileArrayItem,removeProfileArrayItem,profileEnvelope} from './profile-model.mjs';
 import {renderProfileSections} from './profile-editor.mjs';
@@ -12,7 +14,7 @@ const state={view:'dashboard',policy:{version:1,items:[]},sha:null,configured:fa
  characters:[],bank:[],telemetryErrors:{characters:null,bank:null},catalog:[],health:null,filter:'',selected:null,loaded:false,error:''};
 const profileState={document:null,descriptor:null,sha:null,loaded:false,loading:false,
  dirty:false,saving:false,error:'',fieldErrors:new Map()};
-const syncState={data:null,loading:false,preparing:false,loaded:false,error:''};
+const syncState={data:null,loading:false,preparing:false,loaded:false,error:'',anchor:null,anchorError:'',reconciling:false};
 const fmt=x=>typeof x==='number'&&Number.isFinite(x)?new Intl.NumberFormat('de-DE',{maximumFractionDigits:1}).format(x):'—';
 const age=t=>!Number.isFinite(t)?'unbekannt':Math.max(0,Math.floor((Date.now()-t)/1000))+' s';
 const fresh=t=>Number.isFinite(t)&&Date.now()-t<SNAPSHOT_FRESH_MS;
@@ -52,7 +54,7 @@ function setSaveState(){
 }
 async function refreshSyncStatus(){
  if(syncState.loading)return;
- syncState.loading=true;syncState.error='';
+ syncState.loading=true;syncState.error='';syncState.anchor=null;syncState.anchorError='';
  if(state.view==='settings')render();
  try{
   const result=await api('/api/profile-sync/status');
@@ -62,6 +64,14 @@ async function refreshSyncStatus(){
    throw Error('Unerwarteter Synchronisationsstatus');
   syncState.data=result;
   syncState.loaded=true;
+  if(result.configured&&result.signerReady&&result.releasePrepared){
+   try{
+    syncState.anchor=parseSignedPublicationAnchor(
+     await api('/api/profile-sync/signed-highwater'));
+   }catch(error){
+    syncState.anchorError=String(error?.message??error).slice(0,180);
+   }
+  }
  }catch(error){
   syncState.data=null;syncState.loaded=true;
   syncState.error=String(error?.message??error).slice(0,180);
@@ -98,6 +108,58 @@ async function preparePrivateProfile(){
   toast('Private Signatur fehlgeschlagen: '+syncState.error);
  }finally{
   syncState.preparing=false;
+  if(!syncState.error)void refreshSyncStatus();
+  else if(state.view==='settings')render();
+ }
+}
+async function reconcileSignedPublication(){
+ if(syncState.loading||syncState.preparing||syncState.reconciling||
+  profileState.dirty||state.dirty)return;
+ const old=syncState.data,prior=syncState.anchor;
+ if(!signedAnchorProposal(old,prior).allowed)return;
+ syncState.reconciling=true;syncState.error='';
+ if(state.view==='settings')render();
+ try{
+  const freshStatus=await api('/api/profile-sync/status');
+  const freshAnchor=parseSignedPublicationAnchor(
+   await api('/api/profile-sync/signed-highwater'));
+  if(!sameSignedPublication(old,freshStatus))
+   throw Error('Signierte Revision hat sich geändert – erneut prüfen');
+  if(freshAnchor.anchored!==prior.anchored||
+   freshAnchor.anchor?.sequence!==prior.anchor?.sequence||
+   freshAnchor.anchor?.sha256!==prior.anchor?.sha256||
+   freshAnchor.anchor?.releaseSha!==prior.anchor?.releaseSha||
+   freshAnchor.anchor?.updatedAt!==prior.anchor?.updatedAt)
+   throw Error('D1-Höchststand hat sich geändert – erneut prüfen');
+  const proposal=signedAnchorProposal(freshStatus,freshAnchor);
+  if(!proposal.allowed)throw Error(proposal.reason);
+  const release=proposal.release;
+  const authorized=window.confirm(
+   'Signierten PRIVATEN Release ausdrücklich in D1 registrieren?\n\n'+
+   'Signatursequenz: '+release.sequence+'\n'+
+   'SHA-256: '+release.sha256+'\n'+
+   'Privater GitHub-Release-SHA: '+release.releaseSha+'\n'+
+   'Signierschlüssel: '+release.keyFingerprint+'\n'+
+   'Bisherige D1-Sequenz: '+(proposal.previousSequence??'noch keine')+'\n'+
+   'Signaturablauf: '+new Date(release.expiresAt).toLocaleString('de-DE')+
+   '\n\nDer Worker überprüft Repository und P-256-Signatur erneut.'+
+   '\nWeder Ingame-Aktivierung noch Charakter-ACK werden ausgelöst.');
+  if(!authorized)return;
+  const confirmed=parseSignedPublicationAnchor(
+   await api('/api/profile-sync/signed-highwater',{
+    method:'PUT',headers:{'content-type':'application/json'},
+    body:JSON.stringify(proposal.payload)
+   }));
+  if(confirmed.anchor?.sequence!==release.sequence||
+   confirmed.anchor?.sha256!==release.sha256||
+   confirmed.anchor?.releaseSha!==release.releaseSha)
+   throw Error('Registrierte D1-Revision stimmt nicht mit der bestätigten Revision überein');
+  toast('Privater signierter Release in D1 registriert. Im Spiel nichts aktiviert.');
+ }catch(e){
+  syncState.error=String(e?.message??e).slice(0,180);
+  toast('D1-Registrierung fehlgeschlagen: '+syncState.error);
+ }finally{
+  syncState.reconciling=false;
   if(!syncState.error)void refreshSyncStatus();
   else if(state.view==='settings')render();
  }
@@ -522,6 +584,35 @@ function settings(){
     'Private Signierung ist noch gesperrt: CONFIG_SIGNING_JWK und CONFIG_SIGNING_TARGET müssen als Worker-Secrets/Variablen getrennt vom Ingest-Token eingerichtet werden.','help'));
   if(entry.releasePrepared===true&&!entry.releaseMatchesCurrent)
    sync.append(notice('Die vorhandene signierte Revision stimmt nicht mit dem aktuell gespeicherten Profil überein.'));
+  const anchor=syncState.anchor;
+  const anchorLabel=syncState.anchorError?'Nicht prüfbar: '+syncState.anchorError:
+   !anchor?'Noch nicht geprüft':anchor.anchored?
+   'Sequenz '+anchor.anchor.sequence+' · SHA-256 '+anchor.anchor.sha256:
+   'Tabelle vorhanden, aber noch kein signierter Release registriert';
+  const anchorRow=node('div',undefined,'row sync-revision');
+  anchorRow.append(node('span','D1-Publikationsanker','muted'),node('strong',anchorLabel));
+  sync.append(anchorRow);
+  sync.append(node('p','D1 belegt nur privat signierte Veröffentlichungen, keine Ingame-Übernahme oder Charakterbestätigung.','help'));
+  if(syncState.anchorError){
+   sync.append(notice('D1-Anker nicht verfügbar. Die additive Datenbankmigration könnte noch fehlen.'));
+   const doc=node('a','Geschützter GitHub-Workflow zur D1-Einrichtung');
+   doc.href='https://github.com/Riflex91/ALBot/actions/workflows/manual-konfigurator-d1-highwater.yml';
+   doc.rel='noopener noreferrer';sync.append(doc);
+  }
+  const proposal=signedAnchorProposal(entry,anchor);
+  if(proposal.allowed){
+   const register=node('button',syncState.reconciling?'Prüfe und registriere …':
+    'Signierten Release nach Prüfung in D1 registrieren','button');
+   register.type='button';
+   register.disabled=syncState.loading||syncState.preparing||syncState.reconciling||
+    profileState.dirty||state.dirty;
+   register.onclick=()=>void reconcileSignedPublication();
+   sync.append(register);
+   sync.append(node('p',proposal.initial?
+    'Erstregistrierung: Vor dem Speichern werden private GitHub-Datei, P-256-Signatur und aktuelle Revision erneut geprüft.':
+    'Die vorherige D1-Sequenz wird nur nach expliziter Bestätigung durch den höheren signierten Release ersetzt.','help'));
+  }else if(anchor&&entry.releasePrepared)
+   sync.append(node('p','Registrierung gesperrt: '+proposal.reason,'help'));
   const prepare=node('button',syncState.preparing?'Signiere privat …':
    'Aktuelle Profilrevision privat signieren','button');
   prepare.type='button';

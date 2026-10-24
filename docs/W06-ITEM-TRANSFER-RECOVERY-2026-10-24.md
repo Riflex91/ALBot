@@ -17,3 +17,7 @@ Ein Empfänger kann eine Sendung vor dem Neustart angenommen haben. Der Restarts
 `test/w06-transfer-counterparty-session.test.mjs` prüft echte Sender- und Empfänger-Snapshotpaare, stale/future/inkonsistente Journalzeiten, Realm-/Session-/TTL-Abweichungen, Receiverrestart und dass die blockierte Recovery weder das Journal löscht noch neue Wertaktionen freigibt.
 
 Weitere beidseitig serverautorisierte Warenhandelsquittungen und eine W14-Live-Dauerabnahme sind offen. Eine Testsignierung der Laufzeit ist noch kein echter Adventure-Land-Livebeleg.
+
+## Geschützte Veröffentlichung
+
+Die Runtime 0.52.0-candidate / Sequence 52 wurde mit [Signierworkflow #40104446046](https://github.com/Riflex91/ALBot/actions/runs/40104446046) ECDSA-P-256-signiert und byteidentisch zur getesteten main-Runtime bestätigt (997417 Bytes, SHA-256 `8ac4297e7c39da65beccb31b1fb978be0a8dbc2e6418e87a8ac03696230e6fc1`). Dies ist keine W14-Ingame- oder serverseitige Transferabnahme.

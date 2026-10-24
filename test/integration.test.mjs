@@ -32,10 +32,19 @@ test('paladin policy changes priority for damage pressure and resource shortage'
 
 function botFixture(){
  const cfg=defaultsFor(INTEGRATION_DESCRIPTOR.schema),calls=[],messages=[],data=new Map(),peers={};cfg.farming.targets=['goo'];cfg.party.leader='A';cfg.party.merchant='M';cfg.characters=['A','B','C'].map(name=>({...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name,class:'ranger'}));cfg.characters.push({...defaultsFor(INTEGRATION_DESCRIPTOR.schema.properties.characters.items),name:'M',role:'merchant',class:'merchant'});
- const c={name:'A',ctype:'ranger',level:60,map:'main',in:'main',x:0,y:0,hp:1000,max_hp:1000,mp:1500,max_mp:1500,q:{},items:[],slots:{}};
- const bot={cfg,me:{...cfg.characters[0]},running:true,session:'A-session',leader:'A',farmers:['A','B','C'],teamNames:['A','B','C','M'],target:null,inventoryBlocked:false,journal:null,p:{c,root:{S:{}},parent:{},G:{maps:{main:{},danger:{}},monsters:{goo:{attack:1},boss:{attack:80}},events:{},skills:{magiport:{mp:900}}},read:k=>data.get(k),write:(k,v)=>{data.set(k,structuredClone(v));return true;},realm:()=> 'EUII',has:()=>true,call:(name,...args)=>{calls.push([name,...args]);return {}; }},exec:{pending:new Map(),run:(name,locks,guard,call)=>{if(!guard())return false;call();return true;}},logistics:{reserved:false},transport:{fresh:n=>peers[n],send:(name,type,payload,id)=>{messages.push({name,type,payload,id});return Promise.resolve(true);}},movement:{stop(){},go(){return true;}},monsters:()=>[],allies:()=>[c],event(){},report(){},pause(){bot.running=false;}};
+ const c={name:'A',ctype:'ranger',level:60,map:'main',in:'main',x:0,y:0,hp:1000,max_hp:1000,attack:300,frequency:1,mp:1500,max_mp:1500,q:{},items:[],slots:{}};
+ const bot={cfg,me:{...cfg.characters[0]},running:true,session:'A-session',leader:'A',farmers:['A','B','C'],teamNames:['A','B','C','M'],target:null,inventoryBlocked:false,journal:null,p:{c,root:{S:{}},parent:{},G:{maps:{main:{},danger:{}},monsters:{goo:{hp:100,attack:1,frequency:.4},boss:{hp:300,attack:80,frequency:.2}},events:{},skills:{magiport:{mp:900}}},read:k=>data.get(k),write:(k,v)=>{data.set(k,structuredClone(v));return true;},realm:()=> 'EUII',has:()=>true,call:(name,...args)=>{calls.push([name,...args]);return {}; }},exec:{pending:new Map(),run:(name,locks,guard,call)=>{if(!guard())return false;call();return true;}},logistics:{reserved:false},transport:{fresh:n=>peers[n],send:(name,type,payload,id)=>{messages.push({name,type,payload,id});return Promise.resolve(true);}},movement:{stop(){},go(){return true;}},monsters:()=>[],allies:()=>[c],event(){},report(){},pause(){bot.running=false;}};
  return {bot,c,cfg,calls,messages,data,peers};
 }
+
+test('world risk evaluation still rejects strong encounters without testLogging',()=>{
+ const {bot,cfg}=botFixture();
+ assert.equal(Object.hasOwn(cfg.general,'testLogging'),false,'legacy configuration has no logging switch');
+ const strategy=createStrategy(bot);
+ assert.equal(strategy.safeTarget('goo'),true);
+ bot.p.G.monsters.boss.attack=500;
+ assert.equal(strategy.safeTarget('boss'),false);
+});
 
 test('world planner rejects unlisted, excluded and over-risk encounters, returns to configured farm',()=>{
  const {bot,cfg}=botFixture();cfg.world.bosses=true;cfg.world.allowedBosses=['boss'];bot.p.root.S.boss={live:true,map:'danger',x:10,y:20};cfg.world.excludedMaps=['danger'];const strategy=createStrategy(bot);strategy.plan();assert.equal(strategy.status().activity,null);assert.equal(strategy.requestTask('farm:unknown'),false);assert.equal(strategy.requestTask('boss:unlisted'),false);cfg.world.excludedMaps=[];strategy.close();strategy.plan();assert.equal(strategy.status().activity.id,'boss');bot.p.G.monsters.boss.attack=500;strategy.close();strategy.plan();assert.equal(strategy.status().activity,null);assert.deepEqual(strategy.targets(),['goo']);

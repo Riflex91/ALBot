@@ -131,7 +131,7 @@ export function createStrategy(bot){
    if(sharedFarmRejection(id,(bot.farmers??[]).filter(n=>n!==me.name).map(n=>bot.transport?.fresh?.(n)),
       p.realm(),knowledgeFingerprint(p.G.monsters?.[id])))return false;
   if(activity?.observationUnknown&&id===activity.target&&!live?.target)return false;
-  if(!full)return true;
+  // Safety checks are mandatory; testLogging only controls diagnostics.
   // A death quarantine is different from a combat-readiness rejection.
   // Log both, including planned/spawn checks that used to be completely silent.
   if(failed[id]>Date.now()){
@@ -140,20 +140,18 @@ export function createStrategy(bot){
   }
   const result=risk(id,live,planned);
   if(!result.safe)logSafetyGate(id,result,planned,quiet);if(result.timelineShadow&&Date.now()-(lastRisk.get('shadow:sample')??0)>30000){lastRisk.set('shadow:sample',Date.now());const s=result.timelineShadow;bot.event('combat.timelineShadow',{monster:id,safe:result.safe,legacySeconds:result.seconds??null,projectedSeconds:s.projectedSeconds,deltaSeconds:s.deltaSeconds,lowerBoundDps:s.lowerBoundDps,expectedDps:s.expectedDps,expectedCritScenarioDps:s.expectedCritScenarioDps,healerDuty:s.healerDuty,healerManaLimited:s.healerManaLimited,healerProjectedHeals:s.healerProjectedHeals,healerCastSlots:s.healerCastSlots,healerAttackSlots:s.healerAttackSlots,attackIntervalsMs:JSON.stringify(s.attackIntervalsMs),authority:s.authority});}if(!quiet&&!result.safe&&lastRisk.get(id)!==result.reason){if(lastRisk.size>64)lastRisk.clear();lastRisk.set(id,result.reason);bot.event('strategy.riskRejected',{target:id,...result});}return result.safe;}
- function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!full||!id||failed[id]>Date.now())return;
+ function failActivity(reason,id=activity?.target??bot.target?.mtype){if(!id||failed[id]>Date.now())return;
   // A roaming unrelated hostile must not quarantine the leader's safe farm
   // spawn on followers: only the failed farm target itself invalidates it.
   if(bot.teamPlan?.status?.()?.current?.target===id)bot.teamPlan.failed(reason);
   failed=Object.fromEntries(Object.entries(failed).filter(([,until])=>until>Date.now()).slice(-31));failed[id]=Date.now()+cfg.farming.deathWindowMs;rejectionEvidence.set(id,{monster:id,until:Math.min(failed[id],Date.now()+600000),definition:knowledgeFingerprint(p.G.monsters?.[id])});p.write?.(riskKey,failed);activity=null;manual=null;plannedAt=0;bot.target=null;bot.movement.stop();bot.event('strategy.failedTarget',{target:id,reason,retryAfter:failed[id]});}
- function canVisit(h){if(!full)return true;if(bot.recovering||h.inventoryBlocked||h.rip||h.hp/h.max_hp<cfg.farming.resumeAbove)return false;
+ function canVisit(h){if(bot.recovering||h.inventoryBlocked||h.rip||h.hp/h.max_hp<cfg.farming.resumeAbove)return false;
   const uncertainty=(h.motion?.moving?h.motion.speed:0)*Math.max(0,Date.now()-(h.motion?.at??Date.now()))/1000;if(uncertainty>(cfg.merchant.servicePositionError??70))return false;if(h.threats>0&&!h.motion)return false;if(h.threats>0&&h.hp/h.max_hp<(cfg.farming.pullHp??.8))return false;if(h.activity?.target){const m=p.G.monsters?.[h.activity.target];if(!m||!Number.isFinite(m.attack)||!(m.frequency>0)||m.attack*m.frequency>p.c.max_hp*.03)return false;}
   for(const spawn of p.G.maps?.[h.map]?.monsters??[]){const m=p.G.monsters?.[spawn.type],b=spawn.boundary;if(!(m?.aggro>0)||!Array.isArray(b)||b.length!==4)continue;const margin=(m.range??30)+120;if(h.x>=b[0]-margin&&h.x<=b[2]+margin&&h.y>=b[1]-margin&&h.y<=b[3]+margin&&m.attack*m.frequency>p.c.max_hp*.03)return false;}
   return true;
  }
- function safeMonster(id){if(full)return safeTarget(id);const m=p.G.monsters?.[id];if(!m)return false;
-  const limit={conservative:.12,balanced:.25,assertive:.32,aggressive:.4}[w.risk],members=bot.allies().filter(x=>!x.rip),hp=Math.max(p.c.max_hp??0,...members.map(x=>x.max_hp??0));
-  return Number.isFinite(m.attack)&&m.attack<=hp*limit;
- }
+ function safeMonster(id){return safeTarget(id);}
+
  function requestTask(value,ttlMs=120000){
   if(!bot.running||typeof value!=='string'||!Number.isFinite(ttlMs)||ttlMs<1000||ttlMs>3600000)return false;
   const [kind,id]=value.split(':');

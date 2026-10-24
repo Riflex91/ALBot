@@ -67,3 +67,20 @@ export async function recordSignedReleaseHighwater(db,input){
   throw Error('Signed release CAS rejected');
  return {...after,changed:true,idempotent:false};
 }
+
+// Compare a previously *independently verified* signed GitHub release with
+// the owner-pinned D1 publication. Never infer apply or per-character ACK.
+export async function requireSignedPublicationAnchor(db,{
+ target,keyId,sequence,sha256,releaseSha
+}={}){
+ if(!TARGET.test(target??'')||!HASH.test(keyId??'')||
+  !Number.isSafeInteger(sequence)||sequence<1||
+  !HASH.test(sha256??'')||!SHA.test(releaseSha??''))
+  throw Error('Invalid signed publication comparison');
+ const status=await readSignedReleaseHighwater(db,{target,keyId});
+ if(!status.anchored)throw Error('Signed publication unanchored');
+ if(status.anchor.sequence!==sequence||
+  status.anchor.sha256!==sha256||status.anchor.releaseSha!==releaseSha)
+  throw Error('Signed publication high-water mismatch');
+ return status;
+}

@@ -1209,7 +1209,7 @@ export function createProduction(bot){
   if(state!==publicationState){publicationState=state;if(materialContract)bot.event(state==='active'?'farmOrder.resumed':'farmOrder.suspended',{objective:materialContract.objective,reason:state});}if(!first){lastPublishedMaterials=[];return [];}
  const plan=planMaterialQuotas(first,bot.farmers,
   name=>bot.transport.fresh(name),p.realm(),{freeReserve:cfg.farming.freeSlots,
-   ttlMs:cfg.general?.messageTtlMs??10000});
+   ttlMs:cfg.general?.messageTtlMs??10000,bindSessions:true});
  lastPublishedMaterials=[{...first,...plan}];
   for(const name of bot.farmers){const h=bot.transport.fresh(name),ack=h?.materialAck;
    if(!h?.running||h.rip||h.realm!==p.realm()||ack?.objective!==first.objective||ack.item!==first.item||ack.monster!==first.monster)continue;
@@ -1218,7 +1218,7 @@ export function createProduction(bot){
    bot.event('farmOrder.acknowledged',{farmer:name,objective:first.objective,item:first.item,monster:first.monster,session:h.session});}
   return lastPublishedMaterials;},
  reserved:i=>reservedQuantity(i)>0,
- farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.teamPlan?.candidates()??(bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets);for(const request of merchant.materials){if(request.expires&&request.expires<Date.now()||!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.explicit({name:request.item,level:0},'acquisition');if((r?.action==='farm'||!r&&cfg.production.autonomy)&&qty(request.item,0)<Math.min(r?.targetCount??request.quantity,materialQuotaCap(request,bot.me.name)))return [request.monster];}return null;},
+ farmTargets(){const merchant=bot.transport.fresh(cfg.party.merchant);if(!merchant?.running||!Array.isArray(merchant.materials))return null;const allowed=bot.teamPlan?.candidates()??(bot.me.farmTargets.length?bot.me.farmTargets:cfg.farming.targets);for(const request of merchant.materials){if(request.expires&&request.expires<Date.now()||!allowed.includes(request.monster)||!Number.isFinite(request.quantity)||request.quantity<=0)continue;const r=e.explicit({name:request.item,level:0},'acquisition');if((r?.action==='farm'||!r&&cfg.production.autonomy)&&qty(request.item,0)<Math.min(r?.targetCount??request.quantity,materialQuotaCap(request,bot.me.name,bot.session)))return [request.monster];}return null;},
  status:()=>({intent:intent?{objective:intent.objective,phase:intent.phase,recipient:intent.recipient}:null,intentBlocked,
   deliveryLedgerUnsafe:unsafeDeliveryHistory,
   deliveryLedgerReason:deliveryEvidence.reason,

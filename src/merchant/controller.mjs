@@ -1046,15 +1046,26 @@ export function createMerchant(bot){
      bot.free()>=Math.max(1,(cfg.merchant.minFreeSlots??4)+3))add('mluck.service',{priority:-200},()=>{
       const candidate=(bot.farmers??[]).map(n=>bot.transport.fresh(n))
        .filter(h=>h?.running&&!h.rip&&h.realm===p.realm()&&
+         // An absent heartbeat field is UNKNOWN, not an absent Mluck.
+         h.mluck!==undefined&&
          !(h.mluck?.strong&&h.mluck.f!==me.name)&&
-         (!h.mluck||Number.isFinite(h.mluck.ms)&&h.mluck.ms<60000))
+         (h.mluck===null||Number.isFinite(h.mluck?.ms)&&h.mluck.ms<60000))
        .sort((a,b)=>(a.mluck?1:0)-(b.mluck?1:0)||
          (a.mluck?.ms??0)-(b.mluck?.ms??0))
        .find(h=>bot.strategy?.canVisit?.(h)??true);
-      if(!candidate||service.claim(candidate.name)===false)return false;
+      if(!candidate){
+        const previous=service.current();
+        if(previous)service.finish(previous,{cooldownMs:60000,
+          reason:'Kein bestätigter Mluck-Erneuerungsbedarf'});
+        return false;
+       }
+       if(service.claim(candidate.name)===false)return false;
       if(samePlace(p.c,candidate)&&distance(p.c,candidate)<=(p.G.skills.mluck?.range??320)){
        // A real cast, not merely an arrived movement order.
-       return buff(candidate.name);
+       const cast=buff(candidate.name);
+       if(!cast)service.finish(candidate.name,{cooldownMs:60000,
+         reason:'Mluck vor Ort bereits aktiv oder Cast derzeit nicht nötig'});
+       return cast;
       }
       return !e.travel({...candidate,radius:150},'Mluck-Erneuerung',200);
      });

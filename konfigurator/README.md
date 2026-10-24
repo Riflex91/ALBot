@@ -1,5 +1,13 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
 
+## Ingame-Popup mit sicherem Charakter-Staging verbunden (24.10.2026)
+
+Der vorhandene Cloudflare-Access-Popup-Abruf kann in der **neu gebauten Quellruntime** eine privat signierte Full-v1-Revision nach unabhängiger Ingame-Signaturprüfung an das charaktergebundene Staging übergeben. `ALBot.openConfigSync()` öffnet ausschließlich den einmaligen, manuell freigegebenen Abruf; `ALBot.configSyncStatus()` unterscheidet `verified` von `staged` und gibt niemals Profilbytes zurück. Zur Laufzeit wird der tatsächliche Adventure-Land-Charaktername verwendet. Ein Angreifer kann keine fremde Account- oder Charakterrevision als eigenen Stand vorgaukeln, ohne die separat festgelegten Prüfschlüssel und die Signaturprüfung zu bestehen.
+
+Nach einem CODE-Neustart kann dieselbe Sequenz **nur nach erneutem vollständigem signiertem Abruf** wieder im Speicher geprüft und vorgemerkt werden. Ein bloßes `localStorage`-Receipt begründet weiterhin keine Freigabe. Ungültiger Popup-Origin, falsches Fenster, Nonce, falscher Charakter, beschädigtes Receipt, abgelaufene Signatur oder veränderter angewendeter Cursor brechen den Vorgang ab. Das Staging erstellt **weder** einen angewendeten Profilstand `ALBotConfig`/`bot.cfg` **noch** einen Ingame-ACK; `readyForActivation`, `applied` und `acknowledged` bleiben ausdrücklich `false`.
+
+Das Einbinden in den Runtime-Quellbuilder ist **keine Freigabe im offiziellen signierten Ingame-Kanal**: eine neue Runtime muss separat mit dem geschützten Signaturverfahren erzeugt, anhand des Releasedigests abgenommen und im Spiel bestätigt werden. Auch ein erfolgreicher Cloudflare-Deploy signiert die Game-Runtime nicht. Für aktive Konfigurationsübernahme fehlen weiterhin ein manipulationsgeschützter Rollback-Cursor, kontrollierte Safe-Points und authentifizierte Charakter-ACKs.
+
 ## Charaktergebundener, überprüfter Staging-Vertrag (24.10.2026)
 
 Das neue isolierte Quellmodul `src/runtime/config-sync-stage.mjs` implementiert einen **Staging-only-Vertrag** für den späteren Ingame-Empfänger. Ein Staging-Versuch muss die vollständige signierte `albot.full/v1`-Revision erneut gegen einen unabhängig festgelegten P-256-Public-Key prüfen, einschließlich Zielaccount, kanonischem SHA-256, Schema, gültiger Sequenz und Ablaufzeit. Der aktuell ausgewählte Charakter muss als aktiver Charakter im signierten Profil vorhanden sein.

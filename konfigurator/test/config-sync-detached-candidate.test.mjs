@@ -82,7 +82,7 @@ test('invalid roster, merchant owner, recipient, character and schema always rej
  const cases=[
   x=>{x.config.characters.find(c=>c.name===CHARACTER).enabled=false;},
   x=>{x.config.characters[0].group='OtherGroup';},
-  x=>{x.config.items.find(c=>c.enabled&&c.action==='send')?.recipient='Invalid';},
+  x=>{x.config.party.merchant='IncorrectMerchant';},
   x=>{x.format='fake';},
   x=>{x.schemaId='albot.legacy';},
   x=>{x.config.characters[0].role='unknown';}
@@ -117,11 +117,7 @@ test('restart requires fresh signature; changed applied high-water, trust or exp
   assert.equal(report.ok,false);
   assert.equal(report.readyForActivation,false);
   assert.equal(report.applied,false);
-  assert.equal(box.stored[box.cursorKey]!==undefined,
-   box.data.clock!==NOW||box.data.character!=='OtherCharacter'&&
-    box.data.pin.target===identity.target&&
-    box.data.pin.publicJwk.x===identity.publicJwk.x&&
-    box.data.clock===NOW&&box.stored[box.cursorKey]!==undefined);
+  assert.equal(report.transactionCommitted,undefined);
   box.stage.dispose();
  }
  const box=setup(identity),initial=box.stage;

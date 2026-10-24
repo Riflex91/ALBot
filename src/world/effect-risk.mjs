@@ -22,9 +22,11 @@ function verifiedAuraSource(owner,id,effect,members,game){
   Number.isFinite(source.x)&&Number.isFinite(source.y)&&
   Math.hypot(source.x-owner.x,source.y-owner.y)<=rangeLimit;
 }
+// The live status and G.conditions describe the SAME applied effect. They
+// must never be added together; choose the larger documented positive bonus.
 const bonus=(effect,def,key)=>Math.max(0,
- (Number.isFinite(effect?.[key])?effect[key]:0)+
- (Number.isFinite(def?.[key])?def[key]:0));
+ Number.isFinite(effect?.[key])?effect[key]:0,
+ Number.isFinite(def?.[key])?def[key]:0);
 export function stableFarmOffense(actor,seconds,{G={},members=[]}={}){
  if(!actor||!finitePositive(actor.attack)||!finitePositive(actor.frequency))
   return {valid:false,reason:'invalid-attacker'};
@@ -37,7 +39,7 @@ export function stableFarmOffense(actor,seconds,{G={},members=[]}={}){
      verifiedAuraSource(actor,id,effect,members,G))continue;
   // Unknown/unverified effects are never interpreted as newly available power.
   if(def.buff!==true&&effect.buff!==true&&!id.startsWith('paladin_aura_'))continue;
-  const attributes=['str','int','dex'].filter(key=>bonus(effect,def,key)>0);
+  const attributes=['str','int','dex','vit'].filter(key=>bonus(effect,def,key)>0);
   if(attributes.length)return {valid:false,reason:'expiring-offense-attribute',effect:id};
   const frequency=bonus(effect,def,'frequency')/100;
   const attack=bonus(effect,def,'attack');
@@ -83,7 +85,7 @@ export function verifiedTargetDamageAmplification(monster,seconds,G={}){
 }
 export function horizonMonsterStats(monster,seconds,{G={},monsterBase=null}={}){
  if(!monster)return monster;
- const adjusted={...monster},base=monsterBase??{};
+ const adjusted={...monster},base=monsterBase??G.monsters?.[monster.mtype]??{};
  for(const [id,effect] of Object.entries(monster.s??{})){
   const def=G.conditions?.[id];
   if(!effect||typeof effect!=='object'||def?.debuff!==true||
@@ -94,8 +96,10 @@ export function horizonMonsterStats(monster,seconds,{G={},monsterBase=null}={}){
    const original=base[key];
    // Undo known debuff reductions if the original species stat is absent.
    const delta=Number.isFinite(def[key])&&def[key]<0?-def[key]:0;
+   const multiplier=Number.isFinite(def.frequencym)&&def.frequencym>0&&
+    def.frequencym<1&&key==='frequency'?def.frequencym:1;
    const conservative=Number.isFinite(original)?original:
-    Number.isFinite(current)?current+delta:undefined;
+    Number.isFinite(current)?current/multiplier+delta:undefined;
    if(Number.isFinite(conservative))
     adjusted[key]=Math.max(current??conservative,conservative);
   }

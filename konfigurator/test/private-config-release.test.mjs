@@ -9,6 +9,7 @@ import {signer,preparePrivateRelease,previousRelease} from '../worker/private-co
 import {githubReleaseFile,assertPrivateRepository,privateReleaseLocation}
  from '../worker/private-release-store.mjs';
 import {handleRequest} from '../worker/index.mjs';
+import {fakeSignedHighwaterDb} from './signed-highwater-db-fixture.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const subtle=webcrypto.subtle;
@@ -42,6 +43,7 @@ async function credentials(){
  return {jwt:signed+'.'+signature,certs:{keys:[jwk]}};
 }
 function mock(env,creds,{privateRepo=true}={}){
+ env.DB??=fakeSignedHighwaterDb();
  const store={profile:profile(),profileSha:'a'.repeat(40),
   release:null,releaseSha:null,writes:0,requests:[]};
  const fetcher=async(url,options={})=>{
@@ -203,4 +205,69 @@ test('delivery readiness cannot be claimed from a public repository',async()=>{
  const body=await reply.json();
  assert.equal(body.ok,false);
  assert.equal(JSON.stringify(body).includes('My_Ranger1'),false);
+});
+
+test('publication requires a prepared D1 schema, and GitHub must not receive a new signature without it',async()=>{
+ const env=await runtimeEnv(),creds=await credentials();
+ const m=mock(env,creds);
+ const current=await (await m.call('/api/profile-sync/status')).json();
+ const payload={confirm:true,githubSha:current.profile.githubSha,
+  sha256:current.profile.sha256,previousReleaseSha:null};
+ env.DB.noTable=true;
+ assert.equal((await m.call('/api/profile-sync/prepare','PUT',payload)).status,503);
+ assert.equal(m.store.writes,0);
+ env.DB.noTable=false;
+ assert.equal((await m.call('/api/profile-sync/prepare','PUT',payload)).status,200);
+ assert.equal(m.store.writes,1);
+ assert.equal(env.DB.writes,1);
+ assert.equal(env.DB.rows.get(env.CONFIG_SIGNING_TARGET).sequence,1);
+});
+test('D1 failure after GitHub save blocks success and delivery until explicit verified reconciliation',async()=>{
+ const env=await runtimeEnv(),creds=await credentials();
+ const m=mock(env,creds);
+ const current=await (await m.call('/api/profile-sync/status')).json();
+ const payload={confirm:true,githubSha:current.profile.githubSha,
+  sha256:current.profile.sha256,previousReleaseSha:null};
+ env.DB.failWrites=true;
+ assert.equal((await m.call('/api/profile-sync/prepare','PUT',payload)).status,503);
+ assert.equal(m.store.writes,1); // GitHub CAS succeeded, D1 CAS failed
+ const blocked=await (await m.call('/api/profile-sync/status')).json();
+ assert.equal(blocked.signed,true);
+ assert.equal(blocked.publicationAnchorReady,false);
+ assert.equal(blocked.deliveryReady,false);
+ assert.notEqual((await m.call('/api/profile-sync/delivery')).status,200);
+ env.DB.failWrites=false;
+ const previous=m.store.release;
+ const approved={confirm:true,releaseSha:m.store.releaseSha,
+  sequence:previous.sequence,sha256:previous.sha256};
+ const reconciled=await m.call('/api/profile-sync/signed-highwater','PUT',approved);
+ assert.equal(reconciled.status,200);
+ assert.equal((await (await m.call('/api/profile-sync/status')).json()).deliveryReady,true);
+ assert.equal((await m.call('/api/profile-sync/delivery')).status,200);
+ assert.equal(m.store.writes,1); // no duplicate GitHub publication
+});
+test('existing unanchored private release cannot be overwritten, rolled back or delivered',async()=>{
+ const env=await runtimeEnv(),creds=await credentials();
+ const m=mock(env,creds);
+ const status=await (await m.call('/api/profile-sync/status')).json();
+ const payload={confirm:true,githubSha:status.profile.githubSha,
+  sha256:status.profile.sha256,previousReleaseSha:null};
+ assert.equal((await m.call('/api/profile-sync/prepare','PUT',payload)).status,200);
+ const original=structuredClone(m.store.release);
+ const earlierHash=m.store.releaseSha;
+ env.DB.rows.clear();
+ const disabled=await (await m.call('/api/profile-sync/status')).json();
+ assert.equal(disabled.signed,true);
+ assert.equal(disabled.publicationAnchorReady,false);
+ assert.equal(disabled.deliveryReady,false);
+ assert.notEqual((await m.call('/api/profile-sync/delivery')).status,200);
+ m.store.profile=structuredClone(m.store.profile);
+ m.store.profile.config.farming.maxAggro=12;
+ m.store.profileSha='f'.repeat(40);
+ const newStatus=await (await m.call('/api/profile-sync/status')).json();
+ const next={confirm:true,githubSha:newStatus.profile.githubSha,
+  sha256:newStatus.profile.sha256,previousReleaseSha:earlierHash};
+ assert.equal((await m.call('/api/profile-sync/prepare','PUT',next)).status,409);
+ assert.equal(m.store.writes,1);
+ assert.deepEqual(m.store.release,original);
 });

@@ -2,6 +2,7 @@
 // No mutation, reset, journal write, profile install, authorization, or ACK.
 // A single browser/character snapshot can never prove global atomicity or
 // give a trustworthy anti-rollback anchor.
+export const {captureLocalConfigSafePoint,assessConfigActivationPreflight}=(()=>{
 const FORMAT='albot-config-activation-preflight/v1';
 const HEX=/^[a-f0-9]{64}$/;
 const TARGET=/^[A-Za-z0-9_.:/-]{1,128}$/;
@@ -26,7 +27,7 @@ const OBSERVATIONS=[
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
 const basic=value=>value&&typeof value==='object'&&!Array.isArray(value);
 
-export function captureLocalConfigSafePoint(bot,{disposed=false}={}){
+function captureLocalConfigSafePoint(bot,{disposed=false}={}){
  try{
   const p=bot?.p,c=p?.c,exec=bot?.exec;
   const entities=p?.entities;
@@ -74,7 +75,7 @@ export function captureLocalConfigSafePoint(bot,{disposed=false}={}){
  }
 }
 
-export function assessConfigActivationPreflight(evidence,staging,{now=Date.now()}={}){
+function assessConfigActivationPreflight(evidence,staging,{now=Date.now()}={}){
  const reasons=[];
  const push=reason=>{if(!reasons.includes(reason))reasons.push(reason);};
  const snapshot=basic(evidence)&&basic(evidence.flags)?evidence:null;
@@ -117,3 +118,6 @@ export function assessConfigActivationPreflight(evidence,staging,{now=Date.now()
   readyForActivation:false,applied:false,acknowledged:false
  };
 }
+
+return {captureLocalConfigSafePoint,assessConfigActivationPreflight};
+})();

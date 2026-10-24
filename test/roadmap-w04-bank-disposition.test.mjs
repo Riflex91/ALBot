@@ -78,12 +78,16 @@ function fixture({item={...ring},enabled=true,explicit=true,stored=true,
  const sell={enabled:true,action:'sell',item:'ore',batch:99,maxCount:9999,
   keep:0,teamReserve:0,minPrice:0,maxActions:0};
  let rule=explicit?sell:null;
- const calls=[],writes=[],sales=[];
+ const calls=[],writes=[],sales=[],records=new Map();
  const bot={
   p:{c:{items:inv,map,bank:{items0:bankPack},gold:100000,slots:{}},
     G:{items:{ore:{type:'material',g:2,s:9999}}},
-    realm:()=> 'EU:I',read:()=>null,
-    write:(key,value)=>{writes.push([key,value]);return write;}},
+    realm:()=> 'EU:I',read:key=>structuredClone(records.get(key)??null),
+    write:(key,value)=>{
+     writes.push([key,value]);
+     if(write)records.set(key,structuredClone(value));
+     return write;
+    }},
   cfg:{merchant:{bank:true,bankReclaim:true,preventiveStorage:enabled,
     bankWorkspace:2},party:{merchant:'M'},production:{
     goals:[],gearTargets:[],autoDisposition:false}},
@@ -101,7 +105,7 @@ function fixture({item={...ring},enabled=true,explicit=true,stored=true,
   session:'m-01'
  };
  bot.bank=createBank(bot);
- return {bot,calls,writes,sales,setRule:r=>{rule=r;},bankPack,inv,sell};
+ return {bot,calls,writes,sales,records,setRule:r=>{rule=r;},bankPack,inv,sell};
 }
 test('W04 only explicit currently permitted plain bank assets enter preventive reclaim',()=>{
  const {bot,calls,bankPack}=fixture();
@@ -626,5 +630,74 @@ test('W04 terminal full-stack dispatch refuses late inventory or bank proof drif
   if(drift==='held')inv[1].q=91;
   else bankPack[27].q=39;
   assert.equal(calls[0].params.guard(),false,drift);
+ }
+});
+
+test('W03/W04 durable chain resumes after reload only from confirmed physical stages',async()=>{
+ const {bot,calls,records,inv,bankPack,sales}=operatingBankFixture();
+ inv[1].q=20;bankPack[26]={name:'scroll0',q:80};
+ bankPack[27]={name:'scroll0',q:50};
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.retrieve');
+ await calls[0].params.call();
+ assert.equal(bot.bank.recover(),true);
+ const key='albot:bank-reserve-chain:M';
+ assert.equal(records.get(key).phase,'dispatched');
+ assert.equal(records.get('albot:bank-single:M'),null);
+ const before=calls.length;
+ bot.session='m-02';bot.bank=createBank(bot);
+ assert.equal(bot.bank.recoveryStatus().reserveChain.phase,'dispatched');
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(records.get(key),null,'physically completed floor is durably retired');
+ assert.equal(calls.length,before,'reload does not dispatch a second withdrawal');
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls.at(-1).kind,'bank.reclaim',
+  'separate subsequent sale is admitted only against the carried reserve');
+ assert.equal(sales.length,0);
+});
+
+test('W03/W04 unmatched dispatched chain quarantines ambiguous restart',async()=>{
+ const {bot,calls,records,bankPack,inv}=operatingBankFixture();
+ inv[1].q=20;bankPack[26]={name:'scroll0',q:80};
+ bankPack[27]={name:'scroll0',q:50};
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ await calls[0].params.call();
+ assert.equal(records.get('albot:bank-reserve-chain:M').phase,'dispatched');
+ assert.equal(bot.bank.recover(),true);
+ // External interference after the journal was durably settled.
+ bankPack[26]={name:'scroll0',q:80};inv[0]=null;
+ bot.session='m-02';bot.bank=createBank(bot);
+ const previous=calls.length;
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.inventoryBlocked,true);
+ assert.equal(calls.length,previous,'stale source is never retried');
+ assert.equal(records.get('albot:bank-reserve-chain:M').phase,'dispatched');
+});
+
+test('W03/W04 a new reserve step cannot skip a failed chain write',async()=>{
+ const {bot,calls,records,inv,bankPack}=operatingBankFixture();
+ inv[1].q=20;bankPack[26]={name:'scroll0',q:80};
+ bankPack[27]={name:'scroll0',q:50};
+ bot.bank.preventiveDisposition();bot.bank.preventiveDisposition();
+ const write=bot.p.write;
+ bot.p.write=(key,value)=>key==='albot:bank-reserve-chain:M'?
+  false:write(key,value);
+ await assert.rejects(()=>calls[0].params.call(),/Bankreserve/);
+ assert.equal(bot.inventoryBlocked,true);
+ assert.equal(records.get('albot:bank-reserve-chain:M'),undefined);
+ assert.equal(inv[0],null);
+ assert.equal(bankPack[26].q,80);
+});
+
+test('W03/W04 realm-tampered or malformed chain blocks value work on reload',()=>{
+ for(const invalid of [{version:1,owner:'Other',realm:'EU:I'},
+   {version:1,owner:'M',realm:'US:I',phase:'ready'}]){
+  const {bot,calls,records}=operatingBankFixture();
+  records.set('albot:bank-reserve-chain:M',invalid);
+  bot.bank=createBank(bot);
+  assert.equal(bot.inventoryBlocked,true);
+  for(let i=0;i<4;i++)bot.bank.preventiveDisposition();
+  assert.equal(calls.length,0);
  }
 });

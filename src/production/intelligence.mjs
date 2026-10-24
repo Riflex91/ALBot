@@ -34,7 +34,7 @@ export function progressionChance(G,name,level,kind){
 export function vacantAccessoryCandidates(G,profile,slot,{limit=64}={}){
  const type=slot==='cape'?'cape':['earring1','earring2'].includes(slot)?'earring':null;
  if(!type||!profile?.slots||!Object.hasOwn(profile.slots,slot)||
-    profile.slots[slot]!==null||!G?.items||typeof G.items!=='object)return [];
+    profile.slots[slot]!==null||!G?.items||typeof G.items!=='object')return [];
  const cap=Number.isSafeInteger(limit)?Math.max(0,Math.min(64,limit)):64;
  return Object.entries(G.items).filter(([name,meta])=>
   /^[a-zA-Z0-9_]{1,120}$/.test(name)&&meta?.type===type&&

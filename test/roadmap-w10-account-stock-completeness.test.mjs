@@ -142,3 +142,76 @@ test('W02 current-map bank variants reject unsafe acc/rid identifiers',()=>{
   assert.equal(result.variants.some(row=>row.item.name==='ore'),false);
  }
 });
+
+
+test('W02 equipped modifiers acc/rid/data preserve exact variant identity and protected stock',()=>{
+ const signature={name:'intamulet',level:2,stat_type:'int',acc:'acc-42',
+  rid:879,data:'custom-seal'};
+ const view=account({
+  inventory:[{...signature,q:2}],
+  equipment:{amulet:{...signature,p:null}}
+ });
+ assert.equal(view.complete,true);
+ const variants=view.variants.filter(r=>r.item.name==='intamulet');
+ assert.equal(variants.length,1,
+  'physically held and worn items of the same full variant remain identical');
+ assert.equal(variants[0].quantity,3);
+ assert.equal(variants[0].protectedUnits,1);
+ assert.equal(variants[0].freeEstimate,2);
+ assert.equal(variants[0].item.acc,'acc-42');
+ assert.equal(variants[0].item.rid,879);
+ assert.equal(variants[0].item.data,'custom-seal');
+ assert.equal(view.equipped[0].item.rid,879);
+ assert.equal(view.executable,false);
+});
+
+test('W02 only occupied equipment slots count against bounded shadow ledger budget',()=>{
+ const emptySlots=Object.fromEntries(
+  Array.from({length:28},(_,i)=>['slot'+i,null]));
+ emptySlots.lastAccessory={name:'wingedcape',level:0};
+ const view=account({equipment:emptySlots});
+ assert.equal(view.complete,true,
+  'empty official slots do not consume the occupied-slot proof budget');
+ assert.equal(view.equipped.length,1);
+ assert.equal(view.equipped[0].slot,'lastAccessory');
+ assert.equal(view.variants.find(x=>x.item.name==='wingedcape')?.protectedUnits,1);
+});
+
+test('W02 overbudget occupied equipment or invalid late variant makes entire account stock unverified',()=>{
+ const many=Object.fromEntries(
+  Array.from({length:25},(_,i)=>['slot'+i,{name:'gear'+i,level:0}]));
+ for(const equipment of [
+  many,
+  {mainhand:{name:'sword',level:2},cape:{name:'rare',rid:Infinity}},
+  {mainhand:{name:'sword',level:2},earring:{name:'rare',data:{opaque:1}}},
+  {mainhand:{name:'sword',level:2},earring:{level:3}},
+  ['not-a-slot-map']
+ ]){
+  const view=account({equipment});
+  assert.equal(view.complete,false);
+  assert.deepEqual(view.variants,[]);
+  assert.deepEqual(view.equipped,[]);
+  assert.ok(view.reasons.includes('equipped-variant-evidence-incomplete'));
+  assert.ok(view.reasons.includes('account-variant-aggregation-unverified'));
+  assert.equal(view.authority,'none');
+  assert.equal(view.executable,false);
+ }
+});
+
+test('W02 distinct equipped acc/rid variants never merge into ordinary carried gear',()=>{
+ const view=account({
+  inventory:[{name:'ring',level:1,acc:'ordinary',q:1}],
+  equipment:{ring1:{name:'ring',level:1,acc:'unique'},
+   ring2:{name:'ring',level:1,acc:'ordinary'}}
+ });
+ assert.equal(view.complete,true);
+ const rows=view.variants.filter(x=>x.item.name==='ring');
+ assert.equal(rows.length,2);
+ const normal=rows.find(x=>x.item.acc==='ordinary');
+ assert.equal(normal.quantity,2);
+ assert.equal(normal.protectedUnits,1);
+ const unique=rows.find(x=>x.item.acc==='unique');
+ assert.equal(unique.quantity,1);
+ assert.equal(unique.protectedUnits,1);
+ assert.equal(unique.freeEstimate,0);
+});

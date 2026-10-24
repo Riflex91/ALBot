@@ -62,7 +62,8 @@ export function auditRealRuntimeBootGraph(source){
    if(member(node.callee,'cleanup','push')||
     member(node.callee,'cleanup','add'))cleanupPresent=true;
   }
-  if(node.type==='AssignmentExpression'&&member(node.left,'p','call'))
+  if(node.type==='AssignmentExpression'&&member(node.left,'p','call')&&
+   node.right?.type==='Identifier'&&node.right.name==='recordingPortCall')
    sideEffects.add('wrapped-game-port-call');
   if(node.type==='MemberExpression'&&!node.computed&&
    node.object?.name==='cfg')captured.add(node.property.name);

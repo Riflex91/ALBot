@@ -87,6 +87,14 @@ export function createMovement(bot){
     }
     if(hazardRequired(d,owner)){
       if(order||townQueued||exec.pending.has('travel.town'))return false;
+      // An orphan native smart path may continue executing after this
+      // request. Stop it BEFORE planning a new certified itinerary.
+      if(nativeBusy()){
+        try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}
+        bot.event?.('travel.hazardLegacyRouteStopped',{
+          reason:'unverified-native-route-before-plan'});
+        return false;
+      }
       if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
       // No unreviewed native smart_move fallback when the physical
       // geometry or risk proof is absent.

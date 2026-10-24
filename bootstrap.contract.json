@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 48,
-      "version": "0.48.0-candidate",
+      "sequence": 49,
+      "version": "0.49.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 993122,
-      "sha256": "51edba9193287f60458a8fd37233c0cf2ff099919c28c09b22aeee72732069c5"
+      "bytes": 994168,
+      "sha256": "991266fab388bbc64dd5422f48b8c593763134b5e3d7c71975fb72b7b0bada62"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: ALBot 0.48.0-candidate, Sequenz 48; protected signer #40098813343 succeeded. Greenjr confirmed-engaged warrior taunt/intercept, verified accessory goals and bounded merchant route/planning improvements from PR #462; Linux and Windows CI green. Signed P-256 manifest, SHA256 51edba9193287f60458a8fd37233c0cf2ff099919c28c09b22aeee72732069c5, 993122 bytes. Personal ALBotConfig, loader URL and pinned trust root unchanged. Ingame four-character acceptance remains outstanding."
+    "note": "24.10.2026: W06/G09 physical material progress cross-check PR #463, exact Linux/Windows CI #40099377751, main merge 5032696d7180d0e381c6212a72bfbda417778198. Protected signer workflow #40099680310 success: ALBot 0.49.0-candidate / sequence 49, 994168 bytes, SHA-256 991266fab388bbc64dd5422f48b8c593763134b5e3d7c71975fb72b7b0bada62. Published runtime and main share Git blob 9c55893a8a042dcddff6e0a0ad0a4e96159de006. ECDSA-P-256 verified, personal ALBotConfig and installed V2 trust/URLs unchanged. W14 Ingame continuous acceptance pending."
   }
 }

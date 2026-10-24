@@ -228,7 +228,8 @@ export function createFarmer(bot){
   const {p,cfg,exec,me}=bot;let deadSince=0,deaths=[],rest=false,lastTravel=0,cohesion={key:'',progress:0,gap:Infinity,attempt:0},lastRedirect={key:'',at:0},lastEmergencyFocus={key:'',at:0},lastMarchHeal={key:'',at:0};
   const actionReason=x=>String(x?.reason??x?.message??x?.error??'');
   let lastRoadAggroAt=0,lastDefensiveShot={id:null,at:0},
-   lastAssistBlock={id:null,at:0},lastAssistCorrection=0;
+   lastAssistBlock={id:null,at:0},lastAssistCorrection=0,
+   lastAssistMissingAt=0;
   const observeTransitBlock=createTransitBlockObserver();
   let marchGraph=null,marchGraphG=null;
   const travelPlan=()=>bot.teamPlan?.heartbeat?.()??
@@ -427,9 +428,15 @@ export function createFarmer(bot){
   if(!leader?.running||leader.rip||!samePlace(p.c,leader))return false;
   const range=Math.max(5,(p.c.range??0)-Math.min(cfg.farming.rangeBuffer??0,(p.c.range??0)*.25));
   const visible=bot.monsters();
+  // A verified ongoing team fight may remain defensible after the ordinary
+  // voluntary farm risk policy has changed. Never grant this to a neutral
+  // pull or a monster attacking an outsider.
+  const teamDefense=m=>!!m?.target&&bot.teamNames.includes(m.target)&&
+    bot.combatAssessment?.canDefend(m)===true;
+  const mayAssist=m=>bot.allowed(m)||teamDefense(m);
   const engaged=visible.filter(m=>m?.hp>0&&!m.dead&&m.target&&
-    bot.teamNames.includes(m.target)&&bot.allowed(m)&&
-    (bot.strategy?.safeTarget?.(m.mtype,m)!==false||bot.combatAssessment?.canDefend(m)===true)&&
+    bot.teamNames.includes(m.target)&&mayAssist(m)&&
+    (bot.strategy?.safeTarget?.(m.mtype,m)!==false||teamDefense(m))&&
     samePlace(p.c,m)&&
     distance(p.c,m)<=Math.max(range,cfg.party.followDistance*2)&&
     distance(leader,m)<=cfg.party.followDistance*2).sort((a,b)=>
@@ -440,10 +447,35 @@ export function createFarmer(bot){
   const assigned=engaged?null:leaderAssignedFarmTarget(p.c,leader,visible,{
     plan,realm:p.realm(),teamNames:bot.teamNames,
     maxDistance:Math.max(range,cfg.party.followDistance*2)});
-  const shared=assigned&&bot.allowed(assigned)&&
-    bot.strategy?.safeTarget?.(assigned.mtype,assigned)!==false?assigned:null;
+  const assignedSafe=assigned&&mayAssist(assigned)&&
+    (bot.strategy?.safeTarget?.(assigned.mtype,assigned)!==false||
+     bot.combatAssessment?.canDefend(assigned)===true);
+  const shared=assignedSafe?assigned:null;
   const enemy=engaged??shared;
-  if(!enemy)return false;
+  if(!enemy){
+    // Sample the exact blocked focus rather than inferring an empty monster
+    // list from a null bot.target. This also catches lost local visibility.
+    const now=Date.now();
+    if(leader.target&&now-lastAssistMissingAt>=5000){
+      lastAssistMissingAt=now;
+      const focus=visible.find(m=>String(m?.id)===String(leader.target));
+      bot.event?.('combat.assistUnavailable',{
+        leader:bot.leader,focus:String(leader.target),
+        reason:!focus?'leader-target-not-visible':
+          !samePlace(p.c,focus)?'focus-not-local':
+          focus.target&&!bot.teamNames.includes(focus.target)?'foreign-aggro':
+          !plan?'plan-not-verified':
+          !mayAssist(focus)?'target-not-admitted':
+          'focus-safety-not-proven',
+        plan:plan?.id??null,leaderPlan:leader.farmPlan?.id??
+          leader.march?.plan??null,
+        distance:focus?Math.round(distance(p.c,focus)):null,
+        targetOwner:focus?.target??null,
+        movement:bot.movement.order?.owner??null
+      });
+    }
+    return false;
+  }
   const neutralShared=enemy===shared&&!enemy.target;
   const stillAssigned=()=>{
     if(!neutralShared)return true;
@@ -506,14 +538,14 @@ export function createFarmer(bot){
   }
   bot.navigation?.rangePosition?.(enemy);
   bot.skills.rotation(enemy);
-  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>bot.allowed(enemy)&&stillAssigned()&&
+  if(p.c.target!==enemy.id)exec.run('target',['target'],()=>mayAssist(enemy)&&stillAssigned()&&
     (!!bot.entity(enemy.id)?.target||neutralShared),()=>p.call('change_target',enemy),{delay:500});
   if(cooldown){block('attack-cooldown');return true;}
   const attack=trackedAttack(enemy.id);
   const admitted=exec.run('attack',['attack','mana'],()=>{
     const live=bot.entity(enemy.id);
     return live&&(live.target&&bot.teamNames.includes(live.target)||neutralShared&&stillAssigned())&&
-      bot.allowed(live)&&(bot.strategy?.safeTarget?.(live.mtype,live)!==false||bot.combatAssessment?.canDefend(live)===true)&&
+      mayAssist(live)&&(bot.strategy?.safeTarget?.(live.mtype,live)!==false||teamDefense(live))&&
       distance(p.c,live)<=range&&p.call('can_attack',live)===true&&
       !p.call('is_on_cooldown','attack');
   },attack.invoke,{delay:100,onSettle:attack.settle});
@@ -1122,17 +1154,15 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       bot.skills.rotation(null);
       return;
     }
-    // Healthy assembled followers can clear individually provable one-hit
-    // mobs at the SAME verified spawn without waiting for the leader's focus.
-    // Existing threats, travel and all uncertain hits retain normal gates.
-    if(!storageHold&&bot.skills?.independentOneShotAoE?.())return;
-    if(!storageHold&&independentSpawnEngagement())return;
-    // Help an existing teammate fight BEFORE the ordinary shared farm march.
-    // Otherwise the follower can walk away along the new endpoint while an
-    // ally is still engaged. This never authorizes a new neutral pull.
+    // Assistance to the leader's current fight takes precedence over a new
+    // independent neutral pull (including aimed Ranger AoE). Otherwise a
+    // follower can steal attack cadence from the already engaged team focus.
     const escortLeader=bot.transport.fresh(bot.leader);
     if(cfg.party.enabled&&me.name!==bot.leader&&escortLeader?.running&&
        helpEngagedTeamFight(escortLeader))return;
+    // A healthy follower may then clear its own separately verified spawn.
+    if(!storageHold&&bot.skills?.independentOneShotAoE?.())return;
+    if(!storageHold&&independentSpawnEngagement())return;
     if(bot.strategy?.travel()){bot.skills.rotation(null);return;}
     if(questVisitor&&!detachment){waitSafely('Monsterhunt-NPC-Besuch: Farmanker halten; kein sicherer Zweier-Pull');return;}
     const leader=escortLeader;

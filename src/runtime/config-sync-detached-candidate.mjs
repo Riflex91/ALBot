@@ -2,8 +2,7 @@
 // mutated, no private profile bytes leave this function, and restart is always
 // mandatory until transactional reconstruction of every controller exists.
 import {FULL_DESCRIPTOR} from '../config/full.mjs';
-import {addMissingDefaults,applyAutonomousMode,validateProfile}
- from '../../editor/lib/contract.mjs';
+import {addMissingDefaults,applyAutonomousMode,validateProfile} from '../../editor/lib/contract.mjs';
 
 export const evaluateDetachedConfigCandidate=(()=>{
 const FORMAT='albot-config-detached-candidate/v1';

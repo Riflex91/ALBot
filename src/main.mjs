@@ -657,6 +657,39 @@ export function install(root){
     },
     discardConfigRestartIntent:()=>!disposed&&
       (configRestartIntent?.discard()??false),
+    // Explicit opt-in fault rehearsal in a detached scratch graph. Requires
+    // fresh signed staging AND the prior manual restart review, never commits.
+    rehearseConfigRestartRecovery:async()=>{
+      const deny=reason=>({ok:false,mode:'detached-sandbox-only',reason,
+       controllerReconstructionTested:false,actualRollbackCertified:false,
+       restartAuthorized:false,transactionCommitted:false,
+       readyForActivation:false,applied:false,acknowledged:false});
+      if(disposed||!configStaging||!configRestartIntent||bot.running)
+       return deny('Paused game and verified restart review required');
+      const before=configRestartIntent.status(),
+        safe=configActivationPreflight(),review=configActivationReview?.status();
+      if(before.intent?.currentEvidenceValid!==true||
+       before.intent.resumeRequiresReverification!==true||
+       safe.locallyQuiescent!==true||safe.signedStageVerified!==true||
+       safe.blockers?.length!==0||
+       review?.review?.currentEvidenceValid!==true)
+       return deny('Fresh restart review or local safe point unavailable');
+      const result=await configStaging.rehearse(bot.cfg);
+      const after=configRestartIntent.status(),
+       safeAfter=configActivationPreflight();
+      if(disposed||bot.running||
+       after.intent?.currentEvidenceValid!==true||
+       after.intent.sequence!==before.intent.sequence||
+       after.intent.sha256!==before.intent.sha256||
+       after.intent.preparedAt!==before.intent.preparedAt||
+       safeAfter.locallyQuiescent!==true||
+       safeAfter.signedStageVerified!==true||
+       safeAfter.blockers?.length!==0||
+       result.sequence!==before.intent.sequence||
+       result.sha256!==before.intent.sha256)
+       return deny('Restart review, signed stage or safe point changed');
+      return result;
+    },
     openConfigSync(){
       if(disposed||!configSyncPreview)return false;
       return configSyncPreview.open();

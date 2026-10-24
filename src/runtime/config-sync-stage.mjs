@@ -6,6 +6,7 @@ import {configPreviewVerify} from './config-sync-preview.mjs';
 import {FULL_DESCRIPTOR} from '../config/full.mjs';
 import {validateProfile} from '../../editor/lib/contract.mjs';
 import {evaluateDetachedConfigCandidate} from './config-sync-detached-candidate.mjs';
+import {simulateDetachedRestartRecovery} from './config-sync-recovery-rehearsal.mjs';
 
 export const createVerifiedConfigStaging=(()=>{
 const TARGET=/^[A-Za-z0-9_.:/-]{1,128}$/;
@@ -193,6 +194,72 @@ function createVerifiedConfigStaging({
     readyForActivation:false,applied:false,acknowledged:false};
   }finally{planning=false;}
  }
+ // Rehearses only throwaway Full-v1 graphs derived from in-memory signed
+ // staging. No game action, browser config update, durable journal or ACK.
+ // The signer is reverified by dryRun() before this obtains profile bytes.
+ async function rehearse(activeConfig){
+  const first=state();
+  if(disposed||!first.staged?.memoryVerified||!memory?.release)
+   return {ok:false,mode:'detached-sandbox-only',reason:'Verified stage unavailable',
+    readyForActivation:false,transactionCommitted:false,applied:false,
+    acknowledged:false};
+  const dry=await dryRun(activeConfig);
+  if(!dry.ok)return {ok:false,mode:'detached-sandbox-only',
+   reason:'Signed Full-v1 dry-run failed',
+   readyForActivation:false,transactionCommitted:false,applied:false,
+   acknowledged:false};
+  try{
+   const currentStage=state(),ctx=current(),release=memory?.release;
+   if(!release||!currentStage.staged?.memoryVerified||
+    currentStage.staged.sequence!==dry.sequence||
+    currentStage.staged.sha256!==dry.sha256||
+    currentStage.staged.target!==ctx.trust.target||
+    currentStage.staged.character!==ctx.trust.character||
+    now()>=currentStage.staged.expiresAt||
+    ctx.applied>=dry.sequence)
+    throw Error('Signed staging invalidated before sandbox reconstruction');
+   const report=simulateDetachedRestartRecovery({
+    activeConfig,profile:release.profile,character:ctx.trust.character
+   });
+   const faults=simulateDetachedRestartRecovery.allowedFaults.map(faultAt=>{
+    const result=simulateDetachedRestartRecovery({
+     activeConfig,profile:release.profile,character:ctx.trust.character,
+     faultAt
+    });
+    return {fault:faultAt,phase:result.phase,
+     liveConfigUntouched:result.liveConfigUntouched,
+     sandboxRollbackVerified:result.sandboxRollbackVerified,
+     restartAuthorized:result.restartAuthorized};
+   });
+   const after=state(),again=current();
+   if(!after.staged?.memoryVerified||
+    after.staged.sequence!==dry.sequence||
+    after.staged.sha256!==dry.sha256||
+    again.trust.target!==ctx.trust.target||
+    again.trust.character!==ctx.trust.character||
+    again.trust.pinnedPublicJwk.x!==ctx.trust.pinnedPublicJwk.x||
+    again.trust.pinnedPublicJwk.y!==ctx.trust.pinnedPublicJwk.y||
+    again.applied!==ctx.applied||now()>=release.expiresAt)
+    throw Error('Signed staging changed during fault rehearsal');
+   const isolated=faults.every(x=>x.liveConfigUntouched===true&&
+    x.restartAuthorized===false);
+   return { ...report,ok:report.ok&&isolated,
+    sequence:dry.sequence,sha256:dry.sha256,
+    faultCases:faults,
+    faultContainmentObserved:isolated,
+    sandboxFaultsAllRestored:faults.every(x=>x.sandboxRollbackVerified===true),
+    actualRollbackCertified:false,
+    controllerReconstructionTested:false,remoteAccountRollbackVerified:false,
+    restartAuthorized:false,transactionCommitted:false,
+    readyForActivation:false,applied:false,acknowledged:false};
+  }catch(e){
+   return {ok:false,mode:'detached-sandbox-only',
+    reason:String(e?.message??e).slice(0,130),
+    actualRollbackCertified:false,restartAuthorized:false,
+    transactionCommitted:false,readyForActivation:false,
+    applied:false,acknowledged:false};
+  }
+ }
  function discard(){
   try{
    const {trust,storage}=current();
@@ -203,7 +270,7 @@ function createVerifiedConfigStaging({
   }catch(e){memory=null;lastError=String(e?.message??e).slice(0,160);return false;}
  }
  function dispose(){memory=null;disposed=true;}
- return {stage,dryRun,status:state,discard,dispose};
+ return {stage,dryRun,rehearse,status:state,discard,dispose};
 }
 return createVerifiedConfigStaging;
 })();

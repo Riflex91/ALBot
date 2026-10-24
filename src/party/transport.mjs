@@ -84,7 +84,7 @@ export function fitHeartbeat(data,maxLength=4200){
  // uses these counts to avoid allocating duplicate farming quotas. They
  // matter more than optional diagnostic/skill/market telemetry, but lose
  // priority to the core identity, item demand and material requests below.
- for(const key of ['lootReceipts','itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','roles','activity','skills','mluck','supplies','farmPlan']){
+ for(const key of ['lootReceipts','itemTransferEvidence','impactIntents','performance','stock','adaptive','advice','capabilities','gearOrders','roles','activity','skills','supplies','farmPlan']){
   delete d[key];if(length()<=maxLength)return d;
  }
  // Full, session-bound gear.slots is required by allocation.offer(), reserve()

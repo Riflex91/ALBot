@@ -91,6 +91,7 @@ import {observedCharacterTelemetry,observedBankTelemetry} from './runtime/teleme
 import {createGameRelaySender,GAME_RELAY_INTERVAL_MS} from './runtime/telemetry-relay-sender.mjs';
 import {createConfigSyncPreview} from './runtime/config-sync-preview.mjs';
 import {createVerifiedConfigStaging} from './runtime/config-sync-stage.mjs';
+import {captureLocalConfigSafePoint,assessConfigActivationPreflight} from './runtime/config-sync-safe-point.mjs';
 import {createAutomaticTelemetrySender,AUTO_TELEMETRY_INTERVAL_MS} from './runtime/telemetry-auto-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
@@ -524,6 +525,11 @@ export function install(root){
     telemetryAutoInterval=null;telemetryAuto?.dispose();
     configSyncPreview?.dispose();
   });
+  // Snapshot-only local safety observation. There is no authority to apply
+  // Full-v1 settings or commit an applied cursor from this endpoint.
+  const configActivationPreflight=()=>assessConfigActivationPreflight(
+   captureLocalConfigSafePoint(bot,{disposed}),
+   configSyncPreview?.status()??null,{now:now()});
   const api={version:VERSION,schemaId:cfg.general.testLogging!==undefined?FULL_DESCRIPTOR.schemaId:cfg.production?.strategy?P3P4_DESCRIPTOR.schemaId:cfg.world?INTEGRATION_DESCRIPTOR.schemaId:cfg.production?ECONOMY_DESCRIPTOR.schemaId:LIVE_DESCRIPTOR.schemaId,
     start(){
       if(disposed)return false;if(bot.running)return true;
@@ -591,9 +597,13 @@ export function install(root){
       }
       return true;
     },
-    configSyncStatus:()=>configSyncPreview?.status()??{
-      mode:'unavailable',configured:false,applied:false,acknowledged:false
-    },
+    configSyncStatus:()=>({
+      ...(configSyncPreview?.status()??{
+       mode:'unavailable',configured:false,applied:false,acknowledged:false
+      }),
+      safePoint:configActivationPreflight()
+    }),
+    configActivationPreflight:()=>configActivationPreflight(),
     openConfigSync(){
       if(disposed||!configSyncPreview)return false;
       return configSyncPreview.open();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {automaticOperatingStockRule,operatingStockFloor,bankOperatingStockRule,bankOperatingReserveNeed,operatingReserveCohort} from '../src/items/operating-stock.mjs';
+import {automaticOperatingStockRule,operatingStockFloor,bankOperatingStockRule,bankOperatingReserveNeed,operatingReserveCohort,verifiedAvailableOperatingStockQuantity} from '../src/items/operating-stock.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
 import {FULL_DESCRIPTOR} from '../src/config/full.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
@@ -217,4 +217,49 @@ test('W04 nonstackable plain material cannot pretend to be a bank multi-copy sta
  assert.equal(bankOperatingReserveNeed(bot,{name:'ore',q:2}),null);
  itemRule.batch=1;
  assert.equal(bankOperatingStockRule(bot,{name:'ore'})?.batch,1);
+});
+
+test('W02 unencumbered physical count excludes same-variant locked and reserved stacks',()=>{
+ const bot=fixture(),G=bot.p.G;
+ const item={name:'scroll0',q:20};
+ const carried=[{name:'scroll0',q:20},
+  {name:'scroll0',q:90,locked:true},
+  {name:'scroll0',q:70,reserved:true},
+  {name:'scroll0',q:40,giveaway:true},
+  {name:'scroll0',q:30,equipped:true}];
+ assert.equal(verifiedAvailableOperatingStockQuantity(G,carried,item),20);
+ bot.p.c.items=carried;
+ assert.deepEqual(bankOperatingReserveNeed(bot,item),{
+  floor:110,held:20,missing:90});
+ assert.equal(bankOperatingStockRule(bot,item),null,
+  'already committed copies never satisfy the carried floor for bank sale');
+ carried[1].locked=false;
+ assert.equal(verifiedAvailableOperatingStockQuantity(G,carried,item),110);
+ assert.equal(bankOperatingReserveNeed(bot,item),null);
+ assert.ok(bankOperatingStockRule(bot,item),
+  'bank sale resumes only after free copies actually cover the reserve');
+});
+
+test('W02 same-variant encumbrances never inflate autonomous NPC sale quantity',()=>{
+ const bot=fixture(),item=bot.p.c.items[0];
+ bot.p.c.items.push({name:'scroll0',q:350,locked:true});
+ bot.p.c.items.push({name:'scroll0',q:100,reserved:true});
+ const r=automaticOperatingStockRule(bot,item);
+ assert.equal(r?.keep,100);
+ assert.equal(r?.batch,190,'only 300 unencumbered units minus 110 protected');
+ assert.equal(bot.economy.spare(0,r),190);
+ item.reserved=true;
+ assert.equal(bot.economy.spare(0,r),0,
+  'a late source reservation revokes pending automatic sale');
+ assert.equal(automaticOperatingStockRule(bot,item),null);
+});
+
+test('W02 malformed encumbered stack invalidates physical inventory proof',()=>{
+ const bot=fixture(),item={name:'scroll0',q:20};
+ bot.p.c.items=[item,{name:'scroll0',q:10000,reserved:true}];
+ assert.equal(verifiedAvailableOperatingStockQuantity(bot.p.G,bot.p.c.items,item),null);
+ assert.equal(bankOperatingReserveNeed(bot,item),null);
+ assert.equal(bankOperatingStockRule(bot,item),null);
+ bot.p.c.items[1].q=null;
+ assert.equal(verifiedAvailableOperatingStockQuantity(bot.p.G,bot.p.c.items,item),null);
 });

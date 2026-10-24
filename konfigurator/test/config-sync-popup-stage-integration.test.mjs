@@ -7,6 +7,7 @@ import {importProfile,envelope} from '../../editor/lib/contract.mjs';
 import {signer,preparePrivateRelease} from '../worker/private-config-release.mjs';
 import {createConfigSyncPreview} from '../../src/runtime/config-sync-preview.mjs';
 import {createVerifiedConfigStaging} from '../../src/runtime/config-sync-stage.mjs';
+import {captureLocalConfigSafePoint,assessConfigActivationPreflight} from '../../src/runtime/config-sync-safe-point.mjs';
 import {CONFIG_POPUP_ORIGIN,CONFIG_READY,CONFIG_RELEASE,CONFIG_REQUEST}
  from '../public/config-sync-protocol.mjs';
 
@@ -147,4 +148,39 @@ test('TTL expiry and changed applied cursor invalidate prior verified staging me
  assert.equal(moved.verified,null);
  assert.equal(moved.applied,false);
  y.receiver.dispose();
+});
+
+test('fresh real P-256 popup stage can be locally quiescent but cannot authorize activation or ACK',async()=>{
+ const {identity,release}=await signed(),x=setup(identity);
+ x.dispatch(CONFIG_RELEASE,{nonce:x.request(),release});
+ const stageStatus=await settle(x.receiver);
+ assert.equal(stageStatus.staged.memoryVerified,true);
+ const character={name:CHARACTER,rip:false,hp:1000,moving:false,target:null};
+ const bot={
+  p:{headless:false,c:character,entities:{},
+   parent:{location:{origin:'https://adventure.land'},smart:{moving:false}}},
+  me:{name:CHARACTER,role:'farmer'},teamNames:[CHARACTER],
+  running:false,target:null,movement:{order:null},
+  exec:{pending:new Map(),frame:null,waiting:new Map()},
+  checkpoint:{durable:true},journal:null,inventoryBlocked:false,
+  bank:{pending:false},logistics:{reserved:false},gold:{reserved:false},
+  lifecycleChanging:false,teamTravel:{blocked:false},
+  account:{rotationPending:()=>false}
+ };
+ const result=assessConfigActivationPreflight(
+  captureLocalConfigSafePoint(bot),stageStatus,{now:CLOCK});
+ assert.equal(result.locallyQuiescent,true);
+ assert.equal(result.signedStageVerified,true);
+ assert.equal(result.stagedSequence,release.sequence);
+ assert.equal(result.readyForActivation,false);
+ assert.equal(result.applied,false);
+ assert.equal(result.acknowledged,false);
+ bot.exec.pending.set('send_item',{resources:['items']});
+ const blocked=assessConfigActivationPreflight(
+  captureLocalConfigSafePoint(bot),x.receiver.status(),{now:CLOCK});
+ assert.equal(blocked.locallyQuiescent,false);
+ assert.ok(blocked.blockers.includes('execution-jobs-pending'));
+ assert.equal(blocked.readyForActivation,false);
+ assert.equal(x.storage['albot:config:applied:v1:'+identity.target],undefined);
+ x.receiver.dispose();
 });

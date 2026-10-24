@@ -701,3 +701,30 @@ test('W03/W04 realm-tampered or malformed chain blocks value work on reload',()=
   assert.equal(calls.length,0);
  }
 });
+
+test('W04 bank reserve staging ignores committed peer-stock-like local copies',async()=>{
+ const {bot,calls,records,inv,bankPack,sales}=operatingBankFixture();
+ inv[1].q=20;
+ inv[2]={name:'scroll0',q:100,reserved:true};
+ bankPack[26]={name:'scroll0',q:80};
+ // Unencumbered reserve is 20, not 120. The staged withdrawal must
+ // complete the remaining 80 before even evaluating a bank sale.
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(bot.bank.preventiveDisposition(),true);
+ assert.equal(calls[0].kind,'bank.retrieve');
+ assert.equal(calls[0].params.details.quantity,80);
+ assert.equal(calls[0].params.guard(),true);
+ inv[2].reserved=false;
+ assert.equal(calls[0].params.guard(),false,
+  'a changed inventory reservation revokes a queued stage');
+ inv[2].reserved=true;
+ assert.equal(calls[0].params.guard(),true);
+ await calls[0].params.call();
+ assert.equal(bot.bank.recover(),true);
+ assert.equal(records.get('albot:bank-reserve-chain:M').phase,'dispatched');
+ bot.session='m-02';bot.bank=createBank(bot);
+ assert.equal(bot.bank.preventiveDisposition(),false);
+ assert.equal(records.get('albot:bank-reserve-chain:M'),null,
+  'reload validates exactly 100 free units, ignoring the reserved stack');
+ assert.equal(sales.length,0);
+});

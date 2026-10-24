@@ -1,4 +1,5 @@
-// Verified, character-scoped staging building block (not wired to live runtime).
+// Verified, character-scoped staging building block; exposed via popup preview.
+// Not an activation or ACK path.
 // Stores ONLY a bounded receipt of verification in localStorage. The private
 // Full-v1 profile remains ephemeral in memory, and is never applied or ACKed.
 import {configPreviewVerify} from './config-sync-preview.mjs';

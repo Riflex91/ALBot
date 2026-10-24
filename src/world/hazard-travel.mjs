@@ -1,7 +1,7 @@
 import {planHazardItinerary,segmentThreatFree,threatRegions} from './hazard-itinerary.mjs';
-const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-const same=(a,b)=>a?.map===b?.map&&(a?.in??a?.map)===(b?.in??b?.map);
-const point=(map,p)=>({map,x:p.x,y:p.y});
+const htDistance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const htSame=(a,b)=>a?.map===b?.map&&(a?.in??a?.map)===(b?.in??b?.map);
+const htPoint=(map,p)=>({map,x:p.x,y:p.y});
 export function createHazardTravel(bot){
  const {p,exec}=bot;
  let trip=null,lastReject='',lastRejectAt=0;
@@ -21,7 +21,7 @@ export function createHazardTravel(bot){
    try{return p.call('can_move',{map,x,y,going_x:toX,going_y:toY,
     base:p.c.base})===true;}catch{return false;}
   }
-  if(p.c.map===map&&dist(p.c,{x,y})<2&&p.has('can_move_to')){
+  if(p.c.map===map&&htDistance(p.c,{x,y})<2&&p.has('can_move_to')){
    try{return p.call('can_move_to',toX,toY)===true;}catch{return false;}
   }
   return false;
@@ -31,19 +31,19 @@ export function createHazardTravel(bot){
     !p.G?.maps?.[p.c.map])return {ok:false,reason:'invalid-runtime-state'};
   const next=s.steps[s.index];
   if(!next)return {ok:true};
-  const current=point(p.c.map,p.c);
+  const current=htPoint(p.c.map,p.c);
   if(next.type==='move'){
-   if(!same(current,next)||!traversable(current.map,current.x,current.y,next.x,next.y))
+   if(!htSame(current,next)||!traversable(current.map,current.x,current.y,next.x,next.y))
     return {ok:false,reason:'direct-collision-changed'};
    const reg=threatRegions(p.G,current.map,bot.monsters?.()??[]);
-   if(!segmentThreatFree(reg,current,point(next.map,next)))return {
+   if(!segmentThreatFree(reg,current,htPoint(next.map,next)))return {
     ok:false,reason:'hostile-route-segment-changed'};
   }else if(next.type==='transport'){
-   if(p.c.map!==next.from.map||dist(p.c,next.from)>36||
+   if(p.c.map!==next.from.map||htDistance(p.c,next.from)>36||
       !p.G.maps?.[next.map]?.spawns?.[next.spawn])
     return {ok:false,reason:'portal-origin-unverified'};
    const reg=threatRegions(p.G,next.map,bot.monsters?.()??[]);
-   if(!segmentThreatFree(reg,point(next.map,next),point(next.map,next)))
+   if(!segmentThreatFree(reg,htPoint(next.map,next),htPoint(next.map,next)))
     return {ok:false,reason:'portal-arrival-hostile'};
   }
   return {ok:true};
@@ -88,7 +88,7 @@ export function createHazardTravel(bot){
    abort('bounded-travel-timeout');return true;
   }
   if(s.index>=s.steps.length){
-   if(same(p.c,s.destination)&&dist(p.c,s.destination)<=
+   if(htSame(p.c,s.destination)&&htDistance(p.c,s.destination)<=
       Math.max(12,s.destination.radius??20)){
     trip=null;bot.event?.('travel.hazardArrived',{
      id:s.id,owner:s.owner,map:p.c.map});
@@ -97,11 +97,11 @@ export function createHazardTravel(bot){
   }
   const step=s.steps[s.index];
   const observed=step.type==='move'?
-   p.c.map===step.map&&dist(p.c,step)<=Math.max(5,Math.min(15,(s.destination.radius??15)/2)):
+   p.c.map===step.map&&htDistance(p.c,step)<=Math.max(5,Math.min(15,(s.destination.radius??15)/2)):
    p.c.map===step.map&&
-   (p.c.in??p.c.map)===(step.toIn??step.map)&&dist(p.c,step)<=90;
+   (p.c.in??p.c.map)===(step.toIn??step.map)&&htDistance(p.c,step)<=90;
   if(observed&&!exec.pending?.has('travel.hazard')){
-   s.index++;s.lastProgress=Date.now();s.last=point(p.c.map,p.c);
+   s.index++;s.lastProgress=Date.now();s.last=htPoint(p.c.map,p.c);
    bot.event?.('travel.hazardStepConfirmed',{id:s.id,index:s.index,
     type:step.type,map:p.c.map});
    return true;
@@ -114,7 +114,7 @@ export function createHazardTravel(bot){
   const admitted=()=>trip===s&&s.index<s.steps.length&&
    bot.running&&!p.c.rip&&!p.c.stand&&!exec.busy('stand')&&
    tripProof(s).ok===true;
-  // Movement and portals share the same resource. Executor rechecks the
+  // Movement and portals share the htSame resource. Executor rechecks the
   // native collision and live threat proof immediately before dispatch.
   const accepted=exec.run('travel.hazard',['movement'],admitted,
    ()=>step.type==='move'?p.call('move',step.x,step.y):
@@ -122,13 +122,13 @@ export function createHazardTravel(bot){
     priority:700,timeout:step.type==='move'?25000:22000,
     delay:150,waitForObservation:true,
     observe:()=>trip===s&&(
-     step.type==='move'?p.c.map===step.map&&dist(p.c,step)<=12:
+     step.type==='move'?p.c.map===step.map&&htDistance(p.c,step)<=12:
      p.c.map===step.map&&(p.c.in??p.c.map)===(step.toIn??step.map)&&
-      dist(p.c,step)<=90),
+      htDistance(p.c,step)<=90),
     onSettle(result,error){
      if(trip!==s)return;
      if(result==='confirmed'){
-      s.index++;s.lastProgress=Date.now();s.last=point(p.c.map,p.c);
+      s.index++;s.lastProgress=Date.now();s.last=htPoint(p.c.map,p.c);
       bot.event?.('travel.hazardStepConfirmed',{id:s.id,index:s.index,
        type:step.type,map:p.c.map});
      }else if(result!=='cancelled'){
@@ -145,5 +145,5 @@ export function createHazardTravel(bot){
   get order(){return trip?{id:trip.id,owner:trip.owner,
    dest:trip.destination,mode:'hazard-itinerary'}:null;},
   matches:(goal,owner)=>!!trip&&trip.owner===owner&&
-   same(goal,trip.destination)&&dist(goal,trip.destination)<30};
+   htSame(goal,trip.destination)&&htDistance(goal,trip.destination)<30};
 }

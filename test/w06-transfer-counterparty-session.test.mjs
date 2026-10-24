@@ -39,7 +39,10 @@ test('W06 paired fresh physical losses and gains stay nonauthoritative',()=>{
  assert.equal(proof.conclusion,'corroborated-snapshots-not-server-receipt');
 });
 test('W06 stale local evidence is never paired with a fresh peer heartbeat',()=>{
- const old=sender(now-20000);
+ const historicalJournal={...senderSnapshot(),at:now-30000};
+ const old=inspectItemTransferEvidence({journal:historicalJournal,
+  inventory:[{name:'ore',q:2},null],gold:100,
+  owner:'Sender',session:'sender-old',realm,now:now-20000});
  assert.equal(old.verified,true,'2-minute journal check alone admits this observation');
  const result=inspectPairedItemTransfer(old,peer(),{realm,now,ttlMs:10000});
  assert.equal(result.eligible,false);

@@ -373,7 +373,8 @@ export function createTeamPlan(bot){
   if(!plan.objective)return true;if(plan.kind==='elixir')return bot.elixirs?.objective()?.objective===plan.objective||bot.transport.fresh(plan.leader)?.elixir?.item===plan.item;
   return materialRequests().some(r=>r.objective===plan.objective&&
     (!r.expires||r.expires>Date.now())&&r.monster===plan.target&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]]))&&
-    (materialRequestHasWork(r,bot.farmers)||r.quantity>0));
+    (materialRequestHasWork(r,bot.farmers,name=>name===me.name?bot.session:bot.transport?.fresh?.(name)?.session)||
+     r.quantity>0));
  }
  function observe(){if(me.name!==bot.leader)return;const now=Date.now(),dt=Math.max(0,Math.min(5000,now-previous));previous=now;if(!current||!samePlace(p.c,current)||distance(p.c,current)>220){area=null;lastXp=p.c.xp??0;lastGold=p.c.gold??0;return;}
   const id=areaKey(current.key,now),old=verifiedAreaHistory(history[id],now)??{seconds:0,xp:0,gold:0,empty:0,foreign:0,deaths:0,lostKills:0,samples:0};const visible=bot.monsters().filter(m=>m.mtype===current.target&&distance(p.c,m)<500),foreign=Object.values(p.entities).filter(e=>e.type==='character'&&!bot.teamNames.includes(e.name)&&distance(p.c,e)<500).length;
@@ -491,7 +492,8 @@ export function createTeamPlan(bot){
      samePlace(p.c,current)&&distance(p.c,current)<=65)
    current.arrivedAt=Date.now();
   if(Date.now()-last<Math.min(10000,cfg.world.cacheTtlMs)&&valid(current))return;last=Date.now();capabilities();const raw=knowledgeFingerprint([p.G.monsters,p.G.maps]);if(raw!==definition){definition=raw;graph=mapGraph(p.G);if(current&&!valid(current)){bot.event('plan.drift',{id:current.id,reason:'Spawn-/Monsterdefinition geändert'});current=null;}}
-  const materials=materialRequests(),requests=materials.filter(r=>(materialRequestHasWork(r,bot.farmers)||r.objective===current?.objective&&r.quantity>0)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>Number(b.objective===current?.objective)-Number(a.objective===current?.objective)||(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
+  const materials=materialRequests(),requests=materials.filter(r=>(materialRequestHasWork(r,bot.farmers,name=>name===me.name?bot.session:bot.transport?.fresh?.(name)?.session)||
+     r.objective===current?.objective&&r.quantity>0)&&(!r.expires||r.expires>Date.now())&&allowed(r.monster)&&(!r.sourceFingerprint||r.sourceFingerprint===knowledgeFingerprint([p.G.monsters[r.monster],p.G.drops?.monsters?.[r.monster]])));const elixir=bot.elixirs?.objective();const request=requests.sort((a,b)=>Number(b.objective===current?.objective)-Number(a.objective===current?.objective)||(b.priority??0)-(a.priority??0)||(b.utilityPerHour??0)-(a.utilityPerHour??0))[0]??elixir;
   const combat=combatMembers(bot,true),composition=compositionOptions(bot,true);
   // Availability, not a legacy global AoE opt-out, governs farmer density.
   const aoeAvailable=(bot.farmers??[]).some(name=>{
@@ -777,7 +779,7 @@ export function createTeamPlan(bot){
   bot.reason='Gemeinsamer Gruppenmarsch: '+current.target;
   bot.movement.go(destination,'farm');return true;
  },materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
-  return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
+  return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name,bot.session);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
    if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:summarizeSpawnPressure(ranking).pressure,
    pressureEvidence:summarizeSpawnPressure(ranking),rawLocalPressure:absence,hunt:orderedHunt(),huntFallback:huntFallback||null,switchAdvice,ranking:ranking.slice(0,5),mapEdges:graph.edges.length}),close(){current=null;last=0;}};
 }

@@ -30,6 +30,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- bot.js dist/albot.bootstrap.auto.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json editor/Bot-Werkstatt.html editor/albot.settings.json
           if ! git diff --cached --quiet; then
-            git commit -m "build(candidate): sync 0.46 physical operating reserve runtime and editor"
+            git commit -m "build(candidate): sync 0.47 physical operating reserve runtime and editor"
             git push origin HEAD:roadmap/w02-w04-unencumbered-physical-operating-reserve-20261024
           fi

@@ -7,6 +7,7 @@ import {importProfile,envelope} from '../../editor/lib/contract.mjs';
 import {signer,preparePrivateRelease} from '../worker/private-config-release.mjs';
 import {handleRequest} from '../worker/index.mjs';
 import {verifySignedConfigRelease} from '../public/config-sync-contract.mjs';
+import {fakeSignedHighwaterDb} from './signed-highwater-db-fixture.mjs';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const fixture=JSON.parse(await readFile(new URL('../../profiles/full-team.json',import.meta.url),'utf8'));
 const form=()=>envelope(FULL_DESCRIPTOR,importProfile(FULL_DESCRIPTOR,fixture));
@@ -40,6 +41,11 @@ async function scenario(){
  const identity=await signer(env,webcrypto.subtle);
  const profile=form();
  const release=await preparePrivateRelease({profile,identity,now:Date.now()});
+ env.DB=fakeSignedHighwaterDb();
+ // The fixture represents the prior explicit owner-authorized registration.
+ env.DB.rows.set(identity.target,{key_id:identity.keyId,
+  sequence:release.sequence,sha256:release.sha256,
+  release_sha:'b'.repeat(40),updated_at:Date.now()});
  let profileData=profile,releaseData=release;
  const requests=[];
  const fetcher=async url=>{
@@ -98,4 +104,22 @@ test('cannot deliver unsigned, mismatched, expired or absent private profile',as
  s.setRelease({...s.release,signature:invalidFirst+s.release.signature.slice(1)});
  assert.equal((await s.call()).status,503);
  assert.equal((await s.call('GET',null)).status,401);
+});
+
+test('a valid P256 release is not deliverable after D1 reset, signer downgrade or GitHub blob replacement',async()=>{
+ const x=await scenario();
+ x.env.DB.rows.clear();
+ assert.equal((await x.call()).status,503);
+ x.env.DB.rows.set(x.identity.target,{
+  key_id:x.identity.keyId,sequence:x.release.sequence+1,
+  sha256:x.release.sha256,release_sha:'b'.repeat(40),updated_at:Date.now()});
+ assert.equal((await x.call()).status,503);
+ x.env.DB.rows.set(x.identity.target,{
+  key_id:x.identity.keyId,sequence:x.release.sequence,
+  sha256:x.release.sha256,release_sha:'a'.repeat(40),updated_at:Date.now()});
+ assert.equal((await x.call()).status,503);
+ x.env.DB.noTable=true;
+ assert.equal((await x.call()).status,503);
+ x.env.DB.noTable=false;
+ assert.equal((await x.call('GET',null)).status,401);
 });

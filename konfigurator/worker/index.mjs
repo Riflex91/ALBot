@@ -10,7 +10,8 @@ import {signer,preparePrivateRelease,previousRelease,releaseInfo}
  from './private-config-release.mjs';
 import {githubReleaseFile,assertPrivateRepository,ReleaseStorageError}
  from './private-release-store.mjs';
-import {readSignedReleaseHighwater,recordSignedReleaseHighwater}
+import {readSignedReleaseHighwater,recordSignedReleaseHighwater,
+ requireSignedPublicationAnchor}
  from './signed-release-highwater.mjs';
 // Cloudflare Access is required for every page/API read and mutation. Never
 // expose GitHub credentials to the browser or published Adventure Land code.
@@ -312,13 +313,23 @@ export async function handleRequest(request,env,ctx={},deps={}){
    if(preflight.profile.sha256!==body.sha256)
     return failure('Profil-Fingerprint hat sich geändert',409);
    const identity=await signer(env);
+   // Missing D1 table or record read is NEVER treated as an empty account.
+   const highwater=await readSignedReleaseHighwater(env.DB,{
+    target:identity.target,keyId:identity.keyId});
    const previous=await githubReleaseFile(env,{fetcher});
    if(previous.sha!==body.previousReleaseSha)
     return failure('Signierter Release wurde zwischenzeitlich geändert',409);
    if(previous.document){
-    await previousRelease(previous.document,identity);
+    const previousSequence=await previousRelease(previous.document,identity);
+    if(!highwater.anchored||
+     highwater.anchor.sequence!==previousSequence||
+     highwater.anchor.sha256!==previous.document.sha256||
+     highwater.anchor.releaseSha!==previous.sha)
+     return failure('Bisheriger privater Release ist nicht mit D1 verankert',409);
     if(previous.document.sha256===body.sha256&&previous.document.expiresAt>Date.now())
      return failure('Diese Profilrevision ist bereits aktuell signiert',409);
+   }else if(highwater.anchored){
+    return failure('Signierter Release fehlt trotz vorhandenem D1-Höchststand',409);
    }
    // Never commit private profile contents into a public repository.
    await assertPrivateRepository(env,fetcher);
@@ -326,8 +337,15 @@ export async function handleRequest(request,env,ctx={},deps={}){
     profile:source.document,prior:previous.document,identity});
    const saved=await githubReleaseFile(env,{method:'PUT',
     document:release,sha:previous.sha,fetcher});
+   // GitHub CAS and D1 CAS cannot form a distributed transaction. A D1
+   // failure leaves delivery blocked pending explicit verified reconciliation.
+   const anchored=await recordSignedReleaseHighwater(env.DB,{
+    target:identity.target,keyId:identity.keyId,
+    sequence:release.sequence,sha256:release.sha256,
+    releaseSha:saved.sha,now:Date.now()});
    return json({ok:true,signerReady:true,keyFingerprint:identity.keyId,
-    ...releaseInfo(release,body.sha256,saved.sha),commit:saved.commit});
+    ...releaseInfo(release,body.sha256,saved.sha),commit:saved.commit,
+    publicationAnchorReady:true,publicationAnchorSequence:anchored.anchor.sequence});
   }catch(error){
    if(error instanceof ReleaseStorageError)
     return failure(error.message,error.status);
@@ -395,12 +413,27 @@ export async function handleRequest(request,env,ctx={},deps={}){
    const previous=await githubReleaseFile(env,{fetcher});
    if(previous.document)await previousRelease(previous.document,identity);
    const release=releaseInfo(previous.document,preflight.profile.sha256,previous.sha);
-   // A signed blob alone is not a deliverable private release: confirm
-   // repository privacy before claiming Access-popup retrieval readiness.
-   if(release.signed)await assertPrivateRepository(env,fetcher);
+   // A mathematically valid signed release is not deliverable until the
+   // separately stored private publication high-water matches exactly.
+   let publicationAnchorReady=false;
+   if(release.signed){
+    await assertPrivateRepository(env,fetcher);
+    try{
+     await requireSignedPublicationAnchor(env.DB,{
+      target:identity.target,keyId:identity.keyId,
+      sequence:previous.document.sequence,
+      sha256:previous.document.sha256,releaseSha:previous.sha});
+     publicationAnchorReady=true;
+    }catch{
+     // Truthful availability: no forged ready state when D1 is unavailable.
+     publicationAnchorReady=false;
+    }
+   }
    return json({ok:true,configured:true,...preflight,
     signerReady:true,keyFingerprint:identity.keyId,...release,
-    deliveryReady:release.signed,deliveryMode:'access-popup-only'});
+    publicationAnchorReady,
+    deliveryReady:release.signed&&publicationAnchorReady,
+    deliveryMode:'access-popup-only'});
   }catch{return failure('Privater Konfigurationssignierer oder Release nicht überprüfbar',503);}
  }
  // Cloudflare-Access protected only: no game-origin CORS and no Access bypass.
@@ -421,6 +454,11 @@ export async function handleRequest(request,env,ctx={},deps={}){
    await previousRelease(signed.document,identity);
    if(!releaseInfo(signed.document,digest.profile.sha256,signed.sha).signed)
     return failure('Signierte Revision abgelaufen oder Profil inzwischen geändert',409);
+   // A still-valid older signature must not bypass the D1 publishing fence.
+   await requireSignedPublicationAnchor(env.DB,{
+    target:identity.target,keyId:identity.keyId,
+    sequence:signed.document.sequence,sha256:signed.document.sha256,
+    releaseSha:signed.sha});
    return json({ok:true,format:'albot-config-delivery/v1',
     release:signed.document});
   }catch{return failure('Signierte private Revision nicht überprüfbar',503);}

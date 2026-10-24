@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {findLocalSafePath,planHazardItinerary,segmentThreatFree,
  threatRegions} from '../src/world/hazard-itinerary.mjs';
 import {createMovement} from '../src/core/movement.mjs';
+import {createHazardTravel} from '../src/world/hazard-travel.mjs';
 const here=(map,x,y)=>({map,x,y});
 const pack=(type,boundary)=>({type,boundary,count:5,grow:true});
 function world(){
@@ -217,4 +218,42 @@ test('revoking transporter permissions before departure aborts the itinerary',()
  delete p.G.npcs.transporter.places.desertland;
  assert.equal(queued.guard(),false);
  assert.equal(commands.some(q=>q[0]==='transport'),false);
+});
+
+test('new roaming aggressive monster interrupts an already dispatched native move',()=>{
+ const g=world();
+ const c={name:'My_Ranger1',map:'desertland',in:'desertland',
+  x:0,y:-380,hp:5000,base:{h:8,v:8},moving:true};
+ let live=[],commands=[];
+ const p={c,G:g,has:()=>true,
+  call:(method,...args)=>{
+   commands.push([method,...args]);
+   if(method==='can_move'||method==='can_move_to')return true;
+   return Promise.resolve({success:true});
+  }};
+ const exec={pending:new Map(),
+  busy:(r)=>[...exec.pending.values()].some(v=>v.resources.includes(r)),
+  cancelResource:(r)=>{for(const [key,v] of exec.pending)
+   if(v.resources.includes(r))exec.pending.delete(key);},
+  run:(key,resources,guard,invoke,options)=>{
+   if(!guard())return false;
+   exec.pending.set(key,{resources,options});
+   invoke();return true;
+  }};
+ const events=[],bot={p,exec,session:'threat-replan',running:true,
+  cfg:{world:{excludedMaps:[]}},monsters:()=>live,
+  event:(...e)=>events.push(e)};
+ const nav=createHazardTravel(bot);
+ assert.equal(nav.start({map:'desertland',x:1000,y:0,radius:15},'farm'),true);
+ const first=nav.session().steps[0];
+ assert.equal(first.type,'move');
+ nav.poll();
+ assert.equal(exec.pending.has('travel.hazard'),true);
+ live=[{id:'prat-threat',type:'monster',mtype:'prat',hp:9200,
+  map:'desertland',x:(c.x+first.x)/2,y:(c.y+first.y)/2}];
+ nav.poll();
+ assert.equal(nav.active,false,'unsafe in-flight route must not finish');
+ assert.equal(exec.pending.size,0);
+ assert.ok(commands.some(x=>x[0]==='stop'&&x[1]==='move'));
+ assert.ok(events.some(x=>x[0]==='travel.hazardAborted'));
 });

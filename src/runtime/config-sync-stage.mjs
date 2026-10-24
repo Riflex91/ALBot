@@ -5,6 +5,7 @@
 import {configPreviewVerify} from './config-sync-preview.mjs';
 import {FULL_DESCRIPTOR} from '../config/full.mjs';
 import {validateProfile} from '../../editor/lib/contract.mjs';
+import {evaluateDetachedConfigCandidate} from './config-sync-detached-candidate.mjs';
 
 export const createVerifiedConfigStaging=(()=>{
 const TARGET=/^[A-Za-z0-9_.:/-]{1,128}$/;
@@ -63,7 +64,7 @@ function createVerifiedConfigStaging({
   typeof readCharacter!=='function'||typeof now!=='function'||
   typeof cryptoObject?.subtle?.verify!=='function')
   throw Error('Browser staging capabilities unavailable');
- let memory=null,inFlight=false,disposed=false,lastError=null;
+ let memory=null,inFlight=false,disposed=false,lastError=null,planning=false;
  const current=()=>{
   if(disposed)throw Error('Staging disposed');
   const trust=checkTrust(readTrust(),readCharacter());
@@ -93,7 +94,7 @@ function createVerifiedConfigStaging({
     lastError='Stored staging receipt expired or superseded';
    }
   }catch(e){reason=String(e?.message??e).slice(0,140);memory=null;}
-  return {mode:'stage-only',configured,reason,inFlight,appliedHighwater,
+  return {mode:'stage-only',configured,reason,inFlight,planning,appliedHighwater,
    staged:record?{
     sequence:record.sequence,sha256:record.sha256,character:record.character,
     target:record.target,verifiedAt:record.verifiedAt,expiresAt:record.expiresAt,
@@ -102,7 +103,7 @@ function createVerifiedConfigStaging({
    lastError,readyForActivation:false,applied:false,acknowledged:false,disposed};
  }
  async function stage(release){
-  if(inFlight||disposed)return false;
+  if(inFlight||planning||disposed)return false;
   inFlight=true;const alreadyVerified=!!memory;memory=null;lastError=null;
   try{
    const {trust,storage,applied}=current();
@@ -152,6 +153,46 @@ function createVerifiedConfigStaging({
   }catch(e){memory=null;lastError=String(e?.message??e).slice(0,160);return false;}
   finally{inFlight=false;}
  }
+ // Dry-run cannot authorize or modify active controllers. Signed bytes are
+ // reverified against the independently pinned key on every invocation.
+ async function dryRun(activeConfig){
+  if(disposed||inFlight||planning)return {
+   ok:false,reason:'staging unavailable or concurrent operation',
+   readyForActivation:false,applied:false,acknowledged:false};
+  planning=true;
+  try{
+   const before=state();
+   if(before.configured!==true||!before.staged?.memoryVerified||
+    !memory?.release||!Number.isSafeInteger(before.appliedHighwater))
+    throw Error('Staged release not freshly verified in memory');
+   const {trust,applied}=current(),release=structuredClone(memory.release);
+   const t=now();
+   if(!Number.isSafeInteger(t)||t<=0||t>=release.expiresAt)
+    throw Error('Signed release expired');
+   const checked=await configPreviewVerify(release,trust.pinnedPublicJwk,
+    trust.target,applied,t,cryptoObject.subtle);
+   if(checked.sequence!==before.staged.sequence||
+    checked.sha256!==before.staged.sha256)
+    throw Error('Signed staging identity changed during dry run');
+   const report=evaluateDetachedConfigCandidate(
+    release.profile,activeConfig,trust.character);
+   const after=state(),again=current();
+   if(!after.staged?.memoryVerified||
+    after.staged.sequence!==checked.sequence||
+    after.staged.sha256!==checked.sha256||
+    again.trust.target!==trust.target||
+    again.trust.character!==trust.character||
+    again.trust.pinnedPublicJwk.x!==trust.pinnedPublicJwk.x||
+    again.trust.pinnedPublicJwk.y!==trust.pinnedPublicJwk.y||
+    again.applied!==applied||now()>=release.expiresAt)
+    throw Error('Trust, staging or applied cursor changed during dry run');
+   return {ok:true,sequence:checked.sequence,sha256:checked.sha256,...report};
+  }catch(error){
+   lastError=String(error?.message??error).slice(0,160);
+   return {ok:false,reason:lastError,mode:'detached-validation-only',
+    readyForActivation:false,applied:false,acknowledged:false};
+  }finally{planning=false;}
+ }
  function discard(){
   try{
    const {trust,storage}=current();
@@ -162,7 +203,7 @@ function createVerifiedConfigStaging({
   }catch(e){memory=null;lastError=String(e?.message??e).slice(0,160);return false;}
  }
  function dispose(){memory=null;disposed=true;}
- return {stage,status:state,discard,dispose};
+ return {stage,dryRun,status:state,discard,dispose};
 }
 return createVerifiedConfigStaging;
 })();

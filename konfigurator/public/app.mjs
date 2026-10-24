@@ -1,6 +1,7 @@
 import {defaultPolicy,validatePolicyDocument,previewGlobalItem} from './policy.mjs';
 import {DASHBOARD_REFRESH_MS,SNAPSHOT_FRESH_MS} from './free-tier.mjs';
 import {telemetrySummary} from './telemetry-summary.mjs';
+import {profileSyncStages} from './sync-stage-model.mjs';
 import {profileView,checkedProfileDocument,setProfileScalar,
  addProfileArrayItem,removeProfileArrayItem,profileEnvelope} from './profile-model.mjs';
 import {renderProfileSections} from './profile-editor.mjs';
@@ -474,14 +475,26 @@ function settings(){
  }
  b.append(node('p','Die private ALBot-Telemetrie wird direkt aus Adventure Land übertragen. Das Relay ist nur ein optionaler Ausweichweg. Kein Token wird auf dieser Seite abgefragt oder angezeigt.','help'));
  b.append(node('p',sourceNote,'help'));
- const sync=card('Konfigurationsabgleich · Vorbereitungsstufe');
- sync.append(notice('Gespeicherte Revisionen können mit einem separat geschützten Signierschlüssel privat vorbereitet werden. Eine Zustellung oder Übernahme durch ALBot ist noch nicht eingerichtet.',true));
+ const sync=card('Konfigurationsabgleich · Nachweisstufen');
+ sync.append(notice('Eine gültig signierte Profilrevision kann über den geschützten Cloudflare-Access-Popup-Abruf bereitstehen. Im Spiel ist nur die manuelle, unabhängige Prüfvorschau vorgesehen. Bereitstellung beweist weder Empfang noch Aktivierung oder eine Charakterbestätigung.',true));
  const check=node('button',syncState.loading?'Prüfe Revision …':'Gespeicherte Revision prüfen','button');
  check.type='button';check.disabled=syncState.loading;
  check.onclick=()=>void refreshSyncStatus();
  sync.append(check);
  if(syncState.error)sync.append(notice('Abgleich fehlgeschlagen: '+syncState.error));
  const entry=syncState.data;
+ if(syncState.loaded&&!syncState.error){
+  const statusLabels={confirmed:'Bestätigt',ready:'Für Popup-Abruf bereit',
+   pending:'Ausstehend',unknown:'Nicht nachgewiesen',
+   unavailable:'Nicht implementiert'};
+  for(const [index,stage] of profileSyncStages(entry).entries()){
+   const line=node('div',undefined,'row sync-revision');
+   line.append(node('span',(index+1)+'. '+stage.label,'muted'),
+    node('strong',statusLabels[stage.state]));
+   sync.append(line);
+  }
+  sync.append(node('p','Es liegen keine authentifizierten Ingame-ACKs vor. Charakterbezogene Empfangszeiten, Aktivierungssequenzen und Abweichungen können daher nicht zuverlässig ausgewiesen werden.','help'));
+ }
  if(entry?.configured===false)sync.append(node('p',
   'Im privaten GitHub-Repository liegt noch kein vollständiges Profil vor.','help'));
  if(entry?.configured===true){
@@ -496,8 +509,9 @@ function settings(){
    ['Signatur gültig bis',entry.release?.expiresAt?
     new Date(entry.release.expiresAt).toLocaleString('de-DE'):'—'],
    ['Signaturschlüssel-Kennung',entry.keyFingerprint??'—'],
-   ['Ins Spiel veröffentlicht','Nein'],
-   ['Vom Spiel bestätigt','Nein']];
+   ['Bereitstellungsmodus','Cloudflare-Access-Popup (manuell)'],
+   ['Direkter Ingame-Abruf','Nicht aktiviert'],
+   ['Authentische Charakter-ACKs','Nicht verfügbar']];
   for(const [key,value] of info){
    const line=node('div',undefined,'row sync-revision');
    line.append(node('span',key,'muted'),node('strong',value));

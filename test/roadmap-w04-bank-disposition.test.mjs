@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {scanBankDispositionWindow} from '../src/merchant/bank-disposition.mjs';
 import {createBank} from '../src/merchant/bank.mjs';
 import {createEconomy} from '../src/merchant/economy.mjs';
-import {bankOperatingReserveNeed} from '../src/items/operating-stock.mjs';
+import {bankOperatingReserveNeed,automaticOperatingStockRule} from '../src/items/operating-stock.mjs';
 import {ITEM_RULE} from '../editor/lib/schema.mjs';
 import {defaultsFor} from '../editor/lib/contract.mjs';
 
@@ -568,4 +568,63 @@ test('W04 invalid null source cannot enter reserve-staging journal',()=>{
  for(let n=0;n<5;n++)bot.bank.preventiveDisposition();
  assert.equal(calls.length,0);
  assert.equal(bot.bank.pending,false);
+});
+
+test('W04 stages multiple live stacks and finishes a final full stack without split',async()=>{
+ const {bot,calls,inv,bankPack,sales}=operatingBankFixture();
+ bot.cfg.merchant.partialBank=false;
+ inv[1].q=20;
+ bankPack[25]={name:'scroll0',q:20};
+ bankPack[26]={name:'scroll0',q:50};
+ bankPack[27]={name:'scroll0',q:40};
+ const quantities=[];
+ for(const expected of [50,20,40]){
+  const before=calls.length;
+  assert.equal(bot.bank.preventiveDisposition(),false);
+  assert.equal(bot.bank.preventiveDisposition(),true);
+  assert.equal(calls.length,before+1);
+  const action=calls.at(-1);
+  assert.equal(action.kind,'bank.retrieve','every step must use durable full-stack journal');
+  assert.equal(action.params.guard(),true);
+  quantities.push(action.params.details.quantity);
+  assert.equal(quantities.at(-1),expected);
+  assert.equal(sales.length,0,'reserve stages may never be a sale');
+  await action.params.call();
+  assert.equal(bot.bank.recover(),true);
+  assert.equal(bot.bank.pending,false,'live receipt required before the next step');
+ }
+ assert.deepEqual(quantities,[50,20,40]);
+ assert.equal(inv.filter(Boolean).reduce((n,i)=>n+(i.name==='scroll0'?i.q:0),0),130);
+ assert.equal(bankOperatingReserveNeed(bot,{name:'scroll0',q:1}),null);
+ assert.equal(automaticOperatingStockRule(bot,inv.find(i=>i?.q===40))?.batch,30,
+  'the final tenfold physical floor stays carried; excess is ordinary inventory');
+ assert.equal(sales.length,0,'no fictional NPC sale receipt');
+});
+
+test('W04 no split: a terminal whole-stack overfill never overrides explicit keep/cap',()=>{
+ const {bot,calls,inv,bankPack,setRule}=operatingBankFixture();
+ bot.cfg.merchant.partialBank=false;
+ inv[1].q=90;
+ bankPack[27]={name:'scroll0',q:40};
+ setRule({...defaultsFor(ITEM_RULE),enabled:true,role:'all',item:'scroll0',
+  action:'keep',excessAction:'sell',keep:100,teamReserve:0,maxCount:100,batch:9999});
+ for(let n=0;n<4;n++)bot.bank.preventiveDisposition();
+ assert.equal(calls.length,0);
+ assert.equal(bot.bank.pending,false);
+});
+
+test('W04 terminal full-stack dispatch refuses late inventory or bank proof drift',()=>{
+ for(const drift of ['held','bank']){
+  const {bot,calls,inv,bankPack}=operatingBankFixture();
+  bot.cfg.merchant.partialBank=false;
+  inv[1].q=90;
+  bankPack[27]={name:'scroll0',q:40};
+  bot.bank.preventiveDisposition();
+  assert.equal(bot.bank.preventiveDisposition(),true);
+  assert.equal(calls[0].kind,'bank.retrieve');
+  assert.equal(calls[0].params.guard(),true);
+  if(drift==='held')inv[1].q=91;
+  else bankPack[27].q=39;
+  assert.equal(calls[0].params.guard(),false,drift);
+ }
 });

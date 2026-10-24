@@ -125,6 +125,7 @@ test('Worker preparation requires Access, origin, exact revision, private repo a
  assert.equal(status.signed,false);
  assert.equal(status.releasePrepared,false);
  assert.equal(status.releaseSha,null);
+ assert.equal(status.deliveryReady,false);
  assert.equal(JSON.stringify(status).includes('My_Ranger1'),false);
  const payload={confirm:true,githubSha:status.profile.githubSha,
   sha256:status.profile.sha256,previousReleaseSha:status.releaseSha};
@@ -157,6 +158,11 @@ test('Worker preparation requires Access, origin, exact revision, private repo a
  assert.equal(current.signed,true);
  assert.equal(current.release.sequence,1);
  assert.equal(current.releaseSha,'b'.repeat(40));
+ assert.equal(current.deliveryReady,true);
+ assert.equal(current.deliveryMode,'access-popup-only');
+ assert.equal(current.published,false);
+ assert.equal(current.applied,false);
+ assert.equal(current.acknowledged,false);
  assert.equal((await m.call(path,'PUT',payload)).status,409);
  assert.equal(m.store.writes,1);
  m.store.profile=structuredClone(m.store.profile);
@@ -166,6 +172,7 @@ test('Worker preparation requires Access, origin, exact revision, private repo a
  assert.equal(changed.releasePrepared,true);
  assert.equal(changed.releaseMatchesCurrent,false);
  assert.equal(changed.signed,false);
+ assert.equal(changed.deliveryReady,false);
 });
 
 test('preparation never writes to a public repository or without configured secret',async()=>{
@@ -182,4 +189,18 @@ test('preparation never writes to a public repository or without configured secr
  const stale={...payload,previousReleaseSha:'d'.repeat(40)};
  assert.equal((await m.call('/api/profile-sync/prepare','PUT',stale)).status,409);
  assert.equal(m.store.writes,0);
+});
+
+test('delivery readiness cannot be claimed from a public repository',async()=>{
+ const env=await runtimeEnv(),creds=await credentials();
+ const m=mock(env,creds,{privateRepo:false});
+ const identity=await signer(env,subtle);
+ m.store.release=await preparePrivateRelease({
+  profile:m.store.profile,identity,now:Date.now()});
+ m.store.releaseSha='b'.repeat(40);
+ const reply=await m.call('/api/profile-sync/status');
+ assert.equal(reply.status,503);
+ const body=await reply.json();
+ assert.equal(body.ok,false);
+ assert.equal(JSON.stringify(body).includes('My_Ranger1'),false);
 });

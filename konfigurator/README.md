@@ -1,4 +1,12 @@
 # ALBot Konfigurator – Cloudflare-bereite Vorstufe
+
+## Nachweisbare Abrufbereitschaft und sieben Sync-Stufen (24.10.2026)
+
+Die Systemansicht trennt nun **privat gespeichert**, **privat signiert**, **geschützt abrufbar**, **in der Runtime empfangen**, **in der Runtime geprüft**, **übernommen** und **charakterbezogen bestätigt**. Der Status `deliveryReady` wird nur bei gültiger, nicht abgelaufener, SHA-256-passender Signatur **und** erneuter Prüfung der privaten Repositorysichtbarkeit ausgegeben. Er beschreibt ausschließlich die Bereitschaft des bestehenden `/api/profile-sync/delivery`-Endpunkts hinter Cloudflare Access für das manuell geöffnete Popup. Er ist **weder ein Push ins Spiel noch ein Nachweis eines HTTP-Abrufs durch die Runtime**.
+
+Für die Stufen Empfang/Validierung liegen serverseitig keine verifizierbaren Ereignisse vor, weshalb die Oberfläche ausdrücklich *Nicht nachgewiesen* meldet. Atomare Profilübernahme und authentifizierte per-Charakter-ACKs bleiben *Nicht implementiert*. Auch ein gefälschtes `applied:true` oder `acknowledged:true` in einem Statusobjekt kann die Nachweisstufen nicht auf bestätigt setzen. Es wird kein Game-Token erzeugt, keine Cloudflare-Access-Ausnahme erweitert und kein geheimes Profil in einen öffentlichen Branch geschrieben.
+
+Dieser Schritt ändert **nicht** die signierte Adventure-Land-Runtime, keinen vertrauenswürdigen Signierschlüssel, keine persönlichen Profilwerte und keinen lokalen angewendeten Sequenz-Cursor. Eine spätere sichere Ingame-Aktivierung benötigt weiterhin eine unabhängige Account- und Charakteridentitätsprüfung, dauerhaft geschützte Sequenzverwaltung, Safe-Point-Transaktion und authentisches ACK. Bis zur expliziten Ingame-Abnahme wird keine Aktivierung behauptet.
  
 ## Manuell bestätigte und im Spiel verifizierte Konfigurationsvorschau (23.10.2026)
 

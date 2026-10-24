@@ -525,6 +525,33 @@ export function createBank(bot){
   }
   return localPacks?total:null;
  }
+ // W04: finish a reserve with a single ordinary full stack when split is
+ // disabled. This is ONLY an automatic, NPC-replaceable working-stock path:
+ // an explicit keep/maxCount/batch is never relaxed for an overfill.
+ // The existing durable single/partial withdrawal journal remains the
+ // mandatory authorization and recovery mechanism for each physical step.
+ function reserveStagingTake(item,need){
+  if(!need||!Number.isSafeInteger(need.floor)||need.floor<1||
+     !Number.isSafeInteger(need.held)||!Number.isSafeInteger(need.missing)||
+     need.missing<1)return null;
+  const q=item?.q===undefined?1:item?.q;
+  if(!Number.isSafeInteger(q)||q<1)return null;
+  const source=e.explicit(item,'inventory');
+  const partial=q>need.missing&&cfg.merchant.partialBank===true&&
+    bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999);
+  let take=q;
+  if(partial)take=need.missing;
+  else if(q>need.missing){
+   // A full final stack can exceed the missing reserve, but not the
+   // entire bounded floor; the excess remains physically carried and
+   // is subject to normal inventory-surplus disposition.
+   if(cfg.merchant.partialBank===true||source||
+      q>need.floor)return null;
+  }
+  if(source&&(!Number.isSafeInteger(source.batch)||
+     source.batch<take))return null;
+  return {take,extra:Math.max(0,take-need.missing)};
+ }
  const location=map=>({map,in:map,x:0,y:-100,radius:80});
  function ready(pack='items0',recovery=false){const map=packMap(pack);return !!map&&(cfg.merchant.bank||recovery)&&me.name===cfg.party.merchant&&e.travel(location(map),'Bank')&&!!p.c.bank;}
  // Non-destructive capacity parking is a private, single-operation bank path.
@@ -1037,14 +1064,15 @@ export function createBank(bot){
      return {price:safe.price,lossScore:safe.lossScore};
     // Before selling a different bank stack, stage a missing physical floor.
     const need=bankOperatingReserveNeed(bot,item),q=item?.q??1;
-    if(!need||!Number.isSafeInteger(q)||
-       (q>need.missing&&!(cfg.merchant.partialBank===true&&
-        bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999))))
-     return null;
+    const stage=reserveStagingTake(item,need);
+    if(!stage)return null;
     const localBank=observedLocalReserveStock(item);
     if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
        need.held+localBank<=need.floor)return null;
-    return {price:0,lossScore:-q-1e9,reserveStage:true};
+    // Prefer the closest *physically feasible* replenishment, avoiding
+    // unnecessary whole-stack overfill when a smaller stack will suffice.
+    return {price:0,lossScore:-1e9+
+      Math.abs(q-need.missing)+(q>need.missing?0.5:0),reserveStage:true};
    }});
   if(!batch.valid){
    preventiveScan.reason=batch.reason;return false;
@@ -1077,10 +1105,9 @@ export function createBank(bot){
      identity(item)!==selected.variant)return false;
   if(selected.reserveStage){
    const need=bankOperatingReserveNeed(bot,item),q=item.q??1;
-   if(!need||!(q<=need.missing||cfg.merchant.partialBank===true&&
-      bot.free()>=2&&q<=(cfg.merchant.partialBankMaxStack??9999)))
-    return false;
-   const take=Math.min(q,need.missing);
+   const stagePlan=reserveStagingTake(item,need);
+   if(!stagePlan)return false;
+   const take=stagePlan.take;
    const localBank=observedLocalReserveStock(item);
    if(localBank===null||!Number.isSafeInteger(need.held+localBank)||
       need.held+localBank<=need.floor)return false;
@@ -1090,12 +1117,14 @@ export function createBank(bot){
     const live=p.c.bank?.[selected.pack]?.[selected.slot],
      current=bankOperatingReserveNeed(bot,live);
     const remaining=live?observedLocalReserveStock(live):null;
+    const updated=reserveStagingTake(live,current);
     return !!current&&current.floor===need.floor&&
-     identity(live)===identity(item)&&current.missing>=take&&
+     current.held===need.held&&current.missing===need.missing&&
+     identity(live)===identity(item)&&fingerprint(live)===selected.sourcePrint&&
+     updated?.take===take&&
      remaining!==null&&Number.isSafeInteger(current.held+remaining)&&
      current.held+remaining>current.floor&&
-     packMap(selected.pack)===p.c.map&&
-     (q<=take||cfg.merchant.partialBank===true&&bot.free()>=2);
+     packMap(selected.pack)===p.c.map;
    }};
    return retrieve(item,{enabled:true,name:'Bank-Reservestaging',
     item:item.name,action:'retrieve',pack:selected.pack,

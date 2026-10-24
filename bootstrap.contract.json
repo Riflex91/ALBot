@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 53,
-      "version": "0.53.0-candidate",
+      "sequence": 54,
+      "version": "0.54.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 1000476,
-      "sha256": "74cb919cf6b8b5ddf49240d27889c61df470c4d823acdf1c67dda49c8c58186f"
+      "bytes": 1005098,
+      "sha256": "69977528620eeb209edbbb0e25fee1bcaa5167e060469ee4352faed942a2a747"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Combat effect-horizon and assertive 45-second PR #476 merged main (93f7bafaad30c6f9e85ee74d8d1327ffed06cc28) after Linux/Windows CI #40114166805. Protected P-256 signer #40114473479 published 0.53.0-candidate / sequence 53, 1000476 bytes, SHA-256 74cb919cf6b8b5ddf49240d27889c61df470c4d823acdf1c67dda49c8c58186f; exact byte reproduction #40114669367 passed 2622/2622 tests and verification. Loader URLs and P-256 trust key unchanged; world.risk=assertive, maxCombatSeconds=45. Ingame authentication, runtime combat acceptance and long-run tests not demonstrated."
+    "note": "24.10.2026: PR #479 transit safety / remote accessory NPC evidence merged 28c481e4c42d040fc7ad689a3d82cfa38e7df31f after Linux/Windows CI #40116429438; deterministic signature-test PR #481 merged bf6942ed91bbb4a29efede7c91852f8ee1d222c6 after Linux/Windows CI #40116773884. Protected P-256 signer #40117020642 published 0.54.0-candidate / Sequence 54, 1005098 bytes, SHA-256 69977528620eeb209edbbb0e25fee1bcaa5167e060469ee4352faed942a2a747; 2634/2634 offline tests passed and exact Git Blob b651f52a5c52683d450922c63bde40d5b050bef6 matches main and release runtime. Ingame authenticated combat/travel and accessory receipt acceptance remain unproven. Personal ALBotConfig, loader URLs, pinned public key unchanged."
   }
 }

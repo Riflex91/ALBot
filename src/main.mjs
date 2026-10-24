@@ -93,6 +93,7 @@ import {createConfigSyncPreview} from './runtime/config-sync-preview.mjs';
 import {createVerifiedConfigStaging} from './runtime/config-sync-stage.mjs';
 import {captureLocalConfigSafePoint,assessConfigActivationPreflight} from './runtime/config-sync-safe-point.mjs';
 import {createConfigActivationReviewJournal} from './runtime/config-sync-review-journal.mjs';
+import {createConfigRestartIntentGate} from './runtime/config-sync-restart-intent.mjs';
 import {createAutomaticTelemetrySender,AUTO_TELEMETRY_INTERVAL_MS} from './runtime/telemetry-auto-sender.mjs';
 import {createMovement} from './core/movement.mjs';
 import {createTransport} from './party/transport.mjs';
@@ -483,7 +484,7 @@ export function install(root){
   // a secret in the signed public bundle or a Cloudflare deployment token.
   // The existing Access relay remains an optional manual fallback.
   let telemetryRelay=null,telemetryInterval=null,telemetryAuto=null,telemetryAutoInterval=null;
-  let configSyncPreview=null,configActivationReview=null,configStaging=null;
+  let configSyncPreview=null,configActivationReview=null,configStaging=null,configRestartIntent=null;
   if(!p.headless){
     try{
       const gameWindow=p.parent;
@@ -522,6 +523,17 @@ export function install(root){
            configSyncPreview?.status()??null,{now:now()}),
           now
         });
+        // Explicit signed review + detached candidate; never live apply.
+        configRestartIntent=createConfigRestartIntentGate({
+          readStorage:readConfigStorage,readTrust:readConfigTrust,
+          readCharacter:()=>p.c?.name,
+          readStage:()=>configSyncPreview?.status()??null,
+          readPreflight:()=>assessConfigActivationPreflight(
+           captureLocalConfigSafePoint(bot,{disposed}),
+           configSyncPreview?.status()??null,{now:now()}),
+          readReview:()=>configActivationReview?.status()??null,
+          now
+        });
         telemetryRelay=createGameRelaySender({
           gameWindow,getCharacter:()=>p.c,getRealm:()=>p.realm(),
           getBankDefinitions:()=>p.G?.bank_packs??{},role:me.role,
@@ -537,6 +549,7 @@ export function install(root){
     telemetryAutoInterval=null;telemetryAuto?.dispose();
     configSyncPreview?.dispose();
     configActivationReview?.dispose();
+    configRestartIntent?.dispose();
   });
   // Snapshot-only local safety observation. There is no authority to apply
   // Full-v1 settings or commit an applied cursor from this endpoint.
@@ -631,6 +644,19 @@ export function install(root){
       (configActivationReview?.prepare()??false),
     discardConfigActivationReview:()=>!disposed&&
       (configActivationReview?.discard()??false),
+    configRestartIntentStatus:()=>configRestartIntent?.status()??{
+      mode:'unavailable',configured:false,hasAutomaticRestartAuthority:false,
+      readyForActivation:false,transactionCommitted:false,
+      applied:false,acknowledged:false
+    },
+    prepareConfigRestartIntent:async()=>{
+      if(disposed||!configRestartIntent||!configStaging)return false;
+      const candidate=await configStaging.dryRun(bot.cfg);
+      if(disposed)return false;
+      return configRestartIntent.prepare(candidate);
+    },
+    discardConfigRestartIntent:()=>!disposed&&
+      (configRestartIntent?.discard()??false),
     openConfigSync(){
       if(disposed||!configSyncPreview)return false;
       return configSyncPreview.open();

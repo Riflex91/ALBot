@@ -1,0 +1,35 @@
+name: Temporary W06 candidate runtime synchronization
+on:
+  push:
+    branches: [roadmap/w06-material-inventory-consistency-20261024]
+permissions:
+  contents: write
+jobs:
+  generate:
+    if: "github.actor != 'github-actions[bot]'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node scripts/sync-personal-code.mjs --write
+      - run: npm run build:bootstrap:auto
+      - run: npm run build:editor
+      - run: npm test
+      - name: Commit generated assets only after successful full tests
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- bot.js dist/albot.bootstrap.auto.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json editor/Bot-Werkstatt.html editor/albot.settings.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build(candidate): synchronize merged 0.49 W06 and PR462 runtime"
+            git push origin HEAD:roadmap/w06-material-inventory-consistency-20261024
+          fi

@@ -1,10 +1,12 @@
-// Verified, character-scoped staging building block (not wired to live runtime).
+// Verified, character-scoped staging building block; exposed via popup preview.
+// Not an activation or ACK path.
 // Stores ONLY a bounded receipt of verification in localStorage. The private
 // Full-v1 profile remains ephemeral in memory, and is never applied or ACKed.
-import {verifySignedConfigRelease} from '../../konfigurator/public/config-sync-contract.mjs';
+import {configPreviewVerify} from './config-sync-preview.mjs';
 import {FULL_DESCRIPTOR} from '../config/full.mjs';
 import {validateProfile} from '../../editor/lib/contract.mjs';
 
+export const createVerifiedConfigStaging=(()=>{
 const TARGET=/^[A-Za-z0-9_.:/-]{1,128}$/;
 const CHARACTER=/^[A-Za-z0-9_]{1,100}$/;
 const HEX=/^[a-f0-9]{64}$/;
@@ -53,7 +55,7 @@ function readReceipt(storage,trust){
  if(!receiptShape(r,trust))throw Error('Staging receipt corrupted or trust pin changed');
  return r;
 }
-export function createVerifiedConfigStaging({
+function createVerifiedConfigStaging({
  readStorage,readTrust,readCharacter,cryptoObject=globalThis.crypto,
  now=()=>Date.now()
 }={}){
@@ -101,22 +103,24 @@ export function createVerifiedConfigStaging({
  }
  async function stage(release){
   if(inFlight||disposed)return false;
-  inFlight=true;memory=null;lastError=null;
+  inFlight=true;const alreadyVerified=!!memory;memory=null;lastError=null;
   try{
    const {trust,storage,applied}=current();
    const existing=readReceipt(storage,trust);
-   if(existing&&existing.sequence>=release?.sequence)
+   if(existing&&(existing.sequence>release?.sequence||
+    existing.sequence===release?.sequence&&
+     (existing.sha256!==release?.sha256||alreadyVerified)))
     throw Error('Staging replay or rollback rejected');
    const clock=now();
    if(!Number.isSafeInteger(clock)||clock<=0)
     throw Error('Invalid verification clock');
-   const checked=await verifySignedConfigRelease(release,{
-    pinnedPublicJwk:trust.pinnedPublicJwk,target:trust.target,
-    minimumSequence:applied,now:clock,subtle:cryptoObject.subtle
-   });
-   const validation=validateProfile(FULL_DESCRIPTOR,checked.profile.config);
+   // The same independent game-side verifier used for the popup checks the
+   // full canonical profile and P-256 signature again before any write.
+   const checked=await configPreviewVerify(release,trust.pinnedPublicJwk,
+    trust.target,applied,clock,cryptoObject.subtle);
+   const validation=validateProfile(FULL_DESCRIPTOR,release.profile.config);
    if(validation.length)throw Error('Full-v1 profile validation failed');
-   if(!checked.profile.config.characters.some(x=>x.name===trust.character&&x.enabled===true))
+   if(!release.profile.config.characters.some(x=>x.name===trust.character&&x.enabled===true))
     throw Error('Signed profile does not enable the current character');
    // Recheck all mutable preconditions after async signature verification.
    const after=current();
@@ -127,7 +131,9 @@ export function createVerifiedConfigStaging({
     after.applied>=checked.sequence||now()>=release.expiresAt)
     throw Error('Trust, time, character or applied cursor changed during verification');
    const latest=readReceipt(after.storage,after.trust);
-   if(latest&&latest.sequence>=checked.sequence)
+   if(latest&&(latest.sequence>checked.sequence||
+    latest.sequence===checked.sequence&&
+     (latest.sha256!==checked.sha256||alreadyVerified)))
     throw Error('Staging sequence changed concurrently');
    const receipt={format:FORMAT,target:trust.target,character:trust.character,
     sequence:checked.sequence,sha256:checked.sha256,
@@ -158,3 +164,5 @@ export function createVerifiedConfigStaging({
  function dispose(){memory=null;disposed=true;}
  return {stage,status:state,discard,dispose};
 }
+return createVerifiedConfigStaging;
+})();

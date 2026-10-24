@@ -40,7 +40,7 @@ function configPreviewMessage(release){
   release.issuedAt,release.expiresAt,release.sha256
  ]);
 }
-async function configPreviewVerify(release,pinned,target,minSequence,t,subtle){
+export async function configPreviewVerify(release,pinned,target,minSequence,t,subtle){
  if(!pinned||pinned.kty!=='EC'||pinned.crv!=='P-256'||
   !/^[A-Za-z0-9_-]{43}$/.test(pinned.x??'')||
   !/^[A-Za-z0-9_-]{43}$/.test(pinned.y??'')||pinned.d!==undefined||
@@ -78,13 +78,16 @@ async function configPreviewVerify(release,pinned,target,minSequence,t,subtle){
 }
 
 export function createConfigSyncPreview({
- gameWindow,cryptoObject,readTrust,readStorage,now=()=>Date.now()
+ gameWindow,cryptoObject,readTrust,readStorage,staging=null,now=()=>Date.now()
 }={}){
  if(!gameWindow||typeof gameWindow.open!=='function'||
   typeof gameWindow.addEventListener!=='function'||
   typeof gameWindow.removeEventListener!=='function'||
   typeof readTrust!=='function'||typeof readStorage!=='function'||
-  typeof now!=='function')throw Error('Config preview requires an actual browser');
+  typeof now!=='function'||staging!==null&&
+   (typeof staging.stage!=='function'||typeof staging.status!=='function'||
+    typeof staging.dispose!=='function'))
+  throw Error('Config preview requires an actual browser');
  let popup=null,nonce=null,asked=false,consumed=false,disposed=false;
  let verified=null,error=null,inFlight=false;
  const prepared=()=>{
@@ -140,6 +143,10 @@ export function createConfigSyncPreview({
    const trust=prepared(),applied=appliedCursor(trust.target);
    const checked=await configPreviewVerify(d.release,trust.publicJwk,
     trust.target,applied,now(),cryptoObject.subtle);
+   if(staging&&!(await staging.stage(d.release)))
+    throw Error('Character staging rejected: '+(staging.status().lastError??'unavailable'));
+   // Staging never applies the profile; only an account/character-scoped
+   // receipt exists, and the private release stays in ephemeral memory.
    verified={...checked,target:trust.target,verifiedAt:now(),
     expiresAt:d.release.expiresAt,
     pinnedX:trust.publicJwk.x,pinnedY:trust.publicJwk.y,applied:false};
@@ -151,8 +158,11 @@ export function createConfigSyncPreview({
  gameWindow.addEventListener('message',listener);
  function open(){
   if(disposed||hasPopup())return false;
-  try{const trust=prepared();appliedCursor(trust.target);}
-  catch(e){error=String(e?.message??e).slice(0,140);return false;}
+  try{
+   const trust=prepared();appliedCursor(trust.target);
+   if(staging&&!staging.status().configured)
+    throw Error('Character staging unavailable: '+(staging.status().reason??'storage'));
+  }catch(e){error=String(e?.message??e).slice(0,140);return false;}
   try{
    const bytes=new Uint8Array(16);
    cryptoObject.getRandomValues(bytes);
@@ -164,6 +174,9 @@ export function createConfigSyncPreview({
   return hasPopup();
  }
  const status=()=>{
+  // Querying staging revalidates current trust, local journal, character and
+  // TTL without leaking signed profile or runtime configuration bytes.
+  const stagedStatus=staging?.status()??null;
   let ready=false,reason=null,appliedHighwater=null,currentTrust=null;
   try{const t=prepared();currentTrust=t;
    appliedHighwater=appliedCursor(t.target);ready=true;}
@@ -174,18 +187,26 @@ export function createConfigSyncPreview({
     verified.target!==currentTrust?.target||
     verified.pinnedX!==currentTrust?.publicJwk.x||
     verified.pinnedY!==currentTrust?.publicJwk.y||
-    appliedHighwater===null||appliedHighwater>=verified.sequence)){
+    appliedHighwater===null||appliedHighwater>=verified.sequence||
+    staging&&(!stagedStatus?.staged?.memoryVerified||
+     stagedStatus.staged.sequence!==verified.sequence||
+     stagedStatus.staged.sha256!==verified.sha256))){
    verified=null;
    error='Verified preview expired or invalidated; reopen the signed preview';
   }
-  return {mode:'preview-only',configured:ready,reason,opened:hasPopup(),
-   inFlight,verified:verified?{...verified}:null,appliedHighwater,
-   lastError:error,applied:false,acknowledged:false,disposed};
+  return {mode:staging?'verified-stage-only':'preview-only',
+   configured:ready&&(!staging||stagedStatus?.configured===true),
+   reason:ready&&staging&&!stagedStatus?.configured?stagedStatus?.reason:reason,
+   opened:hasPopup(),inFlight,verified:verified?{...verified}:null,
+   staged:stagedStatus?.staged??null,stageInFlight:stagedStatus?.inFlight??false,
+   appliedHighwater,lastError:error,readyForActivation:false,
+   applied:false,acknowledged:false,disposed};
  };
  function dispose(){
   if(disposed)return;
   disposed=true;popup=null;nonce=null;asked=false;consumed=true;verified=null;
   gameWindow.removeEventListener('message',listener);
+  staging?.dispose();
  }
  return {open,status,dispose};
 }

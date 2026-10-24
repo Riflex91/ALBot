@@ -1,6 +1,7 @@
 import {boundedStockVariantAllowed,boundedStockSurplus,verifiedProductionStockQuantity} from './stock-policy.mjs';
 import {defaultsFor} from '../../editor/lib/contract.mjs';
 import {ITEM_RULE} from '../../editor/lib/schema.mjs';
+import {identity,protectedItem} from '../core/policy.mjs';
 // W02/W04: quantity may only back a bank reserve or a sale if it is
 // physically representable by this item's actual game stack contract.
 // In particular q:null is NOT the absent-q singleton convention.
@@ -9,6 +10,28 @@ const physicalSourceQuantity=(G,item)=>{
  return Number.isSafeInteger(q)&&q>0&&
   verifiedProductionStockQuantity(G,[item],item)===q?q:null;
 };
+// W02/W04: Only *unencumbered* local physical copies may fulfill a
+// merchant working reserve or back an autonomous sale. A reserved/locked
+// stack may have the same inventory variant as an ordinary one: neither the
+// variant identity nor an aggregate physical count proves it is available.
+// Validate ALL matching quantities first, including blocked ones, rather
+// than silently skipping malformed protected stacks.
+export function verifiedAvailableOperatingStockQuantity(G,items,item){
+ const total=verifiedProductionStockQuantity(G,items,item);
+ if(!Number.isSafeInteger(total))return null;
+ let unavailable=0;
+ try{
+  const variant=identity(item);
+  for(const stock of items){
+   if(!stock||identity(stock)!==variant||!protectedItem(stock))continue;
+   const q=stock.q===undefined?1:stock.q;
+   if(!Number.isSafeInteger(q)||q<1||
+      !Number.isSafeInteger(unavailable+q))return null;
+   unavailable+=q;
+  }
+ }catch{return null;}
+ return unavailable<=total?total-unavailable:null;
+}
 // Finite, replaceable working stock, not a generic liquidation allowlist.
 // Account inventory snapshots cannot authorize a sale: a local reserve
 // covers the WHOLE configured squad even if peers or bank are unavailable.
@@ -68,7 +91,7 @@ function operatingStockBaseRule(bot,item){
 }
 export function automaticOperatingStockRule(bot,item){
  const rule=operatingStockBaseRule(bot,item);if(!rule)return null;
- const held=verifiedProductionStockQuantity(bot.p.G,bot.p.c.items,item),
+ const held=verifiedAvailableOperatingStockQuantity(bot.p.G,bot.p.c.items,item),
   source=physicalSourceQuantity(bot.p.G,item),
   reserved=bot.production?.reservedQuantity?.(item)??0;
  if(source===null||!Number.isSafeInteger(held)||
@@ -91,7 +114,7 @@ export function bankOperatingStockRule(bot,item,{carried=false}={}){
     meta.grades||meta.tier)return null;
  const source=e.explicit(item,'inventory');
  let rule,floor;
- const held=verifiedProductionStockQuantity(p.G,p.c.items,item),
+ const held=verifiedAvailableOperatingStockQuantity(p.G,p.c.items,item),
   reserved=bot.production?.reservedQuantity?.(item)??0;
  if(!Number.isSafeInteger(held)||!Number.isSafeInteger(reserved)||reserved<0||
     carried&&held<q)return null;
@@ -146,7 +169,7 @@ export function bankOperatingReserveNeed(bot,item){
   floor=rule.keep;
  }
  const reserved=bot.production?.reservedQuantity?.(item)??0;
- const held=verifiedProductionStockQuantity(p.G,p.c.items,item);
+ const held=verifiedAvailableOperatingStockQuantity(p.G,p.c.items,item);
  if(!Number.isSafeInteger(reserved)||reserved<0||
     !Number.isSafeInteger(held)||held<0||
     !Number.isSafeInteger(floor+reserved))return null;

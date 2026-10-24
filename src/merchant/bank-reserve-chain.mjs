@@ -13,7 +13,7 @@ export function validReserveChain(r,{owner,realm,now=Date.now()}={}){
  if(r.phase==='ready')return r.source===null;
  const s=r.source;
  return !!s&&typeof s==='object'&&!Array.isArray(s)&&
-  /^items\\d+$/.test(s.pack??'')&&reserveChainInteger(s.slot)&&s.slot<42&&
+  /^items\d+$/.test(s.pack??'')&&reserveChainInteger(s.slot)&&s.slot<42&&
   typeof s.before==='string'&&!!s.before&&
   (s.after===null||typeof s.after==='string'&&!!s.after)&&
   reserveChainInteger(s.held)&&reserveChainInteger(s.take)&&s.take>0&&
@@ -26,8 +26,7 @@ export function reserveChainObservation(r,{held,source,journalOpen=false}={}){
  if(r.phase==='ready')return 'ready';
  if(journalOpen)return 'journal-open';
  if(!reserveChainInteger(held))return 'unknown-physical-quantity';
- if(r.phase==='prepared')return
-  held===r.source.held&&source===r.source.before?
+ if(r.phase==='prepared')return held===r.source.held&&source===r.source.before?
   'prepared-unchanged':'prepared-drift';
  // A durable dispatch record alone is NOT proof of physical completion.
  if(held===r.source.held+r.source.take&&source===r.source.after)

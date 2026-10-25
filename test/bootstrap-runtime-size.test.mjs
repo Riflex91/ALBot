@@ -34,3 +34,13 @@ test('legacy CODE export does not pretend to be an 8-MiB game CODE slot',async()
  assert.ok(artifact.bytes>SLOT_LIMIT);
  assert.ok(artifact.bytes<=BOOTSTRAP_RUNTIME_LIMIT+SLOT_LIMIT);
 });
+test('mandatory Linux and Windows gates use bootstrap runtime size, never legacy direct-CODE size',async()=>{
+ const workflow=await readFile(new URL('../.github/workflows/verify-albot.yml',import.meta.url),'utf8');
+ const windows=await readFile(new URL('../scripts/VERIFY-U01-U07.ps1',import.meta.url),'utf8');
+ assert.match(workflow,/runtime\.length>BOOTSTRAP_RUNTIME_LIMIT/);
+ assert.match(workflow,/code\.length>BOOTSTRAP_RUNTIME_LIMIT\+SLOT_LIMIT/);
+ assert.doesNotMatch(workflow,/code\.length>1048576/);
+ assert.match(windows,/\$runtimeBytes -gt \$bootstrapLimit/);
+ assert.match(windows,/\$bytes -gt \$reviewLimit/);
+ assert.doesNotMatch(windows,/\$bytes -gt 1048576/);
+});

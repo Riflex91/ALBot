@@ -727,7 +727,7 @@ export function install(root){
     dispose(){if(disposed)return;disposed=true;
      try{halt('Entladen');}
      finally{
-      try{/* transport is owned by cleanup; do not double-close */}catch{}
+      // Transport subscription owner is released once via cleanup.close().
       const released=cleanup.close();
       if(!released.closed)try{report.event('runtime.warning',{
        where:'boot-resource-cleanup',failures:released.failures});}catch{}

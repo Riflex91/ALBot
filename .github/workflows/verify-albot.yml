@@ -39,19 +39,23 @@ jobs:
           node --check konfigurator/public/app.mjs
           node --check konfigurator/public/policy.mjs
           node konfigurator/scripts/verify-public-assets.mjs
-      - name: Syntax, size, and manifest integrity
+      - name: Syntax, bootstrap size, and manifest integrity
         shell: bash
         run: |
           node --check dist/albot.js
           node --input-type=module <<'EOF'
           import fs from 'node:fs';
           import crypto from 'node:crypto';
+          import {BOOTSTRAP_RUNTIME_LIMIT,SLOT_LIMIT} from './editor/lib/contract.mjs';
           const code=fs.readFileSync('dist/albot.js');
+          const runtime=fs.readFileSync('dist/albot.runtime.js');
           const m=JSON.parse(fs.readFileSync('dist/manifest.json','utf8'));
           const h=crypto.createHash('sha256').update(code).digest('hex');
-          if(code.length>1048576)throw new Error('Shared bundle exceeds 1 MiB');
+          if(runtime.length>BOOTSTRAP_RUNTIME_LIMIT)throw new Error('Bootstrap runtime exceeds 8 MiB');
+          if(code.length>BOOTSTRAP_RUNTIME_LIMIT+SLOT_LIMIT)throw new Error('Bootstrap review artifact exceeds its wrapper allowance');
           if(m.bytes!==code.length||m.sha256!==h)throw new Error('Manifest differs from shared bundle');
-          console.log(JSON.stringify({bytes:code.length,sha256:h,version:m.version}));
+          if(m.runtimeBytes!==runtime.length)throw new Error('Manifest differs from runtime bytes');
+          console.log(JSON.stringify({bytes:code.length,runtimeBytes:runtime.length,sha256:h,version:m.version}));
           EOF
       - name: Archive generated offline-review artifacts
         uses: actions/upload-artifact@v4

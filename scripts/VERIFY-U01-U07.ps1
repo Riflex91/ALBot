@@ -27,12 +27,18 @@ Write-Host '2/5: Node-Pruefungen (einschliesslich Runtime-Artefakt)'
 Check-Exit 'npm test'
 $bundle = Join-Path (Get-Location) 'dist/albot.js'
 if (-not (Test-Path $bundle)) { throw 'dist/albot.js fehlt' }
+$runtime = Join-Path (Get-Location) 'dist/albot.runtime.js'
+if (-not (Test-Path $runtime)) { throw 'dist/albot.runtime.js fehlt' }
 Write-Host '3/5: Syntax des ausgelieferten Bundles'
 & node --check $bundle
 Check-Exit 'node --check dist/albot.js'
 $bytes = (Get-Item $bundle).Length
-if ($bytes -gt 1048576) { throw "Bundle zu gross: $bytes > 1048576 Bytes" }
-Write-Host "Bundle: $bytes / 1048576 Bytes"
+$runtimeBytes = (Get-Item $runtime).Length
+$bootstrapLimit = 8 * 1024 * 1024
+$reviewLimit = $bootstrapLimit + 1024 * 1024
+if ($runtimeBytes -gt $bootstrapLimit) { throw "Bootstrap-Runtime zu gross: $runtimeBytes > $bootstrapLimit Bytes" }
+if ($bytes -gt $reviewLimit) { throw "Bootstrap-Vergleichsartefakt zu gross: $bytes > $reviewLimit Bytes" }
+Write-Host "Bootstrap-Runtime: $runtimeBytes / $bootstrapLimit Bytes (Vergleichsartefakt: $bytes / $reviewLimit Bytes)"
 Write-Host '4/5: Werkstatt mit demselben Runtimepaket bauen'
 & npm.cmd run build:editor
 Check-Exit 'npm run build:editor'
@@ -41,5 +47,5 @@ $hash = Get-FileHash -Algorithm SHA256 $bundle
 Write-Host ('Artefakt: dist/albot.js | SHA256: ' + $hash.Hash)
 & node --input-type=module -e 'import fs from "node:fs"; import crypto from "node:crypto"; const bytes=fs.readFileSync("dist/albot.js"); const manifest=JSON.parse(fs.readFileSync("dist/manifest.json","utf8")); const sha=crypto.createHash("sha256").update(bytes).digest("hex"); if(manifest.bytes!==bytes.length || manifest.sha256!==sha) {throw new Error("Manifest stimmt nicht mit Bundle ueberein")};'
 Check-Exit 'Bundle/Manifest-Identitaet'
-Write-Host 'PASS (offline): Tests, Build, Syntax, Werkstatt, Groessenlimit.'
+Write-Host 'PASS (offline): Tests, Build, Syntax, Werkstatt, Bootstrap-Groessenlimit.'
 Write-Host 'OFFEN: Eigenen Browser-CODE und Headless CODE/main.js auf identischen Hash pruefen; kein Live-/Linux-Nachweis.'

@@ -1,5 +1,11 @@
 import {fingerprint,surplusQuantity} from '../core/policy.mjs';
 import {finiteMutationPlan} from './mutation-plan.mjs';
+// Official upgrade/compound previews can exceed one after grace bonuses.
+// Preserve the raw quote for diagnostics; only probability math is clamped.
+export function serverMutationChance(result){
+ const raw=typeof result==='number'?result:result?.chance??result?.success_chance;
+ return typeof raw==='number'&&Number.isFinite(raw)&&raw>=0?Math.min(1,raw):null;
+}
 export function mutationContext(bot,item){
  const G=bot.p.G;
  return JSON.stringify([G.version,item,(bot.p.c.items??[]).map(i=>fingerprint(i)),

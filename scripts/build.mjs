@@ -33,7 +33,7 @@ const chunks=await Promise.all(files.map(async path=>{
  return '// '+path+'\n'+content.replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
 }));
 const source='/* ALBot '+version+' · Vollbetrieb Live-Test pending */\n(function(root){"use strict";\n'+chunks.join('\n')+'\ninstall(root);\n})(globalThis);';
-const minimized=await minify(poolRuntimeStrings(source),{ecma:2022,compress:{defaults:true,pure_getters:false,inline:false,booleans:true,comparisons:true,conditionals:true,sequences:true,dead_code:true,unused:true,evaluate:true,properties:true,join_vars:true,if_return:true,reduce_vars:true,passes:2},mangle:true,format:{comments:false}});
+const minimized=await minify(poolRuntimeStrings(source),{ecma:2022,compress:{defaults:true,pure_getters:false,inline:false,booleans:true,comparisons:true,conditionals:true,sequences:true,dead_code:true,unused:true,evaluate:true,properties:true,join_vars:true,if_return:true,reduce_vars:true,passes:3},mangle:true,format:{comments:false}});
 if(!minimized.code)throw Error('Minifizierung lieferte keinen Code.');
 const code='/* ALBot '+version+' · Vollbetrieb Live-Test pending */\n'+minimized.code;
 new Script(code);

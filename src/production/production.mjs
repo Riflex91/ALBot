@@ -2,7 +2,7 @@ import {knowledgeFingerprint} from '../world/knowledge.mjs';
 import {marketRuleApproved} from '../merchant/market-purchase-policy.mjs';
 import {gearCompatible,merchantSelfEquipDecision} from './gear.mjs';
 import {purposeReservations} from './purpose-allocation.mjs';
-import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers} from './helpers.mjs';
+import {mutationContext,mutationHelpers,bestMutationHelper,planMutationHelpers,serverMutationChance} from './helpers.mjs';
 import {estimateRoutes} from './costs.mjs';
 import {materialSources,exchangeDrops,exchangeSource} from './materials.mjs';
 import {planMaterialQuotas,materialQuotaCap} from './material-quotas.mjs';
@@ -575,7 +575,7 @@ export function createProduction(bot){
     return exec.run('production.helper-preview',['economy'],()=>bot.running&&!bot.journal&&
       mutationContext(bot,i)===context&&e.npcAt(d),()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{
        if(helperSearch!==search||mutationContext(bot,i)!==context)return;
-       const chance=Number(result?.chance??result?.success_chance),fee=result?.cost??0;
+       const chance=serverMutationChance(result),fee=result?.cost??0;
        search.quotes.push({...candidate,chance,cost:candidate.cost+(Number.isFinite(fee)&&fee>=0?fee:Infinity)});search.index++;
       },()=>{if(helperSearch===search){search.quotes.push({...candidate,chance:NaN});search.index++;}}),{delay:1000});
    }
@@ -620,7 +620,7 @@ export function createProduction(bot){
   const args=kind==='compound'?[...inputs,scroll,offering]:[slot,scroll,offering];
   if(preview?.key!==key||Date.now()-preview.time>5000){
    if(exec.busy('economy'))return false;preview={key,time:Date.now(),chance:null,cost:null};const token=preview;
-   const accepted=exec.run('production.preview',['economy'],()=>bot.running,()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{if(preview!==token||!bot.running)return;const raw=typeof result==='number'?result:result?.chance??result?.success_chance;token.chance=Number(raw);bot.intelligence?.recordChance(i.name,i.level??0,kind,token.chance,{scroll:scrollName,offering:r.offering??''});token.cost=result?.cost??0;bot.event?.('production.preview-result',{item:i.name,level:i.level??0,kind,scroll:scrollName,offering:r.offering??'',chance:token.chance,cost:token.cost,minimum:Math.max(r.minChance,cfg.production.minChance)});}),{delay:1000});if(!accepted)preview=null;return accepted;
+   const accepted=exec.run('production.preview',['economy'],()=>bot.running,()=>Promise.resolve(p.call(kind,...args,true)).then(result=>{if(preview!==token||!bot.running)return;token.chance=serverMutationChance(result);bot.intelligence?.recordChance(i.name,i.level??0,kind,token.chance,{scroll:scrollName,offering:r.offering??''});token.cost=result?.cost??0;bot.event?.('production.preview-result',{item:i.name,level:i.level??0,kind,scroll:scrollName,offering:r.offering??'',rawChance:typeof result==='number'?result:result?.chance??result?.success_chance,chance:token.chance,cost:token.cost,minimum:Math.max(r.minChance,cfg.production.minChance)});}),{delay:1000});if(!accepted)preview=null;return accepted;
   }
   const chance=preview.chance,cost=preview.cost;
   const minimum=Math.max(r.minChance,cfg.production.minChance);
@@ -660,7 +660,7 @@ export function createProduction(bot){
    if(!cfg.production.enabled||!cfg.production[kind]||!p.G.items[i.name]?.[kind]||!e.remaining(r)||
       (i.level??0)>=r.targetLevel||policyProof()!==initialPolicyProof||
       preview?.key!==key||Date.now()-preview.time>=5000||
-      !Number.isFinite(preview.chance)||preview.chance<Math.max(r.minChance,cfg.production.minChance)||
+      !Number.isFinite(preview.chance)||preview.chance>1||preview.chance<Math.max(r.minChance,cfg.production.minChance)||
       !Number.isFinite(preview.cost)||preview.cost!==cost||
       e.count(i)-inputs.length<r.keep+r.teamReserve+reserveOther(i.name,i.level??0)||
       !mutationPreservesOperationalGear(bot,inputs).allowed)return false;
@@ -956,19 +956,19 @@ export function createProduction(bot){
   const proven=rows.filter(r=>!r.speculative);
   return row.speculative&&proven.length?Math.max(...proven.map(r=>r.score??0))+Math.max(1,row.score):row.score;
  }
- let monsterEpoch=-1,monsterList=null;
+ let monsterEpoch=-1,monsterList=null,farmEpoch=-1;const farmEstimates=new Map();
  function routeMonsters(){
   if(!Number.isInteger(bot.decisionEpoch)||monsterEpoch!==bot.decisionEpoch||!monsterList){monsterList=allowedMonsters();monsterEpoch=bot.decisionEpoch;}
   return monsterList;
  }
  function routeScore(step){
-  const farmEstimates=new Map();
+  if(!Number.isInteger(bot.decisionEpoch)||farmEpoch!==bot.decisionEpoch){farmEstimates.clear();farmEpoch=bot.decisionEpoch;}
   const cacheKey=JSON.stringify([step.item,step.level,step.quantity,step.sources]);if(routeCache.has(cacheKey))return effectiveRouteScore(routeCache.get(cacheKey),step.kind);const key=step.item+':'+step.level,permit=(name,level,kind)=>{if(kind==='exchange'&&step.sources?.length===1&&name!==step.sources[0][0])return false;if(kind==='marketBuy')return marketRuleApproved(e.explicit({name,level},'acquisition'));if(['craft','exchange','upgrade','compound'].includes(kind)&&!cfg.production[kind])return false;const r=e.explicit({name,level},phaseOf(kind));if(kind==='farm'&&r?.action==='marketBuy')return cfg.production.autonomy===true;return !r||r.action===kind&&e.remaining(r)&&(!['upgrade','compound'].includes(kind)||r.targetLevel>level);};
   const capped=(name,level,price)=>{const r=e.explicit({name,level},'acquisition');return Number.isFinite(price)&&price>0&&price<=(r?.maxPrice??(cfg.merchant.budgetMode==='account-loss'?Number.MAX_SAFE_INTEGER:cfg.production.helperMaxPrice))?price:Infinity;};
   const rows=estimateRoutes({G:p.G,item:step.item,level:step.level,quantity:step.quantity,stock:(name,level)=>name+':'+level===key?0:qty(name,level),bank:(name,level,wanted)=>name+':'+level===key?0:bot.bank.stock?.(name,level,wanted)??bot.bank.packs().reduce((n,[,items])=>n+items.reduce((v,i)=>v+(i?.name===name&&(i.level??0)===level&&e.safe(i)&&e.explicit(i)?.action!=='keep'?(i.q??1):0),0),0),allowed:cfg.production.acquireBy,permit,
    marketAvailable:(name,level)=>bot.market?.hasVisibleBuyOffer?.({name,level},{strict:true,rule:e.rules({name,level},'acquisition')})===true,
     npcPrice:name=>e.npcFor(name)?capped(name,0,p.G.items[name]?.g):Infinity,marketPrice:(name,level)=>bot.market?.offerWaitMs?.({name,level})>0?Infinity:capped(name,level,bot.market.quote?.({name,level})??e.explicit({name,level},'acquisition')?.maxPrice??cfg.production.helperMaxPrice),
-   farmHours:(name,q)=>{const key=name+':'+q;if(!farmEstimates.has(key))farmEstimates.set(key,materialSources(p.G,name,q,routeMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]})[0]?.selectedHours??Infinity);return farmEstimates.get(key);},
+   farmHours:(name,q)=>{const key=name+':'+q;if(farmEstimates.size>256)farmEstimates.clear();if(!farmEstimates.has(key))farmEstimates.set(key,materialSources(p.G,name,q,routeMonsters(),cfg.production.maxFarmHours,bot.observations?.rate,{state:p.root?.S??p.parent?.S,confidence:cfg.production.farmConfidence,questAllowed:q=>!!p.c.s?.[q]})[0]?.selectedHours??Infinity);return farmEstimates.get(key);},
    travelHours:(kind,name)=>{const d=kind==='buy'?e.npcFor(name):kind==='craft'?e.destination('craftsman'):kind==='retrieve'?{map:'bank',x:0,y:-100}:kind==='exchange'?(exchangeSource(p.G,name,p.root?.S??p.parent?.S??{}).destination??e.destination('exchange')):e.destination(kind==='marketBuy'?'citizen22':'newupgrade');return (bot.observations?.travelMs(d)??60000)/3600000;},
    helpers:(name,level,kind)=>{const r=e.explicit({name,level},'production');return [{item:r?.scroll||((kind==='compound'?'cscroll':'scroll')+p.call('item_grade',{name,level})),quantity:1},...(r?.offering?[{item:r.offering,quantity:1}]:[])];},
    chance:(name,level,kind)=>bot.intelligence?(bot.intelligence.chance(name,level,kind)??0):Math.max(cfg.production.minChance,e.explicit({name,level},'production')?.minChance??0),recipeFor:(name,level)=>e.explicit({name,level},'production')?.recipe??'',confidence:cfg.production.farmConfidence??'mean',strategy:cfg.production.strategy,goldPerHour:cfg.production.goldPerHour,maxDepth:cfg.production.maxChainDepth,state:p.root?.S??p.parent?.S??{}});

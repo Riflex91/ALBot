@@ -1,3 +1,7 @@
+## Farmnavigation und Ausrüstungsversorgung (25.10.2026)
+
+Implementiert: einmaliger nativer Stop, begrenzter sicherheitsgeprüfter Ausstieg, geprüfter Farm-Sammelpunkt, endliche Routenquarantäne mit lokaler Neubewertung, Grace-Chancen, physische Gear-Mengen und sichere Merchant-Anlaufpunkte. [Details und Grenzen](docs/FARM-GEAR-CORRECTIONS-2026-10-25.md). Vollständige Offline-Prüfung und signierter Release folgen; Ingame-Abnahme bleibt offen.
+
 ## W02/W10 – vollständige belegte Equipment-Variantenbelege (24.10.2026)
 
 Die accountweite physische Bestandsvorschau übernimmt für ausgerüstete Items nun sämtliche Variantenmerkmale einschließlich `acc`, `rid` und `data`. Belegte Slots werden erst nach Herausfiltern von Leerpositionen gezählt. Nicht überprüfbare oder überzählige belegte Slots sperren das **gesamte** Schattenledger statt eine scheinbar vollständige, verkürzte Gearliste auszugeben. Die Ausrüstung bleibt physisch geschützt und die Vorschau bleibt nie eine Verkaufs-, Versand- oder Bankberechtigung. [Implementierung und Regressionen](docs/W02-W10-EXACT-EQUIPPED-STOCK-2026-10-24.md); serverseitige Quittungen, accountweite vollständige Bankabdeckung und W14-Liveprüfung weiterhin offen.

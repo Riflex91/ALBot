@@ -151,6 +151,20 @@ export function createStrategy(bot){
   return true;
  }
  function safeMonster(id){return safeTarget(id);}
+ // Deliver from a safe edge within the existing physical handoff range.
+ // A service point never changes the authenticated recipient coordinates.
+ function serviceDestination(h){
+  if(canVisit(h))return h;
+  if(!h||bot.recovering||h.inventoryBlocked||h.rip||h.threats>0||
+    !(h.hp/h.max_hp>=cfg.farming.resumeAbove)||h.motion?.moving||
+    h.activity?.target)return null;
+  for(const radius of [100,160])for(let i=0;i<16;i++){
+   const point={...h,x:h.x+Math.cos(i*Math.PI/8)*radius,
+    y:h.y+Math.sin(i*Math.PI/8)*radius};
+   if(canVisit(point))return {...point,radius:15,serviceAnchor:h};
+  }
+  return null;
+ }
 
  function requestTask(value,ttlMs=120000){
   if(!bot.running||typeof value!=='string'||!Number.isFinite(ttlMs)||ttlMs<1000||ttlMs>3600000)return false;
@@ -265,5 +279,5 @@ export function createStrategy(bot){
   if(!bot.economy.travel(d,'Anniversary',55))return true;const before=JSON.stringify(p.c.anniversary??null),gifts=bot.count('anniversarygift');
   return bot.economy.perform('quest.anniversary',{guard:()=>bot.economy.at(d,80)&&p.call('anniversary_can_visit'),call:()=>p.call('anniversary_kiss'),observe:()=>bot.count('anniversarygift')>gifts||JSON.stringify(p.c.anniversary??null)!==before,details:{quest:'anniversary'},timeout:20000});
  }
- return {farmRejections:()=>[...rejectionEvidence.values()].filter(r=>r.until>Date.now()).slice(-4),plan,sample,targets,task,safeTarget,failActivity,canVisit,requestTask,travel,quest,anniversary,get busy(){return !!questVisit;},interruptQuest(){if(questVisit?.phase==='travel'){questVisit=null;nextQuest=Date.now()+60000;if(bot.movement.order?.owner==='quest'||bot.movement.townActive)bot.movement.stop();bot.event('quest.interrupted',{reason:'Eigene Aggro: Kampf/Erholung hat Vorrang'});}},permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,questVisit:questVisit?{...questVisit}:null,failedTargets:{...failed},learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;questVisit=null;lastSample=null;plannedAt=0;}};
+ return {farmRejections:()=>[...rejectionEvidence.values()].filter(r=>r.until>Date.now()).slice(-4),plan,sample,targets,task,safeTarget,failActivity,canVisit,serviceDestination,requestTask,travel,quest,anniversary,get busy(){return !!questVisit;},interruptQuest(){if(questVisit?.phase==='travel'){questVisit=null;nextQuest=Date.now()+60000;if(bot.movement.order?.owner==='quest'||bot.movement.townActive)bot.movement.stop();bot.event('quest.interrupted',{reason:'Eigene Aggro: Kampf/Erholung hat Vorrang'});}},permittedMap,status:()=>({task:task(),manual:manual?{...manual}:null,activity:activity?{...activity}:null,questVisit:questVisit?{...questVisit}:null,failedTargets:{...failed},learning:Object.keys(rates).length}),heartbeat:()=>activity?{...activity}:null,close(){activity=null;manual=null;questVisit=null;lastSample=null;plannedAt=0;}};
 }

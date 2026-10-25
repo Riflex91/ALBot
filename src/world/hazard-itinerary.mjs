@@ -249,6 +249,10 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
  if(!hiPoint(start)||!hiPoint(goal)||!G?.maps?.[start.map]||
    !G.maps[goal.map]||typeof canTraverse!=='function')
   return fail('invalid-world-or-collision-provider');
+ // Do not filter unlocated roaming hostiles away before threatRegions gets
+ // the opportunity to deny the route. A missing map is UNKNOWN, not safe.
+ if(!Array.isArray(liveMonsters)||liveMonsters.length>512)
+  return fail('invalid-live-hostile-observations');
  const denied=new Set(excludedMaps);
  const blocks=map=>denied.has(map)||!G.maps[map]||
    G.maps[map].ignore||G.maps[map].pvp||G.maps[map].instance;
@@ -260,7 +264,8 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
  };
  const regions=new Map(),lookup=map=>{
   if(!regions.has(map))regions.set(map,threatRegions(G,map,
-   liveMonsters.filter(m=>m?.map===map)));
+   liveMonsters.filter(m=>!m||typeof m.map!=='string'||
+    !m.map||m.map===map)));
   return regions.get(map);
  };
  const walks=new Map(),walker=(map,from,to)=>{

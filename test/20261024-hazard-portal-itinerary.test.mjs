@@ -281,3 +281,26 @@ test('prat death halts automatic respawn even after movement and farm plan disap
  assert.ok(actions.some(a=>Array.isArray(a)&&a[0]==='pause'));
  assert.ok(events.some(e=>e[0]==='combat.fatalTransitHalt'));
 });
+
+test('latched native searching stops once, settles and admits a physical itinerary',()=>{
+ const old=Date.now;let now=10000;Date.now=()=>now;
+ try{const {bot,p,commands}=runtimeHarness();p.root={smart:{moving:false,searching:true}};
+  const goal={map:'level2s',x:-240,y:681,radius:18};
+  assert.equal(bot.movement.go(goal,'farm'),false);assert.equal(bot.movement.go(goal,'farm'),false);
+  now+=600;assert.equal(bot.movement.go(goal,'farm'),true);
+  assert.equal(commands.filter(x=>x[0]==='stop').length,1);
+  assert.equal(p.root.smart.searching,true);assert.equal(commands.some(x=>x[0]==='smart_move'),false);
+ }finally{Date.now=old;}
+});
+test('farm entry waits for fresh group admission and boundedly reports failure',()=>{
+ const old=Date.now;let now=10000;Date.now=()=>now;
+ try{const {bot,p,c,commands}=runtimeHarness();
+  p.G.maps.main.monsters=[pack('bee',[400,-50,500,50])];
+  const plan={id:'test-entry',map:'main',in:'main',target:'bee',x:450,y:0,bounds:['main',400,-50,500,50]};
+  let failed=0;bot.teamPlan={heartbeat:()=>plan,valid:()=>true,travelFailed:()=>failed++};bot.farmers=['My_Ranger1','missing'];
+  p.realm=()=> 'EUII';const trip=createHazardTravel(bot);assert.equal(trip.start(plan,'farm'),true);
+  for(let i=0;i<20;i++)trip.poll();assert.ok(Math.hypot(c.x-plan.x,c.y-plan.y)>50);
+  assert.equal(commands.some(x=>x[0]==='move'&&x[1]===450&&x[2]===0),false);
+  now+=21000;trip.poll();assert.equal(trip.active,false);assert.equal(failed,1);
+ }finally{Date.now=old;}
+});

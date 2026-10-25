@@ -14,7 +14,7 @@ export function deliveryRouteDecision(route,peer,character,{error=70,arrival=190
  if(peer.name!==route.dest?.name)return 'cancel';
  if(samePlace(character,peer)&&distance(character,peer)<=arrival)return 'arrived';
  if(!samePlace(route.dest,peer))return 'retarget';
- return distance(route.dest,peer)>Math.max(45,Math.min(100,error))?'retarget':'keep';
+ return distance(route.dest.serviceAnchor??route.dest,peer)>Math.max(45,Math.min(100,error))?'retarget':'keep';
 }
 export function teamPickupThreshold(peers,realm,threshold=30){
  // Only authenticated, live farmers on this realm contribute to an
@@ -459,13 +459,15 @@ export function createLogistics(bot){
       Number.isSafeInteger(peer.lootSlots)&&peer.lootSlots>0&&
       samePlace(p.c,peer)&&distance(p.c,peer)<=200&&onSiteRoom(peer);
   }
+  const servicePoint=h=>bot.strategy?.serviceDestination?bot.strategy.serviceDestination(h):
+    bot.strategy?.canVisit?.(h)===false?null:h;
   function actionableGearDelivery(){
     if(me.role!=='merchant'||!cfg.merchant.enabled||!cfg.merchant.supply||
       bot.journal||bot.inventoryBlocked||bot.logistics?.handoffActive)return false;
     return (bot.farmers??[]).some(name=>{
       const peer=transport.fresh(name);
       if(!peer?.running||peer.rip||peer.realm!==p.realm()||
-        bot.strategy?.canVisit?.(peer)===false)return false;
+        !servicePoint(peer))return false;
       return p.c.items.some((item,slot)=>{
         if(!item||!p.G?.items?.[item.name]||
           p.G.items[item.name].type==='pot')return false;
@@ -491,7 +493,7 @@ export function createLogistics(bot){
     const h=transport.fresh(name);
     if(!h?.running||h.rip||h.realm!==p.realm()||
        h.elixir?.quantity!==1||!h.elixir.item||
-       bot.strategy?.canVisit?.(h)===false)return false;
+       !servicePoint(h))return false;
     return p.c.items.some((item,slot)=>item?.name===h.elixir.item&&
      !!sendRule(item,name)&&availableTransfer(slot,sendRule(item,name))>0);
    });
@@ -516,9 +518,9 @@ export function createLogistics(bot){
       reason:'Verifizierter freier Gear-/Elixierbestand vor Bankreise'});
     }
     if(route?.owner==='logistics'){
-      const h=transport.fresh(route.dest.name);
+      const h=transport.fresh(route.dest.name),point=h&&servicePoint(h);
       const decision=deliveryRouteDecision(route,h,p.c,{error:cfg.merchant.servicePositionError??70});
-      if(decision==='cancel'||h?.realm!==p.realm()||bot.strategy?.canVisit?.(h)===false){
+      if(decision==='cancel'||h?.realm!==p.realm()||!point){
         bot.movement.stop();
         recentVisit.set(route.dest.name,Date.now()+15000);
         bot.merchant?.finishService?.(route.dest.name,{cooldownMs:15000,reason:'Empfänger momentan nicht sicher erreichbar'});
@@ -536,7 +538,7 @@ export function createLogistics(bot){
           bot.movement.stop();lastDeliveryRetarget=clock();
           bot.event?.('logistics.pursuit',{peer:h.name,decision:'retarget',map:h.map,x:h.x,y:h.y,
             shift:distance(route.dest,h),mapChanged});
-          bot.movement.go({...h,radius:120},'logistics');
+          bot.movement.go(point,'logistics');
           return;
         }
         return;
@@ -573,7 +575,8 @@ export function createLogistics(bot){
        const trackerRequested=cfg.merchant.supply&&p.c.items.some((i,slot)=>i?.name==='tracker'&&!!trackerRule(i,name)&&availableTransfer(slot,trackerRule(i,name))>0);
        const demand=requested||directPotions||gearRequested||elixirRequested||trackerRequested;
       const pickup=cfg.merchant.pickup&&pickupCycle&&(h.items??[]).some(x=>{const item=x.variant??{name:x.item,level:0,stat_type:'',p:'',title:''};return x.to===me.name&&x.surplus>0&&safeItem(item)&&!!p.G?.items?.[item.name];});
-      if((demand||pickup)&&(bot.strategy?.canVisit?.(h)??true)){
+      const point=(demand||pickup)&&servicePoint(h);
+      if(point){
         const urgent=demand&&(h.items??[]).some(x=>x.need>0&&p.G?.items?.[x.item]?.type==='pot'&&(x.held===0||h.hp/Math.max(1,h.max_hp)<cfg.farming.hpBelow||h.mp/Math.max(1,h.max_mp)<cfg.farming.mpBelow));if(!urgent&&!pickup&&!gearRequested&&localBankBatch())continue;
         // Plan and complete inventory preparation BEFORE leaving for the
         // farmer. A full inventory must not hide its own pickup demand.
@@ -607,7 +610,7 @@ export function createLogistics(bot){
           return;
         }
         if(bot.movement.order?.owner==='economy'){if(!demand)continue;bot.movement.stop();}bot.reason='Lieferweg zu '+name;lastDeliveryRetarget=clock();
-        const started=bot.movement.go({...h,radius:120},'logistics');
+        const started=bot.movement.go(point,'logistics');
         if(started||bot.movement.order?.owner==='logistics')bot.event?.('logistics.pursuit',{peer:name,decision:'depart',map:h.map,x:h.x,y:h.y});
         else {recentVisit.set(name,Date.now()+2000);bot.event?.('logistics.pursuitDeferred',{peer:name,reason:'movement-admission-failed'});}
         return;

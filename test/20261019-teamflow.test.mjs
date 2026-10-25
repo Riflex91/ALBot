@@ -149,3 +149,10 @@ test('accepted material work keeps the physical spawn while travelling despite s
  assert.equal(team.status().switchAdvice.reason,'committed-farm-trip');
  }finally{Date.now=old;}
 });
+
+test('failed committed travel is quarantined and replanned without recording a death',()=>{
+ const {bot,events}=farmFixture(),team=createTeamPlan(bot);team.tick();const first=team.heartbeat();
+ assert.ok(first);team.travelFailed(first,'no-certified-world-route');assert.equal(team.heartbeat(),null);
+ bot.decisionEpoch++;team.tick();assert.ok(team.heartbeat());assert.notEqual(team.heartbeat().key,first.key);
+ assert.ok(events.some(e=>e.type==='plan.travelFailed'&&e.data.death===false));
+});

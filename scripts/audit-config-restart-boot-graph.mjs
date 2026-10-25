@@ -33,6 +33,20 @@ export function auditRealRuntimeBootGraph(source){
  const tickStart=source.indexOf('function tick(',botStart);
  if(botStart<0||tickStart<botStart)
   throw Error('Real bot construction/tick boundary missing');
+ // Count actual direct factories AND constructors acquired through the
+ // real named resource scope, never a string or a factory mentioned in comments.
+ const ownedFactory=node=>{
+  if(node?.type!=='CallExpression'||
+   !member(node.callee,'cleanup','acquire'))return null;
+  const fn=node.arguments?.[1];
+  if(fn?.type!=='ArrowFunctionExpression'&&
+   fn?.type!=='FunctionExpression')return null;
+  const expression=fn.body?.type==='BlockStatement'?
+   fn.body.body.find(x=>x.type==='ReturnStatement')?.argument:fn.body;
+  return expression?.type==='CallExpression'&&
+   /^create[A-Z]/.test(expression.callee?.name??'')?
+    expression.callee.name:null;
+ };
  const factoryNames=new Map(),sideEffects=new Set(),captured=new Set();
  let executorConstructed=false,cleanupPresent=false,haltPresent=false;
  walk(ast,node=>{
@@ -41,11 +55,13 @@ export function auditRealRuntimeBootGraph(source){
    node.left?.type==='MemberExpression'&&!node.left.computed&&
    node.left.object?.name==='bot'&&
    node.right?.type==='CallExpression'&&
-   /^create[A-Z]/.test(node.right.callee?.name??'')){
-   const key=node.left.property.name;
-   if(factoryNames.has(key)&&factoryNames.get(key)!==node.right.callee.name)
+   (/^create[A-Z]/.test(node.right.callee?.name??'')||
+    ownedFactory(node.right))){
+   const key=node.left.property.name,
+    factory=ownedFactory(node.right)??node.right.callee.name;
+   if(factoryNames.has(key)&&factoryNames.get(key)!==factory)
     throw Error('Ambiguous boot factory '+key);
-   factoryNames.set(key,node.right.callee.name);
+   factoryNames.set(key,factory);
   }
   if(node.type==='NewExpression'&&node.callee?.name==='Executor')
    executorConstructed=true;

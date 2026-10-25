@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 54,
-      "version": "0.54.0-candidate",
+      "sequence": 57,
+      "version": "0.57.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 1005098,
-      "sha256": "69977528620eeb209edbbb0e25fee1bcaa5167e060469ee4352faed942a2a747"
+      "bytes": 1032743,
+      "sha256": "2517d22acecf80ad27e43754df1ed125932824d6e56a30562836b0ef84ca75d9"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: W02/W10 exact equipped stock PR #482, clean exact-head Linux/Windows CI #40116875248, main merge dbaf8fcebc58a5b9a83deb6ab67cc23bd939b703. Concurrent PR #481 hardened signed signature tamper tests; protected signer #40117020642 successful: ALBot 0.54.0-candidate / sequence 54, 1005098 bytes, SHA-256 69977528620eeb209edbbb0e25fee1bcaa5167e060469ee4352faed942a2a747. Published and main runtime Git blob b651f52a5c52683d450922c63bde40d5b050bef6 identical. Personal ALBotConfig, installed V2 loader, URLs and trust key unchanged. No W14 live acceptance."
+    "note": "24.10.2026: Benutzerfreigabe zum aktualisierten signed V2 Kanal von 0.54 nach 0.57.0-candidate über bestehende +0.1-Signierfolge 0.55 (Run #40125940594), 0.56 (#40126047772), 0.57 (#40126153596). Signiertes Release Sequence 57, 1032743 Bytes, SHA256 2517d22acecf80ad27e43754df1ed125932824d6e56a30562836b0ef84ca75d9, main/runtime-Git-Blob 4c7816a8b651d833b2e13e79491ad82e1a6e2f8b identisch. Personal config, installiertes V2, Trust-Schlüssel und Download-URLs unverändert. Ingame-Abnahme der neuen Navigation offen."
   }
 }

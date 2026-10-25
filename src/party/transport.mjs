@@ -163,8 +163,32 @@ export function createTransport(bot){
       }else if(bot.running&&!bot.lifecycleChanging){if(m.type.startsWith('account'))bot.account?.receiveMessage(from,m);else if(m.type.startsWith('hop')||m.type.startsWith('port'))bot.teamTravel?.receive(from,m);else if(m.type.startsWith('gold'))bot.gold?.receive(from,m);else bot.logistics?.receive(from,m);}
     }catch(e){counters.rejected++;bot.report('Nachricht verworfen: '+e.message);}
   }
-  if(p.ipc)offs.push(p.h.onMessage(e=>{if(e.topic==='albot/1')receive(e.from,e.data);}));
-  offs.push(p.hook('on_cm',(from,data)=>{if(data?.protocol!=='albot/1')return;if(cfg.general.transport!=='ipc'&&(!p.headless||cfg.general.allowRemoteCM||cfg.general.transport==='cm'))receive(from,data);return true;}));
+  // Register both real listeners atomically with respect to all returned
+  // disposers. In particular, a failure at CM registration must detach IPC.
+  function releaseListeners(){
+    let failures=0;
+    for(const off of offs.splice(0).reverse()){
+      try{off();}catch{failures++;}
+    }
+    if(failures)throw Error('Transport listener cleanup incomplete: '+failures);
+  }
+  try{
+    if(p.ipc){
+      const off=p.h.onMessage(e=>{if(e.topic==='albot/1')receive(e.from,e.data);});
+      if(typeof off!=='function')throw Error('IPC listener is missing cleanup');
+      offs.push(off);
+    }
+    const off=p.hook('on_cm',(from,data)=>{if(data?.protocol!=='albot/1')return;if(cfg.general.transport!=='ipc'&&(!p.headless||cfg.general.allowRemoteCM||cfg.general.transport==='cm'))receive(from,data);return true;});
+    if(typeof off!=='function')throw Error('CM listener is missing cleanup');
+    offs.push(off);
+  }catch(error){
+    try{releaseListeners();}
+    catch(rollbackError){
+      throw new Error('Transport initialization rollback incomplete',
+       {cause:{registration:error,rollback:rollbackError}});
+    }
+    throw error;
+  }
   function send(to,type,data,id=''){
     refreshOwn();
     if(to===me.name)return Promise.resolve(false);
@@ -274,6 +298,6 @@ export function createTransport(bot){
       }
     }
     },
-    close(){offs.splice(0).forEach(f=>f());peers.clear();seen.clear();retired.clear();}
+    close(){try{releaseListeners();}finally{peers.clear();seen.clear();retired.clear();}}
   };
 }

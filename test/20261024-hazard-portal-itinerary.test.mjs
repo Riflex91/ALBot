@@ -92,6 +92,65 @@ test('live roaming enemies cannot be assumed to remain at static spawn',()=>{
  assert.equal(segmentThreatFree(regions,character,to),false);
  assert.equal(segmentThreatFree(threatRegions(g,'main'),character,to),true);
 });
+test('live prat with missing position or health freezes route rather than disappearing',()=>{
+ const g=world(),from=here('main',0,0),to=here('main',400,0);
+ const monster={id:'moving-prat',map:'main',mtype:'prat',hp:9200,
+  dead:false,x:200,y:0};
+ for(const altered of [
+  {x:undefined},{x:NaN},{x:Infinity},{y:undefined},
+  {y:NaN},{hp:undefined},{hp:NaN},{hp:-1},
+  {map:undefined}
+ ]){
+  const unsafe={...monster,...altered};
+  const evidence=threatRegions(g,'main',[unsafe]);
+  assert.equal(evidence.ok,false,JSON.stringify(altered),
+   'an unbounded live aggressive monster is not proof of safe transit');
+  assert.equal(segmentThreatFree(evidence,from,to),false);
+  assert.equal(planHazardItinerary(g,from,to,clear,{
+   liveMonsters:[unsafe]}).ok,false);
+ }
+ const observed=threatRegions(g,'main',[{...monster,map:'level1'}]);
+ assert.equal(observed.ok,true,
+  'a properly located monster on another map does not contaminate this map');
+ assert.equal(segmentThreatFree(observed,from,to),true);
+});
+
+test('unknown live hostile reach cannot turn its dynamic safety circle into NaN',()=>{
+ const g=world(),a=here('main',0,0),b=here('main',300,0);
+ const live={id:'prat',map:'main',mtype:'prat',hp:100,
+  x:150,y:0,dead:false};
+ for(const changed of [
+  {speed:NaN},{speed:Infinity},{speed:-1},
+  {range:NaN},{range:Infinity},{range:-1}
+ ]){
+  const region=threatRegions(g,'main',[{...live,...changed}]);
+  assert.equal(region.ok,false,JSON.stringify(changed));
+  assert.equal(segmentThreatFree(region,a,b),false);
+ }
+ assert.equal(threatRegions(g,'main',{}).ok,false);
+ assert.equal(threatRegions(g,'main',Array.from({length:513},()=>null)).ok,false);
+ assert.equal(planHazardItinerary(g,a,b,clear,{liveMonsters:{}}).ok,false);
+ assert.equal(planHazardItinerary(g,a,b,clear,{
+  liveMonsters:Array.from({length:513},()=>null)}).ok,false);
+ assert.equal(threatRegions(g,'main',[{...live,speed:30,range:32}]).ok,true);
+});
+
+test('corrupted or NaN threat-region shapes never certify a segment',()=>{
+ const from=here('main',0,0),to=here('main',300,0);
+ for(const corrupted of [
+  {rectangles:[],circles:[{x:150,y:0,r:NaN}]},
+  {rectangles:[],circles:[{x:150,y:0,r:Infinity}]},
+  {rectangles:[],circles:[{x:150,y:0,r:-1}]},
+  {rectangles:[{x1:50,x2:100,y1:0,y2:50,pad:NaN}],circles:[]},
+  {rectangles:[{x1:50,x2:0,y1:0,y2:50,pad:5}],circles:[]},
+  {rectangles:null,circles:[]},
+  {rectangles:[],circles:null}
+ ]){
+  assert.equal(segmentThreatFree({ok:true,...corrupted},from,to),false,
+   JSON.stringify(corrupted));
+ }
+});
+
 test('unknown aggressive spawn shape must not become an implicitly empty safe area',()=>{
  const g=world();
  g.maps.main.monsters=[{type:'prat',count:5,random:true}];

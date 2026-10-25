@@ -45,6 +45,8 @@ export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
  const data=G?.maps?.[map];
  if(!data||!Array.isArray(data.monsters)||!G?.monsters)
   return {ok:false,reason:'missing-authoritative-monster-map'};
+ if(!Array.isArray(liveMonsters)||liveMonsters.length>512)
+  return {ok:false,reason:'invalid-live-hostile-observations'};
  const rectangles=[],circles=[];
  for(const zone of data.monsters){
   if(!zone||!G.monsters[zone.type])return {ok:false,reason:'unknown-monster-definition'};
@@ -61,12 +63,27 @@ export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
    (attack>=250?20:0);
   for(const r of ranges)rectangles.push({...hiBox(...r),pad,type:zone.type,count:Math.max(1,zone.count??1)});
  }
- for(const monster of liveMonsters??[]){
-  if(!monster||monster.dead||!(monster.hp>0)||!hiPoint(monster)||
-    monster.map!==map||!monster.target&&!isNaturallyAggressive(G,monster))continue;
-  const def=G.monsters[monster.mtype??monster.type]??{};
-  const speed=Math.max(0,monster.speed??def.speed??0);
-  const reach=Math.max(0,monster.range??def.range??0);
+ for(const monster of liveMonsters){
+  if(!monster)continue;
+  if(typeof monster!=='object'||Array.isArray(monster))
+   return {ok:false,reason:'invalid-live-hostile-observations'};
+  // A missing/NaN coordinate, health, speed or range cannot constitute
+  // proof that an active aggressive enemy is absent from the route.
+  // This covers roaming prat well outside the static spawn rectangles.
+  if(monster.dead===true||monster.hp===0)continue;
+  if(!monster.target&&!isNaturallyAggressive(G,monster))continue;
+  if(typeof monster.map!=='string'||!monster.map)
+   return {ok:false,reason:'unlocated-live-hostile-map'};
+  if(monster.map!==map)continue;
+  if(!hiPoint(monster)||!hiFinite(monster.hp)||monster.hp<0)
+   return {ok:false,reason:'unlocated-live-hostile-position'};
+  const def=G.monsters[monster.mtype??monster.type];
+  const speed=monster.speed??def?.speed;
+  const reach=monster.range??def?.range;
+  if(!hiFinite(speed)||speed<0||!hiFinite(reach)||reach<0||
+     !hiFinite(margin)||margin<0||margin>200||
+     !hiFinite(margin+reach+speed*2.5+45))
+   return {ok:false,reason:'unbounded-live-hostile-reach'};
   const rad=margin+reach+speed*2.5+45;
   circles.push({x:monster.x,y:monster.y,r:rad,id:monster.id??null,type:monster.mtype});
   // Track likely near-term movement, without assuming a hostile is leashed
@@ -78,12 +95,19 @@ export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
  return {ok:true,rectangles,circles};
 }
 export function segmentThreatFree(regions,a,b){
- if(!regions?.ok||!hiPoint(a)||!hiPoint(b)||a.map!==b.map)return false;
- for(const r of regions.rectangles)
+ if(!regions?.ok||!hiPoint(a)||!hiPoint(b)||a.map!==b.map||
+    !Array.isArray(regions.rectangles)||!Array.isArray(regions.circles))
+  return false;
+ for(const r of regions.rectangles){
+  if(!r||![r.x1,r.y1,r.x2,r.y2,r.pad].every(hiFinite)||
+     r.pad<0||r.x1>r.x2||r.y1>r.y2)return false;
   if(hiSegmentBox(a,b,{x1:r.x1-r.pad,y1:r.y1-r.pad,
     x2:r.x2+r.pad,y2:r.y2+r.pad}))return false;
- for(const m of regions.circles)
+ }
+ for(const m of regions.circles){
+  if(!m||![m.x,m.y,m.r].every(hiFinite)||m.r<0)return false;
   if(hiSegmentDistance(a,b,m)<m.r)return false;
+ }
  return true;
 }
 const hiInside=(p,r)=>p.x>=r.x1-r.pad&&p.x<=r.x2+r.pad&&
@@ -225,6 +249,10 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
  if(!hiPoint(start)||!hiPoint(goal)||!G?.maps?.[start.map]||
    !G.maps[goal.map]||typeof canTraverse!=='function')
   return fail('invalid-world-or-collision-provider');
+ // Do not filter unlocated roaming hostiles away before threatRegions gets
+ // the opportunity to deny the route. A missing map is UNKNOWN, not safe.
+ if(!Array.isArray(liveMonsters)||liveMonsters.length>512)
+  return fail('invalid-live-hostile-observations');
  const denied=new Set(excludedMaps);
  const blocks=map=>denied.has(map)||!G.maps[map]||
    G.maps[map].ignore||G.maps[map].pvp||G.maps[map].instance;
@@ -236,7 +264,8 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
  };
  const regions=new Map(),lookup=map=>{
   if(!regions.has(map))regions.set(map,threatRegions(G,map,
-   liveMonsters.filter(m=>m?.map===map)));
+   liveMonsters.filter(m=>!m||typeof m.map!=='string'||
+    !m.map||m.map===map)));
   return regions.get(map);
  };
  const walks=new Map(),walker=(map,from,to)=>{

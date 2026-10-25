@@ -1,3 +1,7 @@
+## W14 / Prat-Korridor – fail-closed bei unlokalisierbaren Live-Gegnern (25.10.2026)
+
+Der physische Hazard-Planer darf lebende aggressive Gegner nicht als „nicht vorhanden“ behandeln, wenn Position, Map, HP, Geschwindigkeit oder Angriffsreichweite ungültig bzw. unbekannt sind. Das galt insbesondere für potenziell außerhalb ihrer Spawnfläche laufende `prat`-Monster: vorher konnte eine fehlerhafte dynamische Radiusberechnung mit `NaN` stillschweigend als freier Routenabschnitt passieren. Jetzt verwirft die Hazard-Erfassung solche Belege explizit und die Wegsegmentprüfung akzeptiert keine unendlichen, negativen oder NaN-Geometrien. Offline-Regressionen decken gefährliche Gegner außerhalb statischer Spawnflächen, unvollständige Positions- und Reach-Belege sowie synthetisch kaputte Bedrohungsregionen ab. Keine automatische Rückkehr zu `smart_move`; kein Anspruch auf physisch sichere W14-Live-Routen. Draft-PRs #485 und #487 bleiben gesperrt. [Risikobericht](docs/W14-LIVE-THREAT-FAILCLOSED-2026-10-25.md).
+
 ## Farmnavigation und Ausrüstungsversorgung (25.10.2026)
 
 Implementiert: einmaliger nativer Stop, begrenzter sicherheitsgeprüfter Ausstieg, geprüfter Farm-Sammelpunkt, endliche Routenquarantäne mit lokaler Neubewertung, Grace-Chancen, physische Gear-Mengen und sichere Merchant-Anlaufpunkte. [Details und Grenzen](docs/FARM-GEAR-CORRECTIONS-2026-10-25.md). 2696 Offline-Tests und Linux-/Windows-CI erfolgreich; 0.60 / Sequenz 60 signiert und verifiziert. [Zertifizierung](docs/RELEASE-CERTIFICATION-0.60.0-2026-10-25.md); Ingame-Abnahme bleibt offen.

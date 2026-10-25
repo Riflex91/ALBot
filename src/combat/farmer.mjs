@@ -897,7 +897,13 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
     const threat=bot.monsters().filter(m=>isOwnAggressiveThreat(p.G,m,c.name)).sort((a,b)=>distance(c,a)-distance(c,b))[0];
     const rescueRoster=(bot.farmers??[]).map(name=>name===c.name?c:
       bot.transport?.fresh?.(name)).filter(Boolean);
-    const rescueFocus=chooseEmergencyFocus(emergency?.monsters??[],rescueRoster,p.G.monsters);
+    // A wounded AoE survivor can still be engaged even when the natural-
+    // aggression emergency list no longer contains it. A live team target
+    // must reach the guarded single-target defense path before farm travel
+    // or the next voluntary AoE pull can take over.
+    const rescueFocus=bot.combatAssessment?.assess?
+      chooseEmergencyFocus(bot.monsters().filter(m=>samePlace(c,m)),
+        rescueRoster,p.G.monsters):null;
     const blocker=blockingMonster();
     if(blocker&&['farm','follow'].includes(bot.movement.order?.owner))bot.movement.stop();
     const danger=blocker??rescueFocus??threat;
@@ -916,7 +922,7 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
       // Preserve healing and potions, and only evade verified self-aggro.
       const plan=travelPlan();
       if(me.role==='farmer'&&plan&&
-         (!samePlace(c,plan)||distance(c,plan)>85)&&
+         (!samePlace(c,plan)||distance(c,plan)>90)&&
          !inCaveInstance(c)){
        bot.target=null;
        bot.reason='Gefährliche Weg-Aggro: sichere Flucht statt Kampf';

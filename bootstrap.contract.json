@@ -11,19 +11,19 @@
   "inGameLoader": {
     "status": "source-reviewed",
     "trackedSourcePath": "bootstrap/ingame-loader-v2.js",
-    "sourceOrigin": "Vom Benutzer am 18.10.2026 übermittelter Ingame-CODE; die Datei ist ausschließlich der Bootstrap-Abschnitt ohne persönliche ALBotConfig.",
+    "sourceOrigin": "Vom Benutzer am 18.10.2026 Ã¼bermittelter Ingame-CODE; die Datei ist ausschlieÃŸlich der Bootstrap-Abschnitt ohne persÃ¶nliche ALBotConfig.",
     "configuredManifestUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.release.json",
     "releaseChannelRef": "codex/w00-w01-readonly-disposition-20261018",
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 57,
-      "version": "0.57.0-candidate",
+      "sequence": 60,
+      "version": "0.60.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 1032743,
-      "sha256": "2517d22acecf80ad27e43754df1ed125932824d6e56a30562836b0ef84ca75d9"
+      "bytes": 1040486,
+      "sha256": "83a86b6b68288ab8d7001f6fba894a50cf45e87542012b8c00d5c49438de0800"
     },
     "observedLoadedUrl": null,
-    "note": "24.10.2026: Benutzerfreigabe zum aktualisierten signed V2 Kanal von 0.54 nach 0.57.0-candidate über bestehende +0.1-Signierfolge 0.55 (Run #40125940594), 0.56 (#40126047772), 0.57 (#40126153596). Signiertes Release Sequence 57, 1032743 Bytes, SHA256 2517d22acecf80ad27e43754df1ed125932824d6e56a30562836b0ef84ca75d9, main/runtime-Git-Blob 4c7816a8b651d833b2e13e79491ad82e1a6e2f8b identisch. Personal config, installiertes V2, Trust-Schlüssel und Download-URLs unverändert. Ingame-Abnahme der neuen Navigation offen."
+    "note": "25.10.2026: Benutzerfreigabe für Korrekturen, Main-Merge und neue signierte Runtime. 0.60.0-candidate / Sequenz 60 über unveränderte geschützte +0.1-Folge 58/59/60. Signing-Runs 40178561653, 40178635254, 40178725966. Runtime 1040486 Bytes, SHA256 83a86b6b68288ab8d7001f6fba894a50cf45e87542012b8c00d5c49438de0800. Persönliche Config, installierter V2-Loader, Vertrauensschlüssel und URLs unverändert. Ingame-Abnahme offen."
   }
 }

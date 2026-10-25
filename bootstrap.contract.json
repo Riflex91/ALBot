@@ -17,13 +17,13 @@
     "inspectedResolvedRuntimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
     "inspectedManifest": {
       "format": "albot-release-v1",
-      "sequence": 61,
-      "version": "0.61.0-candidate",
+      "sequence": 62,
+      "version": "0.62.0-candidate",
       "runtimeUrl": "https://raw.githubusercontent.com/Riflex91/ALBot/codex/w00-w01-readonly-disposition-20261018/dist/albot.runtime.js",
-      "bytes": 1040534,
-      "sha256": "64c7230067a175596484612321d54c373b5da3ca17374942710762165f51f4ff"
+      "bytes": 1041271,
+      "sha256": "560650897e63d4fbd80e046412ea85e4d6174c286da24139d0cd3099308ae7df"
     },
     "observedLoadedUrl": null,
-    "note": "25.10.2026: AoE-Überlebenden-Fix PR #498, Main-Merge eeaa0a90 und geschütztes ECDSA-P-256-Signing 40182692815 erfolgreich. 0.61.0-candidate / Sequenz 61, 1040534 Runtime-Bytes, SHA256 64c7230067a175596484612321d54c373b5da3ca17374942710762165f51f4ff. Persönliche Config, installierter V2-Loader, Vertrauensschlüssel und URLs unverändert. Ingame-Abnahme offen."
+    "note": "25.10.2026: W14 conservative live-hostile threat proof PR #500, exact final-head Linux/Windows verification #40203298919 and clean merge a527b68e5c42c26b848475bb2c22e4f289d7b248. Protected signer workflow #40203538783 succeeded: ALBot 0.62.0-candidate / Sequence 62, 1041271 bytes, SHA-256 560650897e63d4fbd80e046412ea85e4d6174c286da24139d0cd3099308ae7df; signed and main runtime Git blob edb33329596cdd4e0bba8f3954e211d4dea1cd72. Existing loader/key/URLs and personal ALBotConfig unchanged. Draft PRs #485/#487 blocked and no W14 in-game live acceptance."
   }
 }

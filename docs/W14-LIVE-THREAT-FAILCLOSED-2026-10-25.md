@@ -16,3 +16,7 @@ Die zentrale Segmentprüfung `segmentThreatFree` weist unvollständige oder ung�
 `test/20261024-hazard-portal-itinerary.test.mjs`: bekannte Live-`prat`-Position außerhalb statischer Spawnfläche, fehlende/NaN/Infinity-Koordinaten, HP und Map; ungültige Geschwindigkeiten und Ranges; nicht-arrayförmige bzw. überlange Liste; ungültige dynamische Kreise und statische Rechtecke. Der entscheidende Sicherheitsvertrag lautet: Unklare Gefahr führt zu Routenverweigerung, niemals zu einer vermeintlich sicheren Route.
 
 Die tödliche `level1`-Durchquerung aus dem 24.10.-Vorfall und die Drafts #485/#487 bleiben gesonderte, noch **nicht** live abgenommene Arbeit. W14 setzt weiterhin beaufsichtigte echte Routenversuche, Team-Healing-Protokolle, Recovery-Belege, Portalankunft und null wiederholte unbeaufsichtigte Todesfälle voraus. CI-Erfolg ist kein W14-Livenachweis.
+
+## Protected signer after exact-head CI
+
+The new fail-closed runtime was signed by the existing protected [workflow #40203538783](https://github.com/Riflex91/ALBot/actions/runs/40203538783) as `0.62.0-candidate` / Sequence 62, 1041271 bytes, SHA-256 `560650897e63d4fbd80e046412ea85e4d6174c286da24139d0cd3099308ae7df`. This remains **offline** assurance only. Official Adventure Land in-game route and prat containment acceptance has not been demonstrated.

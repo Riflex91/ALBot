@@ -312,13 +312,29 @@ export function balancedFarmUtility(xp,gold){
 }
 export function createTeamPlan(bot){
  const crossMapSince=new Map();
+ const unreachable=new Map();let localRecoveryUntil=0,tripProgress=null;
  const {p,cfg,me}=bot,key='albot:teamplan:'+me.name;let marchState={reason:'',peer:'',at:0},routeBlockedAt=0,routeProgress=new Map();let current=null,last=0,generation=0,history=p.read(key+':areas')??{},area=null,previous=Date.now(),lastXp=p.c.xp??0,lastGold=p.c.gold??0,absence=0,samples=0,lastSave=0,ranking=[],huntFallback='',switchAdvice=null,definition='',graph={edges:[]},roles={},validEpoch=-1,validCache=new Map(),dangerousAreas=new Map(),materialAck=null,lastMaterialAck='';
  if(!history||typeof history!=='object'||Array.isArray(history))history={};
  function areaKey(spawnKey,now=Date.now()){
   return farmAreaHistoryKey(p.realm(),new Date(now).getUTCHours(),spawnKey,
    bot.farmers.map(n=>n===me.name?bot.gear?.snapshot():bot.transport.fresh(n)?.gear));
  }
- function areaQuarantined(key){const until=dangerousAreas.get(key);if(!until)return false;if(until>Date.now())return true;dangerousAreas.delete(key);return false;}
+ function areaQuarantined(key){for(const records of [dangerousAreas,unreachable]){
+  const until=records.get(key);if(until>Date.now())return true;
+  if(until)records.delete(key);
+ }return false;}
+ function travelFailed(destination,reason){
+  if(me.name!==bot.leader||!current||destination?.map!==current.map||
+     !Number.isFinite(destination.x)||!Number.isFinite(destination.y)||
+     distance(destination,current)>100)return false;
+  const old=current;unreachable.set(old.key,Date.now()+60000);
+  if(unreachable.size>32)unreachable.delete(unreachable.keys().next().value);
+  localRecoveryUntil=Date.now()+30000;current=null;last=0;tripProgress=null;
+  validCache.clear();bot.target=null;
+  bot.event?.('plan.travelFailed',{id:old.id,key:old.key,reason,
+   retryAfter:Date.now()+60000,death:false});
+  return true;
+ }
  const huntKey='albot:teamhunt:'+me.group;
  let huntState=p.read?.(huntKey)??null,huntObjective=null;
  function orderedHunt(){
@@ -412,6 +428,13 @@ export function createTeamPlan(bot){
   return roles;
  }
  function tick(){if(cfg.general.testLogging===undefined||me.role!=='farmer')return;
+  if(current&&me.name===bot.leader&&!current.arrivedAt&&!bot.strategy?.busy){
+   if(tripProgress?.id!==current.id||tripProgress.map!==p.c.map||
+      distance(tripProgress,p.c)>6)tripProgress={id:current.id,map:p.c.map,
+       x:p.c.x,y:p.c.y,at:Date.now()};
+   else if(Date.now()-tripProgress.at>45000)
+    travelFailed(current,'farm-trip-stalled');
+  }
     // An active emergency must block new pulls, not strand the squad without
     // a shared destination. Keep an already verified plan stable, but when
     // none exists allow the leader to select a safe spawn and followers to
@@ -516,6 +539,9 @@ export function createTeamPlan(bot){
    pressureRatio:Math.max(empty,foreign>=2?.75:0),livePlayers:live.players,liveFighters:live.fighters,
    occupancyObserved:live.observed,
    pressure:empty>.6?'spawn-starved':foreign>=2||live.fighters>0?'contested':'healthy'};}).filter(r=>Number.isFinite(r.score)).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
+  if(Date.now()<localRecoveryUntil){const local=ranking.filter(r=>r.map===p.c.map);
+   if(local.length)ranking=local;
+  }
   // Rank the complete set of *approved* spawns before deciding a quest has
   // nowhere safe to run. Persist only an ordering decision, never forge quest
   // completion or clear any farmer's actual monsterhunt state.
@@ -639,7 +665,7 @@ export function createTeamPlan(bot){
     'Sicherer Standort nach EXP/Gold, Reisezeit, Spawnangebot und Gruppeneignung'};
   if(!same){if(current?.objective&&current.objective!==proposal.objective)bot.event('farmOrder.suspended',{objective:current.objective,reason:proposal.objective?'higher-priority-material-work':'merchant-order-unavailable-or-source-not-approved'});bot.target=null;if(!sameFarmDestination(current,proposal)&&['farm','world','combat'].includes(bot.movement.order?.owner))bot.movement.stop();bot.event('plan.selected',{id:proposal.id,target:proposal.target,map:proposal.map,objective:proposal.objective,reason:proposal.reason,score:proposal.score});}current=proposal;
  }
- return {tick,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
+ return {tick,travelFailed,orderedHunt,allowed,candidates,valid,materialAck:()=>materialAck,roles:()=>roles,heartbeat:()=>current?{...current}:null,target:()=>valid(current)?current.target:null,travel(){
   if(!valid(current)||bot.strategy.busy)return false;
   if(cfg.party.enabled&&me.name!==bot.leader)return false;
   // The quest owner's NPC journey is NEVER a farm march destination.
@@ -783,8 +809,9 @@ export function createTeamPlan(bot){
     }
    }
   }
-  bot.reason='Gemeinsamer Gruppenmarsch: '+current.target;
-  bot.movement.go(destination,'farm');return true;
+  const target=current.target,accepted=bot.movement.go(destination,'farm');
+  if(accepted||bot.movement.order?.owner==='farm')bot.reason='Gemeinsamer Gruppenmarsch: '+target;
+  return true;
  },materialActive:()=>!!current?.objective,wantsCombat:()=>{if(!current?.objective)return true;const r=materialRequests().find(r=>r.objective===current.objective);if(!r)return current.kind==='elixir';const held=bot.production?.progress?.().find(q=>q.objective===r.objective)?.quantity??0;
   return Number.isSafeInteger(held)&&held>=0&&held<materialQuotaCap(r,me.name,bot.session);},lostKill(monster){if(current?.target===monster&&area&&history[area])history[area].lostKills=(history[area].lostKills??0)+1;},failed(reason){if(area&&history[area])history[area].deaths++;
    if(current){if(/Gefährlich|Aggro|Tod|stark|risk|Gefahr|gefähr/i.test(reason)){const until=Date.now()+Math.max(600000,cfg.farming.deathWindowMs??600000);dangerousAreas.set(current.key,until);bot.event('plan.quarantined',{key:current.key,target:current.target,map:current.map,until,reason});}bot.event('plan.failed',{id:current.id,reason});}current=null;last=0;},status:()=>({current:current?{...current}:null,roles,areas:Object.keys(history).length,pressure:summarizeSpawnPressure(ranking).pressure,

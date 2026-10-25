@@ -1239,7 +1239,8 @@ function waitSafely(reason){bot.reason=reason;bot.target=null;const threat=bot.m
          destination:marchPlan.key,reason:'continuous-shared-farm-destination'});
        }
        bot.target=null;
-       bot.reason='Gruppenmarsch: durchgehend zu '+marchPlan.target;
+       if(bot.movement.order?.owner==='follow')
+        bot.reason='Gruppenmarsch: durchgehend zu '+marchPlan.target;
        bot.skills.rotation(null);return;
       }
       if(!detachment&&(!samePlace(c,leader)||distance(c,leader)>followerReassemblyDistance(cfg))){

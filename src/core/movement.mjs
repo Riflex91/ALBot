@@ -67,6 +67,7 @@ export function createMovement(bot){
   const smartActive=()=>[p.root?.smart,p.parent?.smart].some(s=>s?.moving||s?.searching);
   // Native movement can be active even without a local ALBot order.
   const nativeBusy=()=>!!p.c?.moving||smartActive();
+  let nativeAbort=null;
   const stop=()=>{if(hazardTravel.active)hazardTravel.abort('owner-stop');
     if(order)bot.event?.('movement.terminal',{
     id:order.id,owner:order.owner,mode:order.mode??null,map:order.dest.map,
@@ -90,11 +91,20 @@ export function createMovement(bot){
       // An orphan native smart path may continue executing after this
       // request. Stop it BEFORE planning a new certified itinerary.
       if(nativeBusy()){
-        try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}
-        bot.event?.('travel.hazardLegacyRouteStopped',{
-          reason:'unverified-native-route-before-plan'});
-        return false;
-      }
+        // Native stop clears moving but can leave searching latched forever.
+        // An inert search is not an active route after our observed stop.
+        const moving=!!p.c.moving||[p.root?.smart,p.parent?.smart].some(s=>s?.moving);
+        if(!nativeAbort){nativeAbort={at:Date.now()};
+         try{Promise.resolve(p.call('stop','move')).catch(()=>{});}catch{}
+         bot.event?.('travel.hazardLegacyRouteStopped',{
+          reason:'orphan-native-route',moving,searching:smartActive()});
+        }
+        if(moving||Date.now()-nativeAbort.at<500){
+         bot.reason='Navigation: bestätigten nativen Bewegungsabbruch abwarten';
+         if(Date.now()-nativeAbort.at>6000)bot.teamPlan?.travelFailed?.(d,'native-stop-unconfirmed');
+         return false;
+        }
+      }else nativeAbort=null;
       if(bot.lootDeparture?.beforeDeparture(d,owner)===false)return false;
       // No unreviewed native smart_move fallback when the physical
       // geometry or risk proof is absent.

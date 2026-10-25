@@ -59,7 +59,7 @@ export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
   const range=G.monsters[zone.type].range??0;
   const pad=margin+Math.max(0,range)+Math.min(120,Math.max(0,speed)*1.2)+
    (attack>=250?20:0);
-  for(const r of ranges)rectangles.push({...hiBox(...r),pad,type:zone.type});
+  for(const r of ranges)rectangles.push({...hiBox(...r),pad,type:zone.type,count:Math.max(1,zone.count??1)});
  }
  for(const monster of liveMonsters??[]){
   if(!monster||monster.dead||!(monster.hp>0)||!hiPoint(monster)||
@@ -68,12 +68,12 @@ export function threatRegions(G,map,liveMonsters=[],{margin=55}={}){
   const speed=Math.max(0,monster.speed??def.speed??0);
   const reach=Math.max(0,monster.range??def.range??0);
   const rad=margin+reach+speed*2.5+45;
-  circles.push({x:monster.x,y:monster.y,r:rad,id:monster.id??null});
+  circles.push({x:monster.x,y:monster.y,r:rad,id:monster.id??null,type:monster.mtype});
   // Track likely near-term movement, without assuming a hostile is leashed
   // to the place where it originally spawned.
   if(hiFinite(monster.vx)&&hiFinite(monster.vy))
    circles.push({x:monster.x+monster.vx*1.5,
-    y:monster.y+monster.vy*1.5,r:rad,id:monster.id??null});
+    y:monster.y+monster.vy*1.5,r:rad,id:monster.id??null,type:monster.mtype});
  }
  return {ok:true,rectangles,circles};
 }
@@ -86,6 +86,53 @@ export function segmentThreatFree(regions,a,b){
   if(hiSegmentDistance(a,b,m)<m.r)return false;
  return true;
 }
+const hiInside=(p,r)=>p.x>=r.x1-r.pad&&p.x<=r.x2+r.pad&&
+ p.y>=r.y1-r.pad&&p.y<=r.y2+r.pad;
+const hiDepth=(p,r)=>hiInside(p,r)?Math.min(p.x-r.x1+r.pad,
+ r.x2+r.pad-p.x,p.y-r.y1+r.pad,r.y2+r.pad-p.y):0;
+// Escape only a region already containing the original start. No new hazard
+// may be entered, and every internal step must reduce penetration. The caller
+// must independently prove worst-case SOLO survival for the allowed species.
+export function segmentHazardEscape(regions,a,b,origin,types=[]){
+ if(!regions?.ok||!hiPoint(a)||!hiPoint(b)||!hiPoint(origin)||
+   a.map!==b.map||a.map!==origin.map||hiDistance(origin,b)>600)return false;
+ for(const r of regions.rectangles){
+  if(!hiSegmentBox(a,b,{x1:r.x1-r.pad,y1:r.y1-r.pad,x2:r.x2+r.pad,y2:r.y2+r.pad}))continue;
+  if(!types.includes(r.type)||!hiInside(origin,r)||!hiInside(a,r)||
+     hiInside(b,r)&&hiDepth(b,r)>=hiDepth(a,r)-2)return false;
+ }
+ for(const c of regions.circles){
+  if(hiSegmentDistance(a,b,c)>=c.r)continue;
+  const dx=b.x-a.x,dy=b.y-a.y;
+  if(!types.includes(c.type)||hiDistance(origin,c)>=c.r||
+     hiDistance(a,c)>=c.r||hiDistance(b,c)<=hiDistance(a,c)+2||
+     (a.x-c.x)*dx+(a.y-c.y)*dy<0)return false;
+ }
+ return true;
+}
+// An aggressive farm is reached in two phases: threat-free staging followed
+// by a separately admitted local entry. Never remove other spawn hazards.
+export function farmEntryRegions(regions,plan){
+ const b=plan?.bounds;
+ if(!regions?.ok||!Array.isArray(b)||b.length!==5||b[0]!==plan.map)return null;
+ const matching=r=>r.type===plan.target&&r.x1===Math.min(b[1],b[3])&&
+  r.y1===Math.min(b[2],b[4])&&r.x2===Math.max(b[1],b[3])&&r.y2===Math.max(b[2],b[4]);
+ if(!regions.rectangles.some(matching))return null;
+ return {...regions,rectangles:regions.rectangles.filter(r=>!matching(r)),
+  circles:regions.circles.filter(c=>c.type!==plan.target||
+   c.x<Math.min(b[1],b[3])||c.x>Math.max(b[1],b[3])||
+   c.y<Math.min(b[2],b[4])||c.y>Math.max(b[2],b[4]))};
+}
+export function farmStagingPoint(regions,plan,canTraverse){
+ const entry=farmEntryRegions(regions,plan);if(!entry)return null;
+ for(const radius of [80,160,240,320,400,480])for(let k=0;k<16;k++){
+  const q={map:plan.map,x:plan.x+Math.cos(k*Math.PI/8)*radius,
+   y:plan.y+Math.sin(k*Math.PI/8)*radius};
+  if(segmentThreatFree(regions,q,q)&&segmentThreatFree(entry,q,plan)&&
+     canTraverse(q.map,q.x,q.y,plan.x,plan.y)===true)return q;
+ }
+ return null;
+}
 const hiMergePath=(path)=>{const result=[];for(const n of path)
  if(!result.length||hiDistance(result[result.length-1],n)>.01)result.push(n);
  return result;
@@ -93,12 +140,13 @@ const hiMergePath=(path)=>{const result=[];for(const n of path)
 // Spatial A* with a strict expansion budget. Every neighbor is checked
 // for BOTH collision AND threat, and every executed segment is rechecked.
 export function findLocalSafePath(map,from,to,regions,canTraverse,{
- step=90,maxNodes=1100,maxDetour=1000
+ step=90,maxNodes=1100,maxDetour=1000,escapeOrigin=null,escapeTypes=[]
 }={}){
  if(!hiPoint(from)||!hiPoint(to)||from.map!==map||to.map!==map||
   !regions?.ok||typeof canTraverse!=='function')
   return {ok:false,reason:'invalid-local-route-proof'};
- const edge=(a,b)=>segmentThreatFree(regions,a,b)&&
+ const edge=(a,b)=>(segmentThreatFree(regions,a,b)||
+  escapeOrigin&&segmentHazardEscape(regions,a,b,escapeOrigin,escapeTypes))&&
   canTraverse(map,a.x,a.y,b.x,b.y)===true;
  if(hiDistance(from,to)<.5)return {ok:true,points:[],length:0};
  if(edge(from,to))return {ok:true,points:[to],length:hiDistance(from,to)};
@@ -171,7 +219,7 @@ function hiDepartures(G,map){
 // MUST be confirmed by the engine before following the next leg.
 export function planHazardItinerary(G,start,goal,canTraverse,{
  liveMonsters=[],excludedMaps=[],maxStates=38,maxHops=5,maxNodes=1100,
- step=90,maxCollisionChecks=3500
+ step=90,maxCollisionChecks=3500,escapeTypes=[]
 }={}){
  const fail=(reason,extra={})=>({ok:false,reason,...extra});
  if(!hiPoint(start)||!hiPoint(goal)||!G?.maps?.[start.map]||
@@ -191,8 +239,12 @@ export function planHazardItinerary(G,start,goal,canTraverse,{
    liveMonsters.filter(m=>m?.map===map)));
   return regions.get(map);
  };
- const walker=(map,from,to)=>findLocalSafePath(map,from,to,lookup(map),
-  checked,{step,maxNodes});
+ const walks=new Map(),walker=(map,from,to)=>{
+  const key=JSON.stringify([map,from.x,from.y,to.x,to.y]);
+  if(!walks.has(key))walks.set(key,findLocalSafePath(map,from,to,lookup(map),
+   checked,{step,maxNodes,escapeOrigin:start,escapeTypes}));
+  return walks.get(key);
+ };
  const queue=[{position:start,steps:[],cost:0,hops:0,maps:[start.map]}];
  const seen=new Map();
  let states=0,bestResult=null;

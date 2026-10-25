@@ -51,7 +51,7 @@ test('critical side-effect wiring can never disappear silently from rollback ris
   ["game.on(event,handler)","game.onDisabled(event,handler)"],
   ["root.addEventListener(type,handler)","root.addEventListenerDisabled(type,handler)"],
   ["p.watchChestOpened?.(row=>","p.watchChestIgnored?.(row=>"],
-  ["const exec=new Executor(","const exec=new FakeExecutor("]
+  ["exec=new Executor(","exec=new FakeExecutor("]
  ]){
   assert.ok(source.includes(needle),needle);
   let changed=source.replace(needle,replacement);

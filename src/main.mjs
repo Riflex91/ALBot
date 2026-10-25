@@ -337,23 +337,28 @@ export function install(root){
     measure(target=null){const targetHpRatio=target&&Number.isFinite(target.hp)&&Number.isFinite(target.max_hp)&&target.max_hp>0?target.hp/target.max_hp:undefined;return {hpRatio:p.c.hp/p.c.max_hp,targetHpRatio,mpRatio:p.c.mp/p.c.max_mp,freeSlots:bot.free(),gold:p.c.gold,enemyCount:bot.monsters().filter(e=>distance(p.c,e)<p.c.range).length,map:p.c.map,rip:!!p.c.rip,task:bot.task(),count:bot.count};}
   };
   const cleanup=createBootResourceScope();
+  let exec;
+  // Constructor-only rollback covers explicit owners. Other legacy factories
+  // remain unowned and do not qualify for atomic configuration activation.
+  cleanup.initialize(()=>{
   bot.metrics=createRuntimeMetrics({now,memoryBytes:()=>root.performance?.memory?.usedJSHeapSize??null});
    bot.skillWakeups=cleanup.acquire('skill-wakeups',()=>createSkillWakeups({now}));
-   bot.potionReceipts=createPotionReceipts({session:bot.session,realm:p.realm(),now});
-  bot.impactIntents=createImpactIntents({name:me.name,session:bot.session,realm:p.realm(),now});
-  bot.learning=createLearning(bot);bot.cloud=createCloudSync(bot);
+   bot.potionReceipts=cleanup.acquire('potion-receipts',()=>createPotionReceipts({session:bot.session,realm:p.realm(),now}));
+  bot.impactIntents=cleanup.acquire('impact-intents',()=>createImpactIntents({name:me.name,session:bot.session,realm:p.realm(),now}));
+  bot.learning=createLearning(bot);bot.cloud=cleanup.acquire('cloud-sync',()=>createCloudSync(bot));
   bot.admission=createActionAdmission(bot);
   const originalPortCall=p.call,publicCall=p.call.bind(p);
   const recordingPortCall=(name,...args)=>{if(name==='loot')bot.lootReceipts?.beforeLoot?.(args[0]);bot.admission.record(name,args);return publicCall(name,...args);};
   p.call=recordingPortCall;
   cleanup.add('game-port-wrapper',()=>{if(p.call===recordingPortCall)p.call=originalPortCall;});
-  const exec=new Executor({admit:(key,resources)=>bot.admission.allow(key,resources),retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
-  bot.revivals=createRevivalClaims(bot);bot.lootReceipts=createOwnLootReceipts(bot);bot.lootDeparture=createLootDeparture(bot);bot.lootBacklog=createLootBacklog(bot);bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
+  exec=new Executor({admit:(key,resources)=>bot.admission.allow(key,resources),retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
+  bot.revivals=createRevivalClaims(bot);bot.lootReceipts=createOwnLootReceipts(bot);bot.lootDeparture=createLootDeparture(bot);bot.lootBacklog=createLootBacklog(bot);bot.movement=createMovement(bot);bot.transport=cleanup.acquire('transport',()=>createTransport(bot));bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.luckySlots=createLuckySlotEvidence(bot);bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.swaps=createSingleSwap(bot);bot.tradeOffers=createOwnTradeOffer(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.tailoring=createStatTailoring(bot);bot.merchant=createMerchant(bot);bot.supplyForecast=createSupplyForecast(bot);bot.accountStock=createAccountStockLedger(bot);bot.services=createServices(bot);bot.objectives=createObjectives(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
   if(cfg.world){bot.cave=createCaveEvidence(bot);bot.caveLifecycle=createCaveLifecycle(bot,{now});bot.cryptLifecycle=createCryptLifecycle(bot,{now});bot.caveVote=createCaveVoteEvidence(bot,{now});bot.caveVoteJournal=createCaveVoteJournal(bot,{now});bot.caveConsensus=createCaveConsensus(bot,{now});bot.caveTeam=createCaveTeamCoordination(bot,{now});bot.caveMultiAggro=createCaveMultiAggroFocus(bot,{now});bot.caveCriticalResponse=createCaveCriticalResponse(bot,{now});bot.caveRetreat=createCaveRetreatConsensus(bot,{now});bot.caveRetreatPrepare=createCaveRetreatPreparation(bot,{now});bot.caveRetreatWatchdog=createCaveRetreatWatchdog(bot,{now});bot.caveCombat=createCaveDefensiveCombat(bot,{now});bot.caveCriticalTriage=createCaveCriticalHealTriage(bot,{now});bot.cavePriest=createCavePriestHealing(bot,{now});bot.cavePriestSupport=createCavePriestSupport(bot,{now});bot.caveDirect=createCaveDirectCohesion(bot,{now});bot.caveEmergency=createCaveEmergencyDirect(bot,{now});bot.respawns=createRespawnCalendar(bot);bot.farmers=bot.farmers.includes(bot.leader)?[bot.leader,...bot.farmers.filter(n=>n!==bot.leader)].slice(0,cfg.party.maxFarmers):bot.farmers.slice(0,cfg.party.maxFarmers);if(!bot.farmers.includes(bot.leader)&&bot.farmers.length)bot.leader=bot.farmers[0];bot.strategy=createStrategy(bot);bot.behavior=createBehavior(bot);bot.account=createAccount(bot);bot.progression=createProgression(bot);bot.teamTravel=createTeamTravel(bot);bot.aura=createAura(bot);}
-  if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.combatAssessment=createCombatAssessment(bot);bot.elixirs=createElixirs(bot);bot.seashells=createSeashellCycle(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.decisionEpoch=0;bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=createPriorityScheduler(bot);bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);bot.opportunities=createWorldOpportunities(bot);bot.rewards=createRewardMail(bot);}
+  if(cfg.general.testLogging!==undefined){bot.teamPlan=createTeamPlan(bot);bot.encounter=createEncounter(bot);bot.navigation=createCombatNavigation(bot);bot.combatAssessment=createCombatAssessment(bot);bot.elixirs=createElixirs(bot);bot.seashells=createSeashellCycle(bot);bot.supplies=createSupplies(bot);bot.conversions=createConversions(bot);bot.decisionEpoch=0;bot.intelligence=createEconomicIntelligence(bot);bot.storage=createStoragePlanner(bot);bot.adaptive=createAdaptive(bot);bot.bosses=createBosses(bot);bot.marketDemand=createMarketDemand(bot);bot.priority=cleanup.acquire('priority',()=>createPriorityScheduler(bot));bot.recovery=createRecovery(bot);bot.threats=createThreatLedger(bot);bot.allocation=createGearAllocation(bot);bot.content=createContentGuard(bot);bot.opportunities=createWorldOpportunities(bot);bot.rewards=createRewardMail(bot);}
+  });
   cleanup.initialize(()=>{
   {const stop=p.watchChestOpened?.(row=>bot.lootReceipts?.observeChest?.(row));if(typeof stop==='function')cleanup.add('chest-watcher',stop);}
   if(bot.tradeOffers){const stop=p.watchOwnTradeSwaps?.(data=>bot.tradeOffers?.observeSwap?.(data));if(typeof stop==='function')cleanup.add('trade-watcher',stop);}
@@ -722,7 +727,7 @@ export function install(root){
     dispose(){if(disposed)return;disposed=true;
      try{halt('Entladen');}
      finally{
-      try{bot.transport.close();}catch{}
+      // Transport subscription owner is released once via cleanup.close().
       const released=cleanup.close();
       if(!released.closed)try{report.event('runtime.warning',{
        where:'boot-resource-cleanup',failures:released.failures});}catch{}

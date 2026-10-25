@@ -103,11 +103,14 @@ test('real boot owns wrappers, hooks, event subscriptions and timer alongside sk
  assert.match(section,/cleanup\.acquire\('skill-wakeups',\(\)=>createSkillWakeups/);
  for(const resource of [
   'game-port-wrapper','chest-watcher','trade-watcher','merchant-merrit',
-  'party-invite','party-request','magiport','telemetry-and-staging'
+  'telemetry-and-staging'
  ])assert.ok(section.includes("cleanup.add('"+resource+"'"),resource);
- assert.match(section,/cleanup\.add\('game-'\+event/);
- assert.match(section,/cleanup\.add\('window-'\+type/);
+ assert.match(section,/cleanup\.acquire\('game-'\+event/);
+ assert.match(section,/cleanup\.acquire\('window-'\+type/);
  assert.match(section,/if\(p\.call===recordingPortCall\)p\.call=originalPortCall/);
+ assert.match(section,/cleanup\.initialize\(\(\)=>\{/);
+ for(const name of ['party-invite','party-request','magiport'])
+  assert.ok(section.includes("cleanup.attach('"+name+"'"),name);
  const dispose=source.slice(source.indexOf('dispose(){if(disposed)return;'));
  assert.match(dispose,/cleanup\.close\(\)/);
  assert.doesNotMatch(dispose,/cleanup\.splice\(0\)\.forEach/);

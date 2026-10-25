@@ -352,7 +352,7 @@ export function install(root){
   p.call=recordingPortCall;
   cleanup.add('game-port-wrapper',()=>{if(p.call===recordingPortCall)p.call=originalPortCall;});
   exec=new Executor({admit:(key,resources)=>bot.admission.allow(key,resources),retryDelay:key=>bot.learning.retryDelay(key),now,active:()=>bot.running,limit:cfg.general.maxPending,onEvent:(type,data)=>{bot.metrics.observe(type,data);bot.learning.observe(type,data);report.event(type,{...data,reason:bot.reason,task:bot.task(),target:bot.target?.id??null});},onError:(key,e)=>{report.error(key,e);bot.report(key+': '+(e?.reason??e?.message??e));}});bot.exec=exec;
-  bot.revivals=createRevivalClaims(bot);bot.lootReceipts=createOwnLootReceipts(bot);bot.lootDeparture=createLootDeparture(bot);bot.lootBacklog=createLootBacklog(bot);bot.movement=createMovement(bot);bot.transport=createTransport(bot);bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
+  bot.revivals=createRevivalClaims(bot);bot.lootReceipts=createOwnLootReceipts(bot);bot.lootDeparture=createLootDeparture(bot);bot.lootBacklog=createLootBacklog(bot);bot.movement=createMovement(bot);bot.transport=cleanup.acquire('transport',()=>createTransport(bot));bot.logistics=createLogistics(bot);bot.skills=createSkills(bot);if(cfg.general.testLogging!==undefined)bot.capabilities=createCapabilities(bot);bot.farmer=createFarmer(bot);
   if(cfg.production){bot.luckySlots=createLuckySlotEvidence(bot);bot.economy=createEconomy(bot);bot.bank=createBank(bot);bot.lossGuard=createAccountLossGuard(bot);bot.market=createMarket(bot);bot.swaps=createSingleSwap(bot);bot.tradeOffers=createOwnTradeOffer(bot);bot.production=createProduction(bot);bot.gear=createGear(bot);bot.tailoring=createStatTailoring(bot);bot.merchant=createMerchant(bot);bot.supplyForecast=createSupplyForecast(bot);bot.accountStock=createAccountStockLedger(bot);bot.services=createServices(bot);bot.objectives=createObjectives(bot);}
   if(cfg.production?.strategy)bot.observations=createObservations(bot);
   if(cfg.merchant.collectGold!==undefined)bot.gold=createGoldLogistics(bot);
@@ -727,7 +727,7 @@ export function install(root){
     dispose(){if(disposed)return;disposed=true;
      try{halt('Entladen');}
      finally{
-      try{bot.transport.close();}catch{}
+      try{/* transport is owned by cleanup; do not double-close */}catch{}
       const released=cleanup.close();
       if(!released.closed)try{report.event('runtime.warning',{
        where:'boot-resource-cleanup',failures:released.failures});}catch{}

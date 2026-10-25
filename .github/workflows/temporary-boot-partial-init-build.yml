@@ -1,0 +1,41 @@
+name: Temporary partial game boot rollback candidate build
+on:
+  push:
+    branches: [feat/boot-listener-init-recovery-20261025]
+permissions:
+  contents: write
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]' && github.repository == 'Riflex91/ALBot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Test partial real game port hook init and boot graph regression
+        run: node --test konfigurator/test/real-boot-partial-init.test.mjs konfigurator/test/real-boot-resource-ownership.test.mjs konfigurator/test/config-sync-real-boot-graph.test.mjs
+      - name: Build exact unsigned 0.58 source and verify all offline contracts
+        run: |
+          npm run build
+          node scripts/sync-personal-code.mjs --write
+          npm run build:bootstrap:auto
+          npm run build:editor
+          node scripts/sync-personal-code.mjs --check
+          node scripts/verify-bootstrap-contract.mjs
+          npm test
+      - name: Commit only verified generated artifacts
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- bot.js dist/albot.bootstrap.auto.js dist/albot.js dist/albot.runtime.js dist/albot.package.json dist/albot.settings.json dist/manifest.json editor/Bot-Werkstatt.html editor/albot.settings.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(candidate): synchronize protected partial-init recovery runtime 0.58'
+            git push origin HEAD:feat/boot-listener-init-recovery-20261025
+          fi

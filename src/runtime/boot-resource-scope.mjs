@@ -26,6 +26,37 @@ export const createBootResourceScope=(()=>{
    catch(e){try{cleanup();}catch{}throw e;}
    return value;
   }
+  // A registration that creates a browser hook must return its disposer.
+  // Register it immediately and undo it if scope ownership cannot be taken.
+  function attach(name,subscribe){
+   if(closed||closing)throw Error('Boot resource scope closed');
+   if(!validName(name)||typeof subscribe!=='function')
+    throw Error('Boot resource subscription unavailable');
+   const stop=subscribe();
+   if(typeof stop!=='function')
+    throw Error('Boot resource subscription lacks cleanup');
+   try{add(name,stop);}
+   catch(error){try{stop();}catch{failures++;}throw error;}
+   return stop;
+  }
+  // A throw while registering real side effects rolls back EVERY resource
+  // already owned by this boot scope. This does not undo unowned controllers.
+  function initialize(register){
+   if(closed||closing||typeof register!=='function')
+    throw Error('Boot initialization unavailable');
+   try{
+    const result=register();
+    if(result&&typeof result.then==='function')
+     throw Error('Asynchronous boot registration is unsupported');
+    return result;
+   }catch(error){
+    const rollback=close();
+    const aborted=new Error('Boot resource initialization aborted', {cause:error});
+    aborted.rollbackComplete=rollback.closed;
+    aborted.cleanupFailures=rollback.failures;
+    throw aborted;
+   }
+  }
   function close(){
    if(closing)return {closed:false,reason:'release-reentrancy',
     pending:owned.length,failures};
@@ -41,7 +72,7 @@ export const createBootResourceScope=(()=>{
    return {closed:failures===0,reason:failures?'cleanup-failed':null,
     pending:0,failures};
   }
-  return {add,acquire,close,status:()=>({
+  return {add,acquire,attach,initialize,close,status:()=>({
    mode:'owned-runtime-resources',closed,closing,active:owned.length,
    cleanupFailures:failures,releaseOrder:history.map(x=>x.name),
    safeToReconstruct:false,actualRollbackCertified:false,

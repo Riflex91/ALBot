@@ -129,6 +129,9 @@ test('unknown live hostile reach cannot turn its dynamic safety circle into NaN'
  }
  assert.equal(threatRegions(g,'main',{}).ok,false);
  assert.equal(threatRegions(g,'main',Array.from({length:513},()=>null)).ok,false);
+ assert.equal(planHazardItinerary(g,a,b,clear,{liveMonsters:{}}).ok,false);
+ assert.equal(planHazardItinerary(g,a,b,clear,{
+  liveMonsters:Array.from({length:513},()=>null)}).ok,false);
  assert.equal(threatRegions(g,'main',[{...live,speed:30,range:32}]).ok,true);
 });
 

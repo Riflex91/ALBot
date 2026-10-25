@@ -1,6 +1,6 @@
 ## Farmnavigation und Ausrüstungsversorgung (25.10.2026)
 
-Implementiert: einmaliger nativer Stop, begrenzter sicherheitsgeprüfter Ausstieg, geprüfter Farm-Sammelpunkt, endliche Routenquarantäne mit lokaler Neubewertung, Grace-Chancen, physische Gear-Mengen und sichere Merchant-Anlaufpunkte. [Details und Grenzen](docs/FARM-GEAR-CORRECTIONS-2026-10-25.md). Vollständige Offline-Prüfung und signierter Release folgen; Ingame-Abnahme bleibt offen.
+Implementiert: einmaliger nativer Stop, begrenzter sicherheitsgeprüfter Ausstieg, geprüfter Farm-Sammelpunkt, endliche Routenquarantäne mit lokaler Neubewertung, Grace-Chancen, physische Gear-Mengen und sichere Merchant-Anlaufpunkte. [Details und Grenzen](docs/FARM-GEAR-CORRECTIONS-2026-10-25.md). 2696 Offline-Tests und Linux-/Windows-CI erfolgreich; 0.60 / Sequenz 60 signiert und verifiziert. [Zertifizierung](docs/RELEASE-CERTIFICATION-0.60.0-2026-10-25.md); Ingame-Abnahme bleibt offen.
 
 ## W02/W10 – vollständige belegte Equipment-Variantenbelege (24.10.2026)
 

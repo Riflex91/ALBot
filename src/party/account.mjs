@@ -1,9 +1,22 @@
 // A single missed transport heartbeat must not unselect an otherwise healthy
-// already-active Farmer. Explicit death, stop, inventory lock and realm split
-// still remove availability immediately. Unseen peers get a short grace only.
+// already-active Farmer. Explicit stop and realm split remove availability;
+// a value-action lock MUST NOT remove an otherwise fighting Farmer from the
+// combat roster. Unseen peers get a short grace only.
 // A heartbeat on another game server is not an available combat member.
 // Missing peer evidence remains unknown for controlled browser rotation,
 // but explicitly observed cross-realm players cannot enter a live farm team.
+// Never stop an active Farmer without an observed host-side start path.
+// The headless host exposes a name->active-state object, not a browser tab.
+export function inspectHeadlessRotationPreflight(active,out,into){
+ if(!active||typeof active!=='object'||Array.isArray(active))
+  return {allowed:false,reason:'active-character-evidence-unavailable'};
+ if(typeof out!=='string'||!out||typeof into!=='string'||!into||out===into)
+  return {allowed:false,reason:'invalid-character-pair'};
+ if(!Object.prototype.hasOwnProperty.call(active,out)||!active[out])
+  return {allowed:false,reason:'outgoing-not-confirmed-active'};
+ if(active[into])return {allowed:false,reason:'incoming-already-active'};
+ return {allowed:true,reason:'outgoing-active-incoming-offline'};
+}
 export function foreignRunningFarmer(member,realm){
  return member?.running===true&&member.realm!==realm;
 }
@@ -12,10 +25,10 @@ export function selectedFarmerAvailable(member,{selected=false,lastSeen=0,now=Da
  // the roster during the ordinary 15s respawn. Otherwise the coordinator
  // briefly selects only the Priest and both Rangers watch instead of farm.
  if(member?.rip===true&&member.running===true&&member.realm===realm&&
-    !member.inventoryBlocked&&selected&&Number.isFinite(lastSeen)&&
+    selected&&Number.isFinite(lastSeen)&&
     lastSeen>0&&Number.isFinite(now)&&now>=lastSeen&&now-lastSeen<=45000)
   return true;
- if(member&&(!member.running||member.rip||member.inventoryBlocked||member.realm!==realm))return false;
+ if(member&&(!member.running||member.rip||member.realm!==realm))return false;
  if(member?.running&&member.realm===realm)return true;
  return selected&&Number.isFinite(lastSeen)&&lastSeen>0&&
   Number.isFinite(now)&&now>=lastSeen&&now-lastSeen<=20000;
@@ -95,6 +108,7 @@ export function createAccount(bot){
  const {p,cfg,me,exec}=bot;let coordinator=cfg.party.merchant||cfg.party.leader||bot.leader;
  const storageKey='albot:account:'+me.name;let changed=Date.now(),transition=null,sequence=0,blocked=false,riskMode='conservative',rotationPrepare=null,lastAcceptedTeam=null;const lastOnline=new Map();
  const validNames=cfg.characters.filter(c=>c.enabled&&c.role==='farmer').map(c=>c.name);
+ let lastRotationPreflightAt=0;
  const clockKey=storageKey+':training-clock',clockRoster=JSON.stringify([...validNames].sort());
  const clock=p.read(clockKey);let clockBlocked=false;
  if(cfg.party.balanceFarmers===true&&cfg.party.selection==='adaptive'&&clock?.version===1&&clock.realm===p.realm()&&clock.roster===clockRoster&&
@@ -268,14 +282,21 @@ export function createAccount(bot){
    }
    if(active[transition.out])return;
    const peer=bot.transport.fresh(transition.in);if(peer?.running&&peer.realm===p.realm()&&!peer.rip){const next=transition;if(save(null)){apply(next.names,next.leader);sequence++;markChanged();bot.event('account.team',{names:bot.farmers.join(','),leader:bot.leader});}return;}
-   if(!transition.started&&safe(me.name)&&p.has('start_character')){transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,()=>p.call('start_character',transition.in),{timeout:55000,delay:60000});}return;
+   if(!transition.started&&safe(me.name)&&p.has('start_character')){
+    bot.event?.('account.rotationStage',{out:transition.out,into:transition.in,stage:'incoming-start-requested'});
+    transition.started=exec.run('account.start',['lifecycle'],()=>bot.running,
+     ()=>p.call('start_character',transition.in),{timeout:55000,delay:60000,
+     onSettle:result=>bot.event?.('account.rotationStage',{
+      out:transition?.out??null,into:transition?.in??null,
+      stage:'incoming-start-settled',result})});
+   }return;
   }
   // Fix the adaptive-roster deadlock: a missing selected farmer must not
   // prevent choosing another already running teammate. This does not call
   // start_character/stop_character and does not alter any value operation.
   const online=validNames.filter(name=>{
    const h=cfg.general.autoRoster&&name===me.name?{...p.c,running:bot.running,realm:p.realm(),inventoryBlocked:bot.inventoryBlocked}:bot.transport.fresh(name);
-   const seen=h?.running&&!h.rip&&!h.inventoryBlocked&&h.realm===p.realm();
+   const seen=h?.running&&!h.rip&&h.realm===p.realm();
    if(seen)lastOnline.set(name,Date.now());
    return selectedFarmerAvailable(h,{selected:bot.farmers.includes(name),
     lastSeen:lastOnline.get(name)??0,realm:p.realm()});
@@ -340,6 +361,17 @@ export function createAccount(bot){
    if(save(next)){bot.event('account.rotation',{out,into,mode:'same-browser-window'});bot.transport.send(out,'accountSwap',{...next,seq:sequence+1,realm:p.realm()},next.id);next.sentAt=Date.now();}return;
   }
   if(!out||!into||out===me.name||!p.has('stop_character')||!p.has('start_character')||!p.has('get_active_characters'))return;
+  let hostActive;
+  try{hostActive=p.call('get_active_characters');}catch{}
+  const preflight=inspectHeadlessRotationPreflight(hostActive,out,into);
+  if(!preflight.allowed){
+   if(Date.now()-lastRotationPreflightAt>=30000){
+    lastRotationPreflightAt=Date.now();
+    bot.event?.('account.rotationPreflightDenied',{out,into,reason:preflight.reason});
+   }
+   return;
+  }
+  bot.event?.('account.rotationStage',{out,into,stage:'preflight-confirmed'});
   if(!save({out,in:into,original:[...bot.farmers],originalLeader:bot.leader,names:bot.farmers.filter(n=>n!==out).concat(into),leader:elected,until:Date.now()+120000,started:false}))return;
   if(!exec.run('account.stop',['lifecycle'],()=>bot.running&&safe(out),()=>p.call('stop_character',out),{delay:60000})){save(null);return;}
   bot.event('account.rotation',{out,into});

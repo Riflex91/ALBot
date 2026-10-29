@@ -96,7 +96,9 @@ export function fitHeartbeat(data,maxLength=4200){
  // Keep active team identity if possible, but delivery demand takes precedence.
  while(d.materials.length>1&&length()>maxLength)d.materials.pop();
  while(d.items.length>0&&length()>maxLength)d.items.pop();
- if(length()>maxLength)d.materials=[];
+ // Material orders are actionable contracts. An oversized heartbeat must
+ // not silently turn a real Merchant request into an empty order list.
+ // Fail closed instead; the compact team broadcast remains independent.
  // Team election is core account state: dropping it lets restarted farmers
  // elect themselves and create incompatible party owners. Keep it intact;
  // a separate compact coordinator broadcast is the independent fallback.

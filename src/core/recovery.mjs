@@ -193,6 +193,7 @@ export function inspectGoldRecovery(bot){
 }
 export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=null,conflict=null,exchangeSample=null,exchangeStatus=null,goldSample=null,goldStatus=null;
  let purchaseSample=null,bankGoldSample=null,bankGoldStatus=null,lastBankGoldEvent=0;
+ let lastGoldDeferredAt=0,lastGoldDeferredReason=null;
  const goldAckKey='albot:gold:'+me.name+':recovery-receipt';
  function itemStatus(){
   const j=bot.journal;
@@ -238,7 +239,18 @@ export function createRecovery(bot){const {p,me,cfg}=bot;let checked=null,lease=
   const result=inspectGoldRecovery(bot);
   goldStatus={eligible:result.eligible,reason:result.reason,
    extraReceived:result.extraReceived??null};
-  if(!result.eligible){goldSample=null;return false;}
+  if(!result.eligible){
+   goldSample=null;
+   // An unresolved gold transaction is deliberately not retried. Publish
+   // the exact failed evidence guard so a persistent lock is actionable.
+   const reason=result.reason,now=Date.now();
+   if(reason!==lastGoldDeferredReason||now-lastGoldDeferredAt>=30000){
+    lastGoldDeferredReason=reason;lastGoldDeferredAt=now;
+    bot.event?.('recovery.goldDeferred',{id:bot.journal?.id??null,
+     kind:bot.journal?.kind??null,peer:bot.journal?.peer??null,reason});
+   }
+   return false;
+  }
   const now=Date.now();
   if(now-result.local.at<1500)return false;
   if(goldSample?.signature!==result.signature){

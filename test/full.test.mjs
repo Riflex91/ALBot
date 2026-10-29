@@ -29,8 +29,8 @@ function goldFixture(){
 test('gold requires same-session acceptance and observed balances, preserves reserve and never duplicates',async()=>{
  const {bots,calls,deliver,queue}=goldFixture(),a=bots.A,m=bots.M;a.gold.poll(true);const offered=queue[0][2];assert.equal(calls.length,0);a.gold.receive('M',{type:'goldAccept',id:offered.id,session:'old',data:{quantity:100}});a.gold.poll();assert.equal(calls.length,0);deliver();a.gold.poll();await Promise.resolve();m.gold.poll();deliver();a.gold.poll();deliver();a.exec.poll();assert.deepEqual(calls,[150]);assert.equal(a.p.c.gold,100);assert.equal(m.p.c.gold,1150);assert.equal(a.journal,null);assert.equal(m.journal,null);m.gold.receive('A',offered);a.gold.poll(true);assert.equal(calls.length,1);
 });
-test('gold without observed effect remains unresolved instead of resending',async()=>{
- const {bots,calls,deliver,advance}=goldFixture();bots.A.p.call=()=>{calls.push('sent');return Promise.resolve();};bots.A.gold.poll(true);deliver();bots.A.gold.poll();await Promise.resolve();advance();assert.equal(bots.A.inventoryBlocked,true);assert.ok(bots.A.journal);bots.A.gold.poll(true);assert.equal(calls.length,1);
+test('gold without observed effect retains its journal for late receipts and never resends',async()=>{
+ const {bots,calls,deliver,advance}=goldFixture();bots.A.p.call=()=>{calls.push('sent');return Promise.resolve();};bots.A.gold.poll(true);deliver();bots.A.gold.poll();await Promise.resolve();advance();assert.equal(bots.A.inventoryBlocked,false);assert.ok(bots.A.journal);assert.equal(bots.A.gold.status()?.state,'sent');bots.A.gold.poll(true);assert.equal(calls.length,1);
 });
 test('browser directory log appends chronological events once with character and session timestamp',async()=>{
  let disk='',name;const handle={getFile:async()=>({size:new TextEncoder().encode(disk).length}),createWritable:async()=>({seek:async()=>{},write:async s=>{disk+=s;},close:async()=>{}})};

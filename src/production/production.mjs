@@ -1195,6 +1195,7 @@ export function createProduction(bot){
   e.note('Ziellieferungsjournal voll; abgeschlossene alte Ziele manuell prüfen');
   return false;
  }
+ let lastFarmOrderWarningAt=0,lastFarmOrderAssignment='';
  return {gearDeliveryAllowance,protectGearChainInput,observedReservation,estimateAcquisition(item,level=0,quantity=1){
     if(!Number.isSafeInteger(level)||level<0||!Number.isSafeInteger(quantity)||
        quantity<1||!p.G.items?.[item])return null;
@@ -1210,6 +1211,45 @@ export function createProduction(bot){
  const plan=planMaterialQuotas(first,bot.farmers,
   name=>bot.transport.fresh(name),p.realm(),{freeReserve:cfg.farming.freeSlots,
    ttlMs:cfg.general?.messageTtlMs??10000,bindSessions:true});
+ // Do not publish unidentifiable quotas; malformed transport payloads must
+ // never become implicit unlimited permissions for the farming team.
+ const validQuotas=Array.isArray(plan.quotas)&&plan.quotas.every(q=>
+  typeof q?.name==='string'&&q.name.length>0&&
+  Number.isSafeInteger(q.quantity)&&q.quantity>=0&&
+  typeof q.session==='string'&&q.session.length>0);
+ const now=Date.now();
+ if(!validQuotas){
+  lastPublishedMaterials=[];
+  if(now-lastFarmOrderWarningAt>=30000){
+   lastFarmOrderWarningAt=now;
+   bot.event?.('farmOrder.invalidQuota',{objective:first.objective,reason:'malformed-session-quota'});
+  }
+  return [];
+ }
+ if(plan.remaining>0&&!plan.quotas.length&&now-lastFarmOrderWarningAt>=30000){
+  lastFarmOrderWarningAt=now;
+  bot.event?.('farmOrder.quotaUnavailable',{
+   objective:first.objective,item:first.item,monster:first.monster,
+   remaining:plan.remaining,
+   farmers:bot.farmers.map(name=>{
+    const h=bot.transport.fresh(name);
+    return {name,online:h?.running===true,realmMatch:h?.realm===p.realm(),
+     sessionPresent:!!h?.session,
+     evidencePresent:Array.isArray(h?.materialProgress),
+     stockMatches:h?.materialProgress?.some?.(r=>r?.objective===first.objective)??false,
+     free:Number.isSafeInteger(h?.free)?h.free:null,
+     inventoryBlocked:h?.inventoryBlocked===true};
+   })
+  });
+ }
+ const signature=JSON.stringify([first.objective,plan.quotas.map(q=>[q.name,q.quantity,q.session])]);
+ if(signature!==lastFarmOrderAssignment){
+  lastFarmOrderAssignment=signature;
+  bot.event?.('farmOrder.quotaPublished',{
+   objective:first.objective,item:first.item,monster:first.monster,
+   remaining:plan.remaining,quotas:plan.quotas.map(q=>({name:q.name,quantity:q.quantity,session:q.session}))
+  });
+ }
  lastPublishedMaterials=[{...first,...plan}];
   for(const name of bot.farmers){const h=bot.transport.fresh(name),ack=h?.materialAck;
    if(!h?.running||h.rip||h.realm!==p.realm()||ack?.objective!==first.objective||ack.item!==first.item||ack.monster!==first.monster)continue;

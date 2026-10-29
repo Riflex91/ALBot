@@ -164,7 +164,8 @@ test('coordinator safely swaps a stronger active farmer for an offline underleve
   now+=60000;account.tick();
   assert.equal(calls.length,0,'no rotation before minimum training hold');
   now+=1740001;account.tick();
-  assert.deepEqual(calls[0],['stop_character','My_Ranger1']);
+  assert.deepEqual(calls[0],['get_active_characters',undefined]);
+  assert.deepEqual(calls[1],['stop_character','My_Ranger1']);
   assert.equal(account.status().transition.out,'My_Ranger1');
   account.tick();assert.deepEqual(calls.at(-1),['start_character','My_Rogue']);
   account.tick();

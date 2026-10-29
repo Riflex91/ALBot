@@ -84,10 +84,11 @@ test('briefly missing Ranger heartbeat does not eject existing healthy Farmer',(
  assert.equal(selectedFarmerAvailable(null,{...options,selected:false}),false);
  assert.equal(selectedFarmerAvailable({running:true,realm:'EUII'},options),true);
  for(const peer of [{running:false,realm:'EUII'},
-  {running:true,realm:'USIV'},
-  {running:true,realm:'EUII',inventoryBlocked:true}]){
+  {running:true,realm:'USIV'}]){
   assert.equal(selectedFarmerAvailable(peer,options),false);
  }
+ assert.equal(selectedFarmerAvailable({running:true,realm:'EUII',inventoryBlocked:true},options),true,
+  'an inventory value lock must not eject a still-alive combat teammate');
  assert.equal(selectedFarmerAvailable({running:true,realm:'EUII',rip:true},options),true,
   'a recently observed selected Farmer stays rostered during ordinary respawn');
  assert.equal(selectedFarmerAvailable({running:true,realm:'EUII',rip:true},

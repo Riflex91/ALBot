@@ -1,6 +1,7 @@
 // A single missed transport heartbeat must not unselect an otherwise healthy
-// already-active Farmer. Explicit death, stop, inventory lock and realm split
-// still remove availability immediately. Unseen peers get a short grace only.
+// already-active Farmer. Explicit stop and realm split remove availability;
+// a value-action lock MUST NOT remove an otherwise fighting Farmer from the
+// combat roster. Unseen peers get a short grace only.
 // A heartbeat on another game server is not an available combat member.
 // Missing peer evidence remains unknown for controlled browser rotation,
 // but explicitly observed cross-realm players cannot enter a live farm team.
@@ -12,10 +13,10 @@ export function selectedFarmerAvailable(member,{selected=false,lastSeen=0,now=Da
  // the roster during the ordinary 15s respawn. Otherwise the coordinator
  // briefly selects only the Priest and both Rangers watch instead of farm.
  if(member?.rip===true&&member.running===true&&member.realm===realm&&
-    !member.inventoryBlocked&&selected&&Number.isFinite(lastSeen)&&
+    selected&&Number.isFinite(lastSeen)&&
     lastSeen>0&&Number.isFinite(now)&&now>=lastSeen&&now-lastSeen<=45000)
   return true;
- if(member&&(!member.running||member.rip||member.inventoryBlocked||member.realm!==realm))return false;
+ if(member&&(!member.running||member.rip||member.realm!==realm))return false;
  if(member?.running&&member.realm===realm)return true;
  return selected&&Number.isFinite(lastSeen)&&lastSeen>0&&
   Number.isFinite(now)&&now>=lastSeen&&now-lastSeen<=20000;
@@ -275,7 +276,7 @@ export function createAccount(bot){
   // start_character/stop_character and does not alter any value operation.
   const online=validNames.filter(name=>{
    const h=cfg.general.autoRoster&&name===me.name?{...p.c,running:bot.running,realm:p.realm(),inventoryBlocked:bot.inventoryBlocked}:bot.transport.fresh(name);
-   const seen=h?.running&&!h.rip&&!h.inventoryBlocked&&h.realm===p.realm();
+   const seen=h?.running&&!h.rip&&h.realm===p.realm();
    if(seen)lastOnline.set(name,Date.now());
    return selectedFarmerAvailable(h,{selected:bot.farmers.includes(name),
     lastSeen:lastOnline.get(name)??0,realm:p.realm()});

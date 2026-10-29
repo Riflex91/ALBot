@@ -1,0 +1,23 @@
+name: ALBot source regression checks
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  source-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Focused regression tests
+        run: |
+          node --test test/20261029-gold-order-rotation-guards.test.mjs
+          node --test test/gold-handoff-reboot-recovery.test.mjs test/browser-rotation.test.mjs test/material-quotas-active-farmers.test.mjs
+      - name: Full source test suite
+        run: npm test

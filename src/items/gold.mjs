@@ -43,7 +43,7 @@ export function createGoldLogistics(bot){
  function poll(offer=false){
   const now=Date.now();for(const [id,at] of finished)if(now-at>120000)finished.delete(id);
   if(job){const j=job;
-   if(j.state==='receiving'&&p.c.gold===j.before+j.quantity){j.observed=true;if(!j.lastReceipt||now-j.lastReceipt>1500){j.lastReceipt=now;send('goldReceipt',{quantity:j.quantity});}}
+   if(j.state==='receiving'&&Number.isSafeInteger(p.c.gold)&&p.c.gold>=j.before+j.quantity){j.observed=true;if(!j.lastReceipt||now-j.lastReceipt>1500){j.lastReceipt=now;send('goldReceipt',{quantity:j.quantity});}}
    if(j.state==='sent'&&p.c.gold<j.before&&p.c.gold>=reserve()&&j.receipt){markTransfer();send('goldDone');finished.set(j.id,now);job=null;bot.endValue('confirmed');next=now+confirmedHandoffCooldown(cfg.general.messageTtlMs);return;}
    if(now>j.until){if(['receiving','sent'].includes(j.state))markTransfer();job=null;next=now+15000;if(j.state==='offered'||j.state==='accepted')sendCancelled(j);else bot.endValue('unknown');bot.event('gold.timeout',{id:j.id,state:j.state});return;}
    if(j.state==='offered'&&now-j.lastOffer>1500){j.lastOffer=now;send('goldOffer',{quantity:j.quantity});}
@@ -53,7 +53,13 @@ export function createGoldLogistics(bot){
     // Persist before scheduling a value action, not inside the dispatch
     // callback. A failed write means no send and no ambiguous value journal.
     if(!markTransfer()){sendCancelled(j);job=null;next=now+15000;return;}
-    exec.run('gold.send',['inventory','gold'],guard,()=>{j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){job=null;bot.endValue('unknown');}}});
+    exec.run('gold.send',['inventory','gold'],guard,()=>{j.before=p.c.gold;bot.beginValue({kind:'gold.send',...j});j.state='sent';bot.event('gold.dispatched',{id:j.id,peer:j.peer,quantity:j.quantity,before:j.before});return p.call('send_gold',j.peer,j.quantity);},{value:true,observe:()=>finished.has(j.id),timeout:cfg.general.messageTtlMs,onSettle:result=>{if(result==='unknown'&&job===j){
+      // A settled/unknown game RPC does not mean the send failed. Preserve
+      // the transaction and its durable value journal while a receipt can
+      // still arrive. Re-dispatching this gold ID is never permitted.
+      if(j.state==='sent')bot.event('gold.dispatchAwaitingReceipt',{id:j.id,peer:j.peer,quantity:j.quantity});
+      else{sendCancelled(j);job=null;next=Date.now()+15000;}
+     }}});
    }return;
   }
   if(!offer||!cfg.merchant.collectGold||!cfg.merchant.enabled||me.role!=='farmer'||now<next||!idle()||surplus()<cfg.merchant.goldCollectBelow||!near(cfg.party.merchant))return;

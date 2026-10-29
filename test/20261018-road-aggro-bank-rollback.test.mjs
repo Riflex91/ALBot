@@ -29,7 +29,8 @@ test('respawn keeps already observed selected combat roster for at most 45s',()=
  assert.equal(selectedFarmerAvailable(dead,{...options,selected:false}),false);
  assert.equal(selectedFarmerAvailable({...dead,running:false},options),false);
  assert.equal(selectedFarmerAvailable({...dead,realm:'USIV'},options),false);
- assert.equal(selectedFarmerAvailable({...dead,inventoryBlocked:true},options),false);
+ assert.equal(selectedFarmerAvailable({...dead,inventoryBlocked:true},options),true,
+  'gold or item recovery can run while the selected character respawns');
  assert.equal(selectedFarmerAvailable({...dead,rip:false},options),true);
 });
 test('revoked bank sale rolls back ONLY an exact still-carried item into empty original slot',()=>{
